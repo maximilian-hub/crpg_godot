@@ -14,4 +14,4 @@ jobs:
           -d '{
             "content": "🚀 **New GitHub Commit!**\n📝 Commit: '${{ github.event.head_commit.message }}'\n🔗 [View Changes]('${{ github.event.repository.url }}/commit/${{ github.sha }}')"
           }' \
-          $DISCORD_WEBHOOK
+          "$DISCORD_WEBHOOK"
