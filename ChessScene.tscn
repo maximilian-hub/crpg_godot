@@ -1,0 +1,35 @@
+[gd_scene load_steps=3 format=3 uid="uid://dmjh46w6447q4"]
+
+[ext_resource type="Texture2D" uid="uid://bt01fet8w8hvw" path="res://assets/woodtile.png" id="1_sedyk"]
+[ext_resource type="Script" uid="uid://dgwahlcb71c2" path="res://auto-resize.gd" id="2_w0kdj"]
+
+[node name="Node2D" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+visible = false
+texture_repeat = 2
+texture = ExtResource("1_sedyk")
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 311.0
+offset_bottom = 193.0
+script = ExtResource("2_w0kdj")
+
+[node name="TextureRect" type="TextureRect" parent="Control"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -8.0
+offset_top = -8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(4, 4)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+texture = ExtResource("1_sedyk")
+stretch_mode = 1
