@@ -1,20 +1,16 @@
-[gd_scene load_steps=3 format=3 uid="uid://dmjh46w6447q4"]
+[gd_scene load_steps=4 format=3 uid="uid://dmjh46w6447q4"]
 
 [ext_resource type="Texture2D" uid="uid://bt01fet8w8hvw" path="res://assets/woodtile.png" id="1_sedyk"]
 [ext_resource type="Script" uid="uid://dgwahlcb71c2" path="res://auto-resize.gd" id="2_w0kdj"]
+[ext_resource type="PackedScene" uid="uid://b7v87ds7bthnd" path="res://Chessboard.tscn" id="3_73u33"]
 
 [node name="Node2D" type="Node2D"]
-
-[node name="Sprite2D" type="Sprite2D" parent="."]
-visible = false
-texture_repeat = 2
-texture = ExtResource("1_sedyk")
 
 [node name="Control" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 0
-offset_right = 311.0
-offset_bottom = 193.0
+offset_right = 82.0
+offset_bottom = 55.0
 script = ExtResource("2_w0kdj")
 
 [node name="TextureRect" type="TextureRect" parent="Control"]
@@ -33,3 +29,8 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 texture = ExtResource("1_sedyk")
 stretch_mode = 1
+
+[node name="Chessboard" parent="." instance=ExtResource("3_73u33")]
+position = Vector2(322, 32)
+scale = Vector2(1.8, 1.8)
+script = null
