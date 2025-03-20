@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3 uid="uid://d08pm3rm8pke7"]
+
+[ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scenes/chess_game.gd" id="1_wnm4a"]
+
+[node name="ChessGame" type="Node"]
+script = ExtResource("1_wnm4a")
+
+[node name="ChessGameModel" type="Node" parent="."]
+
+[node name="ChessController" type="Node" parent="."]
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="ChessBoard" type="Node2D" parent="CanvasLayer"]
+
+[node name="Squares" type="Node2D" parent="CanvasLayer/ChessBoard"]
+
+[node name="Pieces" type="Node2D" parent="CanvasLayer/ChessBoard"]
+
+[node name="Background" type="Sprite2D" parent="."]
