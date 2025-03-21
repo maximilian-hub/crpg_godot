@@ -11,10 +11,4 @@ func _on_input_event(viewport, event, shape_idx):
 
 func set_color(color: Color):
 	var sprite = $Sprite2D
-	print("uh")
-	if sprite == null:
-		push_error("Sprite2D not found on tile!")
-		print("um")
-	else:
-		sprite.modulate = color
-		print("sprite modulated to ", color)
+	sprite.modulate = color

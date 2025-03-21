@@ -6,6 +6,8 @@ extends Node2D
 
 @export var controller: Node # ChessController is set here via the UI
 var square_scene = preload("res://scenes/square.tscn")
+@export var light_square_color = Color(1, 1, 1) 
+@export var dark_square_color = Color(0.3, 0.3, 0.3)
 
 func _ready():
 	pass 
@@ -20,9 +22,9 @@ func draw_board(board: Array):
 		for y in range(board[x].size()):
 			# Determine the color:
 			if ((x + y) % 2 == 0):
-				square_color = Color(1, 1, 1)
+				square_color = light_square_color
 			else:
-				square_color = Color(0.3, 0.3, 0.3)
+				square_color = dark_square_color
 			
 			var square = square_scene.instantiate()
 			square.set_color(square_color)
