@@ -1,0 +1,17 @@
+[gd_scene load_steps=4 format=3 uid="uid://byxvtf1tqpqx6"]
+
+[ext_resource type="Script" uid="uid://cwmag8o8tyr1n" path="res://scenes/square.gd" id="1_2eeqm"]
+[ext_resource type="Texture2D" uid="uid://caj4k18ynroth" path="res://assets/white_pixel.png" id="2_qmd2u"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_rb13l"]
+size = Vector2(64, 64)
+
+[node name="Square" type="Area2D"]
+script = ExtResource("1_2eeqm")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(64, 64)
+texture = ExtResource("2_qmd2u")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_rb13l")
