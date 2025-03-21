@@ -1,20 +1,48 @@
-[gd_scene load_steps=2 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=9 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scenes/chess_game.gd" id="1_wnm4a"]
+[ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scenes/chess_model.gd" id="2_fv27a"]
+[ext_resource type="Texture2D" uid="uid://bt01fet8w8hvw" path="res://assets/woodtile.png" id="3_qea3a"]
+[ext_resource type="Script" uid="uid://c00m43kw54bgi" path="res://scenes/chess_controller.gd" id="3_s46tk"]
+[ext_resource type="Script" uid="uid://dm2av1txkn6la" path="res://scenes/chess_board.gd" id="3_yl173"]
+[ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scenes/squares.gd" id="5_s46tk"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_fv27a"]
+texture = ExtResource("3_qea3a")
+0:0/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_qea3a"]
+sources/0 = SubResource("TileSetAtlasSource_fv27a")
 
 [node name="ChessGame" type="Node"]
 script = ExtResource("1_wnm4a")
 
-[node name="ChessGameModel" type="Node" parent="."]
+[node name="ChessModel" type="Node" parent="." node_paths=PackedStringArray("view")]
+script = ExtResource("2_fv27a")
+view = NodePath("../CanvasLayer/ChessBoard")
 
-[node name="ChessController" type="Node" parent="."]
+[node name="ChessController" type="Node" parent="." node_paths=PackedStringArray("model", "view")]
+script = ExtResource("3_s46tk")
+model = NodePath("../ChessModel")
+view = NodePath("../CanvasLayer/ChessBoard")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
-[node name="ChessBoard" type="Node2D" parent="CanvasLayer"]
+[node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("controller")]
+script = ExtResource("3_yl173")
+controller = NodePath("../../ChessController")
 
 [node name="Squares" type="Node2D" parent="CanvasLayer/ChessBoard"]
+script = ExtResource("5_s46tk")
 
 [node name="Pieces" type="Node2D" parent="CanvasLayer/ChessBoard"]
 
-[node name="Background" type="Sprite2D" parent="."]
+[node name="Background" type="TextureRect" parent="."]
+offset_right = 1920.0
+offset_bottom = 1080.0
+scale = Vector2(5, 5)
+texture = ExtResource("3_qea3a")
+stretch_mode = 1
+
+[node name="TileMapLayer" type="TileMapLayer" parent="."]
+tile_set = SubResource("TileSet_qea3a")
