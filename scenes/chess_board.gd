@@ -19,6 +19,12 @@ func _ready():
 func draw_board(modelBoard: Array):
 	board = modelBoard
 	var square_size = 64
+	for child in $Squares.get_children():
+		child.queue_free()
+
+	for child in $Pieces.get_children():
+		child.queue_free()
+
 	
 	for row in range(board.size()):
 		for col in range(board[row].size()):
@@ -36,6 +42,7 @@ func draw_square(row: int, col: int, pos: Vector2):
 	square.set_color(square_color)
 	square.position = pos
 	square.coordinate = Vector2i(row, col)
+	square.connect("square_clicked", controller._on_square_clicked)
 	squares.add_child(square)
 
 func draw_piece(row: int, col: int, pos: Vector2):
@@ -44,7 +51,6 @@ func draw_piece(row: int, col: int, pos: Vector2):
 		var piece = piece_scene.instantiate()
 		piece.position = pos
 		piece.set_sprite(board[row][col])
-		piece.connect("piece_clicked", controller._on_piece_clicked)
 		piece.coordinate = Vector2i(row, col)
 		pieces.add_child(piece)
 			
@@ -71,4 +77,24 @@ func clear_highlights():
 	var squares = $Squares.get_children()
 	for square in squares:
 		square.clear_highlight()
+
+func move_piece_node(from: Vector2i, to: Vector2i):
+	# Check if any piece is at the target location (capture)
+	for piece in $Pieces.get_children():
+		if piece.coordinate == to:
+			piece.queue_free() # 💀
+			break
 	
+	# Move the piece that matches `from`
+	for piece in $Pieces.get_children():
+		if piece.coordinate == from:
+			piece.coordinate = to
+			piece.hasMoved = true
+			piece.position = grid_to_screen(to.x, to.y)
+			break
+	
+func get_piece_at(coord: Vector2i) -> Node:
+	for piece in $Pieces.get_children():
+		if piece.coordinate == coord:
+			return piece
+	return null

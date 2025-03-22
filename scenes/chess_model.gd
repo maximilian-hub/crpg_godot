@@ -97,6 +97,16 @@ func get_pawn_moves(row: int, col: int, color: String, has_moved: bool) -> Array
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 
+func move_piece(from: Vector2i, to: Vector2i):
+	print("move_piece()")
+	var piece_name = board[from.x][from.y]
+	board[from.x][from.y] = null
+	board[to.x][to.y] = piece_name
+	
+	# Tell the piece it moved
+	view.move_piece_node(from, to)
+
+
 
 func print_board():
 	for row in board:
