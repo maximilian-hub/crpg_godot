@@ -91,3 +91,10 @@ func get_piece_at(coord: Vector2i) -> Node:
 		if piece.coordinate == coord:
 			return piece
 	return null
+
+func remove_piece_at(coord: Vector2i):
+	print("removing piece")
+	for piece in $Pieces.get_children():
+		if piece.coordinate == coord:
+			piece.queue_free()
+			break

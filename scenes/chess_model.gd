@@ -3,6 +3,8 @@ extends Node
 @export var view: Node
 var boardType = "default"
 var board: Array
+var last_move: Dictionary = {}
+
 
 var custom_size = 16
 
@@ -85,14 +87,15 @@ func get_pawn_moves(row: int, col: int, color: String, has_moved: bool) -> Array
 	var direction = -1 if (color == "white") else 1
 	var moves := []
 	
+	# One-square advance
 	var forward_one = row + direction
 	if is_in_bounds(forward_one, col) and board[forward_one][col] == null:
 		moves.append(Vector2i(forward_one, col))
-		
-		# Two-square move if hasn't moved
-		var forward_two = row + (direction * 2)
-		if not has_moved and is_in_bounds(forward_two, col) and board[forward_two][col] == null:
-			moves.append(Vector2i(forward_two, col))
+	
+	# Two-square advance if hasn't moved
+	var forward_two = row + (direction * 2)
+	if not has_moved and is_in_bounds(forward_two, col) and board[forward_two][col] == null:
+		moves.append(Vector2i(forward_two, col))
 	
 	# Diagonal captures
 	for dc in [-1, 1]:
@@ -101,6 +104,21 @@ func get_pawn_moves(row: int, col: int, color: String, has_moved: bool) -> Array
 			var target = board[forward_one][diag_col]
 			if target != null and not target.begins_with(color):
 				moves.append(Vector2i(forward_one, diag_col))
+	
+	# En passant
+	if last_move.has("piece_name") and last_move["piece_name"].ends_with("pawn"):
+		var last_from = last_move["from"]
+		var last_to = last_move["to"]
+		
+		# The pawn must have just moved 2 squares forward
+		if abs(last_to.x - last_from.x) == 2 and last_to.x == row:
+			for dc in [-1, 1]:
+				var side_col = col + dc
+				if is_in_bounds(row, side_col) and last_to.y == side_col:
+					# Can capture en passant diagonally forward
+					var en_passant_row = row + direction
+					moves.append(Vector2i(en_passant_row, side_col))
+
 	
 	return moves
 
@@ -240,6 +258,12 @@ func is_in_bounds(row: int, col: int) -> bool:
 	
 func move_piece(from: Vector2i, to: Vector2i):
 	var piece_name = board[from.x][from.y]
+	
+	# Check for en passant (this needs to be done before the piece is actually moved)
+	var is_en_passant = false
+	if piece_name.ends_with("pawn") and from.y != to.y and board[to.x][to.y] == null:
+		is_en_passant = true
+		
 	board[from.x][from.y] = null
 	board[to.x][to.y] = piece_name
 
@@ -254,8 +278,24 @@ func move_piece(from: Vector2i, to: Vector2i):
 			board[row][3] = board[row][0]
 			board[row][0] = null
 			view.move_piece_node(Vector2i(row, 0), Vector2i(row, 3))
+	
+	# Check for en passant capture
+	if is_en_passant:
+		# This was a diagonal move to an empty square = en passant!
+		var captured_row = from.x
+		var captured_col = to.y
+		board[captured_row][captured_col] = null
+		view.remove_piece_at(Vector2i(captured_row, captured_col))
+
 
 	view.move_piece_node(from, to)
+	
+	last_move = {
+	"from": from,
+	"to": to,
+	"piece_name": piece_name
+}
+
 
 
 func get_piece_at(row: int, col: int):
