@@ -105,7 +105,6 @@ func get_pawn_moves(row: int, col: int, color: String, has_moved: bool) -> Array
 	return moves
 
 func get_knight_moves(row: int, col: int, color: String) -> Array:
-	var possible_moves := []
 	var moves := []
 	
 	# Assuming enough space, Knights have 8 moves.
@@ -191,18 +190,20 @@ func get_queen_moves(row: int, col: int, color: String) -> Array:
 func get_king_moves(row: int, col: int, color: String) -> Array:
 	var moves := []
 	
-	var directions = [-1, 1]
-	
-	for dr in directions:
-		for dc in directions:
+	for dr in range(-1, 2):
+		for dc in range(-1, 2):
+			if dr == 0 and dc == 0:
+				continue
 			var r = row + dr
 			var c = col + dc
 			if is_in_bounds(r, c):
 				var target = board[r][c]
 				if target == null or not target.begins_with(color):
 					moves.append(Vector2i(r, c))
+
 	
 	return moves
+
 	
 	
 func is_in_bounds(row: int, col: int) -> bool:

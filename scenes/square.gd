@@ -17,7 +17,6 @@ func set_color(color: Color):
 
 func highlight():
 	$Highlight.visible = true
-	print("im a lil square and im LIGHTING UP!!!!!")
 
 func clear_highlight():
 	$Highlight.visible = false
