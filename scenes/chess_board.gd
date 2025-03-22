@@ -18,13 +18,6 @@ func _ready():
 # renders the board.	
 func draw_board(modelBoard: Array):
 	board = modelBoard
-	var square_size = 64
-	for child in $Squares.get_children():
-		child.queue_free()
-
-	for child in $Pieces.get_children():
-		child.queue_free()
-
 	
 	for row in range(board.size()):
 		for col in range(board[row].size()):
