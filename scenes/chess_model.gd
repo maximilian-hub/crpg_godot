@@ -189,7 +189,8 @@ func get_queen_moves(row: int, col: int, color: String) -> Array:
 
 func get_king_moves(row: int, col: int, color: String) -> Array:
 	var moves := []
-	
+
+	# Normal 1-square moves
 	for dr in range(-1, 2):
 		for dc in range(-1, 2):
 			if dr == 0 and dc == 0:
@@ -201,22 +202,67 @@ func get_king_moves(row: int, col: int, color: String) -> Array:
 				if target == null or not target.begins_with(color):
 					moves.append(Vector2i(r, c))
 
-	
+	# Castling logic (ignore check for now)
+	if not get_piece_at(row, col).hasMoved:
+		# Queen-side rook
+		if can_castle_through(row, col, row, 0, color):
+			moves.append(Vector2i(row, col - 2))
+		# King-side rook
+		if can_castle_through(row, col, row, 7, color):
+			moves.append(Vector2i(row, col + 2))
+
 	return moves
+
+func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
+	# Rook must exist and be unmoved
+	var rook_name = board[rook_row][rook_col]
+	if rook_name == null or not rook_name.begins_with(color) or not rook_name.ends_with("rook"):
+		return false
+
+	var rook_piece = get_piece_at(rook_row, rook_col)
+	if rook_piece == null or rook_piece.hasMoved:
+		return false
+
+	# Squares between must be empty
+	var start = min(king_col, rook_col) + 1
+	var end = max(king_col, rook_col)
+	for c in range(start, end):
+		if board[king_row][c] != null:
+			return false
+
+	return true
 
 	
 	
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 
+	
 func move_piece(from: Vector2i, to: Vector2i):
-	print("move_piece()")
 	var piece_name = board[from.x][from.y]
 	board[from.x][from.y] = null
 	board[to.x][to.y] = piece_name
-	
-	# Tell the piece it moved
+
+	#  Detect castling
+	if piece_name.ends_with("king") and abs(to.y - from.y) == 2:
+		var row = from.x
+		if to.y == 6: # King-side castle
+			board[row][5] = board[row][7] # Move rook
+			board[row][7] = null
+			view.move_piece_node(Vector2i(row, 7), Vector2i(row, 5))
+		elif to.y == 2: # Queen-side castle
+			board[row][3] = board[row][0]
+			board[row][0] = null
+			view.move_piece_node(Vector2i(row, 0), Vector2i(row, 3))
+
 	view.move_piece_node(from, to)
+
+
+func get_piece_at(row: int, col: int):
+	for piece in view.get_node("Pieces").get_children():
+		if piece.coordinate == Vector2i(row, col):
+			return piece
+	return null
 
 
 
