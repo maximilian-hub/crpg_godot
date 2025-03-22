@@ -2,7 +2,7 @@ extends Area2D
 
 signal piece_clicked(piece)
 var hasMoved = false
-var coordinate: Vector2
+var coordinate: Vector2i
 
 func _ready():
 	connect("input_event", _on_input_event)

@@ -53,15 +53,50 @@ func initialize_default_pieces():
 func get_legal_moves(piece):
 	# Receives a piece. The piece knows its own coordinate.
 	# Returns the legal coordinates this piece can move to.
+
+	var moves := []
+	var row = piece.coordinate.x
+	var col = piece.coordinate.y
+	@warning_ignore("shadowed_variable_base_class")
+	var name = board[row][col] # e.g. "white_pawn"
 	
-	# To calculate:
-	# get the piece's type.
-		# for pawns:
-			# if they haven't moved, they can advance two squares.
-			# they can advance one square.
-			# they can capture diagonally.
-			# they can en passant. (this'll be fun lmao)
-	pass
+	if name == null:
+		return []
+	
+	var color = name.split("_")[0]
+	var type = name.split("_")[1]
+	
+	if type == "pawn":
+		moves = get_pawn_moves(row, col, color, piece.hasMoved)
+	
+	return moves
+
+func get_pawn_moves(row: int, col: int, color: String, has_moved: bool) -> Array:
+	var direction = -1 if (color == "white") else 1
+	var moves := []
+	
+	var forward_one = row + direction
+	if is_in_bounds(forward_one, col) and board[forward_one][col] == null:
+		moves.append(Vector2i(forward_one, col))
+		
+		# Two-square move if hasn't moved
+		var forward_two = row + (direction * 2)
+		if not has_moved and is_in_bounds(forward_two, col) and board[forward_two][col] == null:
+			moves.append(Vector2i(forward_two, col))
+	
+	# Diagonal captures
+	for dc in [-1, 1]:
+		var diag_col = col + dc
+		if is_in_bounds(forward_one, diag_col):
+			var target = board[forward_one][diag_col]
+			if target != null and not target.begins_with(color):
+				moves.append(Vector2i(forward_one, diag_col))
+	
+	return moves
+
+func is_in_bounds(row: int, col: int) -> bool:
+	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
+
 
 func print_board():
 	for row in board:

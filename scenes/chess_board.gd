@@ -55,3 +55,20 @@ func get_square_color(row: int, col: int):
 	else:
 		square_color = dark_square_color	
 	return square_color
+
+func show_legal_moves(legal_moves: Array):
+	print("View: 'showing legal moves, or trying to hehe'")
+	highlight_squares(legal_moves)
+
+func highlight_squares(squares_to_highlight: Array):
+	var squares = $Squares.get_children()
+	for square in squares:
+		if square.coordinate in squares_to_highlight: # it looks like this is never triggering as true when i click a pawn. strange, because when i debug and print from get_legal_moves(), it prints the right coordinates.
+			square.highlight()
+
+
+func clear_highlights():
+	var squares = $Squares.get_children()
+	for square in squares:
+		square.clear_highlight()
+	
