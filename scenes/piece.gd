@@ -1,19 +1,13 @@
 extends Area2D
 
-#signal piece_clicked(piece)
 var hasMoved = false
 var coordinate: Vector2i
 
 func _ready():
-	#connect("input_event", _on_input_event)
 	pass
-
-#func _on_input_event(viewport, event, shape_idx):
-	#if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		#emit_signal("piece_clicked", self)
 
 func set_sprite(spriteName: String):
 	var sprite = $Sprite2D
 	var texture = load("res://assets/pieces/" + spriteName + ".png")
 	sprite.texture = texture
-	
+	print("set_sprite(" + spriteName + ") from piece.gd")

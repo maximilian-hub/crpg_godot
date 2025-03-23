@@ -22,7 +22,6 @@ func _on_square_clicked(coord: Vector2i):
 			selected_piece.hasMoved = true
 		deselect_piece()
 		
-		
 func get_piece_at(coord: Vector2i) -> Node:
 	for piece in view.get_node("Pieces").get_children():
 		if piece.coordinate == coord:
@@ -39,5 +38,3 @@ func deselect_piece():
 		view.clear_highlights()
 		selected_piece = null
 		legal_moves.clear()
-		
-	

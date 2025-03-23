@@ -56,13 +56,12 @@ func get_square_color(row: int, col: int):
 	return square_color
 
 func show_legal_moves(legal_moves: Array):
-	print("View: 'showing legal moves, or trying to hehe'")
 	highlight_squares(legal_moves)
 
 func highlight_squares(squares_to_highlight: Array):
 	var squares = $Squares.get_children()
 	for square in squares:
-		if square.coordinate in squares_to_highlight: # it looks like this is never triggering as true when i click a pawn. strange, because when i debug and print from get_legal_moves(), it prints the right coordinates.
+		if square.coordinate in squares_to_highlight: 
 			square.highlight()
 
 
@@ -71,21 +70,19 @@ func clear_highlights():
 	for square in squares:
 		square.clear_highlight()
 
-func move_piece_node(from: Vector2i, to: Vector2i):
-	# Check if any piece is at the target location (capture)
-	for piece in $Pieces.get_children():
-		if piece.coordinate == to:
-			piece.queue_free() # 💀
-			break
-	
-	# Move the piece that matches `from`
+func move_piece_node(from: Vector2i, to: Vector2i) -> Node:
 	for piece in $Pieces.get_children():
 		if piece.coordinate == from:
 			piece.coordinate = to
 			piece.hasMoved = true
 			piece.position = grid_to_screen(to.x, to.y)
-			break
-	
+			return piece
+	return null
+
+func promote_piece(piece: Node, new_name: String):
+	if piece:
+		piece.set_sprite(new_name)
+
 func get_piece_at(coord: Vector2i) -> Node:
 	for piece in $Pieces.get_children():
 		if piece.coordinate == coord:
@@ -98,3 +95,14 @@ func remove_piece_at(coord: Vector2i):
 		if piece.coordinate == coord:
 			piece.queue_free()
 			break
+
+func promote_piece_at(coord: Vector2i, new_name: String):
+	print("entering promote_piece_at()")
+	print("Promoting piece at:", coord, "to:", new_name)
+	for piece in $Pieces.get_children():
+		print("Checking piece at:", piece.coordinate)
+		if piece.coordinate == coord:
+			print("FOUND piece at promotion square! Calling set_sprite...")
+			piece.set_sprite(new_name)
+			break
+		print("❌ No matching piece found at promotion coordinate")

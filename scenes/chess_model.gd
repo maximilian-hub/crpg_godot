@@ -5,14 +5,12 @@ var boardType = "default"
 var board: Array
 var last_move: Dictionary = {}
 
-
 var custom_size = 16
 
 func _ready():
 	initialize_board()
 	print_board() # Debug
 	view.draw_board(board)
-	
 
 #Initializes the board array in the proper shape for its board type.
 func initialize_board():
@@ -255,56 +253,72 @@ func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: i
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 
-	
 func move_piece(from: Vector2i, to: Vector2i):
 	var piece_name = board[from.x][from.y]
-	
-	# Check for en passant (this needs to be done before the piece is actually moved)
+
+	# 🐍 Check for en passant
 	var is_en_passant = false
 	if piece_name.ends_with("pawn") and from.y != to.y and board[to.x][to.y] == null:
 		is_en_passant = true
-		
+
+	# 🗡️ If this is a regular capture, remove the target first
+	if not is_en_passant and board[to.x][to.y] != null:
+		print("removing piece")
+		view.remove_piece_at(to)
+
+	# 👣 Move on the model board
 	board[from.x][from.y] = null
 	board[to.x][to.y] = piece_name
 
-	#  Detect castling
+	# 🏰 Castling
 	if piece_name.ends_with("king") and abs(to.y - from.y) == 2:
 		var row = from.x
-		if to.y == 6: # King-side castle
-			board[row][5] = board[row][7] # Move rook
+		if to.y == 6: # King-side
+			board[row][5] = board[row][7]
 			board[row][7] = null
 			view.move_piece_node(Vector2i(row, 7), Vector2i(row, 5))
-		elif to.y == 2: # Queen-side castle
+		elif to.y == 2: # Queen-side
 			board[row][3] = board[row][0]
 			board[row][0] = null
 			view.move_piece_node(Vector2i(row, 0), Vector2i(row, 3))
-	
-	# Check for en passant capture
+
+	# 🐍 En passant capture
 	if is_en_passant:
-		# This was a diagonal move to an empty square = en passant!
 		var captured_row = from.x
 		var captured_col = to.y
 		board[captured_row][captured_col] = null
 		view.remove_piece_at(Vector2i(captured_row, captured_col))
 
+	# ✨ Move the piece visually
+	# view.move_piece_node(from, to)
+	var moved_piece = view.move_piece_node(from, to)
 
-	view.move_piece_node(from, to)
-	
+
+	# 👑 Promotion check (AFTER move & after any capture is resolved)
+	#if piece_name.ends_with("pawn"):
+		#if (piece_name.begins_with("white") and to.x == 0) or (piece_name.begins_with("black") and to.x == 7):
+			#var new_piece_name = piece_name.get_slice("_", 0) + "_queen"
+			#print("promo piece name: " + new_piece_name)
+			#board[to.x][to.y] = new_piece_name
+			#view.promote_piece_at(to, new_piece_name)
+	if piece_name.ends_with("pawn"):
+		if (piece_name.begins_with("white") and to.x == 0) or (piece_name.begins_with("black") and to.x == 7):
+			var new_piece_name = piece_name.get_slice("_", 0) + "_queen"
+			board[to.x][to.y] = new_piece_name
+			view.promote_piece(moved_piece, new_piece_name)
+
+	# 💾 Track the move for en passant logic
 	last_move = {
-	"from": from,
-	"to": to,
-	"piece_name": piece_name
-}
-
-
+		"from": from,
+		"to": to,
+		"piece_name": piece_name
+	}
 
 func get_piece_at(row: int, col: int):
 	for piece in view.get_node("Pieces").get_children():
 		if piece.coordinate == Vector2i(row, col):
 			return piece
 	return null
-
-
 
 func print_board():
 	for row in board:
