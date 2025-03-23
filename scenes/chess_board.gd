@@ -41,10 +41,12 @@ func draw_square(row: int, col: int, pos: Vector2):
 
 func draw_piece(row: int, col: int, pos: Vector2):
 	var pieces = $Pieces
-	if board[row][col] != null:
+	var piece_data = board[row][col] # to give the nodes a reference to the model object
+
+	if piece_data != null:
 		var piece = piece_scene.instantiate()
 		piece.position = pos
-		piece.set_sprite(board[row][col])
+		piece.set_model(piece_data)
 		piece.coordinate = Vector2i(row, col)
 		pieces.add_child(piece)
 			
@@ -75,8 +77,16 @@ func move_piece_node(from: Vector2i, to: Vector2i) -> Node:
 	for piece in $Pieces.get_children():
 		if piece.coordinate == from:
 			piece.coordinate = to
-			piece.hasMoved = true
-			piece.position = grid_to_screen(to.x, to.y)
+			
+			# smooth movement:
+			var tween = create_tween()
+			tween.tween_property(
+				piece,
+				"position",
+				grid_to_screen(to.x, to.y),
+				0.12
+			).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
 			return piece
 	return null
 
@@ -109,8 +119,10 @@ func promote_piece_at(coord: Vector2i, new_name: String):
 			break
 		print("❌ No matching piece found at promotion coordinate")
 
-
 func spawn_explosion(pos: Vector2):
 	var explosion = explosion_scene.instantiate()
 	explosion.position = pos
 	add_child(explosion)
+
+func promote(piece: ModelPiece):
+	pass #TODO

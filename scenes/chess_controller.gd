@@ -2,14 +2,14 @@ extends Node
 
 @export var model: Node
 @export var view: Node # ChessBoard node is connected here via the UI
-var selected_piece: Node = null
+var selected_piece: ModelPiece = null
 var legal_moves: Array = []
 
 func _ready():
 	pass
 	
 func _on_square_clicked(coord: Vector2i):
-	var piece_at_square = get_piece_at(coord)
+	var piece_at_square = model.board[coord.x][coord.y]
 	
 	# If there is no currently selected piece:
 	if selected_piece == null:
@@ -21,8 +21,8 @@ func _on_square_clicked(coord: Vector2i):
 	else:
 	# If there is a selected piece:
 		if coord in legal_moves:
-			model.move_piece(selected_piece.coordinate, coord)
-			selected_piece.hasMoved = true
+			model.move_piece(selected_piece, coord)
+			selected_piece.has_moved = true
 		deselect_piece()
 		
 func get_piece_at(coord: Vector2i) -> Node:
@@ -31,9 +31,10 @@ func get_piece_at(coord: Vector2i) -> Node:
 			return piece
 	return null
 
-func select_piece(piece: Node):
+func select_piece(piece: ModelPiece):
 	selected_piece = piece
 	legal_moves = model.get_legal_moves(selected_piece)
+	print(selected_piece)
 	view.clear_highlights()
 	view.show_legal_moves(legal_moves)
 
@@ -41,3 +42,8 @@ func deselect_piece():
 		view.clear_highlights()
 		selected_piece = null
 		legal_moves.clear()
+
+## TODO need this pls
+func promote(piece: ModelPiece):
+	pass
+	

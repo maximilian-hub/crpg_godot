@@ -1,25 +1,19 @@
 extends Area2D
 
-var hasMoved = false
 var coordinate: Vector2i
-var type: String
-var color: String
+var model: ModelPiece
 
 func _ready():
 	pass
 
-func set_sprite(spriteName: String):
+func set_model(model_data: ModelPiece):
+	model = model_data
+	update_sprite()
+
+func update_sprite():
+	var sprite_name = model.color + "_" + model.type
 	var sprite = $Sprite2D
-	var texture = load("res://assets/pieces/" + spriteName + ".png")
-	sprite.texture = texture
-	print("set_sprite(" + spriteName + ") from piece.gd")
-	color = spriteName.split("_")[0]
-	type = spriteName.split("_")[1]
+	sprite.texture = load("res://assets/pieces/" + sprite_name + ".png")
 	
-	
-
-func get_color():
-	return color
-
-func get_type():
-	return type
+	if model.type == "minotaur_king":
+		sprite.scale = Vector2(0.13, 0.13)
