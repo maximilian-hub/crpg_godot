@@ -152,3 +152,7 @@ func spawn_splatter(pos: Vector2):
 func update_piece(piece_node: Node):
 	piece_node.update_sprite()
 	
+func minotaur_retaliate(center: Vector2i, targets: Array):
+	for coord in targets:
+		var pos = grid_to_screen(coord.x, coord.y)
+		spawn_explosion(pos)

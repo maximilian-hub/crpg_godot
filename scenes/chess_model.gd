@@ -255,25 +255,25 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	var is_castling = move_is_castling(piece, from, to)
 	var is_combat = move_is_combat(is_en_passant, to)
 
-	if is_en_passant: handle_en_passant(from, to)
-	elif is_combat: handle_combat(piece, from, to)
+	if is_en_passant: handle_en_passant(piece, from, to)
+	elif is_combat: handle_combat(piece, from, to, piece_node) 
 	elif is_castling: handle_castling(piece, from, to)
-	else: # a normal move with no captures or exceptions
-		actually_move_piece(piece, from, to)	
+	else: actually_move_piece(piece, from, to, piece_node)	# a normal move with no captures or exceptions
 	
-	promotion_check(piece, piece_node, to) # AFTER move & after any capture is resolved
+	# promotion_check(piece, piece_node, to) # AFTER move & after any capture is resolved
 	update_last_move(piece, from, to)
 	switch_turn()
 
 # Moves a piece from one square to another.
 # Assumes empty destination square.
 # Validation is handled in move_piece()
-func actually_move_piece(piece: ModelPiece, from: Vector2i, to: Vector2i):
+func actually_move_piece(piece: ModelPiece, from: Vector2i, to: Vector2i, piece_node: Node = null):
 	board[from.x][from.y] = null
 	board[to.x][to.y] = piece
 	piece.coordinate = to
 	piece.has_moved = true
 	view.move_piece_node(view.get_piece_node(from), to) # update the view
+	if piece_node != null: promotion_check(piece, piece_node, to)
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -325,22 +325,25 @@ func handle_castling(piece: ModelPiece, from: Vector2i, to: Vector2i):
 		
 		actually_move_piece(piece, from, to)
 
-func handle_en_passant(from: Vector2i, to: Vector2i):
+func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row = from.x
 	var captured_col = to.y
 	board[captured_row][captured_col] = null
+	actually_move_piece(piece, from, to)
 	view.remove_piece_at(Vector2i(captured_row, captured_col))
 
 # Assumes a piece is moving to attack another piece.
-func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i):
+func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i, piece_node: Node):
 	var defender = board[to.x][to.y]
 	
 	if defender.current_hp == 1: # normal capture
 		view.remove_piece_at(to)
 		actually_move_piece(attacker, from, to)
+		promotion_check(attacker, piece_node, to)
 	else: # doing damage, attacker doesn't move
 		defender.take_damage()	
 		view.hurt_piece_at(to)
+		defender.on_damaged(attacker, board, view)
 			
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
@@ -354,3 +357,15 @@ func move_is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool
 func move_is_combat(is_en_passant: bool, to: Vector2i) -> bool:
 	return not is_en_passant and board[to.x][to.y] != null
 	
+func get_adjacent_coords(coord: Vector2i) -> Array:
+	var offsets = [
+		Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1),
+		Vector2i(0, -1),                Vector2i(0, 1),
+		Vector2i(1, -1),  Vector2i(1, 0),  Vector2i(1, 1),
+	]
+	var results = []
+	for offset in offsets:
+		var check = coord + offset
+		if is_in_bounds(check.x, check.y):
+			results.append(check)
+	return results

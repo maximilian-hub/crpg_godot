@@ -1,4 +1,3 @@
-# model_piece.gd
 class_name ModelPiece
 extends Resource # or Object, but Resource makes serialization easier later
 
@@ -42,3 +41,32 @@ func print_piece():
 	print("max hp:", max_hp)
 	print("current hp:", current_hp)
 	print("~~~~~~~~~~~~~~~~~~~~")
+	
+func on_damaged(attacker: ModelPiece, board: Array, view: Node) -> void:
+	if type == "minotaur_king" and current_hp > 0:
+		retaliating_rage(view, board)
+		
+func retaliating_rage(view: Node, board: Array):
+	var exploded_squares: Array = []
+
+	var adjacent = [
+		Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1),
+		Vector2i(0, -1),                Vector2i(0, 1),
+		Vector2i(1, -1),  Vector2i(1, 0),  Vector2i(1, 1),
+	]
+
+	for offset in adjacent:
+		var coord = coordinate + offset
+		if coord.x >= 0 and coord.x < board.size() and coord.y >= 0 and coord.y < board[coord.x].size():
+			exploded_squares.append(coord)
+
+			var target = board[coord.x][coord.y]
+			if target != null:
+				var killed = target.take_damage()
+				if killed:
+					board[coord.x][coord.y] = null
+					view.remove_piece_at(coord)
+				else:
+					view.hurt_piece_at(coord)
+
+	view.minotaur_retaliate(coordinate, exploded_squares)
