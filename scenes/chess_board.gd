@@ -10,6 +10,7 @@ var piece_scene = preload("res://scenes/piece.tscn")
 @export var light_square_color = Color(1, 1, 1) 
 @export var dark_square_color = Color(0.3, 0.3, 0.3)
 var board: Array
+var explosion_scene = preload("res://nonsense/explosion.tscn")
 const SQUARE_SIZE = 64
 
 func _ready():
@@ -93,6 +94,7 @@ func remove_piece_at(coord: Vector2i):
 	print("removing piece")
 	for piece in $Pieces.get_children():
 		if piece.coordinate == coord:
+			spawn_explosion(piece.position)
 			piece.queue_free()
 			break
 
@@ -106,3 +108,9 @@ func promote_piece_at(coord: Vector2i, new_name: String):
 			piece.set_sprite(new_name)
 			break
 		print("❌ No matching piece found at promotion coordinate")
+
+
+func spawn_explosion(pos: Vector2):
+	var explosion = explosion_scene.instantiate()
+	explosion.position = pos
+	add_child(explosion)
