@@ -72,13 +72,15 @@ func initialize_debug_pieces():
 		board[1][x] = ModelPiece.new("white", "pawn", Vector2i(1, x)) #black pawns
 		board[6][x] = ModelPiece.new("white", "pawn", Vector2i(6, x))
 		
-	board[5][4] = ModelPiece.new("white", "minotaur_king", Vector2i(5, 4))
+	board[1][5] = ModelPiece.new("black", "pawn", Vector2i(1, 5))
+	board[3][4] = ModelPiece.new("white", "pawn", Vector2i(3, 4))
+	board[3][1] = ModelPiece.new("white", "bishop", Vector2i(3,1))
 
 	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
 	#board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
 	#board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
-	board[7][4] = ModelPiece.new("white", "king", Vector2i(7, 4))
+	board[7][4] = ModelPiece.new("white", "minotaur_king", Vector2i(7, 4))
 	#board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
@@ -98,6 +100,8 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 		"queen":
 			moves = get_queen_moves(piece)
 		"king":
+			moves = get_king_moves(piece)
+		"minotaur_king":
 			moves = get_king_moves(piece)
 	
 	return moves
@@ -247,55 +251,29 @@ func get_king_moves(piece: ModelPiece) -> Array:
 func move_piece(piece: ModelPiece, to: Vector2i):
 	var from = piece.coordinate
 	var piece_node = view.get_piece_node(from)
+	var is_en_passant = move_is_en_passant(piece, from, to)
+	var is_castling = move_is_castling(piece, from, to)
+	var is_combat = move_is_combat(is_en_passant, to)
 
-	# 🐍 Check for en passant
-	var is_en_passant = is_en_passant(piece, from, to)
+	if is_en_passant: handle_en_passant(from, to)
+	elif is_combat: handle_combat(piece, from, to)
+	elif is_castling: handle_castling(piece, from, to)
+	else: # a normal move with no captures or exceptions
+		actually_move_piece(piece, from, to)	
+	
+	promotion_check(piece, piece_node, to) # AFTER move & after any capture is resolved
+	update_last_move(piece, from, to)
+	switch_turn()
 
-	# 🗡️ If this is a regular capture, remove the target first
-	if not is_en_passant and board[to.x][to.y] != null:
-		view.remove_piece_at(to)
-
-	# 👣 Move on the model board
+# Moves a piece from one square to another.
+# Assumes empty destination square.
+# Validation is handled in move_piece()
+func actually_move_piece(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	board[from.x][from.y] = null
 	board[to.x][to.y] = piece
 	piece.coordinate = to
-
-	# 🏰 Castling
-	if piece.type == "king" and abs(to.y - from.y) == 2:
-		var row = from.x
-		if to.y == 6: # King-side castle
-			board[row][5] = board[row][7]
-			board[row][7] = null
-			view.move_piece_node(view.get_piece_at(Vector2i(row, 7)), Vector2i(row, 5))
-		elif to.y == 2: # Queen-side castle
-			board[row][3] = board[row][0]
-			board[row][0] = null
-			view.move_piece_node(view.get_piece_at(Vector2i(row, 0)), Vector2i(row, 3))
-
-	# 🐍 En passant capture
-	if is_en_passant:
-		var captured_row = from.x
-		var captured_col = to.y
-		board[captured_row][captured_col] = null
-		view.remove_piece_at(Vector2i(captured_row, captured_col))
-
-	view.move_piece_node(piece_node, to)
 	piece.has_moved = true
-	
-	switch_turn()
-
-	# 👑 Promotion check (AFTER move & after any capture is resolved)
-	if piece.type == "pawn":
-		if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7):
-			piece.type = "queen" #TODO: give options
-			piece_node.update_sprite()
-
-	# 💾 Track the move for en passant logic
-	last_move = {
-		"from": from,
-		"to": to,
-		"piece": piece
-	}
+	view.move_piece_node(view.get_piece_node(from), to) # update the view
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -319,8 +297,60 @@ func switch_turn():
 	else:
 		current_turn = "white"
 
+func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
+	if piece.type == "pawn":
+		if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7):
+			piece.type = "queen" #TODO: give options
+			piece_node.update_sprite()
+
+func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
+	last_move = {
+		"from": from,
+		"to": to,
+		"piece": piece
+	}
+	
+
+func handle_castling(piece: ModelPiece, from: Vector2i, to: Vector2i):
+		print("heyyy we're castling folks!")
+		var row = from.x
+		if to.y == 6: # King-side castle
+			board[row][5] = board[row][7]
+			board[row][7] = null
+			view.move_piece_node(view.get_piece_at(Vector2i(row, 7)), Vector2i(row, 5))
+		elif to.y == 2: # Queen-side castle
+			board[row][3] = board[row][0]
+			board[row][0] = null
+			view.move_piece_node(view.get_piece_at(Vector2i(row, 0)), Vector2i(row, 3))
+		
+		actually_move_piece(piece, from, to)
+
+func handle_en_passant(from: Vector2i, to: Vector2i):
+	var captured_row = from.x
+	var captured_col = to.y
+	board[captured_row][captured_col] = null
+	view.remove_piece_at(Vector2i(captured_row, captured_col))
+
+# Assumes a piece is moving to attack another piece.
+func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i):
+	var defender = board[to.x][to.y]
+	
+	if defender.current_hp == 1: # normal capture
+		view.remove_piece_at(to)
+		actually_move_piece(attacker, from, to)
+	else: # doing damage, attacker doesn't move
+		defender.take_damage()	
+		print("hooo! at's gotta hurt!!!!")
+			
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
+	
+func move_is_castling(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
+	return piece.type.ends_with("king") and abs(to.y - from.y) == 2
 
-func is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
+func move_is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
 	return piece.type == "pawn" and from.y != to.y and board[to.x][to.y] == null
+
+func move_is_combat(is_en_passant: bool, to: Vector2i) -> bool:
+	return not is_en_passant and board[to.x][to.y] != null
+	

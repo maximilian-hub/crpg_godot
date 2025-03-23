@@ -27,8 +27,8 @@ func _init(_color: String, _type: String, _coordinate: Vector2i):
 	
 	current_hp = max_hp
 
-func take_damage(amount: int) -> bool:
-	current_hp -= amount
+func take_damage() -> bool:
+	current_hp -= 1
 	return current_hp <= 0
 
 func is_enemy(other: ModelPiece) -> bool:

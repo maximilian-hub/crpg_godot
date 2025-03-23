@@ -99,6 +99,8 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> Node:
 		return piece_node
 
 
+
+
 func promote_piece(piece: Node, new_name: String):
 	if piece:
 		piece.set_sprite(new_name)
