@@ -4,6 +4,7 @@ extends Node
 var boardType = "default"
 var board: Array
 var last_move: Dictionary = {}
+var current_turn: String = "white" # can be white or black
 
 var custom_size = 16
 
@@ -292,6 +293,8 @@ func move_piece(from: Vector2i, to: Vector2i):
 	# ✨ Move the piece visually
 	# view.move_piece_node(from, to)
 	var moved_piece = view.move_piece_node(from, to)
+	
+	switch_turn()
 
 
 	# 👑 Promotion check (AFTER move & after any capture is resolved)
@@ -319,6 +322,12 @@ func get_piece_at(row: int, col: int):
 		if piece.coordinate == Vector2i(row, col):
 			return piece
 	return null
+	
+func switch_turn():
+	if current_turn == "white":
+		current_turn = "black"
+	else:
+		current_turn = "white"
 
 func print_board():
 	for row in board:

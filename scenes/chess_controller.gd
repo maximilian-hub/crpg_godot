@@ -11,12 +11,15 @@ func _ready():
 func _on_square_clicked(coord: Vector2i):
 	var piece_at_square = get_piece_at(coord)
 	
-	# If there is no currently selected piece.
+	# If there is no currently selected piece:
 	if selected_piece == null:
 		# and a piece at the clicked square:
 		if piece_at_square != null:
-			select_piece(piece_at_square)
+			# and it's that piece's team's turn:
+			if piece_at_square.color == model.current_turn:
+				select_piece(piece_at_square)
 	else:
+	# If there is a selected piece:
 		if coord in legal_moves:
 			model.move_piece(selected_piece.coordinate, coord)
 			selected_piece.hasMoved = true
