@@ -1,0 +1,52 @@
+[gd_scene load_steps=11 format=3 uid="uid://b5yn8y7m53yy0"]
+
+[ext_resource type="Texture2D" uid="uid://0ilig36e86qg" path="res://assets/blood_splatter/frame_0_delay-0.1s.png" id="1_7ik35"]
+[ext_resource type="Texture2D" uid="uid://dv6s1oujvcqi3" path="res://assets/blood_splatter/frame_1_delay-0.1s.png" id="2_6yn2k"]
+[ext_resource type="Texture2D" uid="uid://hc4gpvovov81" path="res://assets/blood_splatter/frame_2_delay-0.1s.png" id="3_1dgvs"]
+[ext_resource type="Texture2D" uid="uid://d2jlisglfbdqu" path="res://assets/blood_splatter/frame_3_delay-0.1s.png" id="4_cjiu1"]
+[ext_resource type="Texture2D" uid="uid://mvlbtnua8gp4" path="res://assets/blood_splatter/frame_4_delay-0.1s.png" id="5_ja14q"]
+[ext_resource type="Texture2D" uid="uid://dy2ijonutkigw" path="res://assets/blood_splatter/frame_5_delay-0.1s.png" id="6_ioflx"]
+[ext_resource type="Texture2D" uid="uid://csvmwegrhnmdv" path="res://assets/blood_splatter/frame_6_delay-0.1s.png" id="7_ep38y"]
+[ext_resource type="Script" uid="uid://bejkcud82cf70" path="res://nonsense/blood_splatter.gd" id="8_1dgvs"]
+[ext_resource type="AudioStream" uid="uid://c8qqtekfrsmn5" path="res://assets/blood_splatter/hurt.wav" id="9_cjiu1"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_c6f07"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_7ik35")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_6yn2k")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_1dgvs")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_cjiu1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_ja14q")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_ioflx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_ep38y")
+}],
+"loop": false,
+"name": &"splatter",
+"speed": 15.0
+}]
+
+[node name="BloodSplatter" type="AnimatedSprite2D"]
+scale = Vector2(0.2, 0.2)
+sprite_frames = SubResource("SpriteFrames_c6f07")
+animation = &"splatter"
+autoplay = "splatter"
+script = ExtResource("8_1dgvs")
+
+[node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("9_cjiu1")
+
+[connection signal="animation_finished" from="." to="." method="_on_animation_finished"]

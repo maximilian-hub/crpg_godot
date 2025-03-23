@@ -11,6 +11,7 @@ var piece_scene = preload("res://scenes/piece.tscn")
 @export var dark_square_color = Color(0.3, 0.3, 0.3)
 var board: Array
 var explosion_scene = preload("res://nonsense/explosion.tscn")
+var splatter_scene = preload("res://nonsense/blood_splatter.tscn")
 const SQUARE_SIZE = 64
 
 func _ready():
@@ -111,6 +112,13 @@ func get_piece_at(coord: Vector2i) -> Node:
 			return piece
 	return null
 
+func hurt_piece_at(coord: Vector2i):
+	for piece in $Pieces.get_children():
+		if piece.coordinate == coord:
+			spawn_splatter(piece.position)
+			break
+	
+
 func remove_piece_at(coord: Vector2i):
 	for piece in $Pieces.get_children():
 		if piece.coordinate == coord:
@@ -133,6 +141,11 @@ func spawn_explosion(pos: Vector2):
 	var explosion = explosion_scene.instantiate()
 	explosion.position = pos
 	add_child(explosion)
+	
+func spawn_splatter(pos: Vector2):
+	var splatter = splatter_scene.instantiate()
+	splatter.position = pos
+	add_child(splatter)
 
 # Promote the piece at the specified coordinate.
 # The model should already reflect the new type.

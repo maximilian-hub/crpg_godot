@@ -340,7 +340,7 @@ func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i):
 		actually_move_piece(attacker, from, to)
 	else: # doing damage, attacker doesn't move
 		defender.take_damage()	
-		print("hooo! at's gotta hurt!!!!")
+		view.hurt_piece_at(to)
 			
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
