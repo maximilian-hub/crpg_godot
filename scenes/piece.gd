@@ -10,6 +10,11 @@ func set_model(model_data: ModelPiece):
 	model = model_data
 	update_sprite()
 
+func set_sprite(sprite_name: String): # "white_queen"
+	var sprite = $Sprite2D
+	sprite.texture = load("res://assets/pieces/" + sprite_name + ".png")
+
+
 func update_sprite():
 	var sprite_name = model.color + "_" + model.type
 	var sprite = $Sprite2D

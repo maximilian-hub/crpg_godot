@@ -15,6 +15,7 @@ func _on_square_clicked(coord: Vector2i):
 	if selected_piece == null:
 		# and a piece at the clicked square:
 		if piece_at_square != null:
+			piece_at_square.print_piece()
 			# and it's that piece's team's turn:
 			if piece_at_square.color == model.current_turn:
 				select_piece(piece_at_square)

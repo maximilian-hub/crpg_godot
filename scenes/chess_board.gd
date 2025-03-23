@@ -25,6 +25,17 @@ func draw_board(modelBoard: Array):
 			var pos = grid_to_screen(row, col)
 			draw_square(row,col,pos)
 			draw_piece(row,col,pos)
+			
+func get_piece_node(coord: Vector2i) -> Node:
+	var desired_piece = null
+	
+	var piece_nodes = $Pieces.get_children()
+	for piece_node in piece_nodes:
+		if piece_node.coordinate == coord:
+			desired_piece = piece_node
+			break
+	
+	return desired_piece
 
 func grid_to_screen(row: int, col: int) -> Vector2:
 	return Vector2(col * SQUARE_SIZE + 100, row * SQUARE_SIZE + 100)
@@ -73,22 +84,20 @@ func clear_highlights():
 	for square in squares:
 		square.clear_highlight()
 
-func move_piece_node(from: Vector2i, to: Vector2i) -> Node:
-	for piece in $Pieces.get_children():
-		if piece.coordinate == from:
-			piece.coordinate = to
+func move_piece_node(piece_node: Node, to: Vector2i) -> Node:
+		piece_node.coordinate = to
 			
-			# smooth movement:
-			var tween = create_tween()
-			tween.tween_property(
-				piece,
-				"position",
-				grid_to_screen(to.x, to.y),
-				0.12
-			).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		# smooth movement:
+		var tween = create_tween()
+		tween.tween_property(
+			piece_node,
+			"position",
+			grid_to_screen(to.x, to.y),
+			0.12
+		).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-			return piece
-	return null
+		return piece_node
+
 
 func promote_piece(piece: Node, new_name: String):
 	if piece:
@@ -124,5 +133,9 @@ func spawn_explosion(pos: Vector2):
 	explosion.position = pos
 	add_child(explosion)
 
-func promote(piece: ModelPiece):
-	pass #TODO
+# Promote the piece at the specified coordinate.
+func promote(piece_node: Node, color: String):
+	var sprite_name = color + "_queen"
+	piece_node.set_sprite(sprite_name)
+	print("trying to promote. calling set_sprite(" + sprite_name + ")")
+	

@@ -39,7 +39,7 @@ func initialize_default_pieces():
 	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = ModelPiece.new("black", "pawn", Vector2i(1, x))
+		board[1][x] = ModelPiece.new("white", "pawn", Vector2i(1, x)) #black pawns
 		board[6][x] = ModelPiece.new("white", "pawn", Vector2i(6, x))
 
 	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
@@ -72,7 +72,6 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 	return moves
 
 func get_pawn_moves(piece: ModelPiece) -> Array:
-	print("Entering get_pawn_moves.")
 	piece.print_piece()
 	var row = piece.coordinate.x
 	var col = piece.coordinate.y
@@ -216,6 +215,7 @@ func get_king_moves(piece: ModelPiece) -> Array:
 
 func move_piece(piece: ModelPiece, to: Vector2i):
 	var from = piece.coordinate
+	var piece_node = view.get_piece_node(from)
 
 	# 🐍 Check for en passant
 	var is_en_passant = false
@@ -251,7 +251,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 		board[captured_row][captured_col] = null
 		view.remove_piece_at(Vector2i(captured_row, captured_col))
 
-	view.move_piece_node(from, to)
+	view.move_piece_node(piece_node, to)
 	piece.has_moved = true
 	
 	switch_turn()
@@ -260,7 +260,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	if piece.type == "pawn":
 		if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7):
 			piece.type = "queen" #TODO: give options
-			view.promote(piece)
+			view.promote(piece_node, piece.color)
 
 	# 💾 Track the move for en passant logic
 	last_move = {
