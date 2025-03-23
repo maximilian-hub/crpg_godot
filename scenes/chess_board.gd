@@ -110,7 +110,6 @@ func get_piece_at(coord: Vector2i) -> Node:
 	return null
 
 func remove_piece_at(coord: Vector2i):
-	print("removing piece")
 	for piece in $Pieces.get_children():
 		if piece.coordinate == coord:
 			spawn_explosion(piece.position)
@@ -134,8 +133,7 @@ func spawn_explosion(pos: Vector2):
 	add_child(explosion)
 
 # Promote the piece at the specified coordinate.
-func promote(piece_node: Node, color: String):
-	var sprite_name = color + "_queen"
-	piece_node.set_sprite(sprite_name)
-	print("trying to promote. calling set_sprite(" + sprite_name + ")")
+# The model should already reflect the new type.
+func update_piece(piece_node: Node):
+	piece_node.update_sprite()
 	

@@ -2,7 +2,7 @@ extends Node
 
 @export var view: Node
 @export var controller: Node
-var boardType = "default"
+var boardType = "debug"
 var board: Array
 var last_move: Dictionary = {} 		#from, to, piecename
 var current_turn: String = "white" # can be white or black
@@ -22,11 +22,18 @@ func initialize_board():
 				row.append(null)
 			board.append(row)
 		initialize_default_pieces()
-	if boardType == "custom":
+	elif boardType == "custom":
 		for x in range(custom_size):
 			board.append([null])
 			for y in range(custom_size):
 				board[x].append(null)
+	elif boardType == "debug":
+		for x in range(8):
+			var row = []
+			for y in range(8):
+				row.append(null)
+			board.append(row)
+		initialize_debug_pieces()
 
 func initialize_default_pieces():
 	board[0][0] = ModelPiece.new("black", "rook", Vector2i(0, 0))
@@ -39,7 +46,7 @@ func initialize_default_pieces():
 	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = ModelPiece.new("white", "pawn", Vector2i(1, x)) #black pawns
+		board[1][x] = ModelPiece.new("black", "pawn", Vector2i(1, x)) #black pawns
 		board[6][x] = ModelPiece.new("white", "pawn", Vector2i(6, x))
 
 	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
@@ -51,6 +58,30 @@ func initialize_default_pieces():
 	board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
 
+func initialize_debug_pieces():
+	board[0][0] = ModelPiece.new("black", "rook", Vector2i(0, 0))
+	board[0][1] = ModelPiece.new("black", "knight", Vector2i(0, 1))
+	board[0][2] = ModelPiece.new("black", "bishop", Vector2i(0, 2))
+	board[0][3] = ModelPiece.new("black", "queen", Vector2i(0, 3))
+	board[0][4] = ModelPiece.new("black", "minotaur_king", Vector2i(0, 4))
+	board[0][5] = ModelPiece.new("black", "bishop", Vector2i(0, 5))
+	board[0][6] = ModelPiece.new("black", "knight", Vector2i(0, 6))
+	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
+
+	for x in range(8):
+		board[1][x] = ModelPiece.new("white", "pawn", Vector2i(1, x)) #black pawns
+		board[6][x] = ModelPiece.new("white", "pawn", Vector2i(6, x))
+		
+	board[5][4] = ModelPiece.new("white", "minotaur_king", Vector2i(5, 4))
+
+	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
+	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
+	#board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
+	#board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
+	board[7][4] = ModelPiece.new("white", "king", Vector2i(7, 4))
+	#board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
+	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
+	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
 
 func get_legal_moves(piece: ModelPiece) -> Array:
 	var moves := []
@@ -218,13 +249,10 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	var piece_node = view.get_piece_node(from)
 
 	# 🐍 Check for en passant
-	var is_en_passant = false
-	if piece.type == "pawn" and from.y != to.y and board[to.x][to.y] == null:
-		is_en_passant = true
+	var is_en_passant = is_en_passant(piece, from, to)
 
 	# 🗡️ If this is a regular capture, remove the target first
 	if not is_en_passant and board[to.x][to.y] != null:
-		print("removing piece")
 		view.remove_piece_at(to)
 
 	# 👣 Move on the model board
@@ -238,11 +266,11 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 		if to.y == 6: # King-side castle
 			board[row][5] = board[row][7]
 			board[row][7] = null
-			view.move_piece_node(Vector2i(row, 7), Vector2i(row, 5))
+			view.move_piece_node(view.get_piece_at(Vector2i(row, 7)), Vector2i(row, 5))
 		elif to.y == 2: # Queen-side castle
 			board[row][3] = board[row][0]
 			board[row][0] = null
-			view.move_piece_node(Vector2i(row, 0), Vector2i(row, 3))
+			view.move_piece_node(view.get_piece_at(Vector2i(row, 0)), Vector2i(row, 3))
 
 	# 🐍 En passant capture
 	if is_en_passant:
@@ -260,7 +288,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	if piece.type == "pawn":
 		if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7):
 			piece.type = "queen" #TODO: give options
-			view.promote(piece_node, piece.color)
+			piece_node.update_sprite()
 
 	# 💾 Track the move for en passant logic
 	last_move = {
@@ -293,3 +321,6 @@ func switch_turn():
 
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
+
+func is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
+	return piece.type == "pawn" and from.y != to.y and board[to.x][to.y] == null

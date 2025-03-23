@@ -44,7 +44,4 @@ func deselect_piece():
 		selected_piece = null
 		legal_moves.clear()
 
-## TODO need this pls
-func promote(piece: ModelPiece):
-	pass
 	
