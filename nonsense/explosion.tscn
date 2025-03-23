@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://cs6tjglx6cnkr"]
+[gd_scene load_steps=21 format=3 uid="uid://cs6tjglx6cnkr"]
 
 [ext_resource type="Texture2D" uid="uid://247ndljuvwc5" path="res://assets/explosion/frame_00_delay-0.01s.png" id="1_u0igp"]
 [ext_resource type="Texture2D" uid="uid://4hmb7ksybr71" path="res://assets/explosion/frame_01_delay-0.01s.png" id="2_7li7l"]
@@ -18,6 +18,7 @@
 [ext_resource type="Texture2D" uid="uid://d3d5pqxj46ul6" path="res://assets/explosion/frame_15_delay-0.01s.png" id="16_gik4i"]
 [ext_resource type="Texture2D" uid="uid://demlewwhydstp" path="res://assets/explosion/frame_16_delay-0.01s.png" id="17_o7ebe"]
 [ext_resource type="Script" uid="uid://qwk4c5phn4ef" path="res://nonsense/explosion.gd" id="18_7li7l"]
+[ext_resource type="AudioStream" uid="uid://ci7j2wh40iiwr" path="res://assets/explosion/explosion.wav" id="19_xjers"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_c2lcd"]
 animations = [{
@@ -83,5 +84,8 @@ scale = Vector2(0.4, 0.4)
 sprite_frames = SubResource("SpriteFrames_c2lcd")
 autoplay = "default"
 script = ExtResource("18_7li7l")
+
+[node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("19_xjers")
 
 [connection signal="animation_finished" from="." to="." method="_on_animation_finished"]
