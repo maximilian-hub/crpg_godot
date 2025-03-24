@@ -74,7 +74,8 @@ func initialize_debug_pieces():
 		
 	board[1][5] = ModelPiece.new("black", "pawn", Vector2i(1, 5))
 	board[3][4] = ModelPiece.new("white", "pawn", Vector2i(3, 4))
-	board[3][1] = ModelPiece.new("white", "bishop", Vector2i(3,1))
+	board[3][1] = ModelPiece.new("white", "minotaur_king", Vector2i(3,1))
+	board[3][2] = ModelPiece.new("black", "minotaur_king", Vector2i(3,2))
 
 	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))

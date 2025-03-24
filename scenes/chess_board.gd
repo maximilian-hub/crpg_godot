@@ -12,7 +12,7 @@ var piece_scene = preload("res://scenes/piece.tscn")
 var board: Array
 var explosion_scene = preload("res://nonsense/explosion.tscn")
 var splatter_scene = preload("res://nonsense/blood_splatter.tscn")
-const SQUARE_SIZE = 64
+const SQUARE_SIZE = 128
 
 func _ready():
 	pass 
@@ -39,7 +39,7 @@ func get_piece_node(coord: Vector2i) -> Node:
 	return desired_piece
 
 func grid_to_screen(row: int, col: int) -> Vector2:
-	return Vector2(col * SQUARE_SIZE + 100, row * SQUARE_SIZE + 100)
+	return Vector2(col * SQUARE_SIZE + 600, row * SQUARE_SIZE + 100) #margins
 
 func draw_square(row: int, col: int, pos: Vector2):
 	var squares = $Squares
@@ -156,3 +156,22 @@ func minotaur_retaliate(center: Vector2i, targets: Array):
 	for coord in targets:
 		var pos = grid_to_screen(coord.x, coord.y)
 		spawn_explosion(pos)
+
+func start_minotaur_rage_intro(coord: Vector2i) -> void:
+	var minotaur_node = get_piece_at(coord)
+	if minotaur_node == null:
+		return
+
+	# Lock input
+	controller.is_input_locked = true
+
+	# Roar animation / shake / scale pop
+	var tween = create_tween()
+	tween.tween_property(minotaur_node, "scale", minotaur_node.scale * 1.25, 1).set_trans(Tween.TRANS_ELASTIC)
+	tween.tween_interval(0.15)
+	tween.tween_property(minotaur_node, "scale", minotaur_node.scale, 0.1)
+	
+	await tween.finished
+	
+	# Unlock input
+	controller.is_input_locked = false

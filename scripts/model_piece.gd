@@ -46,7 +46,9 @@ func on_damaged(attacker: ModelPiece, board: Array, view: Node) -> void:
 	if type == "minotaur_king" and current_hp > 0:
 		retaliating_rage(view, board)
 		
-func retaliating_rage(view: Node, board: Array):
+func retaliating_rage(view: Node, board: Array) -> void:
+	await view.start_minotaur_rage_intro(coordinate) #what's this do?
+
 	var exploded_squares: Array = []
 
 	var adjacent = [

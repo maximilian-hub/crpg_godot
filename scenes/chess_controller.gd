@@ -4,11 +4,14 @@ extends Node
 @export var view: Node # ChessBoard node is connected here via the UI
 var selected_piece: ModelPiece = null
 var legal_moves: Array = []
+var is_input_locked: bool = false
+
 
 func _ready():
 	pass
 	
 func _on_square_clicked(coord: Vector2i):
+	if is_input_locked: return
 	var piece_at_square = model.board[coord.x][coord.y]
 	
 	# If there is no currently selected piece:

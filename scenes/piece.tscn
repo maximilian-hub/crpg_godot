@@ -5,6 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_tvnf0"]
 
 [node name="Piece" type="Area2D"]
+scale = Vector2(2, 2)
 input_pickable = false
 script = ExtResource("1_gebih")
 

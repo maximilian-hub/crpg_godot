@@ -40,7 +40,7 @@ animations = [{
 }]
 
 [node name="BloodSplatter" type="AnimatedSprite2D"]
-scale = Vector2(0.2, 0.2)
+scale = Vector2(0.3, 0.3)
 sprite_frames = SubResource("SpriteFrames_c6f07")
 animation = &"splatter"
 autoplay = "splatter"
