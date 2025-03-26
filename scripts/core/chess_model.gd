@@ -1,3 +1,4 @@
+# chess_model.gd
 extends Node
 
 @export var view: Node
@@ -15,26 +16,26 @@ func _ready():
 	view.draw_board(board)
 
 func initialize_board():
-	if BOARD_TYPE == "default":
+	if BOARD_TYPE == "default": # the normal 8x8 board
 		for x in range(8):
 			var row = []
 			for y in range(8):
 				row.append(null)
 			board.append(row)
-		initialize_default_pieces()
-	elif BOARD_TYPE == "custom":
+		initialize_default_pieces() # populates the board array with ModelPiece objects
+	elif BOARD_TYPE == "custom": # a custom-sized (but still square) board
 		for x in range(custom_size):
 			board.append([null])
 			for y in range(custom_size):
 				board[x].append(null)
-	elif BOARD_TYPE == "debug":
+	elif BOARD_TYPE == "debug": # a board with immediately available en passant, castle etc
 		for x in range(8):
 			var row = []
 			for y in range(8):
 				row.append(null)
 			board.append(row)
-		initialize_debug_pieces()
-	inject_dependencies()
+		initialize_debug_pieces() # populates the board array with ModelPiece objects
+	inject_dependencies() # passes references to the model and view to each piece
 
 func initialize_default_pieces():
 	board[0][0] = ModelPiece.new("black", "rook", Vector2i(0, 0))
@@ -257,6 +258,9 @@ func get_king_moves(piece: ModelPiece) -> Array:
 
 	return moves
 
+## A player's move.
+# Handles special moves, normal moves, and ends the turn.
+# For simply moving a piece in the model, see actually_move_piece()
 func move_piece(piece: ModelPiece, to: Vector2i):
 	var from = piece.coordinate
 	var piece_node = view.get_piece_node(from)
@@ -273,7 +277,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	update_last_move(piece, from, to)
 	switch_turn()
 
-# Moves a piece from one square to another.
+## Moves a piece from one square to another.
 # Assumes empty destination square.
 # Validation is handled in move_piece()
 func actually_move_piece(piece: ModelPiece, from: Vector2i, to: Vector2i, piece_node: Node = null):

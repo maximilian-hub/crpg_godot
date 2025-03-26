@@ -1,3 +1,4 @@
+# chess_board.gd
 extends Node2D
 
 # This scene serves as the View component.
@@ -26,20 +27,7 @@ func draw_board(modelBoard: Array):
 			var pos = grid_to_screen(row, col)
 			draw_square(row,col,pos)
 			draw_piece(row,col,pos)
-			
-func get_piece_node(coord: Vector2i) -> Node:
-	var desired_piece = null
-	
-	var piece_nodes = $Pieces.get_children()
-	for piece_node in piece_nodes:
-		if piece_node.coordinate == coord:
-			desired_piece = piece_node
-			break
-	
-	return desired_piece
-
-func grid_to_screen(row: int, col: int) -> Vector2:
-	return Vector2(col * SQUARE_SIZE + 600, row * SQUARE_SIZE + 100) #margins
+			print("drawing square and piece at:", pos)
 
 func draw_square(row: int, col: int, pos: Vector2):
 	var squares = $Squares
@@ -61,6 +49,42 @@ func draw_piece(row: int, col: int, pos: Vector2):
 		piece.set_model(piece_data)
 		piece.coordinate = Vector2i(row, col)
 		pieces.add_child(piece)
+			
+func get_piece_node(coord: Vector2i) -> Node:
+	var desired_piece = null
+	
+	var piece_nodes = $Pieces.get_children()
+	for piece_node in piece_nodes:
+		if piece_node.coordinate == coord:
+			desired_piece = piece_node
+			break
+	
+	return desired_piece
+
+### Converts a board position (eg 0,1) into a screen position for rendering purposes
+#func grid_to_screen(row: int, col: int) -> Vector2:
+	#return Vector2(col * SQUARE_SIZE + 600, row * SQUARE_SIZE + 100) #margins
+
+#func grid_to_screen(row: int, col: int) -> Vector2:
+	#var board_pixel_width = board[0].size() * SQUARE_SIZE
+	#var board_pixel_height = board.size() * SQUARE_SIZE
+	#var viewport_size = get_viewport_rect().size
+#
+	#var offset_x = (viewport_size.x - board_pixel_width) / 2
+	#var offset_y = (viewport_size.y - board_pixel_height) / 2
+#
+	#return Vector2(col * SQUARE_SIZE + offset_x, row * SQUARE_SIZE + offset_y)
+
+
+func grid_to_screen(row: int, col: int) -> Vector2:
+	var board_pixel_width = board[0].size() * SQUARE_SIZE
+	var board_pixel_height = board.size() * SQUARE_SIZE
+	var viewport_size = get_viewport_rect().size
+	var offset_x = (viewport_size.x - board_pixel_width) / 2 + SQUARE_SIZE / 2
+	var offset_y = (viewport_size.y - board_pixel_height) / 2 + SQUARE_SIZE / 2
+	return Vector2(col * SQUARE_SIZE + offset_x, row * SQUARE_SIZE + offset_y)
+
+
 			
 func get_square_color(row: int, col: int):
 	var square_color
