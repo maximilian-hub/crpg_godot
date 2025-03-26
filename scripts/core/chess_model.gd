@@ -2,7 +2,7 @@ extends Node
 
 @export var view: Node
 @export var controller: Node
-var boardType = "debug"
+const BOARD_TYPE = "debug"
 var board: Array
 var last_move: Dictionary = {} 		#from, to, piecename
 var current_turn: String = "white" # can be white or black
@@ -15,32 +15,33 @@ func _ready():
 	view.draw_board(board)
 
 func initialize_board():
-	if boardType == "default":
+	if BOARD_TYPE == "default":
 		for x in range(8):
 			var row = []
 			for y in range(8):
 				row.append(null)
 			board.append(row)
 		initialize_default_pieces()
-	elif boardType == "custom":
+	elif BOARD_TYPE == "custom":
 		for x in range(custom_size):
 			board.append([null])
 			for y in range(custom_size):
 				board[x].append(null)
-	elif boardType == "debug":
+	elif BOARD_TYPE == "debug":
 		for x in range(8):
 			var row = []
 			for y in range(8):
 				row.append(null)
 			board.append(row)
 		initialize_debug_pieces()
+	inject_dependencies()
 
 func initialize_default_pieces():
 	board[0][0] = ModelPiece.new("black", "rook", Vector2i(0, 0))
 	board[0][1] = ModelPiece.new("black", "knight", Vector2i(0, 1))
 	board[0][2] = ModelPiece.new("black", "bishop", Vector2i(0, 2))
 	board[0][3] = ModelPiece.new("black", "queen", Vector2i(0, 3))
-	board[0][4] = ModelPiece.new("black", "minotaur_king", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = ModelPiece.new("black", "bishop", Vector2i(0, 5))
 	board[0][6] = ModelPiece.new("black", "knight", Vector2i(0, 6))
 	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
@@ -53,7 +54,7 @@ func initialize_default_pieces():
 	board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
 	board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
 	board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
-	board[7][4] = ModelPiece.new("white", "minotaur_king", Vector2i(7, 4))
+	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
 	board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
 	board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
@@ -63,7 +64,7 @@ func initialize_debug_pieces():
 	board[0][1] = ModelPiece.new("black", "knight", Vector2i(0, 1))
 	board[0][2] = ModelPiece.new("black", "bishop", Vector2i(0, 2))
 	board[0][3] = ModelPiece.new("black", "queen", Vector2i(0, 3))
-	board[0][4] = ModelPiece.new("black", "minotaur_king", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = ModelPiece.new("black", "bishop", Vector2i(0, 5))
 	board[0][6] = ModelPiece.new("black", "knight", Vector2i(0, 6))
 	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
@@ -74,17 +75,24 @@ func initialize_debug_pieces():
 		
 	board[1][5] = ModelPiece.new("black", "pawn", Vector2i(1, 5))
 	board[3][4] = ModelPiece.new("white", "pawn", Vector2i(3, 4))
-	board[3][1] = ModelPiece.new("white", "minotaur_king", Vector2i(3,1))
-	board[3][2] = ModelPiece.new("black", "minotaur_king", Vector2i(3,2))
+	board[3][1] = MinotaurKing.new("white", Vector2i(3,1))
+	board[3][2] = MinotaurKing.new("black", Vector2i(3,2))
 
 	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
 	#board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
 	#board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
-	board[7][4] = ModelPiece.new("white", "minotaur_king", Vector2i(7, 4))
+	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
 	#board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
+
+func inject_dependencies():
+	for row in board:
+		for piece in row:
+			if piece != null:
+				piece.view = view
+				piece.model = self
 
 func get_legal_moves(piece: ModelPiece) -> Array:
 	var moves := []
@@ -103,7 +111,7 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 		"king":
 			moves = get_king_moves(piece)
 		"minotaur_king":
-			moves = get_king_moves(piece)
+			moves = get_rook_moves(piece)
 	
 	return moves
 
@@ -343,8 +351,7 @@ func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i, piece_nod
 		promotion_check(attacker, piece_node, to)
 	else: # doing damage, attacker doesn't move
 		defender.take_damage()	
-		view.hurt_piece_at(to)
-		defender.on_damaged(attacker, board, view)
+		#defender.on_damaged(attacker, board, view)
 			
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()

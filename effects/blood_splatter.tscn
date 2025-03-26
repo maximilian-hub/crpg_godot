@@ -7,7 +7,7 @@
 [ext_resource type="Texture2D" uid="uid://mvlbtnua8gp4" path="res://assets/blood_splatter/frame_4_delay-0.1s.png" id="5_ja14q"]
 [ext_resource type="Texture2D" uid="uid://dy2ijonutkigw" path="res://assets/blood_splatter/frame_5_delay-0.1s.png" id="6_ioflx"]
 [ext_resource type="Texture2D" uid="uid://csvmwegrhnmdv" path="res://assets/blood_splatter/frame_6_delay-0.1s.png" id="7_ep38y"]
-[ext_resource type="Script" uid="uid://bejkcud82cf70" path="res://nonsense/blood_splatter.gd" id="8_1dgvs"]
+[ext_resource type="Script" uid="uid://bejkcud82cf70" path="res://scripts/view/blood_splatter.gd" id="8_1dgvs"]
 [ext_resource type="AudioStream" uid="uid://c8qqtekfrsmn5" path="res://assets/blood_splatter/hurt.wav" id="9_cjiu1"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_c6f07"]

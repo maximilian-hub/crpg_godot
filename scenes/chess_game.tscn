@@ -1,11 +1,11 @@
 [gd_scene load_steps=9 format=3 uid="uid://d08pm3rm8pke7"]
 
-[ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scenes/chess_game.gd" id="1_wnm4a"]
-[ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scenes/chess_model.gd" id="2_fv27a"]
+[ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
+[ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
 [ext_resource type="Texture2D" uid="uid://bt01fet8w8hvw" path="res://assets/woodtile.png" id="3_qea3a"]
-[ext_resource type="Script" uid="uid://c00m43kw54bgi" path="res://scenes/chess_controller.gd" id="3_s46tk"]
-[ext_resource type="Script" uid="uid://dm2av1txkn6la" path="res://scenes/chess_board.gd" id="3_yl173"]
-[ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scenes/squares.gd" id="5_s46tk"]
+[ext_resource type="Script" uid="uid://c00m43kw54bgi" path="res://scripts/core/chess_controller.gd" id="3_s46tk"]
+[ext_resource type="Script" uid="uid://dm2av1txkn6la" path="res://scripts/core/chess_board.gd" id="3_yl173"]
+[ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scripts/view/squares.gd" id="5_s46tk"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_fv27a"]
 texture = ExtResource("3_qea3a")

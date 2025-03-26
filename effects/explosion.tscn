@@ -17,7 +17,7 @@
 [ext_resource type="Texture2D" uid="uid://3o5c1yie0ill" path="res://assets/explosion/frame_14_delay-0.01s.png" id="15_u3cnc"]
 [ext_resource type="Texture2D" uid="uid://d3d5pqxj46ul6" path="res://assets/explosion/frame_15_delay-0.01s.png" id="16_gik4i"]
 [ext_resource type="Texture2D" uid="uid://demlewwhydstp" path="res://assets/explosion/frame_16_delay-0.01s.png" id="17_o7ebe"]
-[ext_resource type="Script" uid="uid://qwk4c5phn4ef" path="res://nonsense/explosion.gd" id="18_7li7l"]
+[ext_resource type="Script" uid="uid://qwk4c5phn4ef" path="res://scripts/view/explosion.gd" id="18_7li7l"]
 [ext_resource type="AudioStream" uid="uid://ci7j2wh40iiwr" path="res://assets/explosion/explosion.wav" id="19_xjers"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_c2lcd"]
