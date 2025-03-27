@@ -7,6 +7,7 @@ class_name ModelPiece
 var model: Node = null	# set in inject_dependencies() in model.gd
 var view: Node = null	# set in inject_dependencies() in model.gd
 var board: Array = []
+var hp_bar_scene = preload("res://ui/hp_bar.tscn")
 
 
 var color: String 	# black, white
@@ -31,6 +32,8 @@ func _init(_color: String, _type: String, _coordinate: Vector2i):
 func take_damage() -> bool:
 	current_hp -= 1
 	view.spawn_splatter(coordinate)
+	var hp_bar = $HpBar
+	view_node.update_hp(current_hp) # Notify the view layer
 	return current_hp <= 0
 
 func is_enemy(other: ModelPiece) -> bool:

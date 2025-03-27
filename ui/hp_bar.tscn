@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3 uid="uid://j8qrv8x4jjd"]
+
+[ext_resource type="Script" uid="uid://jy4v81dj6jmv" path="res://ui/hp_bar.gd" id="1_x2jv1"]
+[ext_resource type="Texture2D" uid="uid://caj4k18ynroth" path="res://assets/white_pixel.png" id="2_uclsu"]
+
+[node name="HpBar" type="Node2D"]
+script = ExtResource("1_x2jv1")
+
+[node name="Background" type="Sprite2D" parent="."]
+modulate = Color(0.823529, 0.27451, 0.27451, 1)
+position = Vector2(-20, 0)
+scale = Vector2(40, 4)
+texture = ExtResource("2_uclsu")
+centered = false
+
+[node name="Foreground" type="Sprite2D" parent="."]
+modulate = Color(0.282353, 0.72549, 0.32549, 1)
+position = Vector2(-20, 0)
+scale = Vector2(40, 4)
+texture = ExtResource("2_uclsu")
+centered = false
+
+[connection signal="property_list_changed" from="." to="." method="_on_property_list_changed"]

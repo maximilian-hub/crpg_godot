@@ -12,7 +12,7 @@ var custom_size = 16
 
 func _ready():
 	initialize_board()
-	print(board) # debug
+	#print(board) # debug
 	view.draw_board(board)
 
 func initialize_board():

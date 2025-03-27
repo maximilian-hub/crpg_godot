@@ -11,6 +11,7 @@ var piece_scene = preload("res://scenes/piece.tscn")
 @export var light_square_color = Color(1, 1, 1) 
 @export var dark_square_color = Color(0.3, 0.3, 0.3)
 var board: Array
+var hp_bar_scene = preload("res://ui/hp_bar.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
 var splatter_scene = preload("res://effects/blood_splatter.tscn")
 const SQUARE_SIZE = 128
@@ -49,6 +50,15 @@ func draw_piece(row: int, col: int, pos: Vector2):
 		piece.set_model(piece_data)
 		piece.coordinate = Vector2i(row, col)
 		pieces.add_child(piece)
+		piece_data.view_node = piece
+	
+		if piece_data.max_hp > 1:
+			var hp_bar = hp_bar_scene.instantiate()
+			hp_bar.max_hp = piece_data.max_hp
+			hp_bar.current_hp = piece_data.max_hp
+			hp_bar.position = Vector2(0, 24)
+			piece.add_child(hp_bar)
+		
 			
 func get_piece_node(coord: Vector2i) -> Node:
 	var desired_piece = null
