@@ -1,8 +1,7 @@
 extends Area2D
 
-signal square_clicked(coordinate)
-
 var coordinate: Vector2i
+signal square_clicked(coordinate)
 
 func _ready():
 	connect("input_event", _on_input_event)

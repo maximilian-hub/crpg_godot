@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=8 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
 [ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
@@ -6,13 +6,7 @@
 [ext_resource type="Script" uid="uid://c00m43kw54bgi" path="res://scripts/core/chess_controller.gd" id="3_s46tk"]
 [ext_resource type="Script" uid="uid://dm2av1txkn6la" path="res://scripts/core/chess_board.gd" id="3_yl173"]
 [ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scripts/view/squares.gd" id="5_s46tk"]
-
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_fv27a"]
-texture = ExtResource("3_qea3a")
-0:0/0 = 0
-
-[sub_resource type="TileSet" id="TileSet_qea3a"]
-sources/0 = SubResource("TileSetAtlasSource_fv27a")
+[ext_resource type="Script" uid="uid://cqdlhvwaq4s2s" path="res://ui/ui.gd" id="7_qi3br"]
 
 [node name="ChessGame" type="Node"]
 script = ExtResource("1_wnm4a")
@@ -28,9 +22,11 @@ view = NodePath("../CanvasLayer/ChessBoard")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
-[node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("controller")]
+[node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("controller", "white_cooldown_button", "black_cooldown_button")]
 script = ExtResource("3_yl173")
 controller = NodePath("../../ChessController")
+white_cooldown_button = NodePath("../../UI/WhitePlayerUIContainer/WhiteActiveButton")
+black_cooldown_button = NodePath("../../UI/BlackPlayerUIContainer/BlackActiveButton")
 
 [node name="Squares" type="Node2D" parent="CanvasLayer/ChessBoard"]
 script = ExtResource("5_s46tk")
@@ -38,11 +34,62 @@ script = ExtResource("5_s46tk")
 [node name="Pieces" type="Node2D" parent="CanvasLayer/ChessBoard"]
 
 [node name="Background" type="TextureRect" parent="."]
-offset_right = 1920.0
-offset_bottom = 1080.0
+offset_right = 384.0
+offset_bottom = 216.0
 scale = Vector2(5, 5)
 texture = ExtResource("3_qea3a")
 stretch_mode = 1
 
-[node name="TileMapLayer" type="TileMapLayer" parent="."]
-tile_set = SubResource("TileSet_qea3a")
+[node name="UI" type="Control" parent="."]
+layout_direction = 2
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_qi3br")
+
+[node name="WhitePlayerUIContainer" type="MarginContainer" parent="UI"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -1080.0
+offset_right = 1920.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/margin_left = 100
+theme_override_constants/margin_bottom = 100
+
+[node name="WhiteActiveButton" type="Button" parent="UI/WhitePlayerUIContainer"]
+custom_minimum_size = Vector2(300, 150)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 8
+text = "\"Ability Name\"
+CD: 4 turns"
+
+[node name="BlackPlayerUIContainer" type="MarginContainer" parent="UI"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -1920.0
+offset_bottom = 1080.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_constants/margin_top = 100
+theme_override_constants/margin_right = 100
+
+[node name="BlackActiveButton" type="Button" parent="UI/BlackPlayerUIContainer"]
+custom_minimum_size = Vector2(300, 150)
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 0
+text = "\"Ability Name\"
+CD: 4 turns"
+
+[connection signal="pressed" from="UI/WhitePlayerUIContainer/WhiteActiveButton" to="ChessController" method="_on_white_active_button_pressed"]
+[connection signal="pressed" from="UI/BlackPlayerUIContainer/BlackActiveButton" to="ChessController" method="_on_black_active_button_pressed"]

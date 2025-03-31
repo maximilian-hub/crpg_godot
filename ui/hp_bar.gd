@@ -16,13 +16,11 @@ func set_hp(hp: int, maxhp: int = -1):
 
 func _update_bar():
 	var percent = float(current_hp) / max_hp
-	if foreground == null:
-		print("foreground is null?!?!?!?") # this is not printing
 	
 	var tween = create_tween()
 	tween.tween_property(
 		foreground,
 		"scale:x",
 		percent * 40,
-		0.2
+		0.1
 	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)

@@ -24,8 +24,6 @@ func update_sprite():
 		sprite.scale = Vector2(0.5, 0.5)
 
 func update_hp(new_hp: int):
-	print("piece.gd, about to check if i've got a HpBar!")
 	model.current_hp = new_hp
 	if has_node("HpBar"):
-		print("piece.gd here, calling update_hp!")
 		$HpBar.set_hp(new_hp, model.max_hp)

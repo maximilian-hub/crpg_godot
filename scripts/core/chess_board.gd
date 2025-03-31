@@ -6,6 +6,8 @@ extends Node2D
 # and renders the scene accordingly.
 
 @export var controller: Node # ChessController is set here via the UI
+@export var white_cooldown_button: Node
+@export var black_cooldown_button: Node
 var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
 @export var light_square_color = Color(1, 1, 1) 
@@ -28,7 +30,6 @@ func draw_board(modelBoard: Array):
 			var pos = grid_to_screen(row, col)
 			draw_square(row,col,pos)
 			draw_piece(row,col,pos)
-			print("drawing square and piece at:", pos)
 
 func draw_square(row: int, col: int, pos: Vector2):
 	var squares = $Squares
@@ -71,21 +72,7 @@ func get_piece_node(coord: Vector2i) -> Node:
 	
 	return desired_piece
 
-### Converts a board position (eg 0,1) into a screen position for rendering purposes
-#func grid_to_screen(row: int, col: int) -> Vector2:
-	#return Vector2(col * SQUARE_SIZE + 600, row * SQUARE_SIZE + 100) #margins
-
-#func grid_to_screen(row: int, col: int) -> Vector2:
-	#var board_pixel_width = board[0].size() * SQUARE_SIZE
-	#var board_pixel_height = board.size() * SQUARE_SIZE
-	#var viewport_size = get_viewport_rect().size
-#
-	#var offset_x = (viewport_size.x - board_pixel_width) / 2
-	#var offset_y = (viewport_size.y - board_pixel_height) / 2
-#
-	#return Vector2(col * SQUARE_SIZE + offset_x, row * SQUARE_SIZE + offset_y)
-
-
+## Converts a board position (eg 0,1) into a screen position for rendering purposes
 func grid_to_screen(row: int, col: int) -> Vector2:
 	var board_pixel_width = board[0].size() * SQUARE_SIZE
 	var board_pixel_height = board.size() * SQUARE_SIZE
@@ -153,7 +140,7 @@ func get_piece_at(coord: Vector2i) -> Node:
 			#break
 	
 
-func remove_piece_at(coord: Vector2i):
+func destroy_piece_at(coord: Vector2i):
 	for piece in $Pieces.get_children():
 		if piece.coordinate == coord:
 			spawn_explosion(piece.position)
@@ -209,3 +196,21 @@ func start_minotaur_rage_intro(coord: Vector2i) -> void:
 	
 	# Unlock input
 	controller.is_input_locked = false
+
+## Changes the cooldown display to reflect the king's new cooldown.
+func update_cooldown(piece: ModelPiece):
+	var format_string = "%s Cooldown: %s"
+	var text = format_string % [piece.ACTIVE_NAME, piece.current_cooldown]
+	
+	if piece.color == "white":
+		white_cooldown_button.text = text
+	else:
+		black_cooldown_button.text = text
+
+## Changes the display to reflect that the piece's active ability is ready to use.
+func ready_cooldown(piece: ModelPiece):
+	var ready_text = "%s!!!" % piece.ACTIVE_NAME
+	if piece.color == "white":
+		white_cooldown_button.text = ready_text
+	else:
+		black_cooldown_button.text = ready_text

@@ -7,6 +7,7 @@ const BOARD_TYPE = "debug"
 var board: Array
 var last_move: Dictionary = {} 		#from, to, piecename
 var current_turn: String = "white" # can be white or black
+signal turn_changed(current_turn: String)
 
 var custom_size = 16
 
@@ -65,7 +66,7 @@ func initialize_debug_pieces():
 	board[0][1] = ModelPiece.new("black", "knight", Vector2i(0, 1))
 	board[0][2] = ModelPiece.new("black", "bishop", Vector2i(0, 2))
 	board[0][3] = ModelPiece.new("black", "queen", Vector2i(0, 3))
-	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
+	#board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = ModelPiece.new("black", "bishop", Vector2i(0, 5))
 	board[0][6] = ModelPiece.new("black", "knight", Vector2i(0, 6))
 	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
@@ -83,7 +84,7 @@ func initialize_debug_pieces():
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
 	#board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
 	#board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
-	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
+	#board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
 	#board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
@@ -94,6 +95,7 @@ func inject_dependencies():
 			if piece != null:
 				piece.view = view
 				piece.model = self
+				connect("turn_changed", piece._on_turn_changed)
 
 func get_legal_moves(piece: ModelPiece) -> Array:
 	var moves := []
@@ -112,7 +114,8 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 		"king":
 			moves = get_king_moves(piece)
 		"minotaur_king":
-			moves = get_rook_moves(piece)
+			moves = get_king_moves(piece)
+			#moves = piece.get_charge_moves()
 	
 	return moves
 
@@ -261,6 +264,7 @@ func get_king_moves(piece: ModelPiece) -> Array:
 ## A player's move.
 # Handles special moves, normal moves, and ends the turn.
 # For simply moving a piece in the model, see actually_move_piece()
+# Abilities are not considered moves and are handled elsewhere.
 func move_piece(piece: ModelPiece, to: Vector2i):
 	var from = piece.coordinate
 	var piece_node = view.get_piece_node(from)
@@ -271,7 +275,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	if is_en_passant: handle_en_passant(piece, from, to)
 	elif is_combat: handle_combat(piece, from, to, piece_node) 
 	elif is_castling: handle_castling(piece, from, to)
-	else: actually_move_piece(piece, from, to, piece_node)	# a normal move with no captures or exceptions
+	else: actually_move_piece(piece, to, piece_node)	# a normal move with no captures or exceptions
 	
 	# promotion_check(piece, piece_node, to) # AFTER move & after any capture is resolved
 	update_last_move(piece, from, to)
@@ -280,13 +284,14 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 ## Moves a piece from one square to another.
 # Assumes empty destination square.
 # Validation is handled in move_piece()
-func actually_move_piece(piece: ModelPiece, from: Vector2i, to: Vector2i, piece_node: Node = null):
+func actually_move_piece(piece: ModelPiece, to: Vector2i, pawn_node: Node = null):
+	var from = piece.coordinate
 	board[from.x][from.y] = null
 	board[to.x][to.y] = piece
 	piece.coordinate = to
 	piece.has_moved = true
 	view.move_piece_node(view.get_piece_node(from), to) # update the view
-	if piece_node != null: promotion_check(piece, piece_node, to)
+	if pawn_node != null: promotion_check(piece, pawn_node, to)
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -309,6 +314,8 @@ func switch_turn():
 		current_turn = "black"
 	else:
 		current_turn = "white"
+	
+	emit_signal("turn_changed", current_turn)
 
 func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
 	if piece.type == "pawn":
@@ -323,7 +330,6 @@ func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 		"piece": piece
 	}
 	
-
 func handle_castling(piece: ModelPiece, from: Vector2i, to: Vector2i):
 		print("heyyy we're castling folks!")
 		var row = from.x
@@ -336,22 +342,22 @@ func handle_castling(piece: ModelPiece, from: Vector2i, to: Vector2i):
 			board[row][0] = null
 			view.move_piece_node(view.get_piece_at(Vector2i(row, 0)), Vector2i(row, 3))
 		
-		actually_move_piece(piece, from, to)
+		actually_move_piece(piece, to)
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row = from.x
 	var captured_col = to.y
 	board[captured_row][captured_col] = null
-	actually_move_piece(piece, from, to)
-	view.remove_piece_at(Vector2i(captured_row, captured_col))
+	actually_move_piece(piece, to)
+	view.destroy_piece_at(Vector2i(captured_row, captured_col))
 
 # Assumes a piece is moving to attack another piece.
 func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i, piece_node: Node):
 	var defender = board[to.x][to.y]
 	
 	if defender.current_hp == 1: # normal capture
-		view.remove_piece_at(to)
-		actually_move_piece(attacker, from, to)
+		view.destroy_piece_at(to)
+		actually_move_piece(attacker, to)
 		promotion_check(attacker, piece_node, to)
 	else: # doing damage, attacker doesn't move
 		defender.take_damage()	
@@ -369,7 +375,7 @@ func move_is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool
 func move_is_combat(is_en_passant: bool, to: Vector2i) -> bool:
 	return not is_en_passant and board[to.x][to.y] != null
 	
-func get_adjacent_coords(coord: Vector2i) -> Array:
+func get_adjacent_squares(coord: Vector2i) -> Array:
 	var offsets = [
 		Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1),
 		Vector2i(0, -1),                Vector2i(0, 1),
@@ -381,3 +387,11 @@ func get_adjacent_coords(coord: Vector2i) -> Array:
 		if is_in_bounds(check.x, check.y):
 			results.append(check)
 	return results
+
+## Returns an army's king.
+func get_king(color: String) -> ModelPiece:
+	for row in board:
+		for piece in row:
+			if piece != null and piece.color == color and piece.type.ends_with("king"):
+				return piece
+	return null
