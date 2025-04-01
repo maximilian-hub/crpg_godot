@@ -68,11 +68,15 @@ func stun(duration: int = 2):
 	print("stunned :( owie")
 	stunned = true
 	stun_timer = duration
-	# TODO: add visual stun effect
+	view.spawn_stun_stars(coordinate)
 
 func decrement_stun_timer():
 	stun_timer -= 1
-	if stun_timer == 0: 
-		stunned = false
-		print("not stunned anymore hehe")
+	if stun_timer == 0: unstun()
+
+func unstun():
+	stunned = false
+	print("not stunned anymore hehe")
+	view.remove_stun_stars(coordinate)
 		# TODO: remove visual stun effect
+		

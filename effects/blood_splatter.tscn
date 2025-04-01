@@ -7,7 +7,6 @@
 [ext_resource type="Texture2D" uid="uid://mvlbtnua8gp4" path="res://assets/blood_splatter/frame_4_delay-0.1s.png" id="5_ja14q"]
 [ext_resource type="Texture2D" uid="uid://dy2ijonutkigw" path="res://assets/blood_splatter/frame_5_delay-0.1s.png" id="6_ioflx"]
 [ext_resource type="Texture2D" uid="uid://csvmwegrhnmdv" path="res://assets/blood_splatter/frame_6_delay-0.1s.png" id="7_ep38y"]
-[ext_resource type="Script" uid="uid://bejkcud82cf70" path="res://scripts/view/blood_splatter.gd" id="8_1dgvs"]
 [ext_resource type="AudioStream" uid="uid://c8qqtekfrsmn5" path="res://assets/blood_splatter/hurt.wav" id="9_cjiu1"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_c6f07"]
@@ -39,12 +38,24 @@ animations = [{
 "speed": 15.0
 }]
 
+[sub_resource type="GDScript" id="GDScript_hp07j"]
+script/source = "extends AnimatedSprite2D
+
+func _ready():
+	play(\"splatter\") # Optional if you didn’t check “Autoplay on Load”
+	$AudioStreamPlayer2D.pitch_scale = randf_range(0.75, 1.25)
+	$AudioStreamPlayer2D.play()
+
+func _on_animation_finished():
+	queue_free()
+"
+
 [node name="BloodSplatter" type="AnimatedSprite2D"]
 scale = Vector2(0.3, 0.3)
 sprite_frames = SubResource("SpriteFrames_c6f07")
 animation = &"splatter"
 autoplay = "splatter"
-script = ExtResource("8_1dgvs")
+script = SubResource("GDScript_hp07j")
 
 [node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("9_cjiu1")

@@ -1,0 +1,52 @@
+[gd_scene load_steps=11 format=3 uid="uid://br5ex20b2e6o5"]
+
+[ext_resource type="Texture2D" uid="uid://dtcgwr7hj26i0" path="res://assets/stunned_stars/frame_0_delay-0.08s.png" id="1_636uf"]
+[ext_resource type="Texture2D" uid="uid://ekcf5wcmskcu" path="res://assets/stunned_stars/frame_1_delay-0.08s.png" id="2_x1c6x"]
+[ext_resource type="Texture2D" uid="uid://bop832kluwdcy" path="res://assets/stunned_stars/frame_2_delay-0.08s.png" id="3_ue5i5"]
+[ext_resource type="Texture2D" uid="uid://yvu03clrnjyw" path="res://assets/stunned_stars/frame_3_delay-0.08s.png" id="4_l277p"]
+[ext_resource type="Texture2D" uid="uid://brxitj04cr0fq" path="res://assets/stunned_stars/frame_4_delay-0.08s.png" id="5_5ctks"]
+[ext_resource type="Texture2D" uid="uid://crqkwuflwnlhy" path="res://assets/stunned_stars/frame_5_delay-0.08s.png" id="6_e88f2"]
+[ext_resource type="Texture2D" uid="uid://by462b50qh1h7" path="res://assets/stunned_stars/frame_6_delay-0.08s.png" id="7_o40qt"]
+[ext_resource type="Texture2D" uid="uid://2vbdjhlyi827" path="res://assets/stunned_stars/frame_7_delay-0.08s.png" id="8_4nlxe"]
+[ext_resource type="Texture2D" uid="uid://c3yb381bj3n4v" path="res://assets/stunned_stars/frame_8_delay-0.08s.png" id="9_r5cvf"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_sqxat"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_636uf")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_x1c6x")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_ue5i5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_l277p")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_5ctks")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_e88f2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_o40qt")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_4nlxe")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_r5cvf")
+}],
+"loop": true,
+"name": &"stun_stars",
+"speed": 5.0
+}]
+
+[node name="StunStars" type="AnimatedSprite2D"]
+scale = Vector2(0.1, 0.1)
+sprite_frames = SubResource("SpriteFrames_sqxat")
+animation = &"stun_stars"
+autoplay = "stun_stars"

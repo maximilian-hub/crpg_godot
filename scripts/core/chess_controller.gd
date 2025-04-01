@@ -12,39 +12,68 @@ var active_ability_selected: bool = false
 func _ready():
 	pass
 	
-## Handles clicks on the board.
-# Depending on the context, user is selecting a piece, deselecting,
-# selecting a move, or selecting a target for an ability.
+### Handles clicks on the board.
+## Depending on the context, user is selecting a piece, deselecting,
+## selecting a move, or selecting a target for an ability.
+#func _on_square_clicked(coord: Vector2i):
+	#if is_input_locked: return
+	#var piece_at_square = model.board[coord.x][coord.y]
+	#
+	## If there is an ability selected:
+	#if active_ability_selected:
+		#if coord in legal_moves:
+			#active_king.active_target_selected(coord)
+		#deselect_active_ability()
+	#
+	## If there is no currently selected piece:
+	#elif selected_piece == null:
+		## and a piece at the clicked square:
+		#if piece_at_square != null:
+			## and it's that piece's team's turn:
+			#if piece_at_square.color == model.current_turn:
+				#select_piece(piece_at_square)
+	#else:
+	## If there is already a selected piece:
+		#if coord in legal_moves:
+			#model.move_piece(selected_piece, coord)
+			#selected_piece.has_moved = true
+			#deselect_piece()
+		#else:
+			#deselect_piece()
+			#if piece_at_square and piece_at_square.color == model.current_turn:
+				#select_piece(piece_at_square)
+				
 func _on_square_clicked(coord: Vector2i):
-	if is_input_locked: return
-	var piece_at_square = model.board[coord.x][coord.y]
-	
-	# If there is an ability selected:
+	if is_input_locked:
+		return
+
+	var piece = model.board[coord.x][coord.y]
+
+	# Handle active ability target selection
 	if active_ability_selected:
 		if coord in legal_moves:
-			# uhhh, DO the active ability?
 			active_king.active_target_selected(coord)
-			deselect_active_ability()
-		else: deselect_active_ability()
-	
-	# If there is no currently selected piece:
-	elif selected_piece == null:
-		# and a piece at the clicked square:
-		if piece_at_square != null:
-			piece_at_square.print_piece()
-			# and it's that piece's team's turn:
-			if piece_at_square.color == model.current_turn:
-				select_piece(piece_at_square)
-	else:
-	# If there is already a selected piece:
-		if coord in legal_moves:
-			model.move_piece(selected_piece, coord)
-			selected_piece.has_moved = true
-			deselect_piece()
-		else:
-			deselect_piece()
-			select_piece(piece_at_square)
-		
+		deselect_active_ability()
+		return
+
+	# If no piece is currently selected
+	if selected_piece == null:
+		if piece and piece.color == model.current_turn:
+			select_piece(piece)
+		return
+
+	# If clicking a legal move destination
+	if coord in legal_moves:
+		model.move_piece(selected_piece, coord)
+		deselect_piece()
+		return
+
+	# Fallback: deselect and possibly select new piece
+	deselect_piece()
+	if piece and piece.color == model.current_turn:
+		select_piece(piece)
+
+
 func get_piece_at(coord: Vector2i) -> Node:
 	for piece in view.get_node("Pieces").get_children():
 		if piece.coordinate == coord:
@@ -95,7 +124,8 @@ func select_active_ability(color: String):
 func deselect_active_ability():
 	# TODO: remove aura
 	# TODO: power down sound
-	active_king = null
-	active_ability_selected = false
-	legal_moves = []
-	view.clear_highlights()
+	if active_ability_selected:
+		active_king = null
+		active_ability_selected = false
+		legal_moves = []
+		view.clear_highlights()

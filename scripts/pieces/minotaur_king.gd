@@ -23,6 +23,8 @@ func take_damage(damage: int = 1):
 	if current_hp > 0: retaliating_rage()
 
 func retaliating_rage() -> void:
+	if stunned: return # don't retaliate if stunned
+	
 	await view.start_minotaur_rage_intro(coordinate) #what's this do?
 
 	var board = model.board
@@ -107,12 +109,11 @@ func active_target_selected(coord: Vector2i):
 func charge(coord: Vector2i):
 	var target = model.board[coord.x][coord.y]
 	
-	if target != null:
-		target.destroy()
-	else:
-		stun()
+	if target != null: target.destroy()
 		
 	model.actually_move_piece(self, coord) # TODO implement injecting unique animations
+	
+	if target == null: stun()
 	reset_cooldown()
 	model.switch_turn()
 	

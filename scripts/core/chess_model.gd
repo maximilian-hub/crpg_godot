@@ -277,7 +277,6 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	elif is_castling: handle_castling(piece, from, to)
 	else: actually_move_piece(piece, to, piece_node)	# a normal move with no captures or exceptions
 	
-	# promotion_check(piece, piece_node, to) # AFTER move & after any capture is resolved
 	update_last_move(piece, from, to)
 	switch_turn()
 

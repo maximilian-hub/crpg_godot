@@ -14,6 +14,7 @@ var piece_scene = preload("res://scenes/piece.tscn")
 @export var dark_square_color = Color(0.3, 0.3, 0.3)
 var board: Array
 var hp_bar_scene = preload("res://ui/hp_bar.tscn")
+var stun_stars_scene = preload("res://effects/stun_stars.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
 var splatter_scene = preload("res://effects/blood_splatter.tscn")
 const SQUARE_SIZE = 128
@@ -59,8 +60,7 @@ func draw_piece(row: int, col: int, pos: Vector2):
 			hp_bar.current_hp = piece_data.max_hp
 			hp_bar.position = Vector2(0, 24)
 			piece.add_child(hp_bar)
-		
-			
+					
 func get_piece_node(coord: Vector2i) -> Node:
 	var desired_piece = null
 	
@@ -167,6 +167,19 @@ func spawn_splatter(coord: Vector2i):
 	var splatter = splatter_scene.instantiate()
 	splatter.position = grid_to_screen(coord.x, coord.y)
 	add_child(splatter)
+	
+func spawn_stun_stars(coord: Vector2i):
+	var stunned_piece = get_piece_node(coord)
+	var stun_stars = stun_stars_scene.instantiate()
+	stun_stars.position = Vector2(0,-10)
+	stun_stars.add_to_group("stun")
+	stunned_piece.add_child(stun_stars)
+	
+func remove_stun_stars(coord: Vector2i):
+	var stunned_piece = get_piece_node(coord)
+	for child in stunned_piece.get_children():
+		if child.is_in_group("stun"):
+			child.queue_free()
 
 # Promote the piece at the specified coordinate.
 # The model should already reflect the new type.
