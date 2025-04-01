@@ -22,16 +22,27 @@ view = NodePath("../CanvasLayer/ChessBoard")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
-[node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("controller", "white_cooldown_button", "black_cooldown_button")]
+[node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("controller", "white_cooldown_button", "black_cooldown_button", "flash_overlay")]
 script = ExtResource("3_yl173")
 controller = NodePath("../../ChessController")
 white_cooldown_button = NodePath("../../UI/WhitePlayerUIContainer/WhiteActiveButton")
 black_cooldown_button = NodePath("../../UI/BlackPlayerUIContainer/BlackActiveButton")
+flash_overlay = NodePath("../FlashOverlay")
 
 [node name="Squares" type="Node2D" parent="CanvasLayer/ChessBoard"]
 script = ExtResource("5_s46tk")
 
 [node name="Pieces" type="Node2D" parent="CanvasLayer/ChessBoard"]
+
+[node name="FlashOverlay" type="ColorRect" parent="CanvasLayer"]
+visible = false
+z_index = 100
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="."]
 offset_right = 384.0

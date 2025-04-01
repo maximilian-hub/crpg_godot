@@ -8,6 +8,7 @@ extends Node2D
 @export var controller: Node # ChessController is set here via the UI
 @export var white_cooldown_button: Node
 @export var black_cooldown_button: Node
+@export var flash_overlay: ColorRect
 var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
 @export var light_square_color = Color(1, 1, 1) 
@@ -17,6 +18,7 @@ var hp_bar_scene = preload("res://ui/hp_bar.tscn")
 var stun_stars_scene = preload("res://effects/stun_stars.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
 var splatter_scene = preload("res://effects/blood_splatter.tscn")
+var ss_aura_scene = preload("res://effects/ss_aura.tscn")
 const SQUARE_SIZE = 128
 
 func _ready():
@@ -80,8 +82,6 @@ func grid_to_screen(row: int, col: int) -> Vector2:
 	var offset_x = (viewport_size.x - board_pixel_width) / 2 + SQUARE_SIZE / 2
 	var offset_y = (viewport_size.y - board_pixel_height) / 2 + SQUARE_SIZE / 2
 	return Vector2(col * SQUARE_SIZE + offset_x, row * SQUARE_SIZE + offset_y)
-
-
 			
 func get_square_color(row: int, col: int):
 	var square_color
@@ -99,7 +99,6 @@ func highlight_squares(squares_to_highlight: Array):
 	for square in squares:
 		if square.coordinate in squares_to_highlight: 
 			square.highlight()
-
 
 func clear_highlights():
 	var squares = $Squares.get_children()
@@ -120,9 +119,6 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> Node:
 
 		return piece_node
 
-
-
-
 func promote_piece(piece: Node, new_name: String):
 	if piece:
 		piece.set_sprite(new_name)
@@ -139,7 +135,6 @@ func get_piece_at(coord: Vector2i) -> Node:
 			#spawn_splatter(piece.position)
 			#break
 	
-
 func destroy_piece_at(coord: Vector2i):
 	for piece in $Pieces.get_children():
 		if piece.coordinate == coord:
@@ -174,11 +169,24 @@ func spawn_stun_stars(coord: Vector2i):
 	stun_stars.position = Vector2(0,-10)
 	stun_stars.add_to_group("stun")
 	stunned_piece.add_child(stun_stars)
+
+func spawn_ss_aura(coord: Vector2i):
+	var piece = get_piece_node(coord)
+	var aura = ss_aura_scene.instantiate()
+	aura.position = Vector2(0,-20)
+	aura.add_to_group("aura")
+	piece.add_child(aura)
 	
 func remove_stun_stars(coord: Vector2i):
 	var stunned_piece = get_piece_node(coord)
 	for child in stunned_piece.get_children():
 		if child.is_in_group("stun"):
+			child.queue_free()
+
+func remove_ss_aura(coord: Vector2i):
+	var piece = get_piece_node(coord)
+	for child in piece.get_children():
+		if child.is_in_group("aura"):
 			child.queue_free()
 
 # Promote the piece at the specified coordinate.
@@ -227,3 +235,11 @@ func ready_cooldown(piece: ModelPiece):
 		white_cooldown_button.text = ready_text
 	else:
 		black_cooldown_button.text = ready_text
+		
+func flash_screen(duration := 1):
+	flash_overlay.visible = true
+	flash_overlay.color.a = 1.0  # Instant full white
+	
+	var tween = create_tween()
+	tween.tween_property(flash_overlay, "color:a", 0.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(Callable(flash_overlay, "hide"))  # hide when done
