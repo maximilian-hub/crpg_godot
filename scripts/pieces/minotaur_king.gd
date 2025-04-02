@@ -1,3 +1,4 @@
+#~~~~~~~~NEW FILE: minotaur_king.gd~~~~~~~~~~~~
 extends ModelPiece
 class_name MinotaurKing
 
@@ -113,12 +114,6 @@ func charge(coord: Vector2i):
 		
 	model.actually_move_piece(self, coord) # TODO implement injecting unique animations
 	
-	if target == null: stun()
+	if target == null: stun() # hitting a wall
 	reset_cooldown()
 	model.switch_turn()
-	
-
-
-	# reset the cooldown
-	print("charging!!!")
-	pass

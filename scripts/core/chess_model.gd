@@ -1,5 +1,7 @@
-# chess_model.gd
+#~~~~~~~~NEW FILE: chess_model.gd~~~~~~~~~~~~
 extends Node
+
+
 
 @export var view: Node
 @export var controller: Node

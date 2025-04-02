@@ -1,7 +1,8 @@
 # chess_board.gd
+#~~~~~~~~NEW FILE: chess_board.gd~~~~~~~~~~~~
 extends Node2D
 
-# This scene serves as the View component.
+# This node serves as the main View component.
 # It receives signals from the Model,
 # and renders the scene accordingly.
 
@@ -183,10 +184,12 @@ func remove_stun_stars(coord: Vector2i):
 		if child.is_in_group("stun"):
 			child.queue_free()
 
-func remove_ss_aura(coord: Vector2i):
-	var piece = get_piece_node(coord)
-	for child in piece.get_children():
+func remove_ss_aura(piece_node: Node):
+	print("entering remove_ss_aura()")
+	
+	for child in piece_node.get_children():
 		if child.is_in_group("aura"):
+			print("child in group aura found! freeing...")
 			child.queue_free()
 
 # Promote the piece at the specified coordinate.

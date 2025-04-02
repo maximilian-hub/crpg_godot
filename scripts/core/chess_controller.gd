@@ -1,4 +1,8 @@
+#~~~~~~~~NEW FILE: chess_controller.gd~~~~~~~~~~~~
 extends Node
+
+# This node serves as the Controller component.
+# Mostly handles user input.
 
 @export var model: Node
 @export var view: Node # ChessBoard node is connected here via the UI
@@ -89,10 +93,12 @@ func select_active_ability(color: String):
 	view.flash_screen()
 	
 func deselect_active_ability():
+	print("entering deselect_active_ability()")
 	# TODO: power down sound
 	if active_ability_selected:
-		view.remove_ss_aura(active_king.coordinate)
+		print("active ability selected. doing stuff...")
+		view.remove_ss_aura(active_king.view_node)
+		view.clear_highlights()
 		active_king = null
 		active_ability_selected = false
 		legal_moves = []
-		view.clear_highlights()

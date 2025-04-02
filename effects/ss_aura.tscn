@@ -130,8 +130,9 @@ animations = [{
 }]
 
 [node name="SSAura" type="AnimatedSprite2D"]
+modulate = Color(1, 1, 1, 0.509804)
 scale = Vector2(0.15, 0.15)
 sprite_frames = SubResource("SpriteFrames_sqxat")
 animation = &"ss_aura"
 autoplay = "ss_aura"
-frame_progress = 0.260086
+frame_progress = 0.394144
