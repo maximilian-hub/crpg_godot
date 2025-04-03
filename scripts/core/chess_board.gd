@@ -1,4 +1,3 @@
-# chess_board.gd
 #~~~~~~~~NEW FILE: chess_board.gd~~~~~~~~~~~~
 extends Node2D
 
@@ -20,10 +19,34 @@ var stun_stars_scene = preload("res://effects/stun_stars.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
 var splatter_scene = preload("res://effects/blood_splatter.tscn")
 var ss_aura_scene = preload("res://effects/ss_aura.tscn")
+var powerup_sound = preload("res://assets/ss_aura/ss_powerup.mp3")
+var aura_loop_sound = preload("res://assets/ss_aura/ss_aura.mp3") 
+var powerdown_sound = preload("res://assets/ss_aura/ss_powerdown.mp3")
+var active_loop_player: AudioStreamPlayer
+@onready var powerup_player = AudioStreamPlayer.new()
+@onready var aura_loop_player = AudioStreamPlayer.new()
+@onready var powerdown_player = AudioStreamPlayer.new()
+const POWERUP_VOLUME = -20
+const AURA_LOOP_VOLUME = -20
+const POWERDOWN_VOLUME = -20
 const SQUARE_SIZE = 128
 
+
 func _ready():
-	pass 
+	# Setup audio players
+	add_child(powerup_player)
+	add_child(aura_loop_player)
+	add_child(powerdown_player)
+
+	powerup_player.stream = powerup_sound
+	aura_loop_player.stream = aura_loop_sound
+	powerdown_player.stream = powerdown_sound
+	powerup_player.volume_db = POWERUP_VOLUME
+	aura_loop_player.volume_db = AURA_LOOP_VOLUME
+	powerdown_player.volume_db = POWERDOWN_VOLUME
+
+	# Make the aura loop sound loop
+	aura_loop_player.stream.loop = true
 
 # renders the board.	
 func draw_board(modelBoard: Array):
@@ -48,21 +71,21 @@ func draw_square(row: int, col: int, pos: Vector2):
 func draw_piece(row: int, col: int, pos: Vector2):
 	var pieces = $Pieces
 	var piece_data = board[row][col] # to give the nodes a reference to the model object
+	if piece_data == null: return
 
-	if piece_data != null:
-		var piece = piece_scene.instantiate()
-		piece.position = pos
-		piece.set_model(piece_data)
-		piece.coordinate = Vector2i(row, col)
-		pieces.add_child(piece)
-		piece_data.view_node = piece
-	
-		if piece_data.max_hp > 1:
-			var hp_bar = hp_bar_scene.instantiate()
-			hp_bar.max_hp = piece_data.max_hp
-			hp_bar.current_hp = piece_data.max_hp
-			hp_bar.position = Vector2(0, 24)
-			piece.add_child(hp_bar)
+	var piece = piece_scene.instantiate()
+	piece.position = pos
+	piece.set_model(piece_data)
+	piece.coordinate = Vector2i(row, col)
+	pieces.add_child(piece)
+	piece_data.view_node = piece
+
+	if piece_data.max_hp > 1:
+		var hp_bar = hp_bar_scene.instantiate()
+		hp_bar.max_hp = piece_data.max_hp
+		hp_bar.current_hp = piece_data.max_hp
+		hp_bar.position = Vector2(0, 24)
+		piece.add_child(hp_bar)
 					
 func get_piece_node(coord: Vector2i) -> Node:
 	var desired_piece = null
@@ -136,12 +159,11 @@ func get_piece_at(coord: Vector2i) -> Node:
 			#spawn_splatter(piece.position)
 			#break
 	
-func destroy_piece_at(coord: Vector2i):
-	for piece in $Pieces.get_children():
-		if piece.coordinate == coord:
-			spawn_explosion(piece.position)
-			piece.queue_free()
-			break
+func destroy_piece(piece: Node):
+	# TODO: if piece.is_king: play king death sound, spawn king death effect
+	spawn_explosion(piece.position)
+	piece.queue_free()
+
 
 func promote_piece_at(coord: Vector2i, new_name: String):
 	print("entering promote_piece_at()")
@@ -164,19 +186,19 @@ func spawn_splatter(coord: Vector2i):
 	splatter.position = grid_to_screen(coord.x, coord.y)
 	add_child(splatter)
 	
-func spawn_stun_stars(coord: Vector2i):
-	var stunned_piece = get_piece_node(coord)
+func spawn_stun_stars(stunned_piece: Node):
 	var stun_stars = stun_stars_scene.instantiate()
 	stun_stars.position = Vector2(0,-10)
 	stun_stars.add_to_group("stun")
 	stunned_piece.add_child(stun_stars)
 
-func spawn_ss_aura(coord: Vector2i):
-	var piece = get_piece_node(coord)
+func spawn_ss_aura(piece: Node):
 	var aura = ss_aura_scene.instantiate()
 	aura.position = Vector2(0,-20)
 	aura.add_to_group("aura")
 	piece.add_child(aura)
+	play_power_activation_sound()
+
 	
 func remove_stun_stars(coord: Vector2i):
 	var stunned_piece = get_piece_node(coord)
@@ -185,12 +207,55 @@ func remove_stun_stars(coord: Vector2i):
 			child.queue_free()
 
 func remove_ss_aura(piece_node: Node):
-	print("entering remove_ss_aura()")
+	for child in piece_node.get_children():
+		if child.is_in_group("aura"):
+			child.queue_free()
+
+# In chess_board.gd (your view class)
+func fade_out_ss_aura(piece_node: Node, include_powerdown: bool = true):
+	if include_powerdown: play_power_deactivation_sound()
 	
 	for child in piece_node.get_children():
 		if child.is_in_group("aura"):
-			print("child in group aura found! freeing...")
-			child.queue_free()
+			# Create a tween for the fade out animation
+			var tween = create_tween()
+
+			# Animate scale increase (1.5x) and opacity decrease (to 0)
+			tween.parallel().tween_property(child, "scale", child.scale * 1.5, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(child, "modulate:a", 0.0, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+			# Queue free the aura after animation completes
+			tween.tween_callback(child.queue_free)
+			
+			powerup_player.stop()
+			aura_loop_player.stop()
+			if include_powerdown: powerdown_player.play()
+
+# Plays the powerup sound with a fadeout for the tail
+func play_power_activation_sound():
+	# Reset volumes in case they were modified
+	powerup_player.volume_db = POWERUP_VOLUME
+	aura_loop_player.volume_db = AURA_LOOP_VOLUME
+
+	# Play the powerup sound
+	powerup_player.play()
+
+	# Create a tween to fade out the powerup tail
+	var powerup_tween = create_tween()
+	# Start fading out after 0.5 seconds (adjust based on when the annoying tail starts)
+	powerup_tween.tween_interval(0.5)
+	powerup_tween.tween_property(powerup_player, "volume_db", -40.0, 0.8).set_ease(Tween.EASE_OUT)
+
+	# Start the loop with a slight delay
+	await get_tree().create_timer(0.1).timeout
+	aura_loop_player.play()
+	
+# Stops all power sounds and plays the powerdown sound
+func play_power_deactivation_sound():	
+	powerup_player.stop()
+	aura_loop_player.stop()
+	powerdown_player.play()
+
 
 # Promote the piece at the specified coordinate.
 # The model should already reflect the new type.
@@ -220,6 +285,7 @@ func start_minotaur_rage_intro(coord: Vector2i) -> void:
 	
 	# Unlock input
 	controller.is_input_locked = false
+
 
 ## Changes the cooldown display to reflect the king's new cooldown.
 func update_cooldown(piece: ModelPiece):

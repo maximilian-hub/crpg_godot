@@ -10,15 +10,14 @@ const ACTIVE_NAME: String = "Charge"
 const CHARGE_COOLDOWN: int = 4					# KingPiece class
 var current_cooldown: int = CHARGE_COOLDOWN						# KingPiece class
 
-
 func _init(color: String, coord: Vector2i):
 	self.color = color
 	self.coordinate = coord
 	self.max_hp = 4
 	self.current_hp = 4
 	self.type = "minotaur_king"
+	self.is_king = true
 	
-
 func take_damage(damage: int = 1):
 	super.take_damage()
 	if current_hp > 0: retaliating_rage()
@@ -102,6 +101,7 @@ func get_charge_moves() -> Array:
 # inherited from KingPiece class?
 # @require coord is a legal move
 func active_target_selected(coord: Vector2i):
+	view.aura_loop_player.stop()
 	charge(coord)
 
 ## Sends Minotaur King charging to the specified square.
@@ -114,6 +114,6 @@ func charge(coord: Vector2i):
 		
 	model.actually_move_piece(self, coord) # TODO implement injecting unique animations
 	
-	if target == null: stun() # hitting a wall
+	if target == null: stun() # hitting a wall # TODO impact sound? camera shake? tweety bird sound?
 	reset_cooldown()
 	model.switch_turn()

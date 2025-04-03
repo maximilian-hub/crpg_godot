@@ -24,6 +24,8 @@ var stunned: bool = false
 var stun_timer: int = 0
 var cooldown: int = 0
 
+var is_king: bool = false
+
 func _init(_color: String, _type: String, _coordinate: Vector2i):
 	color = _color
 	type = _type
@@ -44,7 +46,7 @@ func take_damage(damage: int = 1):
 
 func destroy():
 	model.board[coordinate.x][coordinate.y] = null
-	view.destroy_piece_at(coordinate)		
+	view.destroy_piece(view_node)		
 
 func is_enemy(other: ModelPiece) -> bool:
 	return color != other.color
@@ -69,7 +71,7 @@ func stun(duration: int = 2):
 	print("stunned :( owie")
 	stunned = true
 	stun_timer = duration
-	view.spawn_stun_stars(coordinate)
+	view.spawn_stun_stars(view_node)
 
 func decrement_stun_timer():
 	stun_timer -= 1

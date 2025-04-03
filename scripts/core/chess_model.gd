@@ -1,14 +1,12 @@
 #~~~~~~~~NEW FILE: chess_model.gd~~~~~~~~~~~~
 extends Node
 
-
-
 @export var view: Node
 @export var controller: Node
 const BOARD_TYPE = "debug"
 var board: Array
-var last_move: Dictionary = {} 		#from, to, piecename
-var current_turn: String = "white" # can be white or black
+var last_move: Dictionary = {}		# from, to, piecename
+var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 
 var custom_size = 16
@@ -291,7 +289,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, pawn_node: Node = null
 	board[to.x][to.y] = piece
 	piece.coordinate = to
 	piece.has_moved = true
-	view.move_piece_node(view.get_piece_node(from), to) # update the view
+	view.move_piece_node(piece.view_node, to) # update the view
 	if pawn_node != null: promotion_check(piece, pawn_node, to)
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
@@ -320,7 +318,7 @@ func switch_turn():
 
 func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
 	if piece.type == "pawn":
-		if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7):
+		if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7): # TODO: this only works on 8x8 boards.
 			piece.type = "queen" #TODO: give options
 			piece_node.update_sprite()
 
@@ -348,16 +346,17 @@ func handle_castling(piece: ModelPiece, from: Vector2i, to: Vector2i):
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row = from.x
 	var captured_col = to.y
+	var captured_piece_view_node = board[captured_row][captured_col].view_node
+	view.destroy_piece(captured_piece_view_node)
 	board[captured_row][captured_col] = null
 	actually_move_piece(piece, to)
-	view.destroy_piece_at(Vector2i(captured_row, captured_col))
 
 # Assumes a piece is moving to attack another piece.
 func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i, piece_node: Node):
 	var defender = board[to.x][to.y]
 	
 	if defender.current_hp == 1: # normal capture
-		view.destroy_piece_at(to)
+		view.destroy_piece(defender.view_node)
 		actually_move_piece(attacker, to)
 		promotion_check(attacker, piece_node, to)
 	else: # doing damage, attacker doesn't move

@@ -25,7 +25,8 @@ func _on_square_clicked(coord: Vector2i):
 	if active_ability_selected:
 		if coord in legal_moves:
 			active_king.active_target_selected(coord)
-		deselect_active_ability()
+			deselect_active_ability(false)
+		else: deselect_active_ability(true)
 		return
 
 	# If no piece is currently selected
@@ -44,7 +45,6 @@ func _on_square_clicked(coord: Vector2i):
 	deselect_piece()
 	if piece and piece.color == model.current_turn:
 		select_piece(piece)
-
 
 func get_piece_at(coord: Vector2i) -> Node:
 	for piece in view.get_node("Pieces").get_children():
@@ -87,17 +87,29 @@ func select_active_ability(color: String):
 	if active_king.stunned: return
 	
 	active_ability_selected = true
-	view.spawn_ss_aura(active_king.coordinate)# TODO: apply aura
+	view.spawn_ss_aura(active_king.view_node)# TODO: apply aura
 	legal_moves = active_king.get_charge_moves()
 	view.show_legal_moves(legal_moves)
 	view.flash_screen()
 	
-func deselect_active_ability():
+#func deselect_active_ability():
+	#print("entering deselect_active_ability()")
+	## TODO: power down sound
+	#if active_ability_selected:
+		#print("active ability selected. doing stuff...")
+		#view.remove_ss_aura(active_king.view_node)
+		#view.clear_highlights()
+		#active_king = null
+		#active_ability_selected = false
+		#legal_moves = []
+		
+func deselect_active_ability(play_powerdown_sound: bool):
 	print("entering deselect_active_ability()")
 	# TODO: power down sound
 	if active_ability_selected:
 		print("active ability selected. doing stuff...")
-		view.remove_ss_aura(active_king.view_node)
+		# Replace immediate removal with fade-out animation
+		view.fade_out_ss_aura(active_king.view_node, play_powerdown_sound)
 		view.clear_highlights()
 		active_king = null
 		active_ability_selected = false

@@ -135,4 +135,4 @@ scale = Vector2(0.15, 0.15)
 sprite_frames = SubResource("SpriteFrames_sqxat")
 animation = &"ss_aura"
 autoplay = "ss_aura"
-frame_progress = 0.394144
+frame_progress = 0.358549
