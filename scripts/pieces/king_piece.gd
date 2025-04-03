@@ -1,4 +1,4 @@
-# king_piece.gd
+##~~~~~~~~NEW FILE: king_piece.gd~~~~~~~~~~~~
 extends ModelPiece
 class_name KingPiece
 

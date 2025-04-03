@@ -1,9 +1,19 @@
 #~~~~~~~~NEW FILE: chess_board.gd~~~~~~~~~~~~
 extends Node2D
 
-# This node serves as the main View component.
+## This node serves as the main View component.
 # It receives signals from the Model,
 # and renders the scene accordingly.
+
+##This is just for prototyping. 
+# Eventually, the Chess scene will look very different,
+# with a slightly angled board, 
+# hands that move the pieces,
+# and other features.
+# I'm using MVC for this part of the project largely for this,
+# so that a little ways down the road,
+# I can completely replace this View with another,
+# without too much fussing about with the game logic.
 
 signal rage_intro_animation_completed(coord: Vector2i)
 

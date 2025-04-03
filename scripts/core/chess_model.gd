@@ -1,6 +1,11 @@
 #~~~~~~~~NEW FILE: chess_model.gd~~~~~~~~~~~~
 extends Node
 
+## Serves as the Model layer of our chess games.
+# You may notice a lack of Checking; this is intentional.
+# We believe that if you don't see that your King is threatened,
+# he should just die.
+
 @export var view: Node
 @export var controller: Node
 const BOARD_TYPE = "debug"
