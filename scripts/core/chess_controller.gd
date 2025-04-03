@@ -7,7 +7,7 @@ extends Node
 @export var model: Node
 @export var view: Node # ChessBoard node is connected here via the UI
 var selected_piece: ModelPiece = null
-var active_king: MinotaurKing = null # the king whose ability has been selected. TODO need KingPiece class
+var active_king: KingPiece = null # the king whose ability has been selected. TODO need KingPiece class
 var legal_moves: Array = []
 var is_input_locked: bool = false
 var active_ability_selected: bool = false
@@ -15,19 +15,30 @@ var active_ability_selected: bool = false
 func _ready():
 	pass
 	
+	
 func _on_square_clicked(coord: Vector2i):
 	if is_input_locked:
 		return
 
 	var piece = model.board[coord.x][coord.y]
-
+	
 	# Handle active ability target selection
 	if active_ability_selected:
+		if active_king == null: # Safety check
+			printerr("Active ability selected, but active_king is null!")
+			deselect_active_ability(true)
+			return
+
 		if coord in legal_moves:
-			active_king.active_target_selected(coord)
-			deselect_active_ability(false)
-		else: deselect_active_ability(true)
-		return
+			# Call the generic method - the specific King implementation will run
+			active_king.active_target_selected(coord) 
+			# Ability logic (including turn switch and cooldown reset) is now inside active_target_selected
+			# Deselect ability state *after* the action is initiated
+			deselect_active_ability(false) # Don't play powerdown sound if ability used
+		else:
+			# Clicked outside valid targets, cancel ability selection
+			deselect_active_ability(true) # Play powerdown sound for cancellation
+		return # End processing after handling ability click
 
 	# If no piece is currently selected
 	if selected_piece == null:
@@ -80,37 +91,48 @@ func _on_black_active_button_pressed() -> void:
 		select_active_ability("black")
 
 func select_active_ability(color: String):
-	deselect_piece() 	# if a piece was selected, deselect it
-	
-	# TODO: flash the screen or whatever
-	active_king = model.get_king(color)
-	if active_king.stunned: return
-	
+	deselect_piece()
+
+	active_king = model.get_king(color) # Returns a KingPiece or subclass
+
+	# Add check if King was found
+	if active_king == null:
+		printerr("Could not find king for color: ", color)
+		return # Don't proceed
+
+	# Check if King or ability is usable
+	if active_king.stunned:
+		print("King is stunned!") # TODO: Add UI feedback / sound
+		active_king = null # Don't keep reference if stunned
+		return
+	if active_king.current_cooldown > 0:
+		print("Ability is on cooldown: ", active_king.current_cooldown) # TODO: Add UI feedback / sound
+		active_king = null # Don't keep reference if on cooldown
+		return
+
 	active_ability_selected = true
-	view.spawn_ss_aura(active_king.view_node)# TODO: apply aura
-	legal_moves = active_king.get_charge_moves()
+	# Assuming view_node is correctly assigned in ModelPiece/KingPiece
+	if active_king.view_node:
+		view.spawn_ss_aura(active_king.view_node) # Apply visual effect
+	else:
+		printerr("Active king has no view_node assigned!")
+
+	# Use the generic method name now
+	legal_moves = active_king.get_active_ability_targets() # <-- Use generic method
 	view.show_legal_moves(legal_moves)
 	view.flash_screen()
-	
-#func deselect_active_ability():
-	#print("entering deselect_active_ability()")
-	## TODO: power down sound
-	#if active_ability_selected:
-		#print("active ability selected. doing stuff...")
-		#view.remove_ss_aura(active_king.view_node)
-		#view.clear_highlights()
-		#active_king = null
-		#active_ability_selected = false
-		#legal_moves = []
-		
+
 func deselect_active_ability(play_powerdown_sound: bool):
 	print("entering deselect_active_ability()")
-	# TODO: power down sound
-	if active_ability_selected:
+	if active_ability_selected and active_king != null: # Check active_king exists
 		print("active ability selected. doing stuff...")
-		# Replace immediate removal with fade-out animation
-		view.fade_out_ss_aura(active_king.view_node, play_powerdown_sound)
+		if active_king.view_node: # Check view_node exists
+			view.fade_out_ss_aura(active_king.view_node, play_powerdown_sound)
+		else:
+			printerr("Cannot fade aura, active_king has no view_node.")
 		view.clear_highlights()
-		active_king = null
-		active_ability_selected = false
-		legal_moves = []
+
+	# Always clear state regardless of view_node status
+	active_king = null
+	active_ability_selected = false
+	legal_moves.clear()

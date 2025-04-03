@@ -1,68 +1,38 @@
-#~~~~~~~~NEW FILE: minotaur_king.gd~~~~~~~~~~~~
-extends ModelPiece
+##~~~~~~~~NEW FILE: minotaur_king.gd~~~~~~~~~~~~
+extends KingPiece # <-- Inherit from KingPiece now
 class_name MinotaurKing
 
-# TODO: Make a KingPiece class to generalize cooldown functionality.
-# TODO: Maybe? Make an Ability class to hold ability data like CDs, name, perform()
+signal piece_started_ability(piece: KingPiece, ability_name: String)
+signal passive_ability_effect(piece: KingPiece, ability_name: String, affected_coords: Array)
 
+# Specific constants for the Minotaur King
 const PASSIVE_NAME: String = "Retaliating Rage"
-const ACTIVE_NAME: String = "Charge"
-const CHARGE_COOLDOWN: int = 4					# KingPiece class
-var current_cooldown: int = CHARGE_COOLDOWN						# KingPiece class
+const ACTIVE_NAME_MINOTAUR: String = "Charge" # Use a specific const name
+const BASE_COOLDOWN_MINOTAUR: int = 4 # Use a specific const name
 
 func _init(color: String, coord: Vector2i):
-	self.color = color
-	self.coordinate = coord
+	# Call the KingPiece constructor, passing the specific type
+	super._init(color, "minotaur_king", coord)
+
+	# Set Minotaur-specific properties
 	self.max_hp = 4
-	self.current_hp = 4
-	self.type = "minotaur_king"
-	self.is_king = true
-	
-func take_damage(damage: int = 1):
-	super.take_damage()
-	if current_hp > 0: retaliating_rage()
+	self.current_hp = self.max_hp # Use self.max_hp after it's set
+	self.base_cooldown = BASE_COOLDOWN_MINOTAUR # Set the specific base cooldown
+	self.active_ability_name = ACTIVE_NAME_MINOTAUR # Set the specific ability name
 
-func retaliating_rage() -> void:
-	if stunned: return # don't retaliate if stunned
-	
-	await view.start_minotaur_rage_intro(coordinate) #what's this do?
+	# Ensure cooldown starts ready (or set to base_cooldown if preferred)
+	set_cooldown(0) # Explicitly set initial state via the proper method
 
-	var board = model.board
-	var exploded_squares: Array = []
 
-	var adjacent_squares = model.get_adjacent_squares(coordinate)
+# --- Overridden Methods ---
 
-	for coord in adjacent_squares:
-		if coord.x >= 0 and coord.x < board.size() and coord.y >= 0 and coord.y < board[coord.x].size():
-			exploded_squares.append(coord)
+## Provide the specific name for this King's ability.
+func get_active_ability_name() -> String:
+	return ACTIVE_NAME_MINOTAUR
 
-			var target = board[coord.x][coord.y]
-			if target != null:
-				target.take_damage()
-
-	view.minotaur_retaliate(coordinate, exploded_squares)
-
-# KingPiece class
-func set_cooldown(x: int):
-	current_cooldown = x
-	if current_cooldown > 0: 
-		view.update_cooldown(self)
-	else: view.ready_cooldown(self)
-
-# KingPiece class
-func reset_cooldown():
-	set_cooldown(CHARGE_COOLDOWN)
-
-# KingPiece class
-func decrement_cooldown():
-	if current_cooldown > 0: set_cooldown(current_cooldown - 1)
-
-# KingPiece class
-func _on_turn_changed(current_turn: String):
-	super._on_turn_changed(current_turn)
-	if current_turn == color: decrement_cooldown()
-
-func get_charge_moves() -> Array:
+## Override: Calculate targets for the Charge ability.
+func get_active_ability_targets() -> Array:
+	# (This is the renamed 'get_charge_moves' logic)
 	var row = coordinate.x
 	var col = coordinate.y
 	var moves := []
@@ -79,41 +49,115 @@ func get_charge_moves() -> Array:
 		var empty_count = 0
 
 		while model.is_in_bounds(r, c):
-			var target = model.board[r][c]
+			var target_piece = model.board[r][c] # Renamed 'target' to 'target_piece' for clarity
 
-			if target == null:
+			if target_piece == null:
 				empty_count += 1
 				r += dir.x
 				c += dir.y
-			else:
+			else: # Hit a piece
+				# Can only target if >= 2 empty squares before it
 				if empty_count >= 2:
 					moves.append(Vector2i(r, c))
-				break  # stop after first piece
+				break # Stop searching in this direction
 
-		# Optionally: if we hit the wall after 2+ empties
+		# Check if we hit a wall after >= 2 empty squares
+		# Add the last valid empty square as a target (for wall impact)
 		if empty_count >= 2 and not model.is_in_bounds(r, c):
-			var last = Vector2i(r - dir.x, c - dir.y)
-			moves.append(last)
+			# The last valid square was before hitting the boundary
+			var last_valid_square = Vector2i(r - dir.x, c - dir.y)
+			if model.board[last_valid_square.x][last_valid_square.y] == null: # Ensure it's actually empty
+				moves.append(last_valid_square)
 
 	return moves
 
-## Called when a target is selected for the active ability.
-# inherited from KingPiece class?
-# @require coord is a legal move
+## Override: Execute the Charge ability when a target is selected.
 func active_target_selected(coord: Vector2i):
-	view.aura_loop_player.stop()
+	# --- Minotaur Charge Logic ---
+	var target_piece = model.board[coord.x][coord.y]
+
+	# Visuals/Sound: Stop the looping aura sound *before* the action
+	# This ideally should be signaled, but keeping original logic for now
+	if view and view.has_method("get_node") and view.get_node("AuraLoopPlayer"): # Safety checks
+		view.aura_loop_player.stop()
+
+	# Core charge logic
 	charge(coord)
 
-## Sends Minotaur King charging to the specified square.
-# If there is a piece there, combat ensues.
-# If not, it means he's hitting a wall and gets stunned.
+	# --- Post-Ability Actions ---
+	reset_cooldown() # Reset cooldown using the inherited method
+	if model: # Safety check
+		model.switch_turn() # Consume the turn
+	else:
+		printerr("MinotaurKing cannot switch turn, model reference is null.")
+
+
+# --- Minotaur-Specific Methods ---
+
+## The actual mechanics of moving and potentially stunning.
 func charge(coord: Vector2i):
-	var target = model.board[coord.x][coord.y]
+	var target_piece = model.board[coord.x][coord.y] # Check again inside charge
+
+	if target_piece != null:
+		# Combat happens *before* moving into the square
+		# Assuming charge instantly destroys non-King pieces for now
+		# TODO: Implement proper combat interaction if needed (HP, etc.)
+		if target_piece.is_king:
+			target_piece.take_damage(2) # Example: Charge does extra damage to kings?
+		else:
+			target_piece.destroy() # Instantly destroy non-kings
+			# Set the target square to null *before* moving the minotaur there
+			model.board[coord.x][coord.y] = null
 	
-	if target != null: target.destroy()
-		
-	model.actually_move_piece(self, coord) # TODO implement injecting unique animations
-	
-	if target == null: stun() # hitting a wall # TODO impact sound? camera shake? tweety bird sound?
-	reset_cooldown()
-	model.switch_turn()
+	# Move the Minotaur King
+	# Using model.actually_move_piece ensures board state is updated correctly
+	# Pass null for pawn_node as Minotaur doesn't promote
+	model.actually_move_piece(self, coord, null)
+
+	# If target_piece was null, it means we charged into an empty square (hit a wall/end of path)
+	if target_piece == null:
+		stun() # Hitting a wall stuns the Minotaur
+		# TODO: Add wall impact sound/visual effect via view signal
+
+## Override take_damage to include Retaliating Rage passive.
+func take_damage(damage: int = 1):
+	var hp_before = current_hp
+	super.take_damage(damage) # Call base take_damage logic (handles HP, destroy check)
+	# Only retaliate if HP actually decreased and the piece is not destroyed
+	if current_hp < hp_before and current_hp > 0:
+		retaliating_rage()
+
+
+func retaliating_rage() -> void:
+	if stunned: return
+	if not is_instance_valid(view): # Safety check
+		printerr("View invalid in retaliating_rage")
+		_perform_rage_damage() # Maybe just do damage if no view?
+		return
+
+	# Tell the view to start the animation
+	emit_signal("piece_started_ability", self, PASSIVE_NAME)
+
+	# Wait for the view to signal back that it's done
+	if view.has_signal("rage_intro_animation_completed"):
+		await view.rage_intro_animation_completed # Wait for the signal
+	else:
+		printerr("View missing rage_intro_animation_completed signal! Using fallback timer.")
+		await get_tree().create_timer(1.2).timeout # Fallback wait duration (adjust!)
+
+	# Now proceed with damage AFTER the wait
+	_perform_rage_damage()
+
+func _perform_rage_damage() -> void:
+	var exploded_squares: Array = []
+	var adjacent_squares = model.get_adjacent_squares(coordinate)
+
+	for adj_coord in adjacent_squares:
+		# No need for bounds check here IF get_adjacent_squares already does it
+		exploded_squares.append(adj_coord)
+		var target = model.board[adj_coord.x][adj_coord.y]
+		if target != null:
+			target.take_damage(1) # Standard rage damage
+
+	# Use signal for View interaction (Recommended change)
+	emit_signal("passive_ability_effect", self, PASSIVE_NAME, exploded_squares) # Signal view for effects

@@ -5,6 +5,8 @@ extends Node2D
 # It receives signals from the Model,
 # and renders the scene accordingly.
 
+signal rage_intro_animation_completed(coord: Vector2i)
+
 @export var controller: Node # ChessController is set here via the UI
 @export var white_cooldown_button: Node
 @export var black_cooldown_button: Node
@@ -152,12 +154,6 @@ func get_piece_at(coord: Vector2i) -> Node:
 		if piece.coordinate == coord:
 			return piece
 	return null
-
-#func hurt_piece_at(coord: Vector2i):
-	#for piece in $Pieces.get_children():
-		#if piece.coordinate == coord:
-			#spawn_splatter(piece.position)
-			#break
 	
 func destroy_piece(piece: Node):
 	# TODO: if piece.is_king: play king death sound, spawn king death effect
@@ -267,43 +263,23 @@ func minotaur_retaliate(center: Vector2i, targets: Array):
 		var pos = grid_to_screen(coord.x, coord.y)
 		spawn_explosion(pos)
 
+
 func start_minotaur_rage_intro(coord: Vector2i) -> void:
 	var minotaur_node = get_piece_at(coord)
-	if minotaur_node == null:
-		return
+	if minotaur_node == null: return
 
-	# Lock input
 	controller.is_input_locked = true
-
-	# Roar animation / shake / scale pop
 	var tween = create_tween()
+	# --- Your existing tween logic ---
 	tween.tween_property(minotaur_node, "scale", minotaur_node.scale * 1.25, 1).set_trans(Tween.TRANS_ELASTIC)
-	tween.tween_interval(0.15)
+	tween.tween_interval(0.15) # Adjust timing as needed
 	tween.tween_property(minotaur_node, "scale", minotaur_node.scale, 0.1)
-	
-	await tween.finished
-	
-	# Unlock input
+	# --- End of tween logic ---
+
+	await tween.finished # Wait for animation within the view function
+
 	controller.is_input_locked = false
-
-
-## Changes the cooldown display to reflect the king's new cooldown.
-func update_cooldown(piece: ModelPiece):
-	var format_string = "%s Cooldown: %s"
-	var text = format_string % [piece.ACTIVE_NAME, piece.current_cooldown]
-	
-	if piece.color == "white":
-		white_cooldown_button.text = text
-	else:
-		black_cooldown_button.text = text
-
-## Changes the display to reflect that the piece's active ability is ready to use.
-func ready_cooldown(piece: ModelPiece):
-	var ready_text = "%s!!!" % piece.ACTIVE_NAME
-	if piece.color == "white":
-		white_cooldown_button.text = ready_text
-	else:
-		black_cooldown_button.text = ready_text
+	emit_signal("rage_intro_animation_completed", coord) # Signal completion
 		
 func flash_screen(duration := 1):
 	flash_overlay.visible = true
@@ -312,3 +288,38 @@ func flash_screen(duration := 1):
 	var tween = create_tween()
 	tween.tween_property(flash_overlay, "color:a", 0.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.tween_callback(Callable(flash_overlay, "hide"))  # hide when done
+
+
+## Updates the cooldown display text for the given King.
+## Connected to KingPiece.cooldown_changed signal.
+func update_cooldown_display(king: KingPiece, new_cooldown: int):
+	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
+	var format_string = "%s CD: %s"
+	# Use the King's specific ability name
+	button.text = format_string % [king.get_active_ability_name(), new_cooldown]
+
+
+## Updates the display text to show the ability is ready.
+## Connected to KingPiece.cooldown_ready signal.
+func ready_cooldown_display(king: KingPiece):
+	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
+	# Use the King's specific ability name
+	var ready_text = "%s Ready!" % king.get_active_ability_name() # Changed from "!!!"
+	button.text = ready_text
+
+
+# --- Example Signal Handlers for Minotaur Passive ---
+
+## Called when a King signals it's starting an ability (e.g., Rage intro).
+func _on_piece_started_ability(piece: KingPiece, ability_name: String):
+	print("View received: ", piece.type, " started ability: ", ability_name)
+	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_NAME:
+		start_minotaur_rage_intro(piece.coordinate)
+		# You might want the rage intro to signal back when done if the Model needs to wait
+
+## Called when a King signals the effect of its passive ability.
+func _on_passive_ability_effect(piece: KingPiece, ability_name: String, affected_coords: Array):
+	print("View received: ", piece.type, " passive effect: ", ability_name, " affecting ", affected_coords)
+	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_NAME:
+		# Pass the King's coordinate as the center for the visual effect
+		minotaur_retaliate(piece.coordinate, affected_coords)

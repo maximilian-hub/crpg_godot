@@ -95,7 +95,27 @@ func inject_dependencies():
 			if piece != null:
 				piece.view = view
 				piece.model = self
-				connect("turn_changed", piece._on_turn_changed)
+				# Connect turn changed for stun timer (already exists)
+				if not piece.is_connected("turn_changed", piece._on_turn_changed):
+					connect("turn_changed", piece._on_turn_changed)
+
+				# Connect KingPiece specific signals TO the view
+				if piece is KingPiece: # Check if the piece is a KingPiece or subclass
+					var king_piece: KingPiece = piece 
+
+					# Connect cooldown signals if not already connected
+					if not king_piece.is_connected("cooldown_changed", view.update_cooldown_display):
+						king_piece.connect("cooldown_changed", view.update_cooldown_display)
+					if not king_piece.is_connected("cooldown_ready", view.ready_cooldown_display):
+						king_piece.connect("cooldown_ready", view.ready_cooldown_display)
+
+					# Example connections for new passive ability signals (Minotaur)
+					if king_piece is MinotaurKing:
+						if not king_piece.is_connected("piece_started_ability", view._on_piece_started_ability):
+							king_piece.connect("piece_started_ability", view._on_piece_started_ability)
+						if not king_piece.is_connected("passive_ability_effect", view._on_passive_ability_effect):
+							king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
+
 
 func get_legal_moves(piece: ModelPiece) -> Array:
 	var moves := []
