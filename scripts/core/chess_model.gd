@@ -14,6 +14,14 @@ var last_move: Dictionary = {}		# from, to, piecename
 var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 
+const Pawn = preload("res://scripts/pieces/pawn.gd")
+const Knight = preload("res://scripts/pieces/knight.gd")
+const Bishop = preload("res://scripts/pieces/bishop.gd")
+const Rook = preload("res://scripts/pieces/rook.gd")
+const Queen = preload("res://scripts/pieces/queen.gd")
+const ClassicKing = preload("res://scripts/pieces/classic_king.gd")
+const MinotaurKing = preload("res://scripts/pieces/minotaur_king.gd")
+
 var custom_size = 16
 
 func _ready():
@@ -44,55 +52,55 @@ func initialize_board():
 	inject_dependencies() # passes references to the model and view to each piece
 
 func initialize_default_pieces():
-	board[0][0] = ModelPiece.new("black", "rook", Vector2i(0, 0))
-	board[0][1] = ModelPiece.new("black", "knight", Vector2i(0, 1))
-	board[0][2] = ModelPiece.new("black", "bishop", Vector2i(0, 2))
-	board[0][3] = ModelPiece.new("black", "queen", Vector2i(0, 3))
+	board[0][0] = Rook.new("black", "rook", Vector2i(0, 0))
+	board[0][1] = Knight.new("black", "knight", Vector2i(0, 1))
+	board[0][2] = Bishop.new("black", "bishop", Vector2i(0, 2))
+	board[0][3] = Queen.new("black", "queen", Vector2i(0, 3))
 	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
-	board[0][5] = ModelPiece.new("black", "bishop", Vector2i(0, 5))
-	board[0][6] = ModelPiece.new("black", "knight", Vector2i(0, 6))
-	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
+	board[0][5] = Bishop.new("black", "bishop", Vector2i(0, 5))
+	board[0][6] = Knight.new("black", "knight", Vector2i(0, 6))
+	board[0][7] = Rook.new("black", "rook", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = ModelPiece.new("black", "pawn", Vector2i(1, x)) #black pawns
-		board[6][x] = ModelPiece.new("white", "pawn", Vector2i(6, x))
+		board[1][x] = Pawn.new("black", "pawn", Vector2i(1, x)) 
+		board[6][x] = Pawn.new("white", "pawn", Vector2i(6, x))
 
-	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
-	board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
-	board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
-	board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
+	board[7][0] = Rook.new("white", "rook", Vector2i(7, 0))
+	board[7][1] = Knight.new("white", "knight", Vector2i(7, 1))
+	board[7][2] = Bishop.new("white", "bishop", Vector2i(7, 2))
+	board[7][3] = Queen.new("white", "queen", Vector2i(7, 3))
 	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
-	board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
-	board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
-	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
+	board[7][5] = Bishop.new("white", "bishop", Vector2i(7, 5))
+	board[7][6] = Knight.new("white", "knight", Vector2i(7, 6))
+	board[7][7] = Rook.new("white", "rook", Vector2i(7, 7))
 
 func initialize_debug_pieces():
-	board[0][0] = ModelPiece.new("black", "rook", Vector2i(0, 0))
-	board[0][1] = ModelPiece.new("black", "knight", Vector2i(0, 1))
-	board[0][2] = ModelPiece.new("black", "bishop", Vector2i(0, 2))
-	board[0][3] = ModelPiece.new("black", "queen", Vector2i(0, 3))
+	board[0][0] = Rook.new("black", "rook", Vector2i(0, 0))
+	board[0][1] = Knight.new("black", "knight", Vector2i(0, 1))
+	board[0][2] = Bishop.new("black", "bishop", Vector2i(0, 2))
+	board[0][3] = Queen.new("black", "queen", Vector2i(0, 3))
 	#board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
-	board[0][5] = ModelPiece.new("black", "bishop", Vector2i(0, 5))
-	board[0][6] = ModelPiece.new("black", "knight", Vector2i(0, 6))
-	board[0][7] = ModelPiece.new("black", "rook", Vector2i(0, 7))
+	board[0][5] = Bishop.new("black", "bishop", Vector2i(0, 5))
+	board[0][6] = Knight.new("black", "knight", Vector2i(0, 6))
+	board[0][7] = Rook.new("black", "rook", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = ModelPiece.new("white", "pawn", Vector2i(1, x)) #black pawns
-		board[6][x] = ModelPiece.new("white", "pawn", Vector2i(6, x))
+		board[1][x] = Pawn.new("white", "pawn", Vector2i(1, x)) #black pawns
+		board[6][x] = Pawn.new("white", "pawn", Vector2i(6, x))
 		
-	board[1][5] = ModelPiece.new("black", "pawn", Vector2i(1, 5))
-	board[3][4] = ModelPiece.new("white", "pawn", Vector2i(3, 4))
+	board[1][5] = Pawn.new("black", "pawn", Vector2i(1, 5))
+	board[3][4] = Pawn.new("white", "pawn", Vector2i(3, 4))
 	board[3][1] = MinotaurKing.new("white", Vector2i(3,1))
 	board[3][2] = MinotaurKing.new("black", Vector2i(3,2))
 
-	board[7][0] = ModelPiece.new("white", "rook", Vector2i(7, 0))
+	board[7][0] = Rook.new("white", "rook", Vector2i(7, 0))
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
 	#board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
 	#board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
 	#board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
 	#board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
-	board[7][7] = ModelPiece.new("white", "rook", Vector2i(7, 7))
+	board[7][7] = Rook.new("white", "rook", Vector2i(7, 7))
 
 func inject_dependencies():
 	for row in board:
@@ -122,169 +130,16 @@ func inject_dependencies():
 							king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
 
 
+
 func get_legal_moves(piece: ModelPiece) -> Array:
-	var moves := []
-	
-	match piece.type:
-		"pawn":
-			moves = get_pawn_moves(piece)
-		"knight":
-			moves = get_knight_moves(piece)
-		"bishop":
-			moves = get_bishop_moves(piece)
-		"rook":
-			moves = get_rook_moves(piece)
-		"queen":
-			moves = get_queen_moves(piece)
-		"king":
-			moves = get_king_moves(piece)
-		"minotaur_king":
-			moves = get_king_moves(piece)
-			#moves = piece.get_charge_moves()
-	
-	return moves
-
-func get_pawn_moves(piece: ModelPiece) -> Array:
-	piece.print_piece()
-	var row = piece.coordinate.x
-	var col = piece.coordinate.y
-	var direction = -1 if piece.color == "white" else 1
-	var moves := []
-
-	var forward_one = row + direction
-	if is_in_bounds(forward_one, col) and board[forward_one][col] == null:
-		moves.append(Vector2i(forward_one, col))
-
-	var forward_two = row + (direction * 2)
-	if not piece.has_moved and is_in_bounds(forward_two, col) and board[forward_two][col] == null:
-		moves.append(Vector2i(forward_two, col))
-
-	for dc in [-1, 1]:
-		var diag_col = col + dc
-		if is_in_bounds(forward_one, diag_col):
-			var target = board[forward_one][diag_col]
-			if target != null and target.color != piece.color:
-				moves.append(Vector2i(forward_one, diag_col))
-
-	# En passant
-	if last_move.has("piece") and last_move["piece"].type == "pawn":
-		var last_from = last_move["from"]
-		var last_to = last_move["to"]
-		if abs(last_to.x - last_from.x) == 2 and last_to.x == row:
-			for dc in [-1, 1]:
-				var side_col = col + dc
-				if is_in_bounds(row, side_col) and last_to.y == side_col:
-					var en_passant_row = row + direction
-					moves.append(Vector2i(en_passant_row, side_col))
-
-	return moves
-
-func get_knight_moves(piece: ModelPiece) -> Array:
-	var row = piece.coordinate.x
-	var col = piece.coordinate.y
-	var color = piece.color
-	var moves := []
-	var offsets = [
-		Vector2i(2, 1), Vector2i(2, -1),
-		Vector2i(-2, 1), Vector2i(-2, -1),
-		Vector2i(1, 2), Vector2i(-1, 2),
-		Vector2i(1, -2), Vector2i(-1, -2),
-	]
-
-	for offset in offsets:
-		var target_pos = Vector2i(row, col) + offset
-		if is_in_bounds(target_pos.x, target_pos.y):
-			var target = board[target_pos.x][target_pos.y]
-			if target == null or target.color != color:
-				moves.append(target_pos)
-
-	return moves
-
-func get_bishop_moves(piece: ModelPiece) -> Array:
-	var row = piece.coordinate.x
-	var col = piece.coordinate.y
-	var color = piece.color
-	var moves := []
-	var directions = [
-		Vector2i(-1, -1),
-		Vector2i(-1, 1),
-		Vector2i(1, 1),
-		Vector2i(1, -1),
-	]
-
-	for dir in directions:
-		var r = row + dir.x
-		var c = col + dir.y
-		while is_in_bounds(r, c):
-			var target = board[r][c]
-			if target == null:
-				moves.append(Vector2i(r, c))
-			elif target.color == color:
-				break
-			else:
-				moves.append(Vector2i(r, c))
-				break
-			r += dir.x
-			c += dir.y
-
-	return moves
-
-func get_rook_moves(piece: ModelPiece) -> Array:
-	var row = piece.coordinate.x
-	var col = piece.coordinate.y
-	var color = piece.color
-	var moves := []
-	var directions = [
-		Vector2i(-1, 0),
-		Vector2i(1, 0),
-		Vector2i(0, 1),
-		Vector2i(0, -1),
-	]
-
-	for dir in directions:
-		var r = row + dir.x
-		var c = col + dir.y
-		while is_in_bounds(r, c):
-			var target = board[r][c]
-			if target == null:
-				moves.append(Vector2i(r, c))
-			elif target.color == color:
-				break
-			else:
-				moves.append(Vector2i(r, c))
-				break
-			r += dir.x
-			c += dir.y
-
-	return moves
-
-func get_queen_moves(piece: ModelPiece) -> Array:
-	return get_rook_moves(piece) + get_bishop_moves(piece)
-
-func get_king_moves(piece: ModelPiece) -> Array:
-	var row = piece.coordinate.x
-	var col = piece.coordinate.y
-	var color = piece.color
-	var moves := []
-
-	for dr in range(-1, 2):
-		for dc in range(-1, 2):
-			if dr == 0 and dc == 0:
-				continue
-			var r = row + dr
-			var c = col + dc
-			if is_in_bounds(r, c):
-				var target = board[r][c]
-				if target == null or target.color != color:
-					moves.append(Vector2i(r, c))
-
-	if not piece.has_moved:
-		if can_castle_through(row, col, row, 0, color):
-			moves.append(Vector2i(row, col - 2))
-		if can_castle_through(row, col, row, 7, color):
-			moves.append(Vector2i(row, col + 2))
-
-	return moves
+	if not is_instance_valid(piece): # Basic safety check
+		printerr("Attempted to get moves for invalid piece instance.")
+		return []
+	if piece.has_method("get_legal_moves"):
+		return piece.get_legal_moves()
+	else:
+		printerr("Piece type %s does not have get_legal_moves method!" % piece.type)
+		return []
 
 ## A player's move.
 # Handles special moves, normal moves, and ends the turn.

@@ -31,7 +31,9 @@ func _init(_color: String, _type: String, _coordinate: Vector2i):
 	type = _type
 	coordinate = _coordinate	
 	current_hp = max_hp
-
+	
+func get_legal_moves() -> Array:
+	return []
 
 func take_damage(damage: int = 1):
 	current_hp -= 1

@@ -32,6 +32,31 @@ func _init(_color: String, _type: String, _coordinate: Vector2i):
 	# Abilities start ready by default.
 	# Specific Kings can override base_cooldown in their own _init.
 	set_cooldown(0)
+	
+func get_legal_moves() -> Array:
+	var row = coordinate.x
+	var col = coordinate.y
+
+	var moves := []
+
+	for dr in range(-1, 2):
+		for dc in range(-1, 2):
+			if dr == 0 and dc == 0:
+				continue
+			var r = row + dr
+			var c = col + dc
+			if model.is_in_bounds(r, c):
+				var target = model.board[r][c]
+				if target == null or target.color != color:
+					moves.append(Vector2i(r, c))
+
+	if not has_moved:
+		if model.can_castle_through(row, col, row, 0, color):
+			moves.append(Vector2i(row, col - 2))
+		if model.can_castle_through(row, col, row, 7, color):
+			moves.append(Vector2i(row, col + 2))
+
+	return moves
 
 
 ## Sets the current cooldown and emits the appropriate signal.
