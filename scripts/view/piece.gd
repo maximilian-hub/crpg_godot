@@ -25,6 +25,9 @@ func update_sprite():
 	
 	if model.type == "minotaur_king":
 		sprite.scale = Vector2(0.5, 0.5)
+	
+	if model.type == "bone_pawn":
+		sprite.scale = Vector2(0.125, 0.125)
 
 func update_hp(new_hp: int):
 	model.current_hp = new_hp

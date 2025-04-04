@@ -52,55 +52,55 @@ func initialize_board():
 	inject_dependencies() # passes references to the model and view to each piece
 
 func initialize_default_pieces():
-	board[0][0] = Rook.new("black", "rook", Vector2i(0, 0))
-	board[0][1] = Knight.new("black", "knight", Vector2i(0, 1))
-	board[0][2] = Bishop.new("black", "bishop", Vector2i(0, 2))
-	board[0][3] = Queen.new("black", "queen", Vector2i(0, 3))
+	board[0][0] = Rook.new("black", Vector2i(0, 0))
+	board[0][1] = Knight.new("black", Vector2i(0, 1))
+	board[0][2] = Bishop.new("black", Vector2i(0, 2))
+	board[0][3] = Queen.new("black", Vector2i(0, 3))
 	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
-	board[0][5] = Bishop.new("black", "bishop", Vector2i(0, 5))
-	board[0][6] = Knight.new("black", "knight", Vector2i(0, 6))
-	board[0][7] = Rook.new("black", "rook", Vector2i(0, 7))
+	board[0][5] = Bishop.new("black", Vector2i(0, 5))
+	board[0][6] = Knight.new("black", Vector2i(0, 6))
+	board[0][7] = Rook.new("black", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = Pawn.new("black", "pawn", Vector2i(1, x)) 
-		board[6][x] = Pawn.new("white", "pawn", Vector2i(6, x))
+		board[1][x] = Pawn.new("black", Vector2i(1, x)) 
+		board[6][x] = Pawn.new("white", Vector2i(6, x))
 
-	board[7][0] = Rook.new("white", "rook", Vector2i(7, 0))
-	board[7][1] = Knight.new("white", "knight", Vector2i(7, 1))
-	board[7][2] = Bishop.new("white", "bishop", Vector2i(7, 2))
-	board[7][3] = Queen.new("white", "queen", Vector2i(7, 3))
+	board[7][0] = Rook.new("white", Vector2i(7, 0))
+	board[7][1] = Knight.new("white", Vector2i(7, 1))
+	board[7][2] = Bishop.new("white", Vector2i(7, 2))
+	board[7][3] = Queen.new("white", Vector2i(7, 3))
 	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
-	board[7][5] = Bishop.new("white", "bishop", Vector2i(7, 5))
-	board[7][6] = Knight.new("white", "knight", Vector2i(7, 6))
-	board[7][7] = Rook.new("white", "rook", Vector2i(7, 7))
+	board[7][5] = Bishop.new("white", Vector2i(7, 5))
+	board[7][6] = Knight.new("white", Vector2i(7, 6))
+	board[7][7] = Rook.new("white", Vector2i(7, 7))
 
 func initialize_debug_pieces():
-	board[0][0] = Rook.new("black", "rook", Vector2i(0, 0))
-	board[0][1] = Knight.new("black", "knight", Vector2i(0, 1))
-	board[0][2] = Bishop.new("black", "bishop", Vector2i(0, 2))
-	board[0][3] = Queen.new("black", "queen", Vector2i(0, 3))
+	board[0][0] = Rook.new("black", Vector2i(0, 0))
+	board[0][1] = Knight.new("black", Vector2i(0, 1))
+	board[0][2] = Bishop.new("black", Vector2i(0, 2))
+	board[0][3] = Queen.new("black", Vector2i(0, 3))
 	#board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
-	board[0][5] = Bishop.new("black", "bishop", Vector2i(0, 5))
-	board[0][6] = Knight.new("black", "knight", Vector2i(0, 6))
-	board[0][7] = Rook.new("black", "rook", Vector2i(0, 7))
+	board[0][5] = Bishop.new("black", Vector2i(0, 5))
+	board[0][6] = Knight.new("black", Vector2i(0, 6))
+	board[0][7] = Rook.new("black", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = Pawn.new("white", "pawn", Vector2i(1, x)) #black pawns
-		board[6][x] = Pawn.new("white", "pawn", Vector2i(6, x))
+		board[1][x] = Pawn.new("white", Vector2i(1, x)) 
+		board[6][x] = Pawn.new("white", Vector2i(6, x))
 		
-	board[1][5] = Pawn.new("black", "pawn", Vector2i(1, 5))
-	board[3][4] = Pawn.new("white", "pawn", Vector2i(3, 4))
+	board[1][5] = BonePawn.new("black", Vector2i(1, 5))
+	board[3][4] = Pawn.new("white", Vector2i(3, 4))
 	board[3][1] = MinotaurKing.new("white", Vector2i(3,1))
 	board[3][2] = MinotaurKing.new("black", Vector2i(3,2))
 
-	board[7][0] = Rook.new("white", "rook", Vector2i(7, 0))
+	board[7][0] = Rook.new("white", Vector2i(7, 0))
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
 	#board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
 	#board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
 	#board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
 	#board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
-	board[7][7] = Rook.new("white", "rook", Vector2i(7, 7))
+	board[7][7] = Rook.new("white", Vector2i(7, 7))
 
 func inject_dependencies():
 	for row in board:

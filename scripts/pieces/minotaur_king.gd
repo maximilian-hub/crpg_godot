@@ -12,7 +12,8 @@ const BASE_COOLDOWN_MINOTAUR: int = 4 # Use a specific const name
 
 func _init(color: String, coord: Vector2i):
 	# Call the KingPiece constructor, passing the specific type
-	super._init(color, "minotaur_king", coord)
+	super._init(color, coord)
+	type = "minotaur_king"
 
 	# Set Minotaur-specific properties
 	self.max_hp = 4

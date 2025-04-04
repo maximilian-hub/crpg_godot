@@ -26,8 +26,8 @@ var active_ability_name: String = "Active Ability" # Default, override
 
 # --- Methods ---
 
-func _init(_color: String, _type: String, _coordinate: Vector2i):
-	super._init(_color, _type, _coordinate) # Call the parent ModelPiece constructor
+func _init(_color: String, _coordinate: Vector2i):
+	super._init(_color, _coordinate) # Call the parent ModelPiece constructor
 	self.is_king = true
 	# Abilities start ready by default.
 	# Specific Kings can override base_cooldown in their own _init.

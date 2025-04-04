@@ -26,9 +26,8 @@ var cooldown: int = 0
 
 var is_king: bool = false
 
-func _init(_color: String, _type: String, _coordinate: Vector2i):
+func _init(_color: String, _coordinate: Vector2i):
 	color = _color
-	type = _type
 	coordinate = _coordinate	
 	current_hp = max_hp
 	
