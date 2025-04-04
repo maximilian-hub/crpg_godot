@@ -14,8 +14,7 @@ var active_ability_selected: bool = false
 
 func _ready():
 	pass
-	
-	
+		
 func _on_square_clicked(coord: Vector2i):
 	if is_input_locked:
 		return
@@ -30,15 +29,12 @@ func _on_square_clicked(coord: Vector2i):
 			return
 
 		if coord in legal_moves:
-			# Call the generic method - the specific King implementation will run
 			active_king.active_target_selected(coord) 
-			# Ability logic (including turn switch and cooldown reset) is now inside active_target_selected
-			# Deselect ability state *after* the action is initiated
 			deselect_active_ability(false) # Don't play powerdown sound if ability used
 		else:
 			# Clicked outside valid targets, cancel ability selection
 			deselect_active_ability(true) # Play powerdown sound for cancellation
-		return # End processing after handling ability click
+		return 
 
 	# If no piece is currently selected
 	if selected_piece == null:

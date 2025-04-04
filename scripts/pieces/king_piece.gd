@@ -101,9 +101,4 @@ func get_active_ability_targets() -> Array:
 func active_target_selected(target):
 	# Subclasses MUST implement this to execute their ability.
 	printerr("active_target_selected() not implemented for ", self.type)
-	# Example structure for subclasses:
-	# 1. Perform ability logic (move piece, spawn effects, damage targets etc.)
-	#    using the 'target' information.
-	# 2. Call reset_cooldown()
-	# 3. Call model.switch_turn() if the ability consumes the turn.
 	pass

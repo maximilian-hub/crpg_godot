@@ -130,22 +130,8 @@ func take_damage(damage: int = 1):
 
 func retaliating_rage() -> void:
 	if stunned: return
-	if not is_instance_valid(view): # Safety check
-		printerr("View invalid in retaliating_rage")
-		_perform_rage_damage() # Maybe just do damage if no view?
-		return
-
-	# Tell the view to start the animation
-	emit_signal("piece_started_ability", self, PASSIVE_NAME)
-
-	# Wait for the view to signal back that it's done
-	if view.has_signal("rage_intro_animation_completed"):
-		await view.rage_intro_animation_completed # Wait for the signal
-	else:
-		printerr("View missing rage_intro_animation_completed signal! Using fallback timer.")
-		await get_tree().create_timer(1.2).timeout # Fallback wait duration (adjust!)
-
-	# Now proceed with damage AFTER the wait
+	emit_signal("piece_started_ability", self, PASSIVE_NAME) # trigger animation
+	await view.rage_intro_animation_completed  # wait for animation to finish
 	_perform_rage_damage()
 
 func _perform_rage_damage() -> void:

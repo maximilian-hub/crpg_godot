@@ -1,3 +1,7 @@
+#~~~~~~~~NEW FILE: piece.gd~~~~~~~~~~~~
+# Attached to the piece scene.
+# The View layer for each piece.
+
 extends Area2D
 
 var coordinate: Vector2i
@@ -13,7 +17,6 @@ func set_model(model_data: ModelPiece):
 func set_sprite(sprite_name: String): # "white_queen"
 	var sprite = $Sprite2D
 	sprite.texture = load("res://assets/pieces/" + sprite_name + ".png")
-
 
 func update_sprite():
 	var sprite_name = model.color + "_" + model.type
