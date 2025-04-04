@@ -21,6 +21,7 @@ const Rook = preload("res://scripts/pieces/rook.gd")
 const Queen = preload("res://scripts/pieces/queen.gd")
 const ClassicKing = preload("res://scripts/pieces/classic_king.gd")
 const MinotaurKing = preload("res://scripts/pieces/minotaur_king.gd")
+const NecromancerKing = preload("res://scripts/pieces/necromancer_king.gd")
 
 var custom_size = 16
 
@@ -90,8 +91,8 @@ func initialize_debug_pieces():
 		
 	board[1][5] = BonePawn.new("black", Vector2i(1, 5))
 	board[3][4] = Pawn.new("white", Vector2i(3, 4))
-	board[3][1] = MinotaurKing.new("white", Vector2i(3,1))
-	board[3][2] = MinotaurKing.new("black", Vector2i(3,2))
+	board[3][1] = NecromancerKing.new("white", Vector2i(3,1))
+	board[3][2] = NecromancerKing.new("black", Vector2i(3,2))
 
 	board[7][0] = Rook.new("white", Vector2i(7, 0))
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
