@@ -108,26 +108,18 @@ func inject_dependencies():
 			if piece != null:
 				piece.view = view
 				piece.model = self
-				# Connect turn changed for stun timer (already exists)
-				if not piece.is_connected("turn_changed", piece._on_turn_changed):
-					connect("turn_changed", piece._on_turn_changed)
+				connect("turn_changed", piece._on_turn_changed)
 
 				# Connect KingPiece specific signals TO the view
 				if piece is KingPiece: # Check if the piece is a KingPiece or subclass
 					var king_piece: KingPiece = piece 
+					king_piece.connect("cooldown_changed", view.update_cooldown_display)
+					king_piece.connect("cooldown_ready", view.ready_cooldown_display)
+					king_piece.set_cooldown(king_piece.base_cooldown) # this is here to ensure the buttons show the proper text immediately
 
-					# Connect cooldown signals if not already connected
-					if not king_piece.is_connected("cooldown_changed", view.update_cooldown_display):
-						king_piece.connect("cooldown_changed", view.update_cooldown_display)
-					if not king_piece.is_connected("cooldown_ready", view.ready_cooldown_display):
-						king_piece.connect("cooldown_ready", view.ready_cooldown_display)
-
-					# Example connections for new passive ability signals (Minotaur)
 					if king_piece is MinotaurKing:
-						if not king_piece.is_connected("piece_started_ability", view._on_piece_started_ability):
-							king_piece.connect("piece_started_ability", view._on_piece_started_ability)
-						if not king_piece.is_connected("passive_ability_effect", view._on_passive_ability_effect):
-							king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
+						king_piece.connect("piece_started_ability", view._on_piece_started_ability)
+						king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
 
 
 
@@ -153,7 +145,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	var is_combat = move_is_combat(is_en_passant, to)
 
 	if is_en_passant: handle_en_passant(piece, from, to)
-	elif is_combat: handle_combat(piece, from, to, piece_node) 
+	elif is_combat: handle_combat(piece, to, piece_node) 
 	elif is_castling: handle_castling(piece, from, to)
 	else: actually_move_piece(piece, to, piece_node)	# a normal move with no captures or exceptions
 	
@@ -232,7 +224,7 @@ func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	actually_move_piece(piece, to)
 
 # Assumes a piece is moving to attack another piece.
-func handle_combat(attacker: ModelPiece, from: Vector2i, to: Vector2i, piece_node: Node):
+func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
 	var defender = board[to.x][to.y]
 	
 	if defender.current_hp == 1: # normal capture

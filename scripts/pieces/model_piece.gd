@@ -35,14 +35,13 @@ func get_legal_moves() -> Array:
 	return []
 
 func take_damage(damage: int = 1):
-	current_hp -= 1
+	current_hp -= damage
 	var destroyed = current_hp <= 0
 	
 	if destroyed:
 		destroy()
 	else:
 		view.spawn_splatter(coordinate)
-		var hp_bar = $HpBar
 		view_node.update_hp(current_hp) # Notify the view layer
 
 func destroy():
@@ -66,10 +65,9 @@ func _on_turn_changed(current_turn: String):
 	pass
 
 func active_target_selected(coord: Vector2i):
-	pass
+	pass # override
 
 func stun(duration: int = 2):
-	print("stunned :( owie")
 	stunned = true
 	stun_timer = duration
 	view.spawn_stun_stars(view_node)
@@ -80,7 +78,5 @@ func decrement_stun_timer():
 
 func unstun():
 	stunned = false
-	print("not stunned anymore hehe")
 	view.remove_stun_stars(coordinate)
-		# TODO: remove visual stun effect
 		

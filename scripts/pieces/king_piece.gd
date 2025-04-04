@@ -2,7 +2,7 @@
 extends ModelPiece
 class_name KingPiece
 
-## Base class for all King pieces in Chess RPG.
+## Base class for all King pieces.
 ## Handles common King functionality like cooldowns for active abilities.
 
 # --- Signals ---
@@ -63,6 +63,7 @@ func get_legal_moves() -> Array:
 func set_cooldown(value: int):
 	current_cooldown = max(0, value) # Ensure cooldown doesn't go below 0
 	if current_cooldown > 0:
+		print("emitting cooldown_changed")
 		emit_signal("cooldown_changed", self, current_cooldown)
 	else:
 		emit_signal("cooldown_ready", self)
@@ -80,7 +81,7 @@ func decrement_cooldown():
 ## Handles decrementing stun AND ability cooldowns.
 func _on_turn_changed(current_turn: String):
 	super._on_turn_changed(current_turn) # Handle stun decrement from ModelPiece
-	if current_turn == color:
+	if current_turn != color:
 		decrement_cooldown()
 
 # --- Virtual Methods (to be overridden by subclasses) ---
