@@ -11,9 +11,10 @@
 [node name="ChessGame" type="Node"]
 script = ExtResource("1_wnm4a")
 
-[node name="ChessModel" type="Node" parent="." node_paths=PackedStringArray("view")]
+[node name="ChessModel" type="Node" parent="." node_paths=PackedStringArray("view", "controller")]
 script = ExtResource("2_fv27a")
 view = NodePath("../CanvasLayer/ChessBoard")
+controller = NodePath("../ChessController")
 
 [node name="ChessController" type="Node" parent="." node_paths=PackedStringArray("model", "view")]
 script = ExtResource("3_s46tk")

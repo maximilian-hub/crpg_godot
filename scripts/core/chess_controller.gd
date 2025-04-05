@@ -7,27 +7,36 @@ extends Node
 @export var model: Node
 @export var view: Node # ChessBoard node is connected here via the UI
 var selected_piece: ModelPiece = null
-var active_king: KingPiece = null # the king whose ability has been selected. TODO need KingPiece class
+var active_king: KingPiece = null # the king whose ability has been selected.
+var active_piece: ModelPiece = null # the piece whose non-move ability has been selected.
 var legal_moves: Array = []
 var is_input_locked: bool = false
 var active_ability_selected: bool = false
+var non_move_selection_mode: bool = false
 
 func _ready():
 	pass
 		
 func _on_square_clicked(coord: Vector2i):
+	var temp_selected_piece = selected_piece # this is here to resolve some timing issues i was having with Necro's passive, where the highlighted squares were being immediately un-highlighted by deselect_piece()
+	
 	if is_input_locked:
 		return
 
 	var piece = model.board[coord.x][coord.y]
 	
+	# Handle special non-move target selection:
+	if non_move_selection_mode:
+		if coord in legal_moves:
+			active_piece._on_special_target_selected(coord)
+			end_non_move_selection_mode()
+			deselect_piece()
+			model.switch_turn()
+
+			
+	
 	# Handle active ability target selection
 	if active_ability_selected:
-		if active_king == null: # Safety check
-			printerr("Active ability selected, but active_king is null!")
-			deselect_active_ability(true)
-			return
-
 		if coord in legal_moves:
 			active_king.active_target_selected(coord) 
 			deselect_active_ability(false) # Don't play powerdown sound if ability used
@@ -44,8 +53,8 @@ func _on_square_clicked(coord: Vector2i):
 
 	# If clicking a legal move destination
 	if coord in legal_moves:
-		model.move_piece(selected_piece, coord)
 		deselect_piece()
+		model.move_piece(temp_selected_piece, coord) # see earlier comment where temp_selected_piece is declared
 		return
 
 	# Fallback: deselect and possibly select new piece
@@ -128,3 +137,17 @@ func deselect_active_ability(play_powerdown_sound: bool):
 	active_king = null
 	active_ability_selected = false
 	legal_moves.clear()
+
+## When you need the user to select a square or option that's not a normal move.
+## Right now, this is just used for Necro's passive, which activates when a major/minor piece dies.
+func initiate_non_move_selection_mode(piece: ModelPiece, _legal_moves: Array):
+	non_move_selection_mode = true
+	active_piece = piece
+	legal_moves = _legal_moves
+	view.highlight_squares(legal_moves)
+	pass
+
+func end_non_move_selection_mode():
+	non_move_selection_mode = false
+	active_piece = null
+	view.clear_highlights()

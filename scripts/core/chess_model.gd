@@ -13,6 +13,9 @@ var board: Array
 var last_move: Dictionary = {}		# from, to, piecename
 var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
+signal piece_destroyed(piece: ModelPiece)
+
+const MAJOR_MINOR_BASE_TYPES = ["knight", "rook", "bishop", "queen"]
 
 const Pawn = preload("res://scripts/pieces/pawn.gd")
 const Knight = preload("res://scripts/pieces/knight.gd")
@@ -57,14 +60,14 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = NecromancerKing.new("black", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = BonePawn.new("black", Vector2i(1, x)) 
-		board[6][x] = BonePawn.new("white", Vector2i(6, x))
+		board[1][x] = Pawn.new("black", Vector2i(1, x)) 
+		board[6][x] = Pawn.new("white", Vector2i(6, x))
 
 	board[7][0] = Rook.new("white", Vector2i(7, 0))
 	board[7][1] = Knight.new("white", Vector2i(7, 1))
@@ -109,7 +112,9 @@ func inject_dependencies():
 			if piece != null:
 				piece.view = view
 				piece.model = self
+				piece.controller = controller
 				connect("turn_changed", piece._on_turn_changed)
+				connect("piece_destroyed", piece._on_piece_destroyed)
 
 				# Connect KingPiece specific signals TO the view
 				if piece is KingPiece: # Check if the piece is a KingPiece or subclass
@@ -269,12 +274,11 @@ func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
 	var defender = board[to.x][to.y]
 	
 	if defender.current_hp == 1: # normal capture
-		view.destroy_piece(defender.view_node)
+		destroy_piece(defender)
 		actually_move_piece(attacker, to)
 		promotion_check(attacker, piece_node, to)
 	else: # doing damage, attacker doesn't move
 		defender.take_damage()	
-		#defender.on_damaged(attacker, board, view)
 			
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
@@ -388,4 +392,8 @@ func get_empty_squares_to_furthest_rank(color: String) -> Array:
 	var squares = get_empty_squares(lower_left_corner, upper_right_corner)
 
 	return squares
-	
+
+func destroy_piece(piece: ModelPiece):
+	piece_destroyed.emit(piece)
+	view.destroy_piece(piece.view_node)
+	board[piece.coordinate.x][piece.coordinate.y] = null
