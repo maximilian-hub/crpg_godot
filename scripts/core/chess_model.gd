@@ -8,7 +8,7 @@ extends Node
 
 @export var view: Node
 @export var controller: Node
-const BOARD_TYPE = "debug"
+const BOARD_TYPE = "default"
 var board: Array
 var last_move: Dictionary = {}		# from, to, piecename
 var current_turn: String = "white"	# can be white or black
@@ -57,7 +57,7 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
+	board[0][4] = NecromancerKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
@@ -70,7 +70,7 @@ func initialize_default_pieces():
 	board[7][1] = Knight.new("white", Vector2i(7, 1))
 	board[7][2] = Bishop.new("white", Vector2i(7, 2))
 	board[7][3] = Queen.new("white", Vector2i(7, 3))
-	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
+	board[7][4] = NecromancerKing.new("white", Vector2i(7, 4))
 	board[7][5] = Bishop.new("white", Vector2i(7, 5))
 	board[7][6] = Knight.new("white", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
@@ -188,12 +188,52 @@ func switch_turn():
 		current_turn = "white"
 	
 	emit_signal("turn_changed", current_turn)
-
+#
+#func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
+	#if piece.type == "pawn":
+		#if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7): # TODO: this only works on 8x8 boards.
+			#piece.type = "queen" #TODO: give options
+			#piece_node.update_sprite()
+			
 func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
+	# Determine the back rank based on board size and color
+	# Assumes board indexing starts at 0. Black starts near 0, White near size-1.
+	var board_height = board.size()
+	var white_back_rank = 0
+	var black_back_rank = board_height - 1
+
+	# Standard pawn promotion
 	if piece.type == "pawn":
-		if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7): # TODO: this only works on 8x8 boards.
-			piece.type = "queen" #TODO: give options
-			piece_node.update_sprite()
+		var promotion_rank = white_back_rank if piece.color == "white" else black_back_rank
+		if to.x == promotion_rank:
+			# --- Promotion Logic ---
+			# TODO: Implement player choice for promotion (Queen, Rook, Bishop, Knight)
+			var promoted_type = "queen" # Default promotion to Queen for now
+			print("Promoting Pawn at %s to %s" % [to, promoted_type])
+
+			# Update Model piece type FIRST
+			piece.type = promoted_type
+			# Reset HP/other stats if necessary for the new type? Assume Queen keeps Pawn HP for now.
+
+			# Update View node sprite using the piece's view_node reference
+			if is_instance_valid(piece.view_node) and piece.view_node.has_method("update_sprite"):
+				piece.view_node.update_sprite() # piece.gd's update_sprite uses model.type
+			else:
+				printerr("Promotion check failed: Could not find or update view node sprite for promoted piece.")
+				# Fallback: Try using the passed piece_node (less robust if view_node wasn't set right)
+				if is_instance_valid(piece_node) and piece_node.has_method("update_sprite"):
+					print("Fallback: using piece_node for sprite update")
+					piece_node.update_sprite()
+
+
+	# Bone Pawn destruction on back rank
+	elif piece.type == "bone_pawn":
+		var back_rank = white_back_rank if piece.color == "white" else black_back_rank
+		if to.x == back_rank:
+			print("Bone Pawn reached back rank %s and crumbles to dust." % back_rank)
+			# Use the existing destroy mechanism in ModelPiece
+			# This handles removing from model.board and calling view.destroy_piece
+			piece.destroy()
 
 func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	last_move = {
@@ -268,3 +308,84 @@ func get_king(color: String) -> ModelPiece:
 			if piece != null and piece.color == color and piece.type.ends_with("king"):
 				return piece
 	return null
+
+## Returns the back rank of an army.
+func get_back_rank(color: String) -> int:
+	if color == "white": return board.size() -1
+	else: return 0
+	
+
+## Returns the furthest occupied rank for a particular army.
+func get_furthest_rank(color: String) -> int:
+	if color == "white": return _get_furthest_white_rank()
+	else: return _get_furthest_black_rank()
+
+func _get_furthest_white_rank() -> int:
+	var back_rank = board.size()
+	print("white army's back rank is ", back_rank)
+	var furthest_rank = back_rank
+	
+	for r in range(board.size() - 1):
+		for c in range(board[0].size() - 1):
+			var piece = board[r][c]
+			if piece == null: continue
+			if piece.color != "white": continue
+			if r < furthest_rank: 
+				furthest_rank = r
+				break
+				
+	return furthest_rank
+	
+func _get_furthest_black_rank() -> int:
+	var back_rank = 0
+	var furthest_rank = back_rank
+
+	# Should be board size agnostic.
+	for r in range(board.size() -1):
+		for c in range(board[0].size() - 1):
+			var piece = board[r][c]
+			if piece == null: continue
+			if piece.color != "black": continue
+			if r > furthest_rank: 
+				furthest_rank = r
+				break
+
+	return furthest_rank
+
+## Returns an array of unoccupied square coordinates.
+# With no arguments, returns all empty squares on the board.
+# Can also target a rectangular area if given corner coordinates.
+func get_empty_squares(
+lower_left_corner: Vector2i = Vector2i(board.size() - 1, 0), 
+upper_right_corner: Vector2i = Vector2i(0, board[0].size() - 1)) -> Array:
+	var squares = []
+	
+	for r in range(board.size()):
+		if r > lower_left_corner.x or r < upper_right_corner.x: continue # ignore rows not in targeted range
+		
+		for c in range(board[0].size()):
+			if c < lower_left_corner.y or c > upper_right_corner.y: continue # ignore columns not in target range
+			if board[r][c] != null: continue # ignore occupied squares
+			squares.append(Vector2i(r, c))
+			
+	return squares
+
+## Returns an array of empty square coordinates,
+## from the army's back rank, to its furthest occupied rank.
+func get_empty_squares_to_furthest_rank(color: String) -> Array:
+	var back_rank = get_back_rank(color)
+	var furthest_rank = get_furthest_rank(color)
+	var lower_left_corner: Vector2i
+	var upper_right_corner: Vector2i
+	
+	if color == "white":
+		lower_left_corner = Vector2i(back_rank, 0)
+		upper_right_corner = Vector2i(furthest_rank, board[0].size() - 1)
+	else:
+		lower_left_corner = Vector2i(furthest_rank, 0)
+		upper_right_corner = Vector2i(back_rank, board[0].size() - 1)
+	
+	var squares = get_empty_squares(lower_left_corner, upper_right_corner)
+
+	return squares
+	

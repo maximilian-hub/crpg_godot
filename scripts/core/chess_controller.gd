@@ -98,11 +98,9 @@ func select_active_ability(color: String):
 
 	# Check if King or ability is usable
 	if active_king.stunned:
-		print("King is stunned!") # TODO: Add UI feedback / sound
 		active_king = null # Don't keep reference if stunned
 		return
 	if active_king.current_cooldown > 0:
-		print("Ability is on cooldown: ", active_king.current_cooldown) # TODO: Add UI feedback / sound
 		active_king = null # Don't keep reference if on cooldown
 		return
 
@@ -119,9 +117,7 @@ func select_active_ability(color: String):
 	view.flash_screen()
 
 func deselect_active_ability(play_powerdown_sound: bool):
-	print("entering deselect_active_ability()")
 	if active_ability_selected and active_king != null: # Check active_king exists
-		print("active ability selected. doing stuff...")
 		if active_king.view_node: # Check view_node exists
 			view.fade_out_ss_aura(active_king.view_node, play_powerdown_sound)
 		else:

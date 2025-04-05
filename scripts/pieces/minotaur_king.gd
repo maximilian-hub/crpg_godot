@@ -5,25 +5,20 @@ class_name MinotaurKing
 signal piece_started_ability(piece: KingPiece, ability_name: String)
 signal passive_ability_effect(piece: KingPiece, ability_name: String, affected_coords: Array)
 
-# Specific constants for the Minotaur King
-const PASSIVE_NAME: String = "Retaliating Rage"
-const ACTIVE_NAME_MINOTAUR: String = "Charge" 
-const BASE_COOLDOWN_MINOTAUR: int = 4 
+const PASSIVE_ABILITY_NAME: String = "Retaliating Rage"
+const ACTIVE_ABILITY_NAME: String = "Charge"
+const ACTIVE_ABILITY_COOLDOWN = 4
 
 func _init(color: String, coord: Vector2i):
 	super._init(color, coord)
 	self.type = "minotaur_king"
 	self.max_hp = 4
 	self.current_hp = self.max_hp 
-	self.base_cooldown = BASE_COOLDOWN_MINOTAUR
-	self.active_ability_name = ACTIVE_NAME_MINOTAUR
-
+	self.base_cooldown = 4
+	self.active_ability_name = "Charge" 
+	self.passive_ability_name = "Retaliating Rage"
 
 # --- Overridden Methods ---
-
-## Provide the specific name for this King's ability.
-func get_active_ability_name() -> String:
-	return ACTIVE_NAME_MINOTAUR
 
 ## Override: Calculate targets for the Charge ability.
 func get_active_ability_targets() -> Array:
@@ -107,7 +102,7 @@ func take_damage(damage: int = 1):
 
 func retaliating_rage() -> void:
 	if stunned: return
-	emit_signal("piece_started_ability", self, PASSIVE_NAME) # trigger animation
+	emit_signal("piece_started_ability", self, passive_ability_name) # trigger animation
 	await view.rage_intro_animation_completed  # wait for animation to finish
 	_perform_rage_damage()
 
@@ -120,4 +115,4 @@ func _perform_rage_damage() -> void:
 		var target = model.board[adj_coord.x][adj_coord.y]
 		if target != null: target.take_damage(1) 
 
-	emit_signal("passive_ability_effect", self, PASSIVE_NAME, exploded_squares) 
+	emit_signal("passive_ability_effect", self, passive_ability_name, exploded_squares) 

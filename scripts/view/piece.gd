@@ -26,7 +26,7 @@ func update_sprite():
 	if model.type == "minotaur_king":
 		sprite.scale = Vector2(0.5, 0.5)
 	elif model.type == "bone_pawn":
-		sprite.scale = Vector2(0.125, 0.125)
+		sprite.scale = Vector2(0.11, 0.11)
 	elif model.type == "necromancer_king":
 		sprite.scale = Vector2(0.13,0.13)
 

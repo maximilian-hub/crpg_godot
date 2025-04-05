@@ -1,3 +1,4 @@
+##~~~~~~~~NEW FILE: bone_pawn.gd~~~~~~~~~~~~
 extends ModelPiece
 class_name BonePawn
 
@@ -22,7 +23,8 @@ func get_legal_moves() -> Array:
 			var target = model.board[forward_one][diag_col]
 			if target != null and target.color != color:
 				moves.append(Vector2i(forward_one, diag_col))
-
+	
+# hi gemini! still need to implement dying on the back rank
 
 
 	return moves

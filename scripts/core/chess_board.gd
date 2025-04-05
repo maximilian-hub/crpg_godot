@@ -174,15 +174,10 @@ func destroy_piece(piece: Node):
 
 
 func promote_piece_at(coord: Vector2i, new_name: String):
-	print("entering promote_piece_at()")
-	print("Promoting piece at:", coord, "to:", new_name)
 	for piece in $Pieces.get_children():
-		print("Checking piece at:", piece.coordinate)
 		if piece.coordinate == coord:
-			print("FOUND piece at promotion square! Calling set_sprite...")
 			piece.set_sprite(new_name)
 			break
-		print("❌ No matching piece found at promotion coordinate")
 
 func spawn_explosion(pos: Vector2):
 	var explosion = explosion_scene.instantiate()
@@ -298,7 +293,6 @@ func flash_screen(duration := 1):
 ## Updates the cooldown display text for the given King.
 ## Connected to KingPiece.cooldown_changed signal.
 func update_cooldown_display(king: KingPiece, new_cooldown: int):
-	print("updating cd display")
 	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
 	var format_string = "%s CD: %s"
 	button.text = format_string % [king.get_active_ability_name(), new_cooldown]
@@ -308,20 +302,36 @@ func update_cooldown_display(king: KingPiece, new_cooldown: int):
 func ready_cooldown_display(king: KingPiece):
 	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
 	var ready_text = "%s Ready!" % king.get_active_ability_name() # Changed from "!!!"
-	print("updated button text to ", ready_text)
 	button.text = ready_text
-
-
 
 
 ## Called when a King signals it's starting an ability (e.g., Rage intro).
 func _on_piece_started_ability(piece: KingPiece, ability_name: String):
-	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_NAME:
+	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_ABILITY_NAME:
 		start_minotaur_rage_intro(piece.view_node)
 		
 
 ## Called when a King signals the effect of its passive ability.
 func _on_passive_ability_effect(piece: KingPiece, ability_name: String, affected_coords: Array):
-	print("View received: ", piece.type, " passive effect: ", ability_name, " affecting ", affected_coords)
-	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_NAME:
+	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_ABILITY_NAME:
 		minotaur_retaliate(affected_coords)
+
+
+# Creates the visual node for a piece added mid-game.
+func add_piece_node(piece_data: ModelPiece):
+	var pieces_container = $Pieces
+	var pos = grid_to_screen(piece_data.coordinate.x, piece_data.coordinate.y)
+
+	var piece_node = piece_scene.instantiate()
+	piece_node.position = pos
+	piece_node.set_model(piece_data)
+	piece_node.coordinate = piece_data.coordinate
+	pieces_container.add_child(piece_node)
+	piece_data.view_node = piece_node
+
+	if piece_data.max_hp > 1:
+		var hp_bar = hp_bar_scene.instantiate()
+		hp_bar.max_hp = piece_data.max_hp
+		hp_bar.current_hp = piece_data.current_hp
+		hp_bar.position = Vector2(0, 24)
+		piece_node.add_child(hp_bar)

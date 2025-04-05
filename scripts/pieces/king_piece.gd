@@ -20,8 +20,8 @@ signal cooldown_ready(king: KingPiece)
 ## The current remaining turns for the cooldown. 0 means ready.
 var current_cooldown: int = 0
 
-## The display name for the active ability. Subclasses should define this.
-var active_ability_name: String = "Active Ability" # Default, override
+var active_ability_name: String = "Active Ability" 
+var passive_ability_name: String = "Passive Ability"
 
 
 # --- Methods ---
@@ -63,7 +63,7 @@ func get_legal_moves() -> Array:
 func set_cooldown(value: int):
 	current_cooldown = max(0, value) # Ensure cooldown doesn't go below 0
 	if current_cooldown > 0:
-		print("emitting cooldown_changed")
+
 		emit_signal("cooldown_changed", self, current_cooldown)
 	else:
 		emit_signal("cooldown_ready", self)

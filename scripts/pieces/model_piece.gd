@@ -44,9 +44,37 @@ func take_damage(damage: int = 1):
 		view.spawn_splatter(coordinate)
 		view_node.update_hp(current_hp) # Notify the view layer
 
+#func destroy():
+	#model.board[coordinate.x][coordinate.y] = null
+	#view.destroy_piece(view_node)		
+
 func destroy():
-	model.board[coordinate.x][coordinate.y] = null
-	view.destroy_piece(view_node)		
+	const RAISE_DEAD_TRIGGER_TYPES = ["knight", "bishop", "rook", "queen"]
+	if type in RAISE_DEAD_TRIGGER_TYPES:
+		var destroyed_coord = self.coordinate 
+		# Iterate through the whole board to find any Necromancer Kings
+		for r in range(model.board.size()):
+			for c in range(model.board[r].size()):
+				var piece = model.board[r][c]
+				# Check if the piece is a Necromancer King
+				if piece is NecromancerKing:
+					# Call the passive handler method on the Necromancer King instance
+					# Pass the piece that was just destroyed
+					piece._on_other_piece_destroyed(self)
+
+	# --- Original Destruction Logic ---
+	# Remove piece data from the model's board array
+	if is_instance_valid(model):
+		model.board[coordinate.x][coordinate.y] = null
+	# Tell the view to remove the visual representation (if valid)
+	if is_instance_valid(view) and is_instance_valid(view_node):
+		view.destroy_piece(view_node) # View handles visual removal + effects
+
+	# Note: ModelPiece extends Node but is usually just treated as data.
+	# It's not typically added to the scene tree directly, so queue_free()
+	# might not be needed here unless you explicitly add ModelPiece nodes somewhere.
+	# If they *are* added to the tree, uncomment the line below.
+	# queue_free()
 
 func is_enemy(other: ModelPiece) -> bool:
 	return color != other.color
