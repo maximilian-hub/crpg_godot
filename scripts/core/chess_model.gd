@@ -63,8 +63,8 @@ func initialize_default_pieces():
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
 
 	for x in range(8):
-		board[1][x] = Pawn.new("black", Vector2i(1, x)) 
-		board[6][x] = Pawn.new("white", Vector2i(6, x))
+		board[1][x] = BonePawn.new("black", Vector2i(1, x)) 
+		board[6][x] = BonePawn.new("white", Vector2i(6, x))
 
 	board[7][0] = Rook.new("white", Vector2i(7, 0))
 	board[7][1] = Knight.new("white", Vector2i(7, 1))

@@ -17,59 +17,7 @@ func _init(color: String, coord: Vector2i):
 
 ## Active: Summon Bone Pawn - Find empty squares up to the furthest rank occupied.
 func get_active_ability_targets() -> Array:
-	print("NK attempting to get target squares")
-	var targets = model.get_empty_squares_to_furthest_rank(self.color)
-	print(targets)
-	return targets
-
-
-
-
-#func get_active_ability_targets() -> Array:
-	#var targets = []
-#
-	#var furthest_rank = -1
-#
-	## Determine the direction of "forward" based on color
-	## White moves towards rank 0, Black moves towards rank 7 (on standard 8x8)
-	## Find the rank closest to the *opponent's* side that contains one of our pieces.
-	#if color == "white":
-		#furthest_rank = model.board.size() - 1 # Start assuming furthest is the back rank
-		#for r in range(model.board.size()):
-			#for c in range(model.board[r].size()):
-				#var piece = model.board[r][c]
-				#if piece != null and piece.color == self.color:
-					#furthest_rank = min(furthest_rank, r) # Find the smallest row index (closest to rank 0)
-	#else: # black
-		#furthest_rank = 0 # Start assuming furthest is the back rank (rank 0)
-		#for r in range(model.board.size()):
-			#for c in range(model.board[r].size()):
-				#var piece = model.board[r][c]
-				#if piece != null and piece.color == self.color:
-					#furthest_rank = max(furthest_rank, r) # Find the largest row index (closest to rank 7)
-#
-	#if furthest_rank == -1: # Should only happen if only the king exists, maybe?
-		## Default to king's rank if no other pieces found? Or return empty?
-		## Let's allow summoning on the king's rank in this edge case.
-		#furthest_rank = self.coordinate.x
-		#print("NecromancerKing: No other pieces found, using King's rank for summon limit.")
-#
-#
-	## Now find all empty squares between the Necromancer's starting rank and the furthest rank (inclusive)
-	#if color == "white":
-		## Iterate from furthest rank (e.g., 2) up to the starting rank (e.g., 7)
-		#for r in range(furthest_rank, model.board.size()):
-			#for c in range(model.board[r].size()):
-				#if model.board[r][c] == null:
-					#targets.append(Vector2i(r, c))
-	#else: # black
-		## Iterate from starting rank (e.g., 0) up to the furthest rank (e.g., 5)
-		#for r in range(furthest_rank + 1): # range is exclusive of end, so add 1
-			#for c in range(model.board[r].size()):
-				#if model.board[r][c] == null:
-					#targets.append(Vector2i(r, c))
-#
-	#return targets
+	return model.get_empty_squares_to_furthest_rank(self.color)
 
 ## Active: Execute the Summon Bone Pawn ability.
 func active_target_selected(target: Vector2i):
