@@ -193,7 +193,9 @@ func switch_turn():
 	else:
 		current_turn = "white"
 	
+	print("turn_changed")
 	emit_signal("turn_changed", current_turn)
+	
 #
 #func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
 	#if piece.type == "pawn":

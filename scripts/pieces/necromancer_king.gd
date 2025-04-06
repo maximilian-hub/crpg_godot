@@ -34,7 +34,6 @@ func summon_bone_pawn(target: Vector2i):
 	model.board[target.x][target.y] = new_pawn
 	view.add_piece_node(new_pawn) # Use the new function in ChessBoard
 
-
 func _on_piece_destroyed(destroyed_piece: ModelPiece):
 	# Active Rase Dead only if the destroyed piece is a major or minor piece.
 	for base_type in model.MAJOR_MINOR_BASE_TYPES:
@@ -49,12 +48,14 @@ func raise_dead(dead_piece: ModelPiece):
 	# if user selects a square,
 	# a bone pawn will be summoned from _on_target_selected().
 	
-	# TODO: URGENT: if raise dead is triggered, but a nonlegal square is clicked, the next move will result in a bone pawn summon lmao
+	# TODO: if your turn is next, skip that turn
 	# TODO: make this work if both players have Necro King
 	# TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
 	# TODO: should we disallow summoning on the final rank, or let them wither immediately?
 
 ## Called when a summon target is selected.
+# Assumes the target is empty.
 func _on_special_target_selected(coord: Vector2i):
 	summon_bone_pawn(coord)
+	if model.current_turn == self.color: model.switch_turn() # If you choose to Raise Dead when your turn is coming up, your turn is skipped.
 	

@@ -18,36 +18,18 @@ func _ready():
 	pass
 		
 func _on_square_clicked(coord: Vector2i):
+	if is_input_locked: return
 	var temp_selected_piece = selected_piece # this is here to resolve some timing issues i was having with Necro's passive, where the highlighted squares were being immediately un-highlighted by deselect_piece()
-	
-	if is_input_locked:
-		return
-
 	var piece = model.board[coord.x][coord.y]
 	
-	# Handle special non-move target selection:
 	if non_move_selection_mode:
-		if coord in legal_moves:
-			active_piece._on_special_target_selected(coord)
-			end_non_move_selection_mode()
-			deselect_piece()
-			model.switch_turn()
-			return
+		_handle_non_move_selection_mode_click(coord)
 		return
-
-			
 	
-	# Handle active ability target selection
 	if active_ability_selected:
-		if coord in legal_moves:
-			active_king.active_target_selected(coord) 
-			deselect_active_ability(false) # Don't play powerdown sound if ability used
-		else:
-			# Clicked outside valid targets, cancel ability selection
-			deselect_active_ability(true) # Play powerdown sound for cancellation
-		return 
-
-	# If no piece is currently selected
+		_handle_active_ability_selected_click(coord)
+		return
+		
 	if selected_piece == null:
 		if piece and piece.color == model.current_turn:
 			select_piece(piece)
@@ -63,6 +45,22 @@ func _on_square_clicked(coord: Vector2i):
 	deselect_piece()
 	if piece and piece.color == model.current_turn:
 		select_piece(piece)
+
+func _handle_non_move_selection_mode_click(coord: Vector2i):
+	if coord in legal_moves:
+			active_piece._on_special_target_selected(coord)
+			end_non_move_selection_mode()
+			deselect_piece()
+			# model.switch_turn() # not sure why this was here...
+			return
+
+func _handle_active_ability_selected_click(coord: Vector2i):
+	if coord in legal_moves:
+		active_king.active_target_selected(coord) 
+		deselect_active_ability(false) # Don't play powerdown sound if ability used
+	else:
+		# Clicked outside valid targets, cancel ability selection
+		deselect_active_ability(true) # Play powerdown sound for cancellation
 
 func get_piece_at(coord: Vector2i) -> Node:
 	for piece in view.get_node("Pieces").get_children():
@@ -86,16 +84,14 @@ func deselect_piece():
 		legal_moves.clear()
 
 func _on_white_active_button_pressed() -> void:
-	if model.current_turn == "black":
-		return
-	else:
-		select_active_ability("white")
+	if model.current_turn == "black": return
+	if active_ability_selected or non_move_selection_mode: return
+	select_active_ability("white")
 
 func _on_black_active_button_pressed() -> void:
-	if model.current_turn == "white":
-		return
-	else:
-		select_active_ability("black")
+	if model.current_turn == "white": return
+	if active_ability_selected or non_move_selection_mode: return
+	select_active_ability("black")
 
 func select_active_ability(color: String):
 	deselect_piece()
