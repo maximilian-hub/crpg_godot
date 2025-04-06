@@ -116,3 +116,4 @@ func _perform_rage_damage() -> void:
 		if target != null: target.take_damage(1) 
 
 	emit_signal("passive_ability_effect", self, passive_ability_name, exploded_squares) 
+	model.process_selection_queue()

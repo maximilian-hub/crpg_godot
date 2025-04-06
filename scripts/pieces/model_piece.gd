@@ -86,5 +86,5 @@ func unstun():
 	stunned = false
 	view.remove_stun_stars(coordinate)
 
-func get_selection_targets(action_type: String) -> Array:
+func get_selection_targets(action_type: String, event_data) -> Array:
 	return []		

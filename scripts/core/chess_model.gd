@@ -8,7 +8,7 @@ extends Node
 
 @export var view: Node
 @export var controller: Node
-const BOARD_TYPE = "default"
+const BOARD_TYPE = "debug"
 var board: Array
 var last_move: Dictionary = {}		# from, to, piecename
 var last_destroyed_piece: ModelPiece		
@@ -64,7 +64,7 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = NecromancerKing.new("black", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
@@ -98,14 +98,15 @@ func initialize_debug_pieces():
 		
 	board[1][5] = BonePawn.new("black", Vector2i(1, 5))
 	board[3][4] = Pawn.new("white", Vector2i(3, 4))
-	board[3][1] = NecromancerKing.new("white", Vector2i(3,1))
-	board[3][2] = NecromancerKing.new("black", Vector2i(3,2))
+	board[3][3] = MinotaurKing.new("black", Vector2i(3,3))
+	board[4][4] = Bishop.new("white", Vector2i(4,4))
+	board[2][2] = Bishop.new("white", Vector2i(2,2))
 
 	board[7][0] = Rook.new("white", Vector2i(7, 0))
 	#board[7][1] = ModelPiece.new("white", "knight", Vector2i(7, 1))
 	#board[7][2] = ModelPiece.new("white", "bishop", Vector2i(7, 2))
 	#board[7][3] = ModelPiece.new("white", "queen", Vector2i(7, 3))
-	#board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
+	board[7][4] = NecromancerKing.new("white", Vector2i(7, 4))
 	#board[7][5] = ModelPiece.new("white", "bishop", Vector2i(7, 5))
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
@@ -443,7 +444,7 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool = true):
 
 
 ## Called by ModelPieces to add a selection opportunity to the queue.
-func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String):
+func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String, event_data):
 	var priority_value = 0 # default to highest priority
 	if action_type == "raise_dead":
 		var causing_player_color = current_turn # Assumes event_data might contain this if needed, or use current_turn
@@ -452,10 +453,12 @@ func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String)
 	var selection_opportunity = {
 		"calling_piece": calling_piece,
 		"action_type": action_type,  
-		"priority": priority_value 
+		"priority": priority_value,
+		"event_data": event_data # for raise dead, this is the square a piece just died on
 	}
 	
 	selection_queue.append(selection_opportunity)
+	print("Queued another selection: ", selection_opportunity)
 
 ## Executes the next item in the selection queue.
 # You kinda have to call this wherever there might be something in the queue...
@@ -466,29 +469,16 @@ func process_selection_queue():
 			switch_turn()
 		return
 	
+	print("Calling process_selection_queue()")
 	selection_queue.sort_custom(func(a, b): return a.priority > b.priority)
 
 	var opportunity = selection_queue[0] # Peek at the highest priority
 	var calling_piece: ModelPiece = opportunity.calling_piece
 	var action_type: String = opportunity.action_type
+	var event_data = opportunity.event_data
 	
-	var targets = calling_piece.get_selection_targets(action_type)
+	var targets = calling_piece.get_selection_targets(action_type, event_data)
 	
 	selection_queue.pop_front()
 	controller.initiate_non_move_selection_mode(calling_piece, targets)
 	
-	## TODO: This function needs to change, and possibly some other stuff as well.
-	# Right now, we're directly recieving the targets from the calling piece.
-	# However, this fails to account for changing board conditions from previous
-		# queue selections.
-	# For example, a piece dies, and two Necro Kings want to summon a bone pawn.
-	# The targets are initially the same, but after the first summon, that square
-		# should become unavailable to the second.
-	# Therefore, from this function we need to actually call the piece,
-		# and tell it to calculate the targets then and there.
-	
-	# That means we'll also have to change what's actually stored in the selection queue...
-	# What will we need?
-		# a reference to the piece, to call the piece.
-		# a priority? but we calculate that ourselves when we queue it.
-		# that's it??

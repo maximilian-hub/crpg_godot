@@ -40,43 +40,20 @@ func _on_piece_destroyed(destroyed_piece: ModelPiece):
 			raise_dead() 
 
 func raise_dead():
-	
-	model.queue_selection_opportunity(self, "raise_dead")
-	#controller.initiate_non_move_selection_mode(self, raisable_squares)
+	var death_square = model.last_destroyed_piece.coordinate
+	model.queue_selection_opportunity(self, "raise_dead", death_square)
 
 	# Now that non_move_selection_mode has been initiated,
 	# if user selects a square,
 	# a bone pawn will be summoned from _on_target_selected().
 	
-	## TODO: make this work if both players have Necro King
-	# Okay, say I'm white and you're black, and it's my turn.
-	# I take your Knight. What happens?
-		# We each get to choose to summon a bone pawn.
-	# Who goes first? 
-		# Whoever's piece was taken goes first.
-		# TODO: I'll add an aura around the summoning king to make it clear who's summoning.
-	
-	# So how does this work?
-		# model emits piece_destroyed
-		# each necro's _on_piece_destroyed is called, which calls raise_dead 
-		# to start the selection mode.
-			# i'm not sure who's currently winning, but one overrides and skips past the other.
-		# maybe the model can have a queue of user selections.
-			# instead of _on_piece_destroyed() called raise_dead(),
-			# it can send a thingy... to the model queue.
-				# what's the thingy? can i just send the function along with its parameter somehow?
-			
-			# one way or another, this adding to the queue triggers the model to cycle through
-			# selection modes until they are done.
-	
-	
 	
 	## TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
 	## TODO: should we disallow summoning on the final rank, or let them wither immediately?
 
-func get_selection_targets(action_type: String) -> Array:
+func get_selection_targets(action_type: String, event_data) -> Array:
 	if action_type == "raise_dead":
-		var death_square = model.last_destroyed_piece.coordinate
+		var death_square = event_data
 		var raisable_squares = model.get_empty_adjacent_squares(death_square)	
 		return raisable_squares
 	else: return []
