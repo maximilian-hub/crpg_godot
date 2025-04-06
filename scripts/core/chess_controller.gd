@@ -21,6 +21,7 @@ func _on_square_clicked(coord: Vector2i):
 	if is_input_locked: return
 	var temp_selected_piece = selected_piece # this is here to resolve some timing issues i was having with Necro's passive, where the highlighted squares were being immediately un-highlighted by deselect_piece()
 	var piece = model.board[coord.x][coord.y]
+	if piece: piece.print_piece()
 	
 	if non_move_selection_mode: _handle_non_move_selection_mode_click(coord)
 	elif active_ability_selected: _handle_active_ability_selected_click(coord)	
@@ -45,7 +46,7 @@ func _handle_non_move_selection_mode_click(coord: Vector2i):
 			active_piece._on_special_target_selected(coord)
 			end_non_move_selection_mode()
 			deselect_piece()
-			# model.switch_turn() # not sure why this was here...
+			# model.switch_turn() # not sure why this was here...cccccccc
 			return
 
 func _handle_active_ability_selected_click(coord: Vector2i):

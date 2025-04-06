@@ -57,7 +57,7 @@ func initialize_board():
 				row.append(null)
 			board.append(row)
 		initialize_debug_pieces() # populates the board array with ModelPiece objects
-	inject_dependencies() # passes references to the model and view to each piece
+	inject_all_dependencies() # passes references to the model and view to each piece
 
 func initialize_default_pieces():
 	board[0][0] = Rook.new("black", Vector2i(0, 0))
@@ -111,26 +111,29 @@ func initialize_debug_pieces():
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
 
-func inject_dependencies():
+func inject_all_dependencies():
 	for row in board:
 		for piece in row:
 			if piece != null:
-				piece.view = view
-				piece.model = self
-				piece.controller = controller
-				connect("turn_changed", piece._on_turn_changed)
-				connect("piece_destroyed", piece._on_piece_destroyed)
+				inject_dependencies(piece)
 
-				# Connect KingPiece specific signals TO the view
-				if piece is KingPiece: # Check if the piece is a KingPiece or subclass
-					var king_piece: KingPiece = piece 
-					king_piece.connect("cooldown_changed", view.update_cooldown_display)
-					king_piece.connect("cooldown_ready", view.ready_cooldown_display)
-					king_piece.set_cooldown(king_piece.base_cooldown) # this is here to ensure the buttons show the proper text immediately
+func inject_dependencies(piece: ModelPiece):
+	piece.view = view
+	piece.model = self
+	piece.controller = controller
+	connect("turn_changed", piece._on_turn_changed)
+	connect("piece_destroyed", piece._on_piece_destroyed)
 
-					if king_piece is MinotaurKing:
-						king_piece.connect("piece_started_ability", view._on_piece_started_ability)
-						king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
+	# Connect KingPiece specific signals TO the view
+	if piece is KingPiece: # Check if the piece is a KingPiece or subclass
+		var king_piece: KingPiece = piece 
+		king_piece.connect("cooldown_changed", view.update_cooldown_display)
+		king_piece.connect("cooldown_ready", view.ready_cooldown_display)
+		king_piece.set_cooldown(king_piece.base_cooldown) # this is here to ensure the buttons show the proper text immediately
+
+		if king_piece is MinotaurKing:
+			king_piece.connect("piece_started_ability", view._on_piece_started_ability)
+			king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
 
 
 
@@ -158,7 +161,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	if is_en_passant: handle_en_passant(piece, from, to)
 	elif is_combat: handle_combat(piece, to) 
 	elif is_castling: handle_castling(piece, from, to)
-	else: actually_move_piece(piece, to, piece_node)	# a normal move with no captures or exceptions
+	else: actually_move_piece(piece, to)	# a normal move with no captures or exceptions
 	
 	update_last_move(piece, from, to)
 	switch_turn()
@@ -166,14 +169,14 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 ## Moves a piece from one square to another.
 # Assumes empty destination square.
 # Validation is handled in move_piece()
-func actually_move_piece(piece: ModelPiece, to: Vector2i, pawn_node: Node = null):
+func actually_move_piece(piece: ModelPiece, to: Vector2i):
 	var from = piece.coordinate
 	board[from.x][from.y] = null
 	board[to.x][to.y] = piece
 	piece.coordinate = to
 	piece.has_moved = true
 	view.move_piece_node(piece.view_node, to) # update the view
-	if pawn_node != null: promotion_check(piece, pawn_node, to)
+	if piece.type.contains("pawn"): promotion_check(piece, piece.view_node, to)
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -208,34 +211,16 @@ func switch_turn():
 			#piece_node.update_sprite()
 			
 func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
-	# Determine the back rank based on board size and color
-	# Assumes board indexing starts at 0. Black starts near 0, White near size-1.
+	if piece.type != "pawn": return
+	
 	var board_height = board.size()
-	var white_back_rank = 0
-	var black_back_rank = board_height - 1
+	var white_back_rank = get_back_rank("white")
+	var black_back_rank = get_back_rank("black")
 
-	# Standard pawn promotion
-	if piece.type == "pawn":
-		var promotion_rank = white_back_rank if piece.color == "white" else black_back_rank
-		if to.x == promotion_rank:
-			# --- Promotion Logic ---
-			# TODO: Implement player choice for promotion (Queen, Rook, Bishop, Knight)
-			var promoted_type = "queen" # Default promotion to Queen for now
-			print("Promoting Pawn at %s to %s" % [to, promoted_type])
+	var promotion_rank = white_back_rank if piece.color == "black" else black_back_rank
+	if to.x == promotion_rank: # TODO: Implement player choice for promotion (Queen, Rook, Bishop, Knight)
+		transform_piece(piece, "queen")
 
-			# Update Model piece type FIRST
-			piece.type = promoted_type
-			# Reset HP/other stats if necessary for the new type? Assume Queen keeps Pawn HP for now.
-
-			# Update View node sprite using the piece's view_node reference
-			if is_instance_valid(piece.view_node) and piece.view_node.has_method("update_sprite"):
-				piece.view_node.update_sprite() # piece.gd's update_sprite uses model.type
-			else:
-				printerr("Promotion check failed: Could not find or update view node sprite for promoted piece.")
-				# Fallback: Try using the passed piece_node (less robust if view_node wasn't set right)
-				if is_instance_valid(piece_node) and piece_node.has_method("update_sprite"):
-					print("Fallback: using piece_node for sprite update")
-					piece_node.update_sprite()
 
 
 	# Bone Pawn destruction on back rank
@@ -254,19 +239,16 @@ func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 		"piece": piece
 	}
 	
-func handle_castling(piece: ModelPiece, from: Vector2i, to: Vector2i):
-		print("heyyy we're castling folks!")
+func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
 		var row = from.x
 		if to.y == 6: # King-side castle
-			board[row][5] = board[row][7]
-			board[row][7] = null
-			view.move_piece_node(view.get_piece_at(Vector2i(row, 7)), Vector2i(row, 5))
+			var kingside_rook = board[row][7]
+			actually_move_piece(kingside_rook, Vector2i(row, 5))
 		elif to.y == 2: # Queen-side castle
-			board[row][3] = board[row][0]
-			board[row][0] = null
-			view.move_piece_node(view.get_piece_at(Vector2i(row, 0)), Vector2i(row, 3))
+			var queenside_rook = board[row][0]
+			actually_move_piece(queenside_rook, Vector2i(row, 3))
 		
-		actually_move_piece(piece, to)
+		actually_move_piece(king, to)
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row = from.x
@@ -303,7 +285,6 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 		destroy_piece(defender_instance, false) # don't nullify the defender's square yet
 	else: # Defender survives, takes damage, attacker stays put
 		defender.take_damage(damage)
-
 
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
@@ -352,7 +333,7 @@ func get_king(color: String) -> ModelPiece:
 func get_back_rank(color: String) -> int:
 	if color == "white": return board.size() -1
 	else: return 0
-	
+
 
 ## Returns the furthest occupied rank for a particular army.
 func get_furthest_rank(color: String) -> int:
@@ -441,7 +422,19 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool = true):
 	# but it should no longer be referenced by the board array (if nullify_square=true)
 	# or have a view_node.
 
-
+func transform_piece(piece: ModelPiece, transformed_type: String):
+	if transformed_type == "queen":
+		var view_node_ref = piece.view_node
+		var r = piece.coordinate.x
+		var c = piece.coordinate.y
+		
+		var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
+		inject_dependencies(transformed_piece)
+		transformed_piece.view_node = view_node_ref
+		view_node_ref.model = transformed_piece
+		view_node_ref.update_sprite()
+		board[r][c] = transformed_piece
+		
 
 ## Called by ModelPieces to add a selection opportunity to the queue.
 func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String, event_data):
