@@ -49,6 +49,7 @@ func raise_dead(dead_piece: ModelPiece):
 	# if user selects a square,
 	# a bone pawn will be summoned from _on_target_selected().
 	
+	# TODO: URGENT: if raise dead is triggered, but a nonlegal square is clicked, the next move will result in a bone pawn summon lmao
 	# TODO: make this work if both players have Necro King
 	# TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
 	# TODO: should we disallow summoning on the final rank, or let them wither immediately?

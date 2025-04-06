@@ -32,6 +32,8 @@ func _on_square_clicked(coord: Vector2i):
 			end_non_move_selection_mode()
 			deselect_piece()
 			model.switch_turn()
+			return
+		return
 
 			
 	
