@@ -16,6 +16,9 @@ var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
 
+var selection_queue: Array = [] # {calling_piece: ModelPiece, action_type: String, targets: Array[Vector2i], priotity: int}
+var _pending_turn_switch: bool = false # utilized in the selection queue process
+
 const MAJOR_MINOR_BASE_TYPES = ["knight", "rook", "bishop", "queen"]
 
 const Pawn = preload("res://scripts/pieces/pawn.gd")
@@ -424,21 +427,68 @@ func get_empty_squares_to_furthest_rank(color: String) -> Array:
 
 	return squares
 
-#func destroy_piece(piece: ModelPiece):
-	#piece_destroyed.emit(piece)
-	#view.destroy_piece(piece.view_node)
-	#board[piece.coordinate.x][piece.coordinate.y] = null
-
-
 func destroy_piece(piece: ModelPiece, nullify_square: bool = true):
 	var piece_coord = piece.coordinate
-
+	last_destroyed_piece = piece
+	
 	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
 	view.destroy_piece(piece.view_node)
 
 	if nullify_square: board[piece_coord.x][piece_coord.y] = null
 	
-
 	# Note: The ModelPiece object itself still exists until GDScript garbage collects it,
 	# but it should no longer be referenced by the board array (if nullify_square=true)
 	# or have a view_node.
+
+
+
+## Called by ModelPieces to add a selection opportunity to the queue.
+func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String):
+	var priority_value = 0 # default to highest priority
+	if action_type == "raise_dead":
+		var causing_player_color = current_turn # Assumes event_data might contain this if needed, or use current_turn
+		priority_value = 1 if calling_piece.color != causing_player_color else 0 # Higher value for defender
+
+	var selection_opportunity = {
+		"calling_piece": calling_piece,
+		"action_type": action_type,  
+		"priority": priority_value 
+	}
+	
+	selection_queue.append(selection_opportunity)
+
+## Executes the next item in the selection queue.
+# You kinda have to call this wherever there might be something in the queue...
+func process_selection_queue():
+	if selection_queue.is_empty():
+		if _pending_turn_switch:
+			_pending_turn_switch = false
+			switch_turn()
+		return
+	
+	selection_queue.sort_custom(func(a, b): return a.priority > b.priority)
+
+	var opportunity = selection_queue[0] # Peek at the highest priority
+	var calling_piece: ModelPiece = opportunity.calling_piece
+	var action_type: String = opportunity.action_type
+	
+	var targets = calling_piece.get_selection_targets(action_type)
+	
+	selection_queue.pop_front()
+	controller.initiate_non_move_selection_mode(calling_piece, targets)
+	
+	## TODO: This function needs to change, and possibly some other stuff as well.
+	# Right now, we're directly recieving the targets from the calling piece.
+	# However, this fails to account for changing board conditions from previous
+		# queue selections.
+	# For example, a piece dies, and two Necro Kings want to summon a bone pawn.
+	# The targets are initially the same, but after the first summon, that square
+		# should become unavailable to the second.
+	# Therefore, from this function we need to actually call the piece,
+		# and tell it to calculate the targets then and there.
+	
+	# That means we'll also have to change what's actually stored in the selection queue...
+	# What will we need?
+		# a reference to the piece, to call the piece.
+		# a priority? but we calculate that ourselves when we queue it.
+		# that's it??

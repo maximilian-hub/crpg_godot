@@ -37,11 +37,12 @@ func _on_piece_destroyed(destroyed_piece: ModelPiece):
 	# Active Rase Dead only if the destroyed piece is a major or minor piece.
 	for base_type in model.MAJOR_MINOR_BASE_TYPES:
 		if destroyed_piece.type.contains(base_type):
-			raise_dead(destroyed_piece) 
+			raise_dead() 
 
-func raise_dead(dead_piece: ModelPiece):
-	var raisable_squares = model.get_empty_adjacent_squares(dead_piece.coordinate)	
-	controller.initiate_non_move_selection_mode(self, raisable_squares)
+func raise_dead():
+	
+	model.queue_selection_opportunity(self, "raise_dead")
+	#controller.initiate_non_move_selection_mode(self, raisable_squares)
 
 	# Now that non_move_selection_mode has been initiated,
 	# if user selects a square,
@@ -73,9 +74,16 @@ func raise_dead(dead_piece: ModelPiece):
 	## TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
 	## TODO: should we disallow summoning on the final rank, or let them wither immediately?
 
+func get_selection_targets(action_type: String) -> Array:
+	if action_type == "raise_dead":
+		var death_square = model.last_destroyed_piece.coordinate
+		var raisable_squares = model.get_empty_adjacent_squares(death_square)	
+		return raisable_squares
+	else: return []
+
 ## Called when a summon target is selected.
 # Assumes the target is empty.
 func _on_special_target_selected(coord: Vector2i):
 	summon_bone_pawn(coord)
-	if model.current_turn == self.color: model.switch_turn() # If you choose to Raise Dead when your turn is coming up, your turn is skipped.
+	if model.current_turn == self.color: model._pending_turn_switch = true # If you choose to Raise Dead when your turn is coming up, your turn is skipped.
 	

@@ -22,29 +22,23 @@ func _on_square_clicked(coord: Vector2i):
 	var temp_selected_piece = selected_piece # this is here to resolve some timing issues i was having with Necro's passive, where the highlighted squares were being immediately un-highlighted by deselect_piece()
 	var piece = model.board[coord.x][coord.y]
 	
-	if non_move_selection_mode:
-		_handle_non_move_selection_mode_click(coord)
-		return
-	
-	if active_ability_selected:
-		_handle_active_ability_selected_click(coord)
-		return
-		
-	if selected_piece == null:
+	if non_move_selection_mode: _handle_non_move_selection_mode_click(coord)
+	elif active_ability_selected: _handle_active_ability_selected_click(coord)	
+	elif selected_piece == null:
 		if piece and piece.color == model.current_turn:
 			select_piece(piece)
-		return
-
-	# If clicking a legal move destination
-	if coord in legal_moves:
+	elif coord in legal_moves: # if clicking a legal move destination
 		deselect_piece()
 		model.move_piece(temp_selected_piece, coord) # see earlier comment where temp_selected_piece is declared
+		model.process_selection_queue()
 		return
 
 	# Fallback: deselect and possibly select new piece
 	deselect_piece()
 	if piece and piece.color == model.current_turn:
 		select_piece(piece)
+		
+	model.process_selection_queue()
 
 func _handle_non_move_selection_mode_click(coord: Vector2i):
 	if coord in legal_moves:
@@ -140,9 +134,9 @@ func deselect_active_ability(play_powerdown_sound: bool):
 
 ## When you need the user to select a square or option that's not a normal move.
 ## Right now, this is just used for Necro's passive, which activates when a major/minor piece dies.
-func initiate_non_move_selection_mode(piece: ModelPiece, _legal_moves: Array):
+func initiate_non_move_selection_mode(calling_piece: ModelPiece, _legal_moves: Array):
 	non_move_selection_mode = true
-	active_piece = piece
+	active_piece = calling_piece
 	legal_moves = _legal_moves
 	view.highlight_squares(legal_moves)
 	pass
