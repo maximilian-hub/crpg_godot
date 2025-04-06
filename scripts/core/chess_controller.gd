@@ -85,13 +85,15 @@ func deselect_piece():
 
 func _on_white_active_button_pressed() -> void:
 	if model.current_turn == "black": return
-	if active_ability_selected or non_move_selection_mode: return
-	select_active_ability("white")
+	if non_move_selection_mode: return
+	if active_ability_selected: deselect_active_ability(true)
+	else: select_active_ability("white")
 
 func _on_black_active_button_pressed() -> void:
 	if model.current_turn == "white": return
-	if active_ability_selected or non_move_selection_mode: return
-	select_active_ability("black")
+	if non_move_selection_mode: return
+	if active_ability_selected: deselect_active_ability(true)
+	else: select_active_ability("black")
 
 func select_active_ability(color: String):
 	deselect_piece()

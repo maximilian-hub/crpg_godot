@@ -1,5 +1,5 @@
 #~~~~~~~~ NEW FILE: necromancer_king.gd ~~~~~~~~
-extends KingPiece
+extends KingPiece # and KingPiece extends ModelPiece
 class_name NecromancerKing
 
 const BonePawn = preload("res://scripts/pieces/bone_pawn.gd")
@@ -14,7 +14,6 @@ func _init(color: String, coord: Vector2i):
 	self.passive_ability_name = "Raise Dead"
 
 # --- Overridden Methods ---
-
 
 ## Active: Summon Bone Pawn - Find empty squares up to the furthest rank occupied.
 func get_active_ability_targets() -> Array:
@@ -48,10 +47,31 @@ func raise_dead(dead_piece: ModelPiece):
 	# if user selects a square,
 	# a bone pawn will be summoned from _on_target_selected().
 	
-	# TODO: if your turn is next, skip that turn
-	# TODO: make this work if both players have Necro King
-	# TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
-	# TODO: should we disallow summoning on the final rank, or let them wither immediately?
+	## TODO: make this work if both players have Necro King
+	# Okay, say I'm white and you're black, and it's my turn.
+	# I take your Knight. What happens?
+		# We each get to choose to summon a bone pawn.
+	# Who goes first? 
+		# Whoever's piece was taken goes first.
+		# TODO: I'll add an aura around the summoning king to make it clear who's summoning.
+	
+	# So how does this work?
+		# model emits piece_destroyed
+		# each necro's _on_piece_destroyed is called, which calls raise_dead 
+		# to start the selection mode.
+			# i'm not sure who's currently winning, but one overrides and skips past the other.
+		# maybe the model can have a queue of user selections.
+			# instead of _on_piece_destroyed() called raise_dead(),
+			# it can send a thingy... to the model queue.
+				# what's the thingy? can i just send the function along with its parameter somehow?
+			
+			# one way or another, this adding to the queue triggers the model to cycle through
+			# selection modes until they are done.
+	
+	
+	
+	## TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
+	## TODO: should we disallow summoning on the final rank, or let them wither immediately?
 
 ## Called when a summon target is selected.
 # Assumes the target is empty.
