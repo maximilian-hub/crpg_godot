@@ -274,8 +274,8 @@ func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
 	var defender = board[to.x][to.y]
 	
 	if defender.current_hp == 1: # normal capture
-		destroy_piece(defender)
 		actually_move_piece(attacker, to)
+		destroy_piece(defender)
 		promotion_check(attacker, piece_node, to)
 	else: # doing damage, attacker doesn't move
 		defender.take_damage()	
@@ -304,6 +304,16 @@ func get_adjacent_squares(coord: Vector2i) -> Array:
 		if is_in_bounds(check.x, check.y):
 			results.append(check)
 	return results
+
+func get_empty_adjacent_squares(coord: Vector2i) -> Array:
+	var empty_adjacent_squares = []
+	var adjacent_squares = get_adjacent_squares(coord)
+	
+	for _coord in adjacent_squares:
+		if board[_coord.x][_coord.y] == null:
+			empty_adjacent_squares.append(_coord)
+	
+	return empty_adjacent_squares
 
 ## Returns an army's king.
 func get_king(color: String) -> ModelPiece:

@@ -9,8 +9,9 @@ func _init(color: String, coord: Vector2i):
 	self.type = "necromancer_king"
 	self.max_hp = 2
 	self.current_hp = self.max_hp
-	self.base_cooldown = 0
+	self.base_cooldown = 2
 	self.active_ability_name = "Summon Bone Pawn"
+	self.passive_ability_name = "Raise Dead"
 
 # --- Overridden Methods ---
 
@@ -34,20 +35,22 @@ func summon_bone_pawn(target: Vector2i):
 	view.add_piece_node(new_pawn) # Use the new function in ChessBoard
 
 
-func _on_piece_destroyed(piece: ModelPiece):
-	var raisable_piece = false
-
+func _on_piece_destroyed(destroyed_piece: ModelPiece):
+	# Active Rase Dead only if the destroyed piece is a major or minor piece.
 	for base_type in model.MAJOR_MINOR_BASE_TYPES:
-		if piece.type.contains(base_type):
-			raisable_piece = true
-			break 
-	if raisable_piece:
-		var raisable_squares = model.get_adjacent_squares(piece.coordinate)	
-		controller.initiate_non_move_selection_mode(self, raisable_squares)
-	
+		if destroyed_piece.type.contains(base_type):
+			raise_dead(destroyed_piece) 
+
+func raise_dead(dead_piece: ModelPiece):
+	var raisable_squares = model.get_empty_adjacent_squares(dead_piece.coordinate)	
+	controller.initiate_non_move_selection_mode(self, raisable_squares)
+
 	# Now that non_move_selection_mode has been initiated,
 	# if user selects a square,
 	# a bone pawn will be summoned from _on_target_selected().
+	
+	# TODO: make this work if both players have Necro King
+	# TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
 
 ## Called when a 
 func _on_special_target_selected(coord: Vector2i):
