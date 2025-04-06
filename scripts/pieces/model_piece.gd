@@ -46,17 +46,11 @@ func take_damage(damage: int = 1):
 		destroy()
 	else:
 		view.spawn_splatter(coordinate)
-		view_node.update_hp(current_hp) # Notify the view layer
-
-#func destroy():
-	#model.board[coordinate.x][coordinate.y] = null
-	#view.destroy_piece(view_node)		
+		view_node.update_hp(current_hp) # Notify the view layer	
 
 func destroy():
-	view.destroy_piece(view_node)
-	print("ModelPiece here. Calling model.destroy_piece()")
+	view.destroy_piece(view_node) 
 	model.destroy_piece(self)
-
 
 func is_enemy(other: ModelPiece) -> bool:
 	return color != other.color

@@ -11,6 +11,7 @@ extends Node
 const BOARD_TYPE = "default"
 var board: Array
 var last_move: Dictionary = {}		# from, to, piecename
+var last_destroyed_piece: ModelPiece		
 var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
@@ -151,7 +152,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	var is_combat = move_is_combat(is_en_passant, to)
 
 	if is_en_passant: handle_en_passant(piece, from, to)
-	elif is_combat: handle_combat(piece, to, piece_node) 
+	elif is_combat: handle_combat(piece, to) 
 	elif is_castling: handle_castling(piece, from, to)
 	else: actually_move_piece(piece, to, piece_node)	# a normal move with no captures or exceptions
 	
@@ -270,16 +271,34 @@ func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	actually_move_piece(piece, to)
 
 # Assumes a piece is moving to attack another piece.
-func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
+#func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
+	#var defender = board[to.x][to.y]
+	#
+	#if defender.current_hp == 1: # normal capture
+		#destroy_piece(defender)				# TODO: but! destroy piece needs to come first, or a bug happens where a piece is no longer selectable after it captures...
+		#actually_move_piece(attacker, to) 	# TODO: moving needs to come first for Raise Dead to target adjacent attacker squares. 
+		#promotion_check(attacker, piece_node, to)
+	#else: # doing damage, attacker doesn't move
+		#defender.take_damage()	
+
+
+# Updated capture logic using the new destroy_piece flag
+func handle_combat(attacker: ModelPiece, to: Vector2i):
 	var defender = board[to.x][to.y]
-	
-	if defender.current_hp == 1: # normal capture
+	var damage = attacker.attack_power
+
+	if defender.current_hp <= damage: # predict defender's death
+		var defender_instance = defender
+		var defender_original_coord = defender.coordinate 
+
 		actually_move_piece(attacker, to)
-		destroy_piece(defender)
-		promotion_check(attacker, piece_node, to)
-	else: # doing damage, attacker doesn't move
-		defender.take_damage()	
-			
+
+
+		destroy_piece(defender_instance, false) # don't nullify the defender's square yet
+	else: # Defender survives, takes damage, attacker stays put
+		defender.take_damage(damage)
+
+
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 	
@@ -403,7 +422,21 @@ func get_empty_squares_to_furthest_rank(color: String) -> Array:
 
 	return squares
 
-func destroy_piece(piece: ModelPiece):
-	piece_destroyed.emit(piece)
+#func destroy_piece(piece: ModelPiece):
+	#piece_destroyed.emit(piece)
+	#view.destroy_piece(piece.view_node)
+	#board[piece.coordinate.x][piece.coordinate.y] = null
+
+
+func destroy_piece(piece: ModelPiece, nullify_square: bool = true):
+	var piece_coord = piece.coordinate
+
+	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
 	view.destroy_piece(piece.view_node)
-	board[piece.coordinate.x][piece.coordinate.y] = null
+
+	if nullify_square: board[piece_coord.x][piece_coord.y] = null
+	
+
+	# Note: The ModelPiece object itself still exists until GDScript garbage collects it,
+	# but it should no longer be referenced by the board array (if nullify_square=true)
+	# or have a view_node.

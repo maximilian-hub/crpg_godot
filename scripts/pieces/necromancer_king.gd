@@ -1,4 +1,4 @@
-#~~~~~~~~ In necromancer_king.gd ~~~~~~~~
+#~~~~~~~~ NEW FILE: necromancer_king.gd ~~~~~~~~
 extends KingPiece
 class_name NecromancerKing
 
@@ -51,62 +51,9 @@ func raise_dead(dead_piece: ModelPiece):
 	
 	# TODO: make this work if both players have Necro King
 	# TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
+	# TODO: should we disallow summoning on the final rank, or let them wither immediately?
 
-## Called when a 
+## Called when a summon target is selected.
 func _on_special_target_selected(coord: Vector2i):
 	summon_bone_pawn(coord)
 	
-
-#
-### Passive: Raise Dead - Called by ModelPiece.destroy() when a non-king, non-bone-pawn piece dies.
-#func _on_other_piece_destroyed(destroyed_piece: ModelPiece):
-	## This check is redundant if ModelPiece.destroy() already filters, but safe to keep.
-	#if destroyed_piece.is_king or destroyed_piece.type == "bone_pawn":
-		#return
-	#if not is_instance_valid(model) or not is_instance_valid(view):
-		#printerr("NecromancerKing: Missing model or view reference for passive ability.")
-		#return
-#
-	#print("Necromancer '%s' passive 'Raise Dead' triggered by death of %s '%s' at %s" % [color, destroyed_piece.color, destroyed_piece.type, destroyed_piece.coordinate])
-#
-	#var adjacent_empty_squares = []
-	#var potential_squares = model.get_adjacent_squares(destroyed_piece.coordinate)
-#
-	## Find all adjacent squares that are currently empty
-	#for sq in potential_squares:
-		## Need to check bounds again just in case get_adjacent_squares gives invalid coords (it shouldn't but safety first)
-		#if model.is_in_bounds(sq.x, sq.y) and model.board[sq.x][sq.y] == null:
-			#adjacent_empty_squares.append(sq)
-#
-	#if adjacent_empty_squares.is_empty():
-		#print("Raise Dead: No empty adjacent squares to summon Bone Pawn.")
-		#return # No place to summon
-#
-	## --- Summoning Logic ---
-	## Option A (Simple): Summon on the first available empty adjacent square found.
-	#var summon_coord = adjacent_empty_squares[0]
-#
-	## Option B (Complex/Future):
-	## - Signal Controller/View to highlight 'adjacent_empty_squares'.
-	## - Enter a state waiting for player input on one of those squares.
-	## - Controller handles the click, calls back to a method like 'passive_target_selected(coord)'.
-	## - Perform summon logic there.
-	## For now, we use Option A.
-#
-	#print("Raise Dead: Summoning Bone Pawn at %s" % summon_coord)
-#
-	## --- Perform Summon (using Option A logic) ---
-	#var new_pawn = BonePawn.new(self.color, summon_coord)
-	#new_pawn.model = self.model
-	#new_pawn.view = self.view
-	#model.connect("turn_changed", new_pawn._on_turn_changed)
-	## Connect any other necessary signals
-#
-	#model.board[summon_coord.x][summon_coord.y] = new_pawn
-#
-	#if view.has_method("add_piece_node"):
-		#view.add_piece_node(new_pawn)
-	#else:
-		#printerr("NecromancerKing (Raise Dead): View reference invalid or lacks add_piece_node method.")
-#
-	## Passive ability typically does NOT cost a turn or cooldown.
