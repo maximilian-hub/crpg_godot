@@ -43,14 +43,24 @@ func take_damage(damage: int = 1):
 	var destroyed = current_hp <= 0
 	
 	if destroyed:
-		destroy()
+		model.destroy_piece(self) 
 	else:
-		view.spawn_splatter(coordinate)
-		view_node.update_hp(current_hp) # Notify the view layer	
+		if is_instance_valid(view_node):
+			view.spawn_splatter(coordinate)
+			view_node.update_hp(current_hp) # Notify the view layer	
+		else:
+			printerr("take_damage: Tried to update visuals for piece ", type, " at ", coordinate, " but its view_node is invalid.")
 
-func destroy():
-	view.destroy_piece(view_node) 
-	model.destroy_piece(self)
+#func destroy():
+	#view.destroy_piece(view_node) # i keep getting an error here...
+		## Gemini ;-;
+		## Seemingly randomly, I'll get an error here.
+		## I can make a bunch of moves,
+		## And then I'll move a piece to an empty square, 
+		## And this happens!
+		## error is: Invalid type in function 'destroy_piece' in base 'Node2D (chess_board.gd)'. The Object-derived class of argument 1 (previously freed) is not a subclass of the expected argument class.
+		## 
+	#model.destroy_piece(self)
 
 func is_enemy(other: ModelPiece) -> bool:
 	return color != other.color

@@ -31,7 +31,7 @@ func summon_bone_pawn(target: Vector2i):
 	new_pawn.view = self.view   
 	model.connect("turn_changed", new_pawn._on_turn_changed)
 	model.board[target.x][target.y] = new_pawn
-	view.draw_piece(new_pawn) # Use the new function in ChessBoard
+	view.draw_piece(new_pawn) 
 	
 	if new_pawn._on_dead_row(): new_pawn.destroy()
 

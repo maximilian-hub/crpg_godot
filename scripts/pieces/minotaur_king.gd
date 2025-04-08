@@ -87,7 +87,7 @@ func charge(coord: Vector2i):
 		if target_piece.is_king:
 			target_piece.take_damage(2) # Example: Charge does extra damage to kings?
 		else:
-			target_piece.destroy()
+			model.destroy_piece(target_piece)
 			model.board[coord.x][coord.y] = null
 	
 	model.actually_move_piece(self, coord)
