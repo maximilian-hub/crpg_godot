@@ -69,7 +69,8 @@ func draw_board(modelBoard: Array):
 		for col in range(board[row].size()):
 			var pos = grid_to_screen(row, col)
 			draw_square(row,col,pos)
-			draw_piece(row,col,pos)
+			#draw_piece(row,col,pos)
+			draw_piece(board[row][col])
 
 func draw_square(row: int, col: int, pos: Vector2):
 	var squares = $Squares
@@ -81,11 +82,12 @@ func draw_square(row: int, col: int, pos: Vector2):
 	square.connect("square_clicked", controller._on_square_clicked)
 	squares.add_child(square)
 
-func draw_piece(row: int, col: int, pos: Vector2):
-	var pieces = $Pieces
-	var piece_data = board[row][col] # to give the nodes a reference to the model object
+func draw_piece(piece_data: ModelPiece):
 	if piece_data == null: return # no need to draw a piece that doesn't exist!
-
+	var pieces = $Pieces
+	var row = piece_data.coordinate.x
+	var col = piece_data.coordinate.y
+	var pos = grid_to_screen(row, col)
 	var piece = piece_scene.instantiate()
 	piece.position = pos
 	piece.set_model(piece_data)
@@ -317,21 +319,21 @@ func _on_passive_ability_effect(piece: KingPiece, ability_name: String, affected
 		minotaur_retaliate(affected_coords)
 
 
-# Creates the visual node for a piece added mid-game.
-func add_piece_node(piece_data: ModelPiece):
-	var pieces_container = $Pieces
-	var pos = grid_to_screen(piece_data.coordinate.x, piece_data.coordinate.y)
-
-	var piece_node = piece_scene.instantiate()
-	piece_node.position = pos
-	piece_node.set_model(piece_data)
-	piece_node.coordinate = piece_data.coordinate
-	pieces_container.add_child(piece_node)
-	piece_data.view_node = piece_node
-
-	if piece_data.max_hp > 1:
-		var hp_bar = hp_bar_scene.instantiate()
-		hp_bar.max_hp = piece_data.max_hp
-		hp_bar.current_hp = piece_data.current_hp
-		hp_bar.position = Vector2(0, 24)
-		piece_node.add_child(hp_bar)
+## Creates the visual node for a ModelPiece added mid-game.
+#func add_piece_node(piece_data: ModelPiece):
+	#var pieces_container = $Pieces
+	#var pos = grid_to_screen(piece_data.coordinate.x, piece_data.coordinate.y)
+#
+	#var piece_node = piece_scene.instantiate()
+	#piece_node.position = pos
+	#piece_node.set_model(piece_data)
+	#piece_node.coordinate = piece_data.coordinate
+	#pieces_container.add_child(piece_node)
+	#piece_data.view_node = piece_node
+#
+	#if piece_data.max_hp > 1:
+		#var hp_bar = hp_bar_scene.instantiate()
+		#hp_bar.max_hp = piece_data.max_hp
+		#hp_bar.current_hp = piece_data.current_hp
+		#hp_bar.position = Vector2(0, 24)
+		#piece_node.add_child(hp_bar)

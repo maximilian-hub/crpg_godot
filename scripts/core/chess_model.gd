@@ -8,7 +8,7 @@ extends Node
 
 @export var view: Node
 @export var controller: Node
-const BOARD_TYPE = "debug"
+const BOARD_TYPE = "default"
 var board: Array
 var last_move: Dictionary = {}		# from, to, piecename
 var last_destroyed_piece: ModelPiece		
@@ -124,8 +124,7 @@ func inject_dependencies(piece: ModelPiece):
 	connect("turn_changed", piece._on_turn_changed)
 	connect("piece_destroyed", piece._on_piece_destroyed)
 
-	# Connect KingPiece specific signals TO the view
-	if piece is KingPiece: # Check if the piece is a KingPiece or subclass
+	if piece is KingPiece: 
 		var king_piece: KingPiece = piece 
 		king_piece.connect("cooldown_changed", view.update_cooldown_display)
 		king_piece.connect("cooldown_ready", view.ready_cooldown_display)
@@ -176,7 +175,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i):
 	piece.coordinate = to
 	piece.has_moved = true
 	view.move_piece_node(piece.view_node, to) # update the view
-	if piece.type.contains("pawn"): promotion_check(piece, piece.view_node, to)
+	if piece.type.contains("pawn"): promotion_check(piece)
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -195,22 +194,15 @@ func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: i
 	return true
 
 func switch_turn():
+	
 	if current_turn == "white":
 		current_turn = "black"
 	else:
 		current_turn = "white"
-	
-	print("turn_changed")
+	print("emitting turn_changed")
 	emit_signal("turn_changed", current_turn)
-	
-#
-#func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
-	#if piece.type == "pawn":
-		#if (piece.color == "white" and to.x == 0) or (piece.color == "black" and to.x == 7): # TODO: this only works on 8x8 boards.
-			#piece.type = "queen" #TODO: give options
-			#piece_node.update_sprite()
-			
-func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
+		
+func promotion_check(piece: ModelPiece):
 	if piece.type != "pawn": return
 	
 	var board_height = board.size()
@@ -218,19 +210,8 @@ func promotion_check(piece: ModelPiece, piece_node: Node, to: Vector2i):
 	var black_back_rank = get_back_rank("black")
 
 	var promotion_rank = white_back_rank if piece.color == "black" else black_back_rank
-	if to.x == promotion_rank: # TODO: Implement player choice for promotion (Queen, Rook, Bishop, Knight)
+	if piece.coordinate.x == promotion_rank: # TODO: Implement player choice for promotion (Queen, Rook, Bishop, Knight)
 		transform_piece(piece, "queen")
-
-
-
-	# Bone Pawn destruction on back rank
-	elif piece.type == "bone_pawn":
-		var back_rank = white_back_rank if piece.color == "white" else black_back_rank
-		if to.x == back_rank:
-			print("Bone Pawn reached back rank %s and crumbles to dust." % back_rank)
-			# Use the existing destroy mechanism in ModelPiece
-			# This handles removing from model.board and calling view.destroy_piece
-			piece.destroy()
 
 func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	last_move = {
@@ -390,6 +371,7 @@ upper_right_corner: Vector2i = Vector2i(0, board[0].size() - 1)) -> Array:
 			
 	return squares
 
+
 ## Returns an array of empty square coordinates,
 ## from the army's back rank, to its furthest occupied rank.
 func get_empty_squares_to_furthest_rank(color: String) -> Array:
@@ -424,15 +406,13 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool = true):
 
 func transform_piece(piece: ModelPiece, transformed_type: String):
 	if transformed_type == "queen":
-		var view_node_ref = piece.view_node
+		piece.view_node.queue_free()
 		var r = piece.coordinate.x
 		var c = piece.coordinate.y
 		
 		var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
 		inject_dependencies(transformed_piece)
-		transformed_piece.view_node = view_node_ref
-		view_node_ref.model = transformed_piece
-		view_node_ref.update_sprite()
+		view.add_piece_node(transformed_piece)
 		board[r][c] = transformed_piece
 		
 
@@ -462,16 +442,20 @@ func process_selection_queue():
 			switch_turn()
 		return
 	
-	print("Calling process_selection_queue()")
 	selection_queue.sort_custom(func(a, b): return a.priority > b.priority)
+	
 
 	var opportunity = selection_queue[0] # Peek at the highest priority
 	var calling_piece: ModelPiece = opportunity.calling_piece
 	var action_type: String = opportunity.action_type
 	var event_data = opportunity.event_data
-	
 	var targets = calling_piece.get_selection_targets(action_type, event_data)
+	
+	if targets.is_empty(): return 
 	
 	selection_queue.pop_front()
 	controller.initiate_non_move_selection_mode(calling_piece, targets)
 	
+func get_other_color(color: String) -> String:
+	if color == "white": return "black"
+	else: return "white"

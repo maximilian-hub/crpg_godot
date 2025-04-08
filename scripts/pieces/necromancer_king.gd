@@ -31,7 +31,7 @@ func summon_bone_pawn(target: Vector2i):
 	new_pawn.view = self.view   
 	model.connect("turn_changed", new_pawn._on_turn_changed)
 	model.board[target.x][target.y] = new_pawn
-	view.add_piece_node(new_pawn) # Use the new function in ChessBoard
+	view.draw_piece(new_pawn) # Use the new function in ChessBoard
 
 func _on_piece_destroyed(destroyed_piece: ModelPiece):
 	# Active Rase Dead only if the destroyed piece is a major or minor piece.

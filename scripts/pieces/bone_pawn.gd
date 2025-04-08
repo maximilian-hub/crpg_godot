@@ -27,3 +27,11 @@ func get_legal_moves() -> Array:
 
 
 	return moves
+
+func _on_turn_changed(color: String):
+	super._on_turn_changed(color)
+	
+	# bone pawns die instead of promoting
+	if coordinate.x == model.get_back_rank(model.get_other_color(color)):
+		destroy()
+		# TODO the turn ends after a piece is moved, so why aren't pone bawns destroyed immediately after moving?

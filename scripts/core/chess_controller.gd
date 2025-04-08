@@ -23,7 +23,9 @@ func _on_square_clicked(coord: Vector2i):
 	var piece = model.board[coord.x][coord.y]
 	if piece: piece.print_piece()
 	
-	if non_move_selection_mode: _handle_non_move_selection_mode_click(coord)
+	if non_move_selection_mode: 
+		_handle_non_move_selection_mode_click(coord)
+		return
 	elif active_ability_selected: _handle_active_ability_selected_click(coord)	
 	elif selected_piece == null:
 		if piece and piece.color == model.current_turn:
