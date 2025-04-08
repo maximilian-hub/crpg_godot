@@ -327,7 +327,7 @@ func _get_furthest_white_rank() -> int:
 	var furthest_rank = back_rank
 	
 	for r in range(board.size() - 1):
-		for c in range(board[0].size() - 1):
+		for c in range(board[0].size()):
 			var piece = board[r][c]
 			if piece == null: continue
 			if piece.color != "white": continue
