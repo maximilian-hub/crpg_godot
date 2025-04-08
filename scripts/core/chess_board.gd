@@ -16,6 +16,7 @@ extends Node2D
 # without too much fussing about with the game logic.
 
 signal rage_intro_animation_completed()
+signal piece_move_animation_finished(piece_node: Node)
 
 @export var controller: Node # ChessController is set here via the UI
 @export var white_cooldown_button: Node
@@ -145,7 +146,7 @@ func clear_highlights():
 	for square in squares:
 		square.clear_highlight()
 
-func move_piece_node(piece_node: Node, to: Vector2i) -> Node:
+func move_piece_node(piece_node: Node, to: Vector2i):
 		piece_node.coordinate = to
 			
 		# smooth movement:
@@ -157,7 +158,7 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> Node:
 			0.12
 		).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-		return piece_node
+		tween.tween_callback(Callable(self, "_emit_move_finished").bind(piece_node))
 
 func promote_piece(piece: Node, new_name: String):
 	if piece:
@@ -318,22 +319,8 @@ func _on_passive_ability_effect(piece: KingPiece, ability_name: String, affected
 	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_ABILITY_NAME:
 		minotaur_retaliate(affected_coords)
 
-
-## Creates the visual node for a ModelPiece added mid-game.
-#func add_piece_node(piece_data: ModelPiece):
-	#var pieces_container = $Pieces
-	#var pos = grid_to_screen(piece_data.coordinate.x, piece_data.coordinate.y)
-#
-	#var piece_node = piece_scene.instantiate()
-	#piece_node.position = pos
-	#piece_node.set_model(piece_data)
-	#piece_node.coordinate = piece_data.coordinate
-	#pieces_container.add_child(piece_node)
-	#piece_data.view_node = piece_node
-#
-	#if piece_data.max_hp > 1:
-		#var hp_bar = hp_bar_scene.instantiate()
-		#hp_bar.max_hp = piece_data.max_hp
-		#hp_bar.current_hp = piece_data.current_hp
-		#hp_bar.position = Vector2(0, 24)
-		#piece_node.add_child(hp_bar)
+func _emit_move_finished(piece_node: Node):
+		if is_instance_valid(piece_node):
+			emit_signal("piece_move_animation_finished", piece_node)
+		else:
+			print("move_piece_node: Tween finished, but piece_node was already invalid.")

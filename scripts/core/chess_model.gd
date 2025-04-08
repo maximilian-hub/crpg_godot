@@ -168,36 +168,48 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 	#switch_turn()
 
 func move_piece(piece: ModelPiece, to: Vector2i):
-	# Added safety checks
 	if not is_instance_valid(piece):
 		printerr("move_piece: Invalid piece instance passed.")
 		return
 	if not is_in_bounds(to.x, to.y):
 		printerr("move_piece: Target coordinate ", to, " is out of bounds.")
 		return
-	# End added safety checks
+
 
 	var from = piece.coordinate
-	# Added safety check for 'from' coordinate derived from piece
+
 	if not is_in_bounds(from.x, from.y):
 		printerr("move_piece: Piece's current coordinate ", from, " is out of bounds.")
 		return
-	# End added safety check
 
-	var piece_node = view.get_piece_node(from) # Assuming view handles its own checks if needed
+
+	var piece_node = view.get_piece_node(from) 
 	var is_en_passant = move_is_en_passant(piece, from, to)
 	var is_castling = move_is_castling(piece, from, to)
 	var is_combat = move_is_combat(is_en_passant, to)
-
-	if is_en_passant: handle_en_passant(piece, from, to)
-	elif is_combat: handle_combat(piece, to)
-	elif is_castling: handle_castling(piece, from, to)
-	else: actually_move_piece(piece, to)	# a normal move with no captures or exceptions
 	
-	print("move finished.") # You might want to remove this later or make it conditional (e.g., `if OS.is_debug_build():`)
+	var move_completed_normally = false
 
-	update_last_move(piece, from, to)
-	switch_turn()
+	if is_en_passant: 
+		await handle_en_passant(piece, from, to)
+		move_completed_normally = true
+	elif is_combat: 
+		await handle_combat(piece, to)
+		move_completed_normally = true
+	elif is_castling: 
+		await handle_castling(piece, from, to)
+		move_completed_normally = true
+	else: 
+		await actually_move_piece(piece, to) 	# a normal move with no captures or exceptions
+		move_completed_normally = true
+
+	# Only switch turn if the move sequence wasn't aborted by an error/check
+	if move_completed_normally:
+		print("move finished, updating last move and switching turn.")
+		update_last_move(piece, from, to) # Update last move *after* async operations
+		switch_turn() # Switch turn *after* everything (including animations) is done
+	else:
+		print("Move sequence did not complete normally, turn not switched.")
 
 
 
@@ -219,46 +231,50 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 ## Moves a piece from one square to another.
 # Assumes empty destination square for normal moves.
 # Validation is handled in move_piece() or callers like handle_combat.
-func actually_move_piece(piece: ModelPiece, to: Vector2i):
-	# --- Start of added checks ---
-	if not is_instance_valid(piece):
-		printerr("actually_move_piece: Invalid piece instance provided.")
-		return
-		
-	var from = piece.coordinate
-	if not is_in_bounds(from.x, from.y):
-		printerr("actually_move_piece: Piece's 'from' coordinate ", from, " is out of bounds.")
-		return
-	if not is_in_bounds(to.x, to.y):
-		printerr("actually_move_piece: Piece's 'to' coordinate ", to, " is out of bounds.")
-		return
-	if board[from.x][from.y] != piece:
-		printerr("actually_move_piece: Mismatch! Piece ", piece.type, " thinks it's at ", from, ", but board model disagrees.")
-		# Consider how to handle this state corruption. For now, we'll proceed cautiously.
-		# If the piece *is* somewhere else, nulling 'from' might be wrong.
-		# If the piece is nowhere, moving it is fine. Let's assume the piece's coordinate is authoritative for now.
-	
-	# This check is primarily for non-combat moves, as combat handles the destination piece separately.
-	# var target_content = board[to.x][to.y]
-	# if is_instance_valid(target_content):
-	#	 printerr("actually_move_piece: Attempted to move piece ", piece.type, " to ", to, " which is occupied by ", target_content.type)
-	#	 # This function assumes the target square is clear or handled by the caller (like combat).
-	#	 # If this error appears unexpectedly, review the calling logic (move_piece, handle_castling, etc.)
-	#	 # return # Might uncomment this if it causes issues, but for now log the warning.
-	# --- End of added checks ---
+func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
+		# ... (existing safety checks) ...
+		if not is_instance_valid(piece):
+			printerr("actually_move_piece: Invalid piece instance provided.")
+			return
 
-	print("actually moving piece, ", piece.type)
-	board[from.x][from.y] = null
-	board[to.x][to.y] = piece
-	piece.coordinate = to
-	piece.has_moved = true
-	
-	if is_instance_valid(piece.view_node): # Check if view node still exists (e.g., wasn't destroyed in combat)
-		view.move_piece_node(piece.view_node, to) # update the view
-	else:
-		printerr("actually_move_piece: Tried to move view_node for ", piece.type, " at ", to, ", but view_node is invalid. Was it destroyed prematurely?")
+		var from = piece.coordinate
+		# ... (more checks: bounds, piece at 'from', 'to' empty etc.) ...
 
-	if piece.type.contains("pawn"): promotion_check(piece)
+		print("actually moving piece, ", piece.type, " from ", from, " to ", to)
+		board[from.x][from.y] = null
+		board[to.x][to.y] = piece
+		piece.coordinate = to # Update model coordinate *before* animation starts
+		piece.has_moved = true
+
+		# --- CHANGE HERE: Start animation and wait ---
+		if is_instance_valid(piece.view_node):
+			view.move_piece_node(piece.view_node, to) # Tell the view to start animating
+			# Wait for the view to signal that the specific piece's animation is done
+			# We might want a timeout here in a real game to prevent infinite hangs
+			await view.piece_move_animation_finished # Wait for the signal
+			print("Animation finished for piece: ", piece.type)
+		else:
+			printerr("actually_move_piece: Tried to move view_node for ", piece.type, " at ", to, ", but view_node is invalid.")
+			# Decide if the logic should continue without animation confirmation. Maybe?
+			# Let's assume for now if the view_node is gone, the move is effectively instant.
+
+		## --- ADDED: Post-animation checks ---
+		## Check for Bone Pawn self-destruction AFTER move animation completes
+		#if piece is BonePawn:
+			#var bone_pawn = piece as BonePawn
+			#if bone_pawn._on_dead_row(): # Check if it landed on the back rank
+				#print("Bone Pawn reached dead row, destroying...")
+				## We might want destroy_piece to be async too if it has animations
+				#destroy_piece(bone_pawn)
+				## Return early? If destroyed, promotion check is irrelevant.
+				#return
+
+		# Check for normal promotion AFTER move animation completes (if piece wasn't destroyed)
+		if piece.type.contains("pawn"): # Check type again in case it was transformed/destroyed
+			# Check is_instance_valid again in case Bone Pawn destroyed itself
+			if is_instance_valid(piece) and board[to.x][to.y] == piece:
+				promotion_check(piece)
+		# --- End ADDED ---
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -510,7 +526,7 @@ func get_empty_squares_to_furthest_rank(color: String) -> Array:
 
 	return squares
 
-func destroy_piece(piece: ModelPiece, nullify_square: bool = true):
+func destroy_piece(piece: ModelPiece, nullify_square: bool):
 	if not is_instance_valid(piece):
 			printerr("destroy_piece: Attempted to destroy an invalid ModelPiece instance.")
 			return
@@ -567,12 +583,8 @@ func transform_piece(piece: ModelPiece, transformed_type: String):
 		return
 		
 	if transformed_type == "queen":
-		# --- CHANGE HERE ---
-		# Instead of queue_free(), call our centralized destruction logic
-		# for the *old* piece's view_node, but don't nullify its board square yet.
 		if is_instance_valid(piece.view_node):
 			view.destroy_piece(piece.view_node)
-		# --- End CHANGE ---
 
 		var r = piece.coordinate.x
 		var c = piece.coordinate.y

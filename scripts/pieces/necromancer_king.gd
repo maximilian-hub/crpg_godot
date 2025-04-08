@@ -33,7 +33,7 @@ func summon_bone_pawn(target: Vector2i):
 	model.board[target.x][target.y] = new_pawn
 	view.draw_piece(new_pawn) 
 	
-	if new_pawn._on_dead_row(): new_pawn.destroy()
+	#if new_pawn._on_dead_row(): model.destroy(new_pawn)
 
 func _on_piece_destroyed(destroyed_piece: ModelPiece):
 	# Active Rase Dead only if the destroyed piece is a major or minor piece.
