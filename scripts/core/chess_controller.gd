@@ -1,18 +1,23 @@
 #~~~~~~~~NEW FILE: chess_controller.gd~~~~~~~~~~~~
 extends Node
+class_name ChessBoardController
 
 # This node serves as the Controller component.
 # Mostly handles user input.
 
-@export var model: Node
-@export var view: Node # ChessBoard node is connected here via the UI
+@export var model: ChessBoardModel
+@export var view: ChessBoardView # node is connected here via the UI
 var selected_piece: ModelPiece = null
 var active_king: KingPiece = null # the king whose ability has been selected.
 var active_piece: ModelPiece = null # the piece whose non-move ability has been selected.
+var last_active_piece: ModelPiece = null # the last piece whose yada yada. this is ultimately intended to enable a continuous king aura over multiple non-move selections
 var legal_moves: Array = []
 var is_input_locked: bool = false
 var active_ability_selected: bool = false
 var non_move_selection_mode: bool = false
+
+signal selection_piece_processing(piece: ModelPiece) # emitted when a piece's selections are being processed in the queue
+signal selection_piece_processed() # emitted when a piece's selections are done processing
 
 func _ready():
 	pass
@@ -25,8 +30,12 @@ func _on_square_clicked(coord: Vector2i):
 	
 	if non_move_selection_mode: 
 		_handle_non_move_selection_mode_click(coord)
+		model.process_selection_queue()
 		return
-	elif active_ability_selected: _handle_active_ability_selected_click(coord)	
+	elif active_ability_selected: 
+		_handle_active_ability_selected_click(coord)	
+		model.process_selection_queue()
+		return
 	elif selected_piece == null:
 		if piece and piece.color == model.current_turn:
 			select_piece(piece)
@@ -46,8 +55,13 @@ func _on_square_clicked(coord: Vector2i):
 func _handle_non_move_selection_mode_click(coord: Vector2i):
 	if coord in legal_moves:
 			active_piece._on_special_target_selected(coord)
-			end_non_move_selection_mode()
-			deselect_piece()
+			
+			if model.selection_queue.is_empty():
+				end_non_move_selection_mode()
+				deselect_piece()
+			else:
+				view.clear_highlights()
+				model.process_selection_queue()
 			# model.switch_turn() # not sure why this was here...cccccccc
 			return
 
@@ -137,14 +151,22 @@ func deselect_active_ability(play_powerdown_sound: bool):
 
 ## When you need the user to select a square or option that's not a normal move.
 ## Right now, this is just used for Necro's passive, which activates when a major/minor piece dies.
+# Called by the model during selection queue processing.
+# Non-move selection mode begins again immediately every
+# time a new element starts processing.
 func initiate_non_move_selection_mode(calling_piece: ModelPiece, _legal_moves: Array):
 	non_move_selection_mode = true
+	if active_piece: last_active_piece = active_piece
 	active_piece = calling_piece
+	if active_piece != last_active_piece: selection_piece_processing.emit(calling_piece)
 	legal_moves = _legal_moves
 	view.highlight_squares(legal_moves)
-	pass
 
+## Ends non-move selection mode.
+# Called by _handle_non_move_selection_mode_click() when the process queue is empty.
 func end_non_move_selection_mode():
 	non_move_selection_mode = false
 	active_piece = null
+	last_active_piece = null
+	selection_piece_processed.emit()
 	view.clear_highlights()

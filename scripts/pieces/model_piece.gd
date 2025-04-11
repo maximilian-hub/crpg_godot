@@ -5,9 +5,9 @@ class_name ModelPiece
 # Base class for all pieces.
 # Considered part of the Model component of the chess game scene.
 
-var model: Node = null	# set in inject_dependencies() in chess_model.gd
-var view: Node = null	# set in inject_dependencies() in chess_model.gd
-var controller: Node = null # set in inject_dependencies() in chess_model.gd
+var model: ChessBoardModel = null	# set in inject_dependencies() in chess_model.gd
+var view: ChessBoardView = null	# set in inject_dependencies() in chess_model.gd
+var controller: ChessBoardController = null # set in inject_dependencies() in chess_model.gd
 var hp_bar_scene = preload("res://ui/hp_bar.tscn")
 
 
@@ -43,7 +43,7 @@ func take_damage(damage: int = 1):
 	var destroyed = current_hp <= 0
 	
 	if destroyed:
-		model.destroy_piece(self) 
+		model.destroy_piece(self, true) 
 	else:
 		if is_instance_valid(view_node):
 			view.spawn_splatter(coordinate)
@@ -98,3 +98,6 @@ func unstun():
 
 func get_selection_targets(action_type: String, event_data) -> Array:
 	return []		
+
+func _on_selection_processing_start(piece: ModelPiece): pass
+func _on_selection_processing_end(): pass

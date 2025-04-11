@@ -1,0 +1,35 @@
+[gd_scene load_steps=5 format=3 uid="uid://dxho1dvsqvkcq"]
+
+[ext_resource type="Texture2D" uid="uid://b6o2sns7qwf53" path="res://assets/particle/particle_skull.png" id="1_8nhds"]
+
+[sub_resource type="Gradient" id="Gradient_8nhds"]
+offsets = PackedFloat32Array(0, 0.317073, 0.53252, 1)
+colors = PackedColorArray(0.435294, 0.00392157, 0.764706, 0, 0.436471, 0.00232327, 0.765236, 1, 0.436471, 0.00232327, 0.765236, 1, 0.435294, 0.00392157, 0.764706, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_wribg"]
+gradient = SubResource("Gradient_8nhds")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_t57j8"]
+particle_flag_disable_z = true
+emission_shape_scale = Vector3(2.5, 1, 1)
+emission_shape = 1
+emission_sphere_radius = 25.1
+direction = Vector3(0, 10, 0)
+spread = 41.274
+angular_velocity_min = -42.48
+angular_velocity_max = 38.01
+gravity = Vector3(0, -100, 0)
+scale_max = 4.0
+color_ramp = SubResource("GradientTexture1D_wribg")
+
+[node name="SkullAura" type="GPUParticles2D"]
+modulate = Color(0.498039, 0, 0.498039, 0.454902)
+z_index = -1
+texture_filter = 1
+position = Vector2(-1, 17)
+scale = Vector2(0.5, 0.5)
+amount = 80
+texture = ExtResource("1_8nhds")
+lifetime = 2.01
+local_coords = true
+process_material = SubResource("ParticleProcessMaterial_t57j8")

@@ -3,6 +3,7 @@
 # The View layer for each piece.
 
 extends Area2D
+class_name PieceView
 
 var coordinate: Vector2i
 var model: ModelPiece

@@ -1,5 +1,6 @@
 #~~~~~~~~NEW FILE: chess_board.gd~~~~~~~~~~~~
 extends Node2D
+class_name ChessBoardView
 
 ## This node serves as the main View component.
 # It receives signals from the Model,
@@ -81,6 +82,7 @@ func draw_square(row: int, col: int, pos: Vector2):
 	square.position = pos
 	square.coordinate = Vector2i(row, col)
 	square.connect("square_clicked", controller._on_square_clicked)
+	square.z_index = -2
 	squares.add_child(square)
 
 func draw_piece(piece_data: ModelPiece):
@@ -169,10 +171,15 @@ func get_piece_at(coord: Vector2i) -> Node:
 		if piece.coordinate == coord:
 			return piece
 	return null
-	
+
+## Destroy a sprite with a visual effect.
 func destroy_piece(piece: Node):
 	# TODO: if piece.is_king: play king death sound, spawn king death effect
 	spawn_explosion(piece.position)
+	piece.queue_free()
+
+## Disappear a sprite.
+func remove_piece(piece: Node):
 	piece.queue_free()
 
 

@@ -1,13 +1,14 @@
 #~~~~~~~~NEW FILE: chess_model.gd~~~~~~~~~~~~
 extends Node
+class_name ChessBoardModel
 
 ## Serves as the Model layer of our chess games.
 # You may notice a lack of Checking; this is intentional.
 # We believe that if you don't see that your King is threatened,
 # he should just die.
 
-@export var view: Node
-@export var controller: Node
+@export var view: ChessBoardView
+@export var controller: ChessBoardController
 const BOARD_TYPE = "default"
 var board: Array
 var last_move: Dictionary = {}		# from, to, piecename
@@ -111,6 +112,7 @@ func initialize_debug_pieces():
 	#board[7][6] = ModelPiece.new("white", "knight", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
 
+## Injects dependencies into every piece on the board.
 func inject_all_dependencies():
 	for row in board:
 		for piece in row:
@@ -123,6 +125,8 @@ func inject_dependencies(piece: ModelPiece):
 	piece.controller = controller
 	connect("turn_changed", piece._on_turn_changed)
 	connect("piece_destroyed", piece._on_piece_destroyed)
+	controller.connect("selection_piece_processing", piece._on_selection_processing_start)
+	controller.connect("selection_piece_processed", piece._on_selection_processing_end)
 
 	if piece is KingPiece: 
 		var king_piece: KingPiece = piece 
@@ -133,7 +137,6 @@ func inject_dependencies(piece: ModelPiece):
 		if king_piece is MinotaurKing:
 			king_piece.connect("piece_started_ability", view._on_piece_started_ability)
 			king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
-
 
 
 func get_legal_moves(piece: ModelPiece) -> Array:
@@ -584,14 +587,14 @@ func transform_piece(piece: ModelPiece, transformed_type: String):
 		
 	if transformed_type == "queen":
 		if is_instance_valid(piece.view_node):
-			view.destroy_piece(piece.view_node)
+			view.remove_piece(piece.view_node)
 
 		var r = piece.coordinate.x
 		var c = piece.coordinate.y
 		
 		var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
 		inject_dependencies(transformed_piece)
-		view.add_piece_node(transformed_piece)
+		view.draw_piece(transformed_piece)
 		board[r][c] = transformed_piece # Overwrite the old piece reference in the model
 		
 		# Optional: Disconnect signals from the old piece if necessary,

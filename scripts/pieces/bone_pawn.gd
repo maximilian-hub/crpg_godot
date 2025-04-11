@@ -33,7 +33,7 @@ func _on_turn_changed(color: String):
 	print("turn signal recieved in bone_pawn.")
 	# bone pawns die instead of promoting
 	if _on_dead_row(): 
-		model.destroy_piece(self)
+		model.destroy_piece(self, true)
 		print("bone pawn dying on back rank.")
 		# TODO the turn ends after a piece is moved, so why aren't pone bawns destroyed immediately after moving?
 

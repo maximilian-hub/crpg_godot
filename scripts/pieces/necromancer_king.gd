@@ -3,6 +3,8 @@ extends KingPiece # and KingPiece extends ModelPiece
 class_name NecromancerKing
 
 const BonePawn = preload("res://scripts/pieces/bone_pawn.gd")
+var SkullAura = preload("res://effects/skull_aura.tscn")
+var skull_aura_instance: Node = null
 
 func _init(color: String, coord: Vector2i):
 	super._init(color, coord)
@@ -66,3 +68,24 @@ func _on_special_target_selected(coord: Vector2i):
 	summon_bone_pawn(coord)
 	if model.current_turn == self.color: model._pending_turn_switch = true # If you choose to Raise Dead when your turn is coming up, your turn is skipped.
 	
+# move to view script
+func apply_aura():
+	print("apply_aura()")
+	if skull_aura_instance == null:
+		skull_aura_instance = SkullAura.instantiate()
+		view_node.add_child(skull_aura_instance)
+		skull_aura_instance.restart()
+	skull_aura_instance.emitting = true
+	skull_aura_instance.connect("finished", skull_aura_instance.queue_free, CONNECT_ONE_SHOT)
+
+# move to view script
+func remove_aura():
+	if skull_aura_instance and skull_aura_instance is GPUParticles2D:
+		skull_aura_instance.emitting = false
+		#skull_aura_instance = null
+
+func _on_selection_processing_start(piece: ModelPiece): 
+	print("NK notified of selection process starting. checking if it's for me...")
+	if piece == self: apply_aura()
+	
+func _on_selection_processing_end(): remove_aura()
