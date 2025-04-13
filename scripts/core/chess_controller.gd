@@ -30,7 +30,6 @@ func _on_square_clicked(coord: Vector2i):
 	
 	if non_move_selection_mode: 
 		_handle_non_move_selection_mode_click(coord)
-		model.process_selection_queue()
 		return
 	elif active_ability_selected: 
 		_handle_active_ability_selected_click(coord)	
@@ -125,16 +124,12 @@ func select_active_ability(color: String):
 		return
 
 	active_ability_selected = true
-	# Assuming view_node is correctly assigned in ModelPiece/KingPiece
-	if active_king.view_node:
-		view.spawn_ss_aura(active_king.view_node) # Apply visual effect
-	else:
-		printerr("Active king has no view_node assigned!")
 
 	# Use the generic method name now
 	legal_moves = active_king.get_active_ability_targets() # <-- Use generic method
 	view.show_legal_moves(legal_moves)
 	view.flash_screen()
+	active_king._on_active_selected()
 
 func deselect_active_ability(play_powerdown_sound: bool):
 	if active_ability_selected and active_king != null: # Check active_king exists

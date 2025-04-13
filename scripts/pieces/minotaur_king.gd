@@ -71,10 +71,8 @@ func active_target_selected(coord: Vector2i):
 
 	# --- Post-Ability Actions ---
 	reset_cooldown() # Reset cooldown using the inherited method
-	if model: # Safety check
-		model.switch_turn() # Consume the turn
-	else:
-		printerr("MinotaurKing cannot switch turn, model reference is null.")
+	model.switch_turn() # Consume the turn
+
 
 
 # --- Minotaur-Specific Methods ---
@@ -117,3 +115,7 @@ func _perform_rage_damage() -> void:
 
 	emit_signal("passive_ability_effect", self, passive_ability_name, exploded_squares) 
 	model.process_selection_queue()
+
+
+func _on_active_selected():
+	view.spawn_ss_aura(view_node) # move to own view

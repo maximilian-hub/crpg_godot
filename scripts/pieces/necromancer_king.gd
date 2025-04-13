@@ -23,6 +23,7 @@ func get_active_ability_targets() -> Array:
 
 ## Active: Execute the Summon Bone Pawn ability.
 func active_target_selected(target: Vector2i):
+	remove_aura()
 	summon_bone_pawn(target)
 	reset_cooldown() 
 	model.switch_turn() 
@@ -89,3 +90,6 @@ func _on_selection_processing_start(piece: ModelPiece):
 	if piece == self: apply_aura()
 	
 func _on_selection_processing_end(): remove_aura()
+
+func _on_active_selected():
+	apply_aura()

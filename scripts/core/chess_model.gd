@@ -631,6 +631,7 @@ func process_selection_queue():
 	
 	selection_queue.sort_custom(func(a, b): return a.priority > b.priority)
 	
+	print("process_selection_queue")
 
 	var opportunity = selection_queue[0] # Peek at the highest priority
 	var calling_piece: ModelPiece = opportunity.calling_piece
