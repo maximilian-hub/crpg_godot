@@ -134,7 +134,7 @@ func select_active_ability(color: String):
 func deselect_active_ability(play_powerdown_sound: bool):
 	if active_ability_selected and active_king != null: # Check active_king exists
 		if active_king.view_node: # Check view_node exists
-			view.fade_out_ss_aura(active_king.view_node, play_powerdown_sound)
+			active_king._on_active_deselected(play_powerdown_sound)
 		else:
 			printerr("Cannot fade aura, active_king has no view_node.")
 		view.clear_highlights()

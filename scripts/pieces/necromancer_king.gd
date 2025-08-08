@@ -53,8 +53,6 @@ func raise_dead():
 	# a bone pawn will be summoned from _on_target_selected().
 	
 	
-	## TODO: handle multiple pieces dying at once, eg from Minotaur King's Retaliate
-	## TODO: should we disallow summoning on the final rank, or let them wither immediately?
 
 func get_selection_targets(action_type: String, event_data) -> Array:
 	if action_type == "raise_dead":
@@ -93,3 +91,8 @@ func _on_selection_processing_end(): remove_aura()
 
 func _on_active_selected():
 	apply_aura()
+
+func _on_active_deselected(play_powerdown_sound: bool = false):
+	remove_aura()
+	if play_powerdown_sound: pass # add sound
+	

@@ -1,0 +1,15 @@
+GPUParticles2D
+Node2D
+AnimationPlayer
+ColorRect
+Button
+Control
+Container
+MarginContainer
+CanvasLayer
+Sprite2D
+AudioStreamPlayer2D
+AnimatedSprite2D
+Area2D
+CollisionShape2D
+TileMapLayer

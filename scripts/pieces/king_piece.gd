@@ -5,13 +5,10 @@ class_name KingPiece
 ## Base class for all King pieces.
 ## Handles common King functionality like cooldowns for active abilities.
 
-# --- Signals ---
 ## Emitted when the cooldown value changes (and is not 0).
 signal cooldown_changed(king: KingPiece, new_cooldown: int)
 ## Emitted when the cooldown reaches 0 (ability is ready).
 signal cooldown_ready(king: KingPiece)
-
-# --- Properties ---
 
 ## The base number of turns for the active ability cooldown.
 ## Subclasses should override this in their _init or set it directly.

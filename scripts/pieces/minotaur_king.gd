@@ -119,3 +119,6 @@ func _perform_rage_damage() -> void:
 
 func _on_active_selected():
 	view.spawn_ss_aura(view_node) # move to own view
+
+func _on_active_deselected(play_powerdown_sound: bool = false):
+	view.fade_out_ss_aura(view_node, play_powerdown_sound)
