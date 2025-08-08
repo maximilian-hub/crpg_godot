@@ -1,7 +1,11 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
 .import/
 export_presets.cfg
 .cache/
-
+*.translation
 
 .DS_Store
 *.DS-Store
