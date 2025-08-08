@@ -16,9 +16,9 @@ func get_legal_moves() -> Array:
 	if model.is_in_bounds(forward_one, col) and model.board[forward_one][col] == null:
 		moves.append(Vector2i(forward_one, col))
 
-	var forward_two = row + (direction * 2)
-	if not has_moved and model.is_in_bounds(forward_two, col) and model.board[forward_two][col] == null:
-		moves.append(Vector2i(forward_two, col))
+		var forward_two = row + (direction * 2)
+		if not has_moved and model.is_in_bounds(forward_two, col) and model.board[forward_two][col] == null:
+			moves.append(Vector2i(forward_two, col))
 
 	for dc in [-1, 1]:
 		var diag_col = col + dc
