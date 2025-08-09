@@ -24,12 +24,15 @@ func update_sprite():
 	var sprite = $Sprite2D
 	sprite.texture = load("res://assets/pieces/" + sprite_name + ".png")
 	
+	#TODO: This feels really bad lmao. Standardize your image sizes or some sh*t.
 	if model.type == "minotaur_king":
 		sprite.scale = Vector2(0.5, 0.5)
 	elif model.type == "bone_pawn":
 		sprite.scale = Vector2(0.11, 0.11)
 	elif model.type == "necromancer_king":
 		sprite.scale = Vector2(0.13,0.13)
+	elif model.type == "arakne_king":
+		sprite.scale = Vector2(0.5,0.5)
 
 func update_hp(new_hp: int):
 	model.current_hp = new_hp

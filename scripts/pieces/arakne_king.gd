@@ -51,3 +51,14 @@ func active_target_selected(coord: Vector2i):
 
 	reset_cooldown()
 	model.switch_turn()
+
+#TODO: MAN it really feels like these shouldn't be here. Aren't these king scripts supposed to be the Model?? 
+# and yet here's view stuff 😖
+func _on_active_selected():
+	#TODO: add visual effect here
+	return
+
+func _on_active_deselected(play_powerdown_sound: bool = false):
+	#view.fade_out_ss_aura(view_node, play_powerdown_sound)
+	#TODO: add visual effect here
+	return
