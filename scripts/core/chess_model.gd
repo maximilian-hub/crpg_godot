@@ -30,6 +30,7 @@ const Queen = preload("res://scripts/pieces/queen.gd")
 const ClassicKing = preload("res://scripts/pieces/classic_king.gd")
 const MinotaurKing = preload("res://scripts/pieces/minotaur_king.gd")
 const NecromancerKing = preload("res://scripts/pieces/necromancer_king.gd")
+const ArakneKing = preload("res://scripts/pieces/arakne_king.gd")
 
 var custom_size = 16
 
@@ -65,7 +66,7 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
+	board[0][4] = ArakneKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
