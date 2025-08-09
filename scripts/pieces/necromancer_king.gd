@@ -57,7 +57,12 @@ func raise_dead():
 func get_selection_targets(action_type: String, event_data) -> Array:
 	if action_type == "raise_dead":
 		var death_square = event_data
-		var raisable_squares = model.get_empty_adjacent_squares(death_square)	
+		var raisable_squares = model.get_empty_adjacent_squares(death_square)
+
+		# Add the death square itself if it's empty
+		if model.board[death_square.x][death_square.y] == null:
+			raisable_squares.append(death_square)
+
 		return raisable_squares
 	else: return []
 
