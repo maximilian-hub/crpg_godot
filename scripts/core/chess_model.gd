@@ -14,6 +14,7 @@ var board: Array
 var last_move: Dictionary = {}		# from, to, piecename
 var last_destroyed_piece: ModelPiece		
 var current_turn: String = "white"	# can be white or black
+var game_mode: String
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
 
@@ -32,9 +33,20 @@ const MinotaurKing = preload("res://scripts/pieces/minotaur_king.gd")
 const NecromancerKing = preload("res://scripts/pieces/necromancer_king.gd")
 const ArakneKing = preload("res://scripts/pieces/arakne_king.gd")
 
+const KING_TYPES = {
+	"Classic": ClassicKing,
+	"Minotaur": MinotaurKing,
+	"Necromancer": NecromancerKing,
+	"Arakne": ArakneKing
+}
+
 var custom_size = 16
 
 func _ready():
+	if GameSettings:
+		game_mode = GameSettings.game_mode
+	else:
+		game_mode = "friend" # Default to friend mode if GameSettings is not available
 	initialize_board()
 	#print(board) # debug
 	view.draw_board(board)
@@ -66,7 +78,10 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = ArakneKing.new("black", Vector2i(0, 4))
+	if GameSettings:
+		board[0][4] = KING_TYPES[GameSettings.black_king].new("black", Vector2i(0, 4))
+	else:
+		board[0][4] = ClassicKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
@@ -79,7 +94,10 @@ func initialize_default_pieces():
 	board[7][1] = Knight.new("white", Vector2i(7, 1))
 	board[7][2] = Bishop.new("white", Vector2i(7, 2))
 	board[7][3] = Queen.new("white", Vector2i(7, 3))
-	board[7][4] = NecromancerKing.new("white", Vector2i(7, 4))
+	if GameSettings:
+		board[7][4] = KING_TYPES[GameSettings.white_king].new("white", Vector2i(7, 4))
+	else:
+		board[7][4] = ClassicKing.new("white", Vector2i(7, 4))
 	board[7][5] = Bishop.new("white", Vector2i(7, 5))
 	board[7][6] = Knight.new("white", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))

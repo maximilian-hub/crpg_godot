@@ -1,0 +1,65 @@
+[gd_scene load_steps=2 format=3 uid="uid://b5w5d6yvj4v3q"]
+
+[ext_resource type="Script" path="res://scenes/startup_menu.gd" id="1_0wcfx"]
+
+[node name="StartupMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_0wcfx")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -200.0
+offset_right = 150.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+spacing = 20
+
+[node name="TitleLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Chess RPG"
+horizontal_alignment = 1
+
+[node name="GameModeLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Game Mode"
+horizontal_alignment = 1
+
+[node name="FriendButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "vs. Friend"
+
+[node name="CpuButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "vs. CPU"
+
+[node name="WhiteKingLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "White King"
+horizontal_alignment = 1
+
+[node name="WhiteKingOptionButton" type="OptionButton" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="BlackKingLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Black King"
+horizontal_alignment = 1
+
+[node name="BlackKingOptionButton" type="OptionButton" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="StartGameButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Start Game"

@@ -24,3 +24,7 @@ window/stretch/mode="viewport"
 [rendering]
 
 renderer/rendering_method="mobile"
+
+[autoload]
+
+GameSettings="*res://scripts/game_settings.gd"

@@ -2,6 +2,8 @@
 extends Node
 class_name ChessBoardController
 
+const AIPlayer = preload("res://scripts/ai_player.gd")
+
 # This node serves as the Controller component.
 # Mostly handles user input.
 
@@ -15,12 +17,15 @@ var legal_moves: Array = []
 var is_input_locked: bool = false
 var active_ability_selected: bool = false
 var non_move_selection_mode: bool = false
+var ai_player: AIPlayer
 
 signal selection_piece_processing(piece: ModelPiece) # emitted when a piece's selections are being processed in the queue
 signal selection_piece_processed() # emitted when a piece's selections are done processing
 
 func _ready():
-	pass
+	if model.game_mode == "cpu":
+		ai_player = AIPlayer.new(model)
+	model.turn_changed.connect(_on_turn_changed)
 		
 func _on_square_clicked(coord: Vector2i):
 	if is_input_locked: return
@@ -165,3 +170,11 @@ func end_non_move_selection_mode():
 	last_active_piece = null
 	selection_piece_processed.emit()
 	view.clear_highlights()
+
+func _on_turn_changed(current_turn: String):
+	if model.game_mode == "cpu" and current_turn == "black":
+		is_input_locked = true
+		var best_move = ai_player.get_best_move()
+		if best_move:
+			model.move_piece(best_move.piece, best_move.to)
+		is_input_locked = false
