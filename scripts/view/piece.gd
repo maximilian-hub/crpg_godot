@@ -32,6 +32,5 @@ func update_sprite():
 		sprite.scale = Vector2(0.13,0.13)
 
 func update_hp(new_hp: int):
-	model.current_hp = new_hp
 	if has_node("HpBar"):
 		$HpBar.set_hp(new_hp, model.max_hp)
