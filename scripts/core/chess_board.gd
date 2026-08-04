@@ -17,7 +17,6 @@ class_name ChessBoardView
 # without too much fussing about with the game logic.
 
 signal rage_intro_animation_completed()
-signal piece_move_animation_finished(piece_node: Node)
 
 @export var controller: Node # ChessController is set here via the UI
 @export var white_cooldown_button: Node
@@ -148,19 +147,20 @@ func clear_highlights():
 	for square in squares:
 		square.clear_highlight()
 
-func move_piece_node(piece_node: Node, to: Vector2i):
-		piece_node.coordinate = to
-			
-		# smooth movement:
-		var tween = create_tween()
-		tween.tween_property(
-			piece_node,
-			"position",
-			grid_to_screen(to.x, to.y),
-			0.12
-		).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+func move_piece_node(piece_node: Node, to: Vector2i) -> void:
+	if not is_instance_valid(piece_node):
+		printerr("move_piece_node: Invalid piece node.")
+		return
 
-		tween.tween_callback(Callable(self, "_emit_move_finished").bind(piece_node))
+	piece_node.coordinate = to
+	var tween := create_tween()
+	tween.tween_property(
+		piece_node,
+		"position",
+		grid_to_screen(to.x, to.y),
+		0.12
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
 
 func promote_piece(piece: Node, new_name: String):
 	if piece:
@@ -325,9 +325,3 @@ func _on_piece_started_ability(piece: KingPiece, ability_name: String):
 func _on_passive_ability_effect(piece: KingPiece, ability_name: String, affected_coords: Array):
 	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_ABILITY_NAME:
 		minotaur_retaliate(affected_coords)
-
-func _emit_move_finished(piece_node: Node):
-		if is_instance_valid(piece_node):
-			emit_signal("piece_move_animation_finished", piece_node)
-		else:
-			print("move_piece_node: Tween finished, but piece_node was already invalid.")

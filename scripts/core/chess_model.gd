@@ -17,8 +17,13 @@ var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
 
-var selection_queue: Array = [] # {calling_piece: ModelPiece, action_type: String, targets: Array[Vector2i], priotity: int}
-var _pending_turn_switch: bool = false # utilized in the selection queue process
+var selection_queue: Array = [] # {calling_piece, action_type, priority, sequence, event_data}
+var selection_sequence: int = 0
+
+# One primary move/ability and every consequence it causes are one action.
+# current_turn does not change until the action and reaction queue are finished.
+var action_in_progress: bool = false
+var action_owner_color: String = ""
 
 const MAJOR_MINOR_BASE_TYPES = ["knight", "rook", "bishop", "queen"]
 
@@ -123,20 +128,75 @@ func inject_dependencies(piece: ModelPiece):
 	piece.view = view
 	piece.model = self
 	piece.controller = controller
-	connect("turn_changed", piece._on_turn_changed)
-	connect("piece_destroyed", piece._on_piece_destroyed)
-	controller.connect("selection_piece_processing", piece._on_selection_processing_start)
-	controller.connect("selection_piece_processed", piece._on_selection_processing_end)
 
-	if piece is KingPiece: 
-		var king_piece: KingPiece = piece 
-		king_piece.connect("cooldown_changed", view.update_cooldown_display)
-		king_piece.connect("cooldown_ready", view.ready_cooldown_display)
-		king_piece.set_cooldown(king_piece.base_cooldown) # this is here to ensure the buttons show the proper text immediately
+	var turn_callback := Callable(piece, "_on_turn_changed")
+	var death_callback := Callable(piece, "_on_piece_destroyed")
+	var selection_start_callback := Callable(piece, "_on_selection_processing_start")
+	var selection_end_callback := Callable(piece, "_on_selection_processing_end")
+
+	if not is_connected("turn_changed", turn_callback):
+		connect("turn_changed", turn_callback)
+	if not is_connected("piece_destroyed", death_callback):
+		connect("piece_destroyed", death_callback)
+	if not controller.is_connected("selection_piece_processing", selection_start_callback):
+		controller.connect("selection_piece_processing", selection_start_callback)
+	if not controller.is_connected("selection_piece_processed", selection_end_callback):
+		controller.connect("selection_piece_processed", selection_end_callback)
+
+	if piece is KingPiece:
+		var king_piece: KingPiece = piece
+		var cooldown_changed_callback := Callable(view, "update_cooldown_display")
+		var cooldown_ready_callback := Callable(view, "ready_cooldown_display")
+		if not king_piece.is_connected("cooldown_changed", cooldown_changed_callback):
+			king_piece.connect("cooldown_changed", cooldown_changed_callback)
+		if not king_piece.is_connected("cooldown_ready", cooldown_ready_callback):
+			king_piece.connect("cooldown_ready", cooldown_ready_callback)
+
+		# Abilities begin ready; this also initializes the button text.
+		king_piece.set_cooldown(king_piece.current_cooldown)
 
 		if king_piece is MinotaurKing:
-			king_piece.connect("piece_started_ability", view._on_piece_started_ability)
-			king_piece.connect("passive_ability_effect", view._on_passive_ability_effect)
+			var ability_callback := Callable(view, "_on_piece_started_ability")
+			var passive_callback := Callable(view, "_on_passive_ability_effect")
+			if not king_piece.is_connected("piece_started_ability", ability_callback):
+				king_piece.connect("piece_started_ability", ability_callback)
+			if not king_piece.is_connected("passive_ability_effect", passive_callback):
+				king_piece.connect("passive_ability_effect", passive_callback)
+
+func unregister_piece(piece: ModelPiece) -> void:
+	if not is_instance_valid(piece):
+		return
+
+	var turn_callback := Callable(piece, "_on_turn_changed")
+	var death_callback := Callable(piece, "_on_piece_destroyed")
+	var selection_start_callback := Callable(piece, "_on_selection_processing_start")
+	var selection_end_callback := Callable(piece, "_on_selection_processing_end")
+
+	if is_connected("turn_changed", turn_callback):
+		disconnect("turn_changed", turn_callback)
+	if is_connected("piece_destroyed", death_callback):
+		disconnect("piece_destroyed", death_callback)
+	if controller.is_connected("selection_piece_processing", selection_start_callback):
+		controller.disconnect("selection_piece_processing", selection_start_callback)
+	if controller.is_connected("selection_piece_processed", selection_end_callback):
+		controller.disconnect("selection_piece_processed", selection_end_callback)
+
+func add_piece(piece: ModelPiece, coord: Vector2i) -> bool:
+	if not is_instance_valid(piece):
+		printerr("add_piece: Invalid piece.")
+		return false
+	if not is_in_bounds(coord.x, coord.y):
+		printerr("add_piece: Coordinate out of bounds: ", coord)
+		return false
+	if board[coord.x][coord.y] != null:
+		printerr("add_piece: Coordinate is occupied: ", coord)
+		return false
+
+	piece.coordinate = coord
+	board[coord.x][coord.y] = piece
+	inject_dependencies(piece)
+	view.draw_piece(piece)
+	return true
 
 
 func get_legal_moves(piece: ModelPiece) -> Array:
@@ -153,23 +213,37 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 ## Handles special moves, normal moves, and ends the turn.
 ## For simply moving a piece in the model, see actually_move_piece()
 ## Abilities are not considered moves and are handled elsewhere.
-#func move_piece(piece: ModelPiece, to: Vector2i):
-	#var from = piece.coordinate
-	#var piece_node = view.get_piece_node(from)
-	#var is_en_passant = move_is_en_passant(piece, from, to)
-	#var is_castling = move_is_castling(piece, from, to)
-	#var is_combat = move_is_combat(is_en_passant, to)
-#
-	#if is_en_passant: handle_en_passant(piece, from, to)
-	#elif is_combat: handle_combat(piece, to) 
-	#elif is_castling: handle_castling(piece, from, to)
-	#else: actually_move_piece(piece, to)	# a normal move with no captures or exceptions
-	#
-	#print("move finished.")
-	#
-	#update_last_move(piece, from, to)
-	#switch_turn()
+func begin_action(owner_color: String) -> bool:
+	if action_in_progress:
+		printerr("begin_action: An action is already in progress.")
+		return false
+	if owner_color != current_turn:
+		printerr("begin_action: ", owner_color, " attempted to act during ", current_turn, "'s turn.")
+		return false
 
+	action_in_progress = true
+	action_owner_color = owner_color
+	controller.is_input_locked = true
+	print("ACTION START — ", action_owner_color)
+	return true
+
+func cancel_action() -> void:
+	action_in_progress = false
+	action_owner_color = ""
+	controller.is_input_locked = false
+
+func finish_action() -> void:
+	if not action_in_progress:
+		printerr("finish_action: No action is in progress.")
+		return
+
+	print("ACTION END — ", action_owner_color)
+	action_in_progress = false
+	action_owner_color = ""
+	switch_turn()
+	controller.is_input_locked = false
+
+## Entry point for a player's normal move/capture/castle/en-passant action.
 func move_piece(piece: ModelPiece, to: Vector2i):
 	if not is_instance_valid(piece):
 		printerr("move_piece: Invalid piece instance passed.")
@@ -177,42 +251,41 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	if not is_in_bounds(to.x, to.y):
 		printerr("move_piece: Target coordinate ", to, " is out of bounds.")
 		return
-
-
-	var from = piece.coordinate
-
-	if not is_in_bounds(from.x, from.y):
-		printerr("move_piece: Piece's current coordinate ", from, " is out of bounds.")
+	if not begin_action(piece.color):
 		return
 
+	var from := piece.coordinate
+	if not is_in_bounds(from.x, from.y):
+		printerr("move_piece: Piece's current coordinate ", from, " is out of bounds.")
+		cancel_action()
+		return
 
-	var piece_node = view.get_piece_node(from) 
-	var is_en_passant = move_is_en_passant(piece, from, to)
-	var is_castling = move_is_castling(piece, from, to)
-	var is_combat = move_is_combat(is_en_passant, to)
-	
-	var move_completed_normally = false
+	var is_en_passant := move_is_en_passant(piece, from, to)
+	var is_castling := move_is_castling(piece, from, to)
+	var is_combat := move_is_combat(is_en_passant, to)
 
-	if is_en_passant: 
+	if is_en_passant:
 		await handle_en_passant(piece, from, to)
-		move_completed_normally = true
-	elif is_combat: 
+	elif is_combat:
 		await handle_combat(piece, to)
-		move_completed_normally = true
-	elif is_castling: 
+	elif is_castling:
 		await handle_castling(piece, from, to)
-		move_completed_normally = true
-	else: 
-		await actually_move_piece(piece, to) 	# a normal move with no captures or exceptions
-		move_completed_normally = true
-
-	# Only switch turn if the move sequence wasn't aborted by an error/check
-	if move_completed_normally:
-		print("move finished, updating last move and switching turn.")
-		update_last_move(piece, from, to) # Update last move *after* async operations
-		switch_turn() # Switch turn *after* everything (including animations) is done
 	else:
-		print("Move sequence did not complete normally, turn not switched.")
+		await actually_move_piece(piece, to)
+
+	update_last_move(piece, from, to)
+	continue_action_resolution()
+
+## Entry point for a king's active ability.
+func perform_active_ability(king: KingPiece, target: Vector2i):
+	if not is_instance_valid(king):
+		printerr("perform_active_ability: Invalid king.")
+		return
+	if not begin_action(king.color):
+		return
+
+	await king.active_target_selected(target)
+	continue_action_resolution()
 
 
 
@@ -251,33 +324,21 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 
 		# --- CHANGE HERE: Start animation and wait ---
 		if is_instance_valid(piece.view_node):
-			view.move_piece_node(piece.view_node, to) # Tell the view to start animating
-			# Wait for the view to signal that the specific piece's animation is done
-			# We might want a timeout here in a real game to prevent infinite hangs
-			await view.piece_move_animation_finished # Wait for the signal
+			await view.move_piece_node(piece.view_node, to)
 			print("Animation finished for piece: ", piece.type)
 		else:
 			printerr("actually_move_piece: Tried to move view_node for ", piece.type, " at ", to, ", but view_node is invalid.")
 			# Decide if the logic should continue without animation confirmation. Maybe?
 			# Let's assume for now if the view_node is gone, the move is effectively instant.
 
-		## --- ADDED: Post-animation checks ---
-		## Check for Bone Pawn self-destruction AFTER move animation completes
-		#if piece is BonePawn:
-			#var bone_pawn = piece as BonePawn
-			#if bone_pawn._on_dead_row(): # Check if it landed on the back rank
-				#print("Bone Pawn reached dead row, destroying...")
-				## We might want destroy_piece to be async too if it has animations
-				#destroy_piece(bone_pawn)
-				## Return early? If destroyed, promotion check is irrelevant.
-				#return
+		# Bone Pawns expire inside the action that moved them, before reactions drain.
+		if piece is BonePawn and piece._on_dead_row():
+			destroy_piece(piece, true)
+			return
 
-		# Check for normal promotion AFTER move animation completes (if piece wasn't destroyed)
-		if piece.type.contains("pawn"): # Check type again in case it was transformed/destroyed
-			# Check is_instance_valid again in case Bone Pawn destroyed itself
-			if is_instance_valid(piece) and board[to.x][to.y] == piece:
-				promotion_check(piece)
-		# --- End ADDED ---
+		# Normal pawn promotion also resolves before the action ends.
+		if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
+			promotion_check(piece)
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -323,23 +384,26 @@ func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	}
 	
 func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
-		var row = from.x
-		if to.y == 6: # King-side castle
-			var kingside_rook = board[row][7]
-			actually_move_piece(kingside_rook, Vector2i(row, 5))
-		elif to.y == 2: # Queen-side castle
-			var queenside_rook = board[row][0]
-			actually_move_piece(queenside_rook, Vector2i(row, 3))
-		
-		actually_move_piece(king, to)
+	var row := from.x
+	if to.y == 6: # King-side castle
+		var kingside_rook = board[row][7]
+		await actually_move_piece(kingside_rook, Vector2i(row, 5))
+	elif to.y == 2: # Queen-side castle
+		var queenside_rook = board[row][0]
+		await actually_move_piece(queenside_rook, Vector2i(row, 3))
+
+	await actually_move_piece(king, to)
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
-	var captured_row = from.x
-	var captured_col = to.y
-	var captured_piece_view_node = board[captured_row][captured_col].view_node
-	view.destroy_piece(captured_piece_view_node)
-	board[captured_row][captured_col] = null
-	actually_move_piece(piece, to)
+	var captured_row := from.x
+	var captured_col := to.y
+	var captured_piece: ModelPiece = board[captured_row][captured_col]
+	if captured_piece == null:
+		printerr("handle_en_passant: No pawn to capture.")
+		return
+
+	destroy_piece(captured_piece, true)
+	await actually_move_piece(piece, to)
 
 # Assumes a piece is moving to attack another piece.
 #func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
@@ -393,14 +457,14 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 			var defender_instance = defender # Keep a reference before the board changes
 			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
 
-			actually_move_piece(attacker, to) # Attacker moves into the vacated square
+			await actually_move_piece(attacker, to) # Attacker moves into the vacated square
 
 			# Now destroy the defender. Pass false because actually_move_piece already overwrote the square.
 			# If actually_move_piece fails, the defender might remain, but destroy_piece will try to remove its view node.
 			destroy_piece(defender_instance, false) 
 
 		else: # Defender survives, takes damage, attacker stays put
-			defender.take_damage(damage)
+			await defender.take_damage(damage)
 		
 		
 		
@@ -558,6 +622,8 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 	elif nullify_square:
 		printerr("destroy_piece: Requested to nullify square ", piece_coord, " but the piece wasn't found there in the model.")
 	
+	unregister_piece(piece)
+
 	# Note: The ModelPiece object itself (piece) still exists until garbage collected.
 	# We've removed its view_node reference from the scene tree via view.destroy_piece
 	# and potentially its reference from the board array.
@@ -592,6 +658,7 @@ func transform_piece(piece: ModelPiece, transformed_type: String):
 		var r = piece.coordinate.x
 		var c = piece.coordinate.y
 		
+		unregister_piece(piece)
 		var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
 		inject_dependencies(transformed_piece)
 		view.draw_piece(transformed_piece)
@@ -603,47 +670,69 @@ func transform_piece(piece: ModelPiece, transformed_type: String):
 		# disconnect("piece_destroyed", piece._on_piece_destroyed)
 		
 
-## Called by ModelPieces to add a selection opportunity to the queue.
+## Called by ModelPieces to add a reaction/selection opportunity to the queue.
 func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String, event_data):
-	var priority_value = 0 # default to highest priority
+	var priority_value := 0
 	if action_type == "raise_dead":
-		var causing_player_color = current_turn # Assumes event_data might contain this if needed, or use current_turn
-		priority_value = 1 if calling_piece.color != causing_player_color else 0 # Higher value for defender
+		# current_turn stays equal to the primary action owner until the whole action ends.
+		# The non-acting player therefore receives first choice around a corpse.
+		priority_value = 1 if calling_piece.color != action_owner_color else 0
 
-	var selection_opportunity = {
+	selection_sequence += 1
+	selection_queue.append({
 		"calling_piece": calling_piece,
-		"action_type": action_type,  
+		"action_type": action_type,
 		"priority": priority_value,
-		"event_data": event_data # for raise dead, this is the square a piece just died on
-	}
-	
-	selection_queue.append(selection_opportunity)
-	print("Queued another selection: ", selection_opportunity)
+		"sequence": selection_sequence,
+		"event_data": event_data
+	})
+	print("Queued reaction: ", action_type, " for ", calling_piece.color)
 
-## Executes the next item in the selection queue.
-# You kinda have to call this wherever there might be something in the queue...
-func process_selection_queue():
-	if selection_queue.is_empty():
-		if _pending_turn_switch:
-			_pending_turn_switch = false
-			switch_turn()
+## Drain automatic/choice reactions. A choice pauses this function; the chosen
+## square later calls resolve_reaction_selection(), which resumes this action.
+func continue_action_resolution() -> void:
+	if not action_in_progress:
+		printerr("continue_action_resolution: No action is in progress.")
 		return
-	
-	selection_queue.sort_custom(func(a, b): return a.priority > b.priority)
-	
-	print("process_selection_queue")
 
-	var opportunity = selection_queue[0] # Peek at the highest priority
-	var calling_piece: ModelPiece = opportunity.calling_piece
-	var action_type: String = opportunity.action_type
-	var event_data = opportunity.event_data
-	var targets = calling_piece.get_selection_targets(action_type, event_data)
-	
-	if targets.is_empty(): return 
-	
-	selection_queue.pop_front()
-	controller.initiate_non_move_selection_mode(calling_piece, targets)
-	
+	while not selection_queue.is_empty():
+		selection_queue.sort_custom(
+			func(a, b):
+				if a["priority"] == b["priority"]:
+					return a["sequence"] < b["sequence"]
+				return a["priority"] > b["priority"]
+		)
+
+		var opportunity: Dictionary = selection_queue.pop_front()
+		var calling_piece: ModelPiece = opportunity["calling_piece"]
+		if not is_instance_valid(calling_piece):
+			continue
+
+		var action_type: String = opportunity["action_type"]
+		var event_data = opportunity["event_data"]
+		var targets: Array = calling_piece.get_selection_targets(action_type, event_data)
+
+		# Earlier reactions may have occupied every valid square. Skip cleanly.
+		if targets.is_empty():
+			continue
+
+		controller.initiate_non_move_selection_mode(calling_piece, targets)
+		return
+
+	finish_action()
+
+func resolve_reaction_selection(calling_piece: ModelPiece, coord: Vector2i) -> void:
+	if not action_in_progress:
+		printerr("resolve_reaction_selection: No action is in progress.")
+		return
+	if not is_instance_valid(calling_piece):
+		printerr("resolve_reaction_selection: Invalid reacting piece.")
+		return
+
+	calling_piece._on_special_target_selected(coord)
+	controller.end_non_move_selection_mode()
+	continue_action_resolution()
+
 func get_other_color(color: String) -> String:
 	if color == "white": return "black"
 	else: return "white"
