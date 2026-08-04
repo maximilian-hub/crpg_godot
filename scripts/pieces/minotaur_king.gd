@@ -76,10 +76,16 @@ func charge(coord: Vector2i):
 	if hit_wall:
 		stun()
 
-## Damage must await Retaliating Rage so the original action cannot finish early.
+## Every surviving hit queues one Rage. The Model resolves it later, so
+## adjacent Minotaurs can alternate without recursively nesting function calls.
 func take_damage(damage: int = 1):
 	super.take_damage(damage)
-	if current_hp > 0:
+	if current_hp > 0 and not stunned:
+		model.queue_selection_opportunity(self, "retaliating_rage", null)
+
+## Called by the Model when this automatic reaction reaches the front of the queue.
+func resolve_automatic_reaction(action_type: String, event_data) -> void:
+	if action_type == "retaliating_rage":
 		await retaliating_rage()
 
 func retaliating_rage() -> void:
@@ -97,7 +103,7 @@ func _perform_rage_damage() -> void:
 		exploded_squares.append(adj_coord)
 		var target: ModelPiece = model.board[adj_coord.x][adj_coord.y]
 		if target != null:
-			await target.take_damage(1)
+			target.take_damage(1)
 
 	emit_signal("passive_ability_effect", self, passive_ability_name, exploded_squares)
 

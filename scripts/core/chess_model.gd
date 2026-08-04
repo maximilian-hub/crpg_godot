@@ -70,7 +70,7 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = NecromancerKing.new("black", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
@@ -83,7 +83,7 @@ func initialize_default_pieces():
 	board[7][1] = Knight.new("white", Vector2i(7, 1))
 	board[7][2] = Bishop.new("white", Vector2i(7, 2))
 	board[7][3] = Queen.new("white", Vector2i(7, 3))
-	board[7][4] = NecromancerKing.new("white", Vector2i(7, 4))
+	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
 	board[7][5] = Bishop.new("white", Vector2i(7, 5))
 	board[7][6] = Knight.new("white", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
@@ -274,7 +274,7 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 		await actually_move_piece(piece, to)
 
 	update_last_move(piece, from, to)
-	continue_action_resolution()
+	await continue_action_resolution()
 
 ## Entry point for a king's active ability.
 func perform_active_ability(king: KingPiece, target: Vector2i):
@@ -285,7 +285,7 @@ func perform_active_ability(king: KingPiece, target: Vector2i):
 		return
 
 	await king.active_target_selected(target)
-	continue_action_resolution()
+	await continue_action_resolution()
 
 
 
@@ -670,10 +670,22 @@ func transform_piece(piece: ModelPiece, transformed_type: String):
 		# disconnect("piece_destroyed", piece._on_piece_destroyed)
 		
 
-## Called by ModelPieces to add a reaction/selection opportunity to the queue.
+## True only while a piece is alive and still occupies its recorded square.
+## A freed visual node or a still-valid GDScript object is not enough.
+func is_piece_active(piece: ModelPiece) -> bool:
+	if not is_instance_valid(piece) or piece.current_hp <= 0:
+		return false
+	var coord := piece.coordinate
+	return is_in_bounds(coord.x, coord.y) and board[coord.x][coord.y] == piece
+
+## Called by ModelPieces to add either an automatic reaction or a selection
+## opportunity to the same ordered queue.
 func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String, event_data):
 	var priority_value := 0
-	if action_type == "raise_dead":
+	if action_type == "retaliating_rage":
+		# Finish Minotaur exchanges before pausing for Raise Dead selections.
+		priority_value = 100
+	elif action_type == "raise_dead":
 		# current_turn stays equal to the primary action owner until the whole action ends.
 		# The non-acting player therefore receives first choice around a corpse.
 		priority_value = 1 if calling_piece.color != action_owner_color else 0
@@ -705,11 +717,19 @@ func continue_action_resolution() -> void:
 
 		var opportunity: Dictionary = selection_queue.pop_front()
 		var calling_piece: ModelPiece = opportunity["calling_piece"]
-		if not is_instance_valid(calling_piece):
+		if not is_piece_active(calling_piece):
 			continue
 
 		var action_type: String = opportunity["action_type"]
 		var event_data = opportunity["event_data"]
+
+		# Automatic reactions resolve immediately, and may append more reactions.
+		# The loop re-sorts before each next reaction, so newly queued Rage effects
+		# continue the exchange before lower-priority selection reactions.
+		if action_type == "retaliating_rage":
+			await calling_piece.resolve_automatic_reaction(action_type, event_data)
+			continue
+
 		var targets: Array = calling_piece.get_selection_targets(action_type, event_data)
 
 		# Earlier reactions may have occupied every valid square. Skip cleanly.
@@ -731,7 +751,7 @@ func resolve_reaction_selection(calling_piece: ModelPiece, coord: Vector2i) -> v
 
 	calling_piece._on_special_target_selected(coord)
 	controller.end_non_move_selection_mode()
-	continue_action_resolution()
+	await continue_action_resolution()
 
 func get_other_color(color: String) -> String:
 	if color == "white": return "black"
