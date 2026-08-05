@@ -41,7 +41,6 @@ var custom_size = 16
 
 func _ready():
 	initialize_board()
-	#print(board) # debug
 	view.draw_board(board)
 
 func initialize_board():
@@ -155,7 +154,8 @@ func inject_dependencies(piece: ModelPiece):
 
 		# Abilities begin ready; this also initializes the button text.
 		king_piece.set_cooldown(king_piece.current_cooldown)
-
+		
+		# why is this here? like uhhh should this be here? this feels weird
 		if king_piece is MinotaurKing:
 			var ability_callback := Callable(view, "_on_piece_started_ability")
 			var passive_callback := Callable(view, "_on_passive_ability_effect")
@@ -241,7 +241,7 @@ func finish_action() -> void:
 	print("ACTION END — ", action_owner_color)
 	action_in_progress = false
 	action_owner_color = ""
-	switch_turn()
+	switch_turn() ## This is the only place switch_turn() should be called.
 	controller.is_input_locked = false
 
 ## Entry point for a player's normal move/capture/castle/en-passant action.
@@ -287,29 +287,11 @@ func perform_active_ability(king: KingPiece, target: Vector2i):
 
 	await king.active_target_selected(target)
 	await continue_action_resolution()
-
-
-
-### Moves a piece from one square to another.
-## Assumes empty destination square.
-## Validation is handled in move_piece()
-#func actually_move_piece(piece: ModelPiece, to: Vector2i):
-	#print("actually moving piece, ", piece.type)
-	#var from = piece.coordinate
-	#board[from.x][from.y] = null
-	#board[to.x][to.y] = piece
-	#piece.coordinate = to
-	#piece.has_moved = true
-	#view.move_piece_node(piece.view_node, to) # update the view
-	#if piece.type.contains("pawn"): promotion_check(piece)
-	
-	
 	
 ## Moves a piece from one square to another.
 # Assumes empty destination square for normal moves.
 # Validation is handled in move_piece() or callers like handle_combat.
-func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
-		# ... (existing safety checks) ...
+func actually_move_piece(piece: ModelPiece, to: Vector2i):
 		if not is_instance_valid(piece):
 			printerr("actually_move_piece: Invalid piece instance provided.")
 			return
@@ -323,14 +305,12 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		piece.coordinate = to # Update model coordinate *before* animation starts
 		piece.has_moved = true
 
-		# --- CHANGE HERE: Start animation and wait ---
+		# Start animation and wait
 		if is_instance_valid(piece.view_node):
 			await view.move_piece_node(piece.view_node, to)
 			print("Animation finished for piece: ", piece.type)
 		else:
 			printerr("actually_move_piece: Tried to move view_node for ", piece.type, " at ", to, ", but view_node is invalid.")
-			# Decide if the logic should continue without animation confirmation. Maybe?
-			# Let's assume for now if the view_node is gone, the move is effectively instant.
 
 		# Bone Pawns expire inside the action that moved them, before reactions drain.
 		if piece is BonePawn and piece._on_dead_row():
@@ -405,37 +385,9 @@ func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 
 	destroy_piece(captured_piece, true)
 	await actually_move_piece(piece, to)
-
-# Assumes a piece is moving to attack another piece.
-#func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
-	#var defender = board[to.x][to.y]
-	#
-	#if defender.current_hp == 1: # normal capture
-		#destroy_piece(defender)				# TODO: but! destroy piece needs to come first, or a bug happens where a piece is no longer selectable after it captures...
-		#actually_move_piece(attacker, to) 	# TODO: moving needs to come first for Raise Dead to target adjacent attacker squares. 
-		#promotion_check(attacker, piece_node, to)
-	#else: # doing damage, attacker doesn't move
-		#defender.take_damage()	
-
-
-#func handle_combat(attacker: ModelPiece, to: Vector2i):
-	#var defender = board[to.x][to.y]
-	#var damage = attacker.attack_power
-#
-	#if defender.current_hp <= damage: # predict defender's death
-		#var defender_instance = defender
-		#var defender_original_coord = defender.coordinate 
-#
-		#actually_move_piece(attacker, to)
-#
-#
-		#destroy_piece(defender_instance, false) # don't nullify the defender's square yet
-	#else: # Defender survives, takes damage, attacker stays put
-		#defender.take_damage(damage)
-		
-		
+	
+# Assumes a piece is moving to attack another piece.		
 func handle_combat(attacker: ModelPiece, to: Vector2i):
-		# --- Start of added checks ---
 		if not is_instance_valid(attacker):
 			printerr("handle_combat: Invalid attacker instance provided.")
 			return
@@ -450,11 +402,10 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 		if attacker.color == defender.color:
 			printerr("handle_combat: Attacker ", attacker.type, " attempted to attack friendly piece ", defender.type, " at ", to)
 			return
-		# --- End of added checks ---
 
 		var damage = attacker.attack_power
 
-		if defender.current_hp <= damage: # predict defender's death
+		if defender.current_hp <= damage: # Defender dies, attacker moves to their square
 			var defender_instance = defender # Keep a reference before the board changes
 			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
 
@@ -467,9 +418,6 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 		else: # Defender survives, takes damage, attacker stays put
 			await defender.take_damage(damage)
 		
-		
-		
-
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 	
@@ -485,7 +433,7 @@ func move_is_combat(is_en_passant: bool, to: Vector2i) -> bool:
 func get_adjacent_squares(coord: Vector2i) -> Array:
 	var offsets = [
 		Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1),
-		Vector2i(0, -1),                Vector2i(0, 1),
+		Vector2i(0, -1),                   Vector2i(0, 1),
 		Vector2i(1, -1),  Vector2i(1, 0),  Vector2i(1, 1),
 	]
 	var results = []
