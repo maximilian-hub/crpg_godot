@@ -281,16 +281,20 @@ func minotaur_retaliate(targets: Array):
 		spawn_explosion(pos)
 
 func start_minotaur_rage_intro(minotaur_node: Node) -> void:
-	controller.is_input_locked = true
-	
+	if not is_instance_valid(minotaur_node):
+		printerr("start_minotaur_rage_intro: Invalid Minotaur view node.")
+		rage_intro_animation_completed.emit()
+		return
+
+	var original_scale := minotaur_node.scale
 	var tween = create_tween()
-	tween.tween_property(minotaur_node, "scale", minotaur_node.scale * 1.25, 1).set_trans(Tween.TRANS_ELASTIC)
+	tween.tween_property(minotaur_node, "scale", original_scale * 1.25, 1).set_trans(Tween.TRANS_ELASTIC)
 	tween.tween_interval(0.15) # Adjust timing as needed
-	tween.tween_property(minotaur_node, "scale", minotaur_node.scale, 0.1)
+	tween.tween_property(minotaur_node, "scale", original_scale, 0.1)
 	await tween.finished
 
-	controller.is_input_locked = false
-	emit_signal("rage_intro_animation_completed") 
+	# The Model owns input locking for the complete action/reaction chain.
+	rage_intro_animation_completed.emit()
 		
 func flash_screen(duration := 1):
 	flash_overlay.visible = true

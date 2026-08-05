@@ -23,6 +23,9 @@ func _ready():
 	pass
 
 func _on_square_clicked(coord: Vector2i):
+	if model.battle_over:
+		return
+
 	# Reaction selections are the only clicks allowed while an action is resolving.
 	if non_move_selection_mode:
 		_handle_non_move_selection_mode_click(coord)
@@ -89,6 +92,8 @@ func deselect_piece():
 	legal_moves.clear()
 
 func _on_white_active_button_pressed() -> void:
+	if model.battle_over:
+		return
 	if is_input_locked:
 		return
 	if model.current_turn == "black":
@@ -101,6 +106,8 @@ func _on_white_active_button_pressed() -> void:
 		select_active_ability("white")
 
 func _on_black_active_button_pressed() -> void:
+	if model.battle_over:
+		return
 	if is_input_locked:
 		return
 	if model.current_turn == "white":
@@ -162,3 +169,23 @@ func end_non_move_selection_mode():
 	last_active_piece = null
 	selection_piece_processed.emit()
 	view.clear_highlights()
+
+## Permanently disables battle interactions after the Model declares a result.
+func lock_after_battle() -> void:
+	is_input_locked = true
+	selected_piece = null
+	legal_moves.clear()
+
+	if active_ability_selected and is_instance_valid(active_king):
+		if active_king.has_method("_on_active_deselected"):
+			active_king._on_active_deselected(false)
+
+	active_king = null
+	active_ability_selected = false
+
+	if non_move_selection_mode:
+		end_non_move_selection_mode()
+	else:
+		active_piece = null
+		last_active_piece = null
+		view.clear_highlights()

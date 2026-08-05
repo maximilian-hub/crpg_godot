@@ -16,6 +16,12 @@ var last_destroyed_piece: ModelPiece
 var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
+signal action_finished()
+signal battle_finished(winner_color: String)
+
+var battle_over: bool = false
+var battle_result: String = ""
+var defeated_king_colors: Array[String] = []
 
 var selection_queue: Array = [] # {calling_piece, action_type, priority, sequence, event_data}
 var selection_sequence: int = 0
@@ -35,12 +41,12 @@ const Queen = preload("res://scripts/pieces/queen.gd")
 const ClassicKing = preload("res://scripts/pieces/classic_king.gd")
 const MinotaurKing = preload("res://scripts/pieces/minotaur_king.gd")
 const NecromancerKing = preload("res://scripts/pieces/necromancer_king.gd")
-const ArakneKing = preload("res://scripts/pieces/arakne_king.gd")
 
 var custom_size = 16
 
 func _ready():
 	initialize_board()
+	#print(board) # debug
 	view.draw_board(board)
 
 func initialize_board():
@@ -70,7 +76,7 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = NecromancerKing.new("black", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
@@ -83,7 +89,7 @@ func initialize_default_pieces():
 	board[7][1] = Knight.new("white", Vector2i(7, 1))
 	board[7][2] = Bishop.new("white", Vector2i(7, 2))
 	board[7][3] = Queen.new("white", Vector2i(7, 3))
-	board[7][4] = ArakneKing.new("white", Vector2i(7, 4))
+	board[7][4] = NecromancerKing.new("white", Vector2i(7, 4))
 	board[7][5] = Bishop.new("white", Vector2i(7, 5))
 	board[7][6] = Knight.new("white", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
@@ -154,8 +160,7 @@ func inject_dependencies(piece: ModelPiece):
 
 		# Abilities begin ready; this also initializes the button text.
 		king_piece.set_cooldown(king_piece.current_cooldown)
-		
-		# why is this here? like uhhh should this be here? this feels weird
+
 		if king_piece is MinotaurKing:
 			var ability_callback := Callable(view, "_on_piece_started_ability")
 			var passive_callback := Callable(view, "_on_passive_ability_effect")
@@ -215,6 +220,9 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 ## For simply moving a piece in the model, see actually_move_piece()
 ## Abilities are not considered moves and are handled elsewhere.
 func begin_action(owner_color: String) -> bool:
+	if battle_over:
+		printerr("begin_action: The battle is already over.")
+		return false
 	if action_in_progress:
 		printerr("begin_action: An action is already in progress.")
 		return false
@@ -238,11 +246,48 @@ func finish_action() -> void:
 		printerr("finish_action: No action is in progress.")
 		return
 
+	if has_defeated_king():
+		complete_battle()
+		return
+
 	print("ACTION END — ", action_owner_color)
 	action_in_progress = false
 	action_owner_color = ""
-	switch_turn() ## This is the only place switch_turn() should be called.
+	switch_turn()
 	controller.is_input_locked = false
+	action_finished.emit()
+
+func has_defeated_king() -> bool:
+	return not defeated_king_colors.is_empty()
+
+func complete_battle() -> void:
+	if battle_over:
+		return
+
+	var white_defeated := "white" in defeated_king_colors
+	var black_defeated := "black" in defeated_king_colors
+
+	if not white_defeated and not black_defeated:
+		printerr("complete_battle: Called without a defeated king.")
+		return
+
+	battle_over = true
+	selection_queue.clear()
+	action_in_progress = false
+	action_owner_color = ""
+
+	if white_defeated and black_defeated:
+		battle_result = "draw"
+	elif white_defeated:
+		battle_result = "black"
+	else:
+		battle_result = "white"
+
+	if is_instance_valid(controller):
+		controller.lock_after_battle()
+
+	print("BATTLE FINISHED — ", battle_result)
+	battle_finished.emit(battle_result)
 
 ## Entry point for a player's normal move/capture/castle/en-passant action.
 func move_piece(piece: ModelPiece, to: Vector2i):
@@ -287,11 +332,29 @@ func perform_active_ability(king: KingPiece, target: Vector2i):
 
 	await king.active_target_selected(target)
 	await continue_action_resolution()
+
+
+
+### Moves a piece from one square to another.
+## Assumes empty destination square.
+## Validation is handled in move_piece()
+#func actually_move_piece(piece: ModelPiece, to: Vector2i):
+	#print("actually moving piece, ", piece.type)
+	#var from = piece.coordinate
+	#board[from.x][from.y] = null
+	#board[to.x][to.y] = piece
+	#piece.coordinate = to
+	#piece.has_moved = true
+	#view.move_piece_node(piece.view_node, to) # update the view
+	#if piece.type.contains("pawn"): promotion_check(piece)
+	
+	
 	
 ## Moves a piece from one square to another.
 # Assumes empty destination square for normal moves.
 # Validation is handled in move_piece() or callers like handle_combat.
-func actually_move_piece(piece: ModelPiece, to: Vector2i):
+func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
+		# ... (existing safety checks) ...
 		if not is_instance_valid(piece):
 			printerr("actually_move_piece: Invalid piece instance provided.")
 			return
@@ -305,12 +368,14 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i):
 		piece.coordinate = to # Update model coordinate *before* animation starts
 		piece.has_moved = true
 
-		# Start animation and wait
+		# --- CHANGE HERE: Start animation and wait ---
 		if is_instance_valid(piece.view_node):
 			await view.move_piece_node(piece.view_node, to)
 			print("Animation finished for piece: ", piece.type)
 		else:
 			printerr("actually_move_piece: Tried to move view_node for ", piece.type, " at ", to, ", but view_node is invalid.")
+			# Decide if the logic should continue without animation confirmation. Maybe?
+			# Let's assume for now if the view_node is gone, the move is effectively instant.
 
 		# Bone Pawns expire inside the action that moved them, before reactions drain.
 		if piece is BonePawn and piece._on_dead_row():
@@ -338,6 +403,9 @@ func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: i
 	return true
 
 func switch_turn():
+	if battle_over:
+		return
+
 	if current_turn == "white":
 		current_turn = "black"
 	else:
@@ -385,9 +453,37 @@ func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 
 	destroy_piece(captured_piece, true)
 	await actually_move_piece(piece, to)
-	
-# Assumes a piece is moving to attack another piece.		
+
+# Assumes a piece is moving to attack another piece.
+#func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
+	#var defender = board[to.x][to.y]
+	#
+	#if defender.current_hp == 1: # normal capture
+		#destroy_piece(defender)				# TODO: but! destroy piece needs to come first, or a bug happens where a piece is no longer selectable after it captures...
+		#actually_move_piece(attacker, to) 	# TODO: moving needs to come first for Raise Dead to target adjacent attacker squares. 
+		#promotion_check(attacker, piece_node, to)
+	#else: # doing damage, attacker doesn't move
+		#defender.take_damage()	
+
+
+#func handle_combat(attacker: ModelPiece, to: Vector2i):
+	#var defender = board[to.x][to.y]
+	#var damage = attacker.attack_power
+#
+	#if defender.current_hp <= damage: # predict defender's death
+		#var defender_instance = defender
+		#var defender_original_coord = defender.coordinate 
+#
+		#actually_move_piece(attacker, to)
+#
+#
+		#destroy_piece(defender_instance, false) # don't nullify the defender's square yet
+	#else: # Defender survives, takes damage, attacker stays put
+		#defender.take_damage(damage)
+		
+		
 func handle_combat(attacker: ModelPiece, to: Vector2i):
+		# --- Start of added checks ---
 		if not is_instance_valid(attacker):
 			printerr("handle_combat: Invalid attacker instance provided.")
 			return
@@ -402,10 +498,11 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 		if attacker.color == defender.color:
 			printerr("handle_combat: Attacker ", attacker.type, " attempted to attack friendly piece ", defender.type, " at ", to)
 			return
+		# --- End of added checks ---
 
 		var damage = attacker.attack_power
 
-		if defender.current_hp <= damage: # Defender dies, attacker moves to their square
+		if defender.current_hp <= damage: # predict defender's death
 			var defender_instance = defender # Keep a reference before the board changes
 			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
 
@@ -418,6 +515,9 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 		else: # Defender survives, takes damage, attacker stays put
 			await defender.take_damage(damage)
 		
+		
+		
+
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 	
@@ -433,7 +533,7 @@ func move_is_combat(is_en_passant: bool, to: Vector2i) -> bool:
 func get_adjacent_squares(coord: Vector2i) -> Array:
 	var offsets = [
 		Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1),
-		Vector2i(0, -1),                   Vector2i(0, 1),
+		Vector2i(0, -1),                Vector2i(0, 1),
 		Vector2i(1, -1),  Vector2i(1, 0),  Vector2i(1, 1),
 	]
 	var results = []
@@ -555,6 +655,11 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 		
 	
 	last_destroyed_piece = piece
+
+	if piece.is_king and piece.color not in defeated_king_colors:
+		defeated_king_colors.append(piece.color)
+		print("KING DEFEATED — ", piece.color)
+
 	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
 	
 	
@@ -630,6 +735,11 @@ func is_piece_active(piece: ModelPiece) -> bool:
 ## Called by ModelPieces to add either an automatic reaction or a selection
 ## opportunity to the same ordered queue.
 func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String, event_data):
+	# Once a king has fallen, the current effect may finish, but no new reactions
+	# should be added before the battle is finalized.
+	if battle_over or has_defeated_king():
+		return
+
 	var priority_value := 0
 	if action_type == "retaliating_rage":
 		# Finish Minotaur exchanges before pausing for Raise Dead selections.
@@ -656,6 +766,10 @@ func continue_action_resolution() -> void:
 		printerr("continue_action_resolution: No action is in progress.")
 		return
 
+	if has_defeated_king():
+		complete_battle()
+		return
+
 	while not selection_queue.is_empty():
 		selection_queue.sort_custom(
 			func(a, b):
@@ -677,6 +791,13 @@ func continue_action_resolution() -> void:
 		# continue the exchange before lower-priority selection reactions.
 		if action_type == "retaliating_rage":
 			await calling_piece.resolve_automatic_reaction(action_type, event_data)
+
+			# Let the already-running effect finish, but do not begin another
+			# reaction after it defeats a king.
+			if has_defeated_king():
+				complete_battle()
+				return
+
 			continue
 
 		var targets: Array = calling_piece.get_selection_targets(action_type, event_data)
@@ -691,6 +812,8 @@ func continue_action_resolution() -> void:
 	finish_action()
 
 func resolve_reaction_selection(calling_piece: ModelPiece, coord: Vector2i) -> void:
+	if battle_over:
+		return
 	if not action_in_progress:
 		printerr("resolve_reaction_selection: No action is in progress.")
 		return
