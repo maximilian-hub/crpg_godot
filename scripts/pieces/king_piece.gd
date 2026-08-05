@@ -77,8 +77,8 @@ func decrement_cooldown():
 ## Called automatically when the turn changes (connected in ChessModel.inject_dependencies).
 ## Handles decrementing stun AND ability cooldowns.
 func _on_turn_changed(current_turn: String):
-	super._on_turn_changed(current_turn) # Handle stun decrement from ModelPiece
-	if current_turn != color:
+	super._on_turn_changed(current_turn)
+	if current_turn == color:
 		decrement_cooldown()
 
 # --- Virtual Methods (to be overridden by subclasses) ---

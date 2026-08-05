@@ -97,7 +97,11 @@ func unstun():
 	view.remove_stun_stars(coordinate)
 
 func get_selection_targets(action_type: String, event_data) -> Array:
-	return []		
+	return []
+
+## Override for queued reactions that do not require a target selection.
+func resolve_automatic_reaction(action_type: String, event_data) -> void:
+	pass
 
 func _on_selection_processing_start(piece: ModelPiece): pass
 func _on_selection_processing_end(): pass

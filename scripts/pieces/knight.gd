@@ -8,7 +8,6 @@ func _init(p_color: String, p_coordinate: Vector2i):
 func get_legal_moves() -> Array:
 	var row = coordinate.x
 	var col = coordinate.y
-	var color = color
 	var moves := []
 	var offsets = [
 		Vector2i(2, 1), Vector2i(2, -1),
