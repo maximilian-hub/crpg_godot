@@ -4,7 +4,7 @@ class_name ArakneKing
 func _init(color: String, coord: Vector2i):
 	super._init(color, coord)
 	self.type = "arakne_king"
-	self.max_hp = 3
+	self.max_hp = 2
 	self.current_hp = self.max_hp
 	self.base_cooldown = 1
 	self.active_ability_name = "Spike Burst"
