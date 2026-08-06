@@ -286,7 +286,7 @@ func start_minotaur_rage_intro(minotaur_node: Node) -> void:
 		rage_intro_animation_completed.emit()
 		return
 
-	var original_scale := minotaur_node.scale
+	var original_scale = minotaur_node.scale
 	var tween = create_tween()
 	tween.tween_property(minotaur_node, "scale", original_scale * 1.25, 1).set_trans(Tween.TRANS_ELASTIC)
 	tween.tween_interval(0.15) # Adjust timing as needed
