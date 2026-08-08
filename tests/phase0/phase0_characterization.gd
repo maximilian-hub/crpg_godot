@@ -30,6 +30,7 @@ func _ready() -> void:
 func _run_suite() -> void:
 	await _test_default_initialization_and_normal_move()
 	await _test_ai_configuration_and_turns()
+	await _test_cpu_move_uses_presentation_tween()
 	await _test_nonlethal_attack_presentation()
 	await _test_arakne_spike_burst()
 	await _test_minotaur_charge_survivor_landing()
@@ -110,6 +111,10 @@ func _test_ai_configuration_and_turns() -> void:
 
 	var zero_game := CHESS_GAME_SCENE.instantiate()
 	zero_game.control_mode = ChessGame.ControlMode.CPU_VS_CPU
+	zero_game.get_node("WhiteCpuPlayer").thinking_delay_seconds = 0.0
+	zero_game.get_node("BlackCpuPlayer").thinking_delay_seconds = 0.0
+	zero_game.get_node("WhiteCpuPlayer").evaluation_frame_budget_ms = 0.0
+	zero_game.get_node("BlackCpuPlayer").evaluation_frame_budget_ms = 0.0
 	add_child(zero_game)
 	var zero_model: ChessBoardModel = zero_game.get_node("ChessModel")
 	var zero_controller: ChessBoardController = zero_game.get_node("ChessController")
@@ -129,6 +134,50 @@ func _test_ai_configuration_and_turns() -> void:
 	_expect(zero_action_owners == ["white", "black"], "CPU-vs-CPU mode alternates White then Black")
 	_expect(white_cpu.controlled_color == "white" and black_cpu.controlled_color == "black", "CPU-vs-CPU assigns one shared-script instance to each color")
 	await _destroy_game(zero_game)
+
+
+func _test_cpu_move_uses_presentation_tween() -> void:
+	var game := CHESS_GAME_SCENE.instantiate()
+	game.control_mode = ChessGame.ControlMode.PLAYER_VS_PLAYER
+	var white_cpu: ChessCpuPlayer = game.get_node("WhiteCpuPlayer")
+	white_cpu.thinking_delay_seconds = 0.0
+	white_cpu.evaluation_frame_budget_ms = 1.0
+	var model: ChessBoardModel = game.get_node("ChessModel")
+	var controller: ChessBoardController = game.get_node("ChessController")
+	var adapter: ChessPresentationAdapter = game.get_node("ChessPresentationAdapter")
+	var view: ChessBoardView = game.get_node("CanvasLayer/ChessBoard")
+	add_child(game)
+	await get_tree().process_frame
+	var rook := Rook.new("white", Vector2i(7, 0))
+	var pawn := Pawn.new("black", Vector2i(4, 0))
+	_reset_battle(model, controller, [rook, pawn])
+	var observation := {
+		"events": 0,
+		"gate_pending": false,
+		"left_origin": false,
+		"not_at_destination": false,
+	}
+	model.piece_move_committed.connect(
+		func(piece: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate):
+			if observation["events"] > 0:
+				return
+			observation["events"] += 1
+			var piece_view: Node = adapter.get_piece_view(piece)
+			var origin_position := view.grid_to_screen(from.x, from.y)
+			var destination_position := view.grid_to_screen(to.x, to.y)
+			await get_tree().process_frame
+			observation["gate_pending"] = not gate.is_completed()
+			await get_tree().process_frame
+			observation["left_origin"] = not piece_view.position.is_equal_approx(origin_position)
+			observation["not_at_destination"] = not piece_view.position.is_equal_approx(destination_position)
+	)
+	controller.configure_player_controlled_colors(["black"])
+	white_cpu.configure(true, "white")
+	await _wait_for_idle_turn(model, "black", 360)
+	_expect(observation["events"] == 1, "CPU move emits the normal presentation event")
+	_expect(observation["gate_pending"], "CPU movement tween holds the Model action open")
+	_expect(observation["left_origin"] and observation["not_at_destination"], "CPU piece occupies an intermediate tween position")
+	await _destroy_game(game)
 
 
 func _test_nonlethal_attack_presentation() -> void:
@@ -361,6 +410,10 @@ func _create_game(control_mode: ChessGame.ControlMode = ChessGame.ControlMode.PL
 	var game := CHESS_GAME_SCENE.instantiate()
 	game.control_mode = control_mode
 	game.ai_color = ai_color
+	game.get_node("WhiteCpuPlayer").thinking_delay_seconds = 0.0
+	game.get_node("BlackCpuPlayer").thinking_delay_seconds = 0.0
+	game.get_node("WhiteCpuPlayer").evaluation_frame_budget_ms = 0.0
+	game.get_node("BlackCpuPlayer").evaluation_frame_budget_ms = 0.0
 	add_child(game)
 	await get_tree().process_frame
 	return {

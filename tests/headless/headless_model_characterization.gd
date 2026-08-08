@@ -170,15 +170,90 @@ func _test_special_moves() -> void:
 	_expect(castle_model.board[7][6] == king and castle_model.board[7][5] == rook, "castling moves rook before completing king move")
 	castle_model.free()
 
+	var queenside_model := _new_empty_model()
+	var queenside_king := ClassicKing.new("white", Vector2i(7, 4))
+	var queenside_rook := Rook.new("white", Vector2i(7, 0))
+	queenside_model.add_piece(queenside_king, queenside_king.coordinate)
+	queenside_model.add_piece(queenside_rook, queenside_rook.coordinate)
+	_expect(await queenside_model.submit_move(queenside_king, Vector2i(7, 2)), "headless queenside castling command is accepted")
+	_expect(queenside_model.board[7][2] == queenside_king and queenside_model.board[7][3] == queenside_rook, "queenside castling moves its validated Rook")
+	queenside_model.free()
+
+	var invalid_castle_model := _new_empty_model()
+	var moved_king := ClassicKing.new("white", Vector2i(7, 4))
+	var moved_rook := Rook.new("white", Vector2i(7, 7))
+	invalid_castle_model.add_piece(moved_king, moved_king.coordinate)
+	invalid_castle_model.add_piece(moved_rook, moved_rook.coordinate)
+	moved_king.has_moved = true
+	_expect(Vector2i(7, 6) not in moved_king.get_legal_moves(), "a moved King cannot castle")
+	moved_king.has_moved = false
+	moved_rook.has_moved = true
+	_expect(Vector2i(7, 6) not in moved_king.get_legal_moves(), "a moved Rook cannot castle")
+	moved_rook.has_moved = false
+	var blocker := Bishop.new("white", Vector2i(7, 5))
+	invalid_castle_model.add_piece(blocker, blocker.coordinate)
+	_expect(Vector2i(7, 6) not in moved_king.get_legal_moves(), "an occupied path prevents castling")
+	invalid_castle_model.free()
+
+	for skitter_destination in [Vector2i(4, 2), Vector2i(4, 6)]:
+		var skitter_model := _new_empty_model()
+		var skittering_arakne := ArakneKing.new("white", Vector2i(4, 4))
+		var edge_column := 0 if skitter_destination.y == 2 else 7
+		var edge_bishop := Bishop.new("white", Vector2i(4, edge_column))
+		skitter_model.add_piece(skittering_arakne, skittering_arakne.coordinate)
+		skitter_model.add_piece(edge_bishop, edge_bishop.coordinate)
+		_expect(skitter_destination in skittering_arakne.get_legal_moves(), "Arakne retains its column-%s skitter" % skitter_destination.y)
+		_expect(await skitter_model.submit_move(skittering_arakne, skitter_destination), "Arakne column-%s skitter is accepted as a normal move" % skitter_destination.y)
+		_expect(skitter_model.board[4][edge_column] == edge_bishop, "Arakne skitter does not move the edge occupant as a Rook")
+		skitter_model.free()
+
+	var arakne_castle_model := _new_empty_model()
+	var castling_arakne := ArakneKing.new("white", Vector2i(7, 4))
+	var arakne_rook := Rook.new("white", Vector2i(7, 7))
+	arakne_castle_model.add_piece(castling_arakne, castling_arakne.coordinate)
+	arakne_castle_model.add_piece(arakne_rook, arakne_rook.coordinate)
+	_expect(Vector2i(7, 6) in castling_arakne.get_legal_moves(), "Arakne retains structurally valid castling")
+	_expect(await arakne_castle_model.submit_move(castling_arakne, Vector2i(7, 6)), "Arakne can execute structurally valid castling")
+	_expect(arakne_castle_model.board[7][5] == arakne_rook, "Arakne castling moves the validated Rook")
+	arakne_castle_model.free()
+
 	var passant_model := _new_empty_model()
 	var white_pawn := Pawn.new("white", Vector2i(3, 4))
 	var black_pawn := Pawn.new("black", Vector2i(3, 5))
 	passant_model.add_piece(white_pawn, white_pawn.coordinate)
 	passant_model.add_piece(black_pawn, black_pawn.coordinate)
-	passant_model.last_move = {"piece": black_pawn, "from": Vector2i(1, 5), "to": Vector2i(3, 5)}
+	passant_model.last_move = {
+		"piece": black_pawn,
+		"piece_type": "pawn",
+		"piece_color": "black",
+		"from": Vector2i(1, 5),
+		"to": Vector2i(3, 5),
+	}
 	_expect(await passant_model.submit_move(white_pawn, Vector2i(2, 5)), "headless en passant command is accepted")
 	_expect(passant_model.board[2][5] == white_pawn and passant_model.board[3][5] == null, "en passant removes the adjacent pawn")
 	passant_model.free()
+
+	var stale_passant_model := _new_empty_model()
+	var evaluating_pawn := Pawn.new("white", Vector2i(3, 4))
+	var adjacent_pawn := Pawn.new("black", Vector2i(3, 5))
+	stale_passant_model.add_piece(evaluating_pawn, evaluating_pawn.coordinate)
+	stale_passant_model.add_piece(adjacent_pawn, adjacent_pawn.coordinate)
+	stale_passant_model.last_move = {
+		"piece": null,
+		"piece_type": "pawn",
+		"piece_color": "black",
+		"from": Vector2i(1, 5),
+		"to": Vector2i(3, 5),
+	}
+	_expect(Vector2i(2, 5) in evaluating_pawn.get_legal_moves(), "immutable last-move metadata supports en passant without a piece reference")
+	stale_passant_model.destroy_piece(adjacent_pawn, true)
+	_expect(Vector2i(2, 5) not in evaluating_pawn.get_legal_moves(), "destroyed last-moving Pawn is not an en passant target")
+	var replacement := Bishop.new("black", Vector2i(3, 5))
+	stale_passant_model.add_piece(replacement, replacement.coordinate)
+	_expect(Vector2i(2, 5) not in evaluating_pawn.get_legal_moves(), "replacement occupant is not mistaken for the last-moving Pawn")
+	stale_passant_model.last_move = {"piece": null}
+	_expect(Vector2i(2, 5) not in evaluating_pawn.get_legal_moves(), "partial last-move data is ignored safely")
+	stale_passant_model.free()
 
 	var promotion_model := _new_empty_model()
 	var promoting_pawn := Pawn.new("white", Vector2i(1, 0))

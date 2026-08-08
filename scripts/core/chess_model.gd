@@ -9,7 +9,7 @@ class_name ChessBoardModel
 
 const BOARD_TYPE = "default"
 var board: Array = []
-var last_move: Dictionary = {}		# from, to, piecename
+var last_move: Dictionary = {}		# from, to, piece, piece_type, piece_color
 var last_destroyed_piece: ModelPiece		
 var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
@@ -44,8 +44,12 @@ var is_initialized: bool = false
 # current_turn does not change until the action and reaction queue are finished.
 var action_in_progress: bool = false
 var action_owner_color: String = ""
+var suppress_diagnostics: bool = false
 
 const MAJOR_MINOR_BASE_TYPES = ["knight", "rook", "bishop", "queen"]
+const CASTLING_KING_COLUMN: int = 4
+const QUEENSIDE_CASTLING_COLUMN: int = 2
+const KINGSIDE_CASTLING_COLUMN: int = 6
 
 const Pawn = preload("res://scripts/pieces/pawn.gd")
 const Knight = preload("res://scripts/pieces/knight.gd")
@@ -261,7 +265,7 @@ func begin_action(owner_color: String) -> bool:
 
 	action_in_progress = true
 	action_owner_color = owner_color
-	print("ACTION START — ", action_owner_color)
+	if not suppress_diagnostics: print("ACTION START — ", action_owner_color)
 	action_started.emit(action_owner_color)
 	return true
 
@@ -279,7 +283,7 @@ func finish_action() -> void:
 		complete_battle()
 		return
 
-	print("ACTION END — ", action_owner_color)
+	if not suppress_diagnostics: print("ACTION END — ", action_owner_color)
 	action_in_progress = false
 	action_owner_color = ""
 	switch_turn()
@@ -312,7 +316,7 @@ func complete_battle() -> void:
 	else:
 		battle_result = "white"
 
-	print("BATTLE FINISHED — ", battle_result)
+	if not suppress_diagnostics: print("BATTLE FINISHED — ", battle_result)
 	battle_finished.emit(battle_result)
 
 ## Entry point for a player's normal move/capture/castle/en-passant action.
@@ -341,7 +345,8 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	elif is_combat:
 		await handle_combat(piece, to)
 	elif is_castling:
-		await handle_castling(piece, from, to)
+		if not await handle_castling(piece as KingPiece, from, to):
+			return
 	else:
 		await actually_move_piece(piece, to)
 
@@ -391,7 +396,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		var from = piece.coordinate
 		# ... (more checks: bounds, piece at 'from', 'to' empty etc.) ...
 
-		print("actually moving piece, ", piece.type, " from ", from, " to ", to)
+		if not suppress_diagnostics: print("actually moving piece, ", piece.type, " from ", from, " to ", to)
 		board[from.x][from.y] = null
 		board[to.x][to.y] = piece
 		piece.coordinate = to # Update model coordinate *before* animation starts
@@ -401,7 +406,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		piece_move_committed.emit(piece, from, to, completion)
 		completion.close()
 		await completion.wait_until_released()
-		print("Animation finished for piece: ", piece.type)
+		if not suppress_diagnostics: print("Animation finished for piece: ", piece.type)
 
 		# Bone Pawns expire inside the action that moved them, before reactions drain.
 		if piece is BonePawn and piece._on_dead_row():
@@ -412,21 +417,44 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
 			promotion_check(piece)
 
-func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
-	var rook_piece = board[rook_row][rook_col]
-	if rook_piece == null or rook_piece.color != color or rook_piece.type != "rook":
-		return false
+func get_legal_castling_moves(king: KingPiece) -> Array[Vector2i]:
+	var moves: Array[Vector2i] = []
+	if not is_piece_active(king) or king.has_moved:
+		return moves
+	var from := king.coordinate
+	for destination_column in [QUEENSIDE_CASTLING_COLUMN, KINGSIDE_CASTLING_COLUMN]:
+		var destination := Vector2i(from.x, destination_column)
+		if get_castling_rook(king, from, destination) != null:
+			moves.append(destination)
+	return moves
 
-	if rook_piece.has_moved:
-		return false
 
-	var start = min(king_col, rook_col) + 1
-	var end = max(king_col, rook_col)
-	for c in range(start, end):
-		if board[king_row][c] != null:
-			return false
+func get_castling_rook(king: KingPiece, from: Vector2i, to: Vector2i) -> ModelPiece:
+	if not is_instance_valid(king) or not is_piece_active(king) or king.has_moved:
+		return null
+	if from != king.coordinate or from.x != get_back_rank(king.color):
+		return null
+	if from.y != CASTLING_KING_COLUMN or to.x != from.x:
+		return null
+	if to.y != QUEENSIDE_CASTLING_COLUMN and to.y != KINGSIDE_CASTLING_COLUMN:
+		return null
+	if board[to.x][to.y] != null:
+		return null
 
-	return true
+	var rook_column: int = 0 if to.y == QUEENSIDE_CASTLING_COLUMN else board[from.x].size() - 1
+	var rook_piece: ModelPiece = board[from.x][rook_column]
+	if (
+		rook_piece == null
+		or rook_piece.color != king.color
+		or rook_piece.type != "rook"
+		or rook_piece.has_moved
+	):
+		return null
+
+	for column in range(min(from.y, rook_column) + 1, max(from.y, rook_column)):
+		if board[from.x][column] != null:
+			return null
+	return rook_piece
 
 func switch_turn():
 	if battle_over:
@@ -437,7 +465,7 @@ func switch_turn():
 	else:
 		current_turn = "white"
 	
-	print("switching turns.")
+	if not suppress_diagnostics: print("switching turns.")
 	emit_signal("turn_changed", current_turn)
 		
 func promotion_check(piece: ModelPiece):
@@ -455,19 +483,21 @@ func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	last_move = {
 		"from": from,
 		"to": to,
-		"piece": piece
+		"piece": piece,
+		"piece_type": piece.type,
+		"piece_color": piece.color,
 	}
 	
-func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
-	var row := from.x
-	if to.y == 6: # King-side castle
-		var kingside_rook = board[row][7]
-		await actually_move_piece(kingside_rook, Vector2i(row, 5))
-	elif to.y == 2: # Queen-side castle
-		var queenside_rook = board[row][0]
-		await actually_move_piece(queenside_rook, Vector2i(row, 3))
-
+func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i) -> bool:
+	var rook := get_castling_rook(king, from, to)
+	if rook == null:
+		printerr("handle_castling: Castling structure is no longer valid.")
+		cancel_action()
+		return false
+	var rook_destination_column := to.y + 1 if to.y == QUEENSIDE_CASTLING_COLUMN else to.y - 1
+	await actually_move_piece(rook, Vector2i(from.x, rook_destination_column))
 	await actually_move_piece(king, to)
+	return true
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row := from.x
@@ -548,7 +578,7 @@ func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 	
 func move_is_castling(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
-	return piece.type.ends_with("king") and abs(to.y - from.y) == 2
+	return piece is KingPiece and get_castling_rook(piece as KingPiece, from, to) != null
 
 func move_is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
 	return piece.type == "pawn" and from.y != to.y and board[to.x][to.y] == null
@@ -600,7 +630,7 @@ func get_furthest_rank(color: String) -> int:
 
 func _get_furthest_white_rank() -> int:
 	var back_rank = board.size()
-	print("white army's back rank is ", back_rank)
+	if not suppress_diagnostics: print("white army's back rank is ", back_rank)
 	var furthest_rank = back_rank
 	
 	for r in range(board.size() - 1):
@@ -682,7 +712,7 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 
 	if piece.is_king and piece.color not in defeated_king_colors:
 		defeated_king_colors.append(piece.color)
-		print("KING DEFEATED — ", piece.color)
+		if not suppress_diagnostics: print("KING DEFEATED — ", piece.color)
 
 	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
 	
@@ -749,7 +779,7 @@ func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String,
 		"sequence": selection_sequence,
 		"event_data": event_data
 	})
-	print("Queued reaction: ", action_type, " for ", calling_piece.color)
+	if not suppress_diagnostics: print("Queued reaction: ", action_type, " for ", calling_piece.color)
 
 ## Drain automatic/choice reactions. A choice pauses this function; the chosen
 ## square later calls resolve_reaction_selection(), which resumes this action.

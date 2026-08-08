@@ -47,11 +47,8 @@ func get_legal_moves() -> Array:
 				if target == null or target.color != color:
 					moves.append(Vector2i(r, c))
 
-	if not has_moved:
-		if model.can_castle_through(row, col, row, 0, color):
-			moves.append(Vector2i(row, col - 2))
-		if model.can_castle_through(row, col, row, 7, color):
-			moves.append(Vector2i(row, col + 2))
+	for castling_move in model.get_legal_castling_moves(self):
+		moves.append(castling_move)
 
 	return moves
 

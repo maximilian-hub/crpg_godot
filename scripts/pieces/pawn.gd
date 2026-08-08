@@ -37,15 +37,28 @@ func get_legal_moves() -> Array:
 			if target != null and target.color != color:
 				moves.append(Vector2i(forward_one, diag_col))
 
-	# En passant
-	if model.last_move.has("piece") and model.last_move["piece"].type == "pawn":
-		var last_from = model.last_move["from"]
-		var last_to = model.last_move["to"]
-		if abs(last_to.x - last_from.x) == 2 and last_to.x == row:
-			for dc in [-1, 1]:
-				var side_col = col + dc
-				if model.is_in_bounds(row, side_col) and last_to.y == side_col:
-					var en_passant_row = row + direction
-					moves.append(Vector2i(en_passant_row, side_col))
+	# En passant uses immutable move metadata. The optional piece reference may
+	# be absent in a simulation after that piece is destroyed or transformed.
+	var last_from = model.last_move.get("from")
+	var last_to = model.last_move.get("to")
+	var last_piece_type: String = model.last_move.get("piece_type", "")
+	var last_piece_color: String = model.last_move.get("piece_color", "")
+	if (
+		last_piece_type == "pawn"
+		and last_piece_color != color
+		and last_from is Vector2i
+		and last_to is Vector2i
+		and abs(last_to.x - last_from.x) == 2
+		and last_to.x == row
+		and abs(last_to.y - col) == 1
+		and model.is_in_bounds(last_to.x, last_to.y)
+	):
+		var adjacent_piece: ModelPiece = model.board[last_to.x][last_to.y]
+		if (
+			adjacent_piece != null
+			and adjacent_piece.type == "pawn"
+			and adjacent_piece.color == last_piece_color
+		):
+			moves.append(Vector2i(row + direction, last_to.y))
 
 	return moves
