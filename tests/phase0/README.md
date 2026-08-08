@@ -21,6 +21,7 @@ assertions pass. Phase 0 records this existing behavior and does not repair it.
 
 The automated checks preserve these current contracts:
 
+- battle control supports player-vs-player, player-vs-CPU, and CPU-vs-CPU;
 - the default board initializes with 32 pieces and White to move;
 - pawn two-step movement, action locking, last-move state, movement animation,
   and turn completion occur as one resolved action;

@@ -7,11 +7,18 @@ class_name ChessGame
 
 signal battle_completed(player_result: String)
 
+enum ControlMode {
+	CPU_VS_CPU,
+	PLAYER_VS_CPU,
+	PLAYER_VS_PLAYER,
+}
+
 @onready var model: ChessBoardModel = $ChessModel
 @onready var controller: ChessBoardController = $ChessController
-@onready var cpu_player: ChessCpuPlayer = $ChessCpuPlayer
+@onready var white_cpu_player: ChessCpuPlayer = $WhiteCpuPlayer
+@onready var black_cpu_player: ChessCpuPlayer = $BlackCpuPlayer
 @export_enum("white", "black") var player_color: String = "white"
-@export var is_ai_game: bool = false # For prototype/debugging, to select 1 or 2 player game
+@export var control_mode: ControlMode = ControlMode.CPU_VS_CPU
 @export_enum("white", "black") var ai_color: String = "black"
 
 func _ready() -> void:
@@ -22,16 +29,28 @@ func _ready() -> void:
 	if not model.battle_finished.is_connected(_on_battle_finished):
 		model.battle_finished.connect(_on_battle_finished)
 
-	if is_ai_game:
-		controller.configure_player_controlled_colors([model.get_other_color(ai_color)])
-	else:
-		controller.configure_player_controlled_colors(["white", "black"])
-	cpu_player.configure(is_ai_game, ai_color)
+	match control_mode:
+		ControlMode.CPU_VS_CPU:
+			controller.configure_player_controlled_colors([])
+			white_cpu_player.configure(true, "white")
+			black_cpu_player.configure(true, "black")
+		ControlMode.PLAYER_VS_CPU:
+			controller.configure_player_controlled_colors([model.get_other_color(ai_color)])
+			white_cpu_player.configure(ai_color == "white", "white")
+			black_cpu_player.configure(ai_color == "black", "black")
+		ControlMode.PLAYER_VS_PLAYER:
+			controller.configure_player_controlled_colors(["white", "black"])
+			white_cpu_player.configure(false, "white")
+			black_cpu_player.configure(false, "black")
 
 
 func _on_battle_finished(winner_color: String) -> void:
 	var player_result: String
-	var result_player_color := model.get_other_color(ai_color) if is_ai_game else player_color
+	var result_player_color := (
+		model.get_other_color(ai_color)
+		if control_mode == ControlMode.PLAYER_VS_CPU
+		else player_color
+	)
 
 	if winner_color == "draw":
 		player_result = "draw"

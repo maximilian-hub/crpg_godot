@@ -11,6 +11,9 @@ func _ready() -> void:
 	await _test_cpu_with_no_legal_action()
 	await _test_cpu_owned_reaction()
 	await _test_human_owned_reaction_is_untouched()
+	await _test_two_cpu_turns()
+	await _test_two_cpu_reaction_ownership()
+	await _test_two_cpu_battle_completion_stops_scheduling()
 
 	if failures.is_empty():
 		print("HEADLESS CPU CHARACTERIZATION: PASS (", checks, " checks)")
@@ -139,6 +142,87 @@ func _test_human_owned_reaction_is_untouched() -> void:
 	model.free()
 
 
+func _test_two_cpu_turns() -> void:
+	var model := _new_empty_model()
+	var white_rook := Rook.new("white", Vector2i(7, 0))
+	var black_pawn := Pawn.new("black", Vector2i(7, 3))
+	var black_rook := Rook.new("black", Vector2i(0, 7))
+	var white_pawn := Pawn.new("white", Vector2i(0, 4))
+	model.add_piece(white_rook, white_rook.coordinate)
+	model.add_piece(black_pawn, black_pawn.coordinate)
+	model.add_piece(black_rook, black_rook.coordinate)
+	model.add_piece(white_pawn, white_pawn.coordinate)
+	var white_cpu := _add_cpu(model, "white", false)
+	var black_cpu := _add_cpu(model, "black", false)
+	var owners: Array[String] = []
+	model.action_started.connect(
+		func(color: String):
+			owners.append(color)
+			if owners.size() == 2:
+				white_cpu.is_enabled = false
+				black_cpu.is_enabled = false
+	)
+	black_cpu.configure(true, "black")
+	white_cpu.configure(true, "white")
+	await _wait_for_action_count(owners, 2)
+	await _wait_frames(2)
+	_expect(owners == ["white", "black"], "two CPU clients act once each in turn order")
+	_expect(model.board[7][3] == white_rook and model.board[0][4] == black_rook, "each CPU submits its own highest-scoring capture")
+	white_cpu.queue_free()
+	black_cpu.queue_free()
+	model.free()
+
+
+func _test_two_cpu_reaction_ownership() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
+	var bishop := Bishop.new("black", Vector2i(4, 4))
+	model.add_piece(necromancer, necromancer.coordinate)
+	model.add_piece(bishop, bishop.coordinate)
+	var white_cpu := _add_cpu(model, "white", false)
+	var black_cpu := _add_cpu(model, "black", false)
+	model.reaction_selection_resolved.connect(
+		func(_piece: ModelPiece, _action_type: String, _target: Vector2i):
+			white_cpu.is_enabled = false
+			black_cpu.is_enabled = false,
+		CONNECT_ONE_SHOT
+	)
+	white_cpu.configure(true, "white")
+	black_cpu.configure(true, "black")
+	model.begin_action("black")
+	model.destroy_piece(bishop, true)
+	await model.continue_action_resolution()
+	await _wait_frames(3)
+	_expect(not model.has_pending_reaction(), "matching CPU resolves a reaction owned by White")
+	_expect(_count_type(model, "bone_pawn") == 1, "two-CPU reaction ownership produces the selected effect")
+	white_cpu.queue_free()
+	black_cpu.queue_free()
+	model.free()
+
+
+func _test_two_cpu_battle_completion_stops_scheduling() -> void:
+	var model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	var black_king := ClassicKing.new("black", Vector2i(3, 3))
+	model.add_piece(arakne, arakne.coordinate)
+	model.add_piece(black_king, black_king.coordinate)
+	var white_cpu := _add_cpu(model, "white", false)
+	var black_cpu := _add_cpu(model, "black", false)
+	var action_count := {"value": 0}
+	model.action_started.connect(func(_color: String): action_count["value"] += 1)
+	black_cpu.configure(true, "black")
+	white_cpu.configure(true, "white")
+	await _wait_frames(4)
+	var count_at_completion: int = action_count["value"]
+	await _wait_frames(4)
+	_expect(model.battle_over and model.battle_result == "white", "two-CPU fixture reaches battle completion")
+	_expect(count_at_completion == 1 and action_count["value"] == count_at_completion, "neither CPU schedules after battle completion")
+	white_cpu.queue_free()
+	black_cpu.queue_free()
+	model.free()
+
+
 func _add_cpu(model: ChessBoardModel, color: String, enabled: bool) -> ChessCpuPlayer:
 	var cpu := ChessCpuPlayer.new()
 	cpu.model = model
@@ -190,6 +274,13 @@ func _count_type(model: ChessBoardModel, type: String) -> int:
 
 func _wait_frames(frame_count: int) -> void:
 	for frame in range(frame_count):
+		await get_tree().process_frame
+
+
+func _wait_for_action_count(owners: Array[String], expected: int, max_frames: int = 20) -> void:
+	for frame in range(max_frames):
+		if owners.size() >= expected:
+			return
 		await get_tree().process_frame
 
 

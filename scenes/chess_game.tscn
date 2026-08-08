@@ -35,7 +35,11 @@ script = ExtResource("2_fv27a")
 script = ExtResource("3_s46tk")
 model = NodePath("../ChessModel")
 
-[node name="ChessCpuPlayer" type="Node" parent="." node_paths=PackedStringArray("model")]
+[node name="WhiteCpuPlayer" type="Node" parent="." node_paths=PackedStringArray("model")]
+script = ExtResource("10_cpu")
+model = NodePath("../ChessModel")
+
+[node name="BlackCpuPlayer" type="Node" parent="." node_paths=PackedStringArray("model")]
 script = ExtResource("10_cpu")
 model = NodePath("../ChessModel")
 

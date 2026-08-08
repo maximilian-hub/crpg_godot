@@ -19,4 +19,6 @@ distinguishes adjacent landings against surviving kings from lethal captures.
 
 The CPU suite covers the shared authoritative primary-action list, heuristic
 selection and randomized top-score ties, active abilities, and CPU-owned versus
-human-owned reaction choices without constructing a View or Controller.
+human-owned reaction choices without constructing a View or Controller. It also
+composes one shared-script CPU instance per color to verify alternating turns,
+reaction ownership, and battle-completion shutdown.

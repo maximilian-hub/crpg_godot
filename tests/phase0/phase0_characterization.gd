@@ -65,8 +65,9 @@ func _test_default_initialization_and_normal_move() -> void:
 	_expect(model.current_turn == "black", "resolved normal move switches the turn")
 	_expect(not model.action_in_progress, "resolved normal move closes the action")
 	_expect(not controller.is_input_locked, "resolved normal move unlocks ordinary input")
-	_expect(not context.game.is_ai_game, "battle scene defaults to a two-player game")
+	_expect(context.game.control_mode == ChessGame.ControlMode.PLAYER_VS_PLAYER, "test battle is configured for two players")
 	_expect(controller.is_player_controlled("white") and controller.is_player_controlled("black"), "two-player mode leaves both colors player-controlled")
+	_expect(not context.game.white_cpu_player.is_enabled and not context.game.black_cpu_player.is_enabled, "two-player mode disables both CPU clients")
 	var pawn_view: Node = context.adapter.get_piece_view(pawn)
 	_expect(is_instance_valid(pawn_view), "presentation maps the moved pawn to a View node")
 	_expect(pawn_view.coordinate == Vector2i(4, 0), "movement animation leaves the View node at the destination")
@@ -79,11 +80,12 @@ func _test_default_initialization_and_normal_move() -> void:
 
 
 func _test_ai_configuration_and_turns() -> void:
-	var black_context := await _create_game(true, "black")
+	var black_context := await _create_game(ChessGame.ControlMode.PLAYER_VS_CPU, "black")
 	var black_model: ChessBoardModel = black_context.model
 	var black_controller: ChessBoardController = black_context.controller
 	_expect(black_controller.is_player_controlled("white"), "Black-AI game leaves White player-controlled")
 	_expect(not black_controller.is_player_controlled("black"), "Black-AI game blocks Black Controller input")
+	_expect(not black_context.game.white_cpu_player.is_enabled and black_context.game.black_cpu_player.is_enabled, "Black-AI game enables only the Black CPU")
 	black_controller.select_piece(black_model.board[1][0])
 	_expect(black_controller.selected_piece == null, "Controller cannot select a CPU-owned piece")
 	var black_cpu_actions := {"count": 0}
@@ -97,13 +99,36 @@ func _test_ai_configuration_and_turns() -> void:
 	_expect(black_cpu_actions["count"] == 1, "Black CPU acts after the human action resolves")
 	await _destroy_game(black_context.game)
 
-	var white_context := await _create_game(true, "white")
+	var white_context := await _create_game(ChessGame.ControlMode.PLAYER_VS_CPU, "white")
 	var white_model: ChessBoardModel = white_context.model
 	var white_controller: ChessBoardController = white_context.controller
 	await _wait_for_idle_turn(white_model, "black")
 	_expect(not white_controller.is_player_controlled("white") and white_controller.is_player_controlled("black"), "White-AI game assigns Controller ownership to Black")
+	_expect(white_context.game.white_cpu_player.is_enabled and not white_context.game.black_cpu_player.is_enabled, "White-AI game enables only the White CPU")
 	_expect(white_model.current_turn == "black" and not white_model.action_in_progress, "White CPU takes the opening turn")
 	await _destroy_game(white_context.game)
+
+	var zero_game := CHESS_GAME_SCENE.instantiate()
+	zero_game.control_mode = ChessGame.ControlMode.CPU_VS_CPU
+	add_child(zero_game)
+	var zero_model: ChessBoardModel = zero_game.get_node("ChessModel")
+	var zero_controller: ChessBoardController = zero_game.get_node("ChessController")
+	var white_cpu: ChessCpuPlayer = zero_game.get_node("WhiteCpuPlayer")
+	var black_cpu: ChessCpuPlayer = zero_game.get_node("BlackCpuPlayer")
+	var zero_action_owners: Array[String] = []
+	zero_model.action_started.connect(
+		func(color: String):
+			zero_action_owners.append(color)
+			if zero_action_owners.size() == 2:
+				white_cpu.is_enabled = false
+				black_cpu.is_enabled = false
+	)
+	await _wait_for_action_count(zero_action_owners, 2)
+	await _wait_for_idle_turn(zero_model, "white")
+	_expect(zero_controller.player_controlled_colors.is_empty(), "CPU-vs-CPU mode gives the Controller no colors")
+	_expect(zero_action_owners == ["white", "black"], "CPU-vs-CPU mode alternates White then Black")
+	_expect(white_cpu.controlled_color == "white" and black_cpu.controlled_color == "black", "CPU-vs-CPU assigns one shared-script instance to each color")
+	await _destroy_game(zero_game)
 
 
 func _test_nonlethal_attack_presentation() -> void:
@@ -332,9 +357,9 @@ func _test_battle_completion() -> void:
 	await _destroy_game(context.game)
 
 
-func _create_game(is_ai_game: bool = false, ai_color: String = "black") -> Dictionary:
+func _create_game(control_mode: ChessGame.ControlMode = ChessGame.ControlMode.PLAYER_VS_PLAYER, ai_color: String = "black") -> Dictionary:
 	var game := CHESS_GAME_SCENE.instantiate()
-	game.is_ai_game = is_ai_game
+	game.control_mode = control_mode
 	game.ai_color = ai_color
 	add_child(game)
 	await get_tree().process_frame
@@ -356,6 +381,13 @@ func _destroy_game(game: Node) -> void:
 func _wait_for_idle_turn(model: ChessBoardModel, color: String, max_frames: int = 180) -> void:
 	for frame in range(max_frames):
 		if model.current_turn == color and not model.action_in_progress:
+			return
+		await get_tree().process_frame
+
+
+func _wait_for_action_count(owners: Array[String], expected: int, max_frames: int = 360) -> void:
+	for frame in range(max_frames):
+		if owners.size() >= expected:
 			return
 		await get_tree().process_frame
 
