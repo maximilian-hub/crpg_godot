@@ -3,8 +3,6 @@ extends KingPiece
 class_name NecromancerKing
 
 const BonePawn = preload("res://scripts/pieces/bone_pawn.gd")
-var SkullAura = preload("res://effects/skull_aura.tscn")
-var skull_aura_instance: Node = null
 
 func _init(color: String, coord: Vector2i):
 	super._init(color, coord)
@@ -21,7 +19,6 @@ func get_active_ability_targets() -> Array:
 ## Executes the active summon, but does not end the turn.
 ## The Model's action resolver finishes the action after all reactions resolve.
 func active_target_selected(target: Vector2i):
-	remove_aura()
 	summon_bone_pawn(target)
 	reset_cooldown()
 
@@ -48,38 +45,3 @@ func get_selection_targets(action_type: String, event_data) -> Array:
 ## Called by the action resolver after this Necromancer's reaction target is chosen.
 func _on_special_target_selected(coord: Vector2i):
 	summon_bone_pawn(coord)
-
-## TODO: move to view script
-func apply_aura():
-	print("apply_aura()")
-	if not is_instance_valid(view_node):
-		return
-
-	if not is_instance_valid(skull_aura_instance):
-		skull_aura_instance = SkullAura.instantiate()
-		view_node.add_child(skull_aura_instance)
-
-	# Restart the existing particle effect whenever targeting begins.
-	skull_aura_instance.restart()
-	skull_aura_instance.emitting = true
-
-## TODO: move to view script
-func remove_aura():
-	if is_instance_valid(skull_aura_instance):
-		skull_aura_instance.emitting = false
-
-func _on_selection_processing_start(piece: ModelPiece):
-	print("NK notified of selection process starting. checking if it's for me...")
-	if piece == self:
-		apply_aura()
-
-func _on_selection_processing_end():
-	remove_aura()
-
-func _on_active_selected():
-	apply_aura()
-
-func _on_active_deselected(play_powerdown_sound: bool = false):
-	remove_aura()
-	if play_powerdown_sound:
-		pass # add sound

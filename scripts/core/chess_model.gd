@@ -7,17 +7,28 @@ class_name ChessBoardModel
 # We believe that if you don't see that your King is threatened,
 # he should just die.
 
-@export var view: ChessBoardView
-@export var controller: ChessBoardController
 const BOARD_TYPE = "default"
-var board: Array
+var board: Array = []
 var last_move: Dictionary = {}		# from, to, piecename
 var last_destroyed_piece: ModelPiece		
 var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
+signal action_started(owner_color: String)
 signal action_finished()
+signal action_cancelled()
 signal battle_finished(winner_color: String)
+signal board_initialized(board: Array)
+signal piece_added(piece: ModelPiece)
+signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
+signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: int)
+signal piece_stunned(piece: ModelPiece, duration: int)
+signal piece_recovered(piece: ModelPiece)
+signal ability_started(piece: KingPiece, ability_name: String, completion: CompletionGate)
+signal ability_effect_resolved(piece: KingPiece, ability_name: String, affected_coords: Array)
+signal reaction_selection_requested(calling_piece: ModelPiece, action_type: String, targets: Array)
+signal reaction_selection_resolved(calling_piece: ModelPiece, action_type: String, target: Vector2i)
 
 var battle_over: bool = false
 var battle_result: String = ""
@@ -25,6 +36,8 @@ var defeated_king_colors: Array[String] = []
 
 var selection_queue: Array = [] # {calling_piece, action_type, priority, sequence, event_data}
 var selection_sequence: int = 0
+var pending_reaction: Dictionary = {}
+var is_initialized: bool = false
 
 # One primary move/ability and every consequence it causes are one action.
 # current_turn does not change until the action and reaction queue are finished.
@@ -45,11 +58,18 @@ const NecromancerKing = preload("res://scripts/pieces/necromancer_king.gd")
 var custom_size = 16
 
 func _ready():
+	initialize_battle()
+
+func initialize_battle() -> bool:
+	if is_initialized:
+		return false
 	initialize_board()
-	#print(board) # debug
-	view.draw_board(board)
+	is_initialized = true
+	board_initialized.emit(board)
+	return true
 
 func initialize_board():
+	board.clear()
 	if BOARD_TYPE == "default": # the normal 8x8 board
 		for x in range(8):
 			var row = []
@@ -69,14 +89,14 @@ func initialize_board():
 				row.append(null)
 			board.append(row)
 		initialize_debug_pieces() # populates the board array with ModelPiece objects
-	inject_all_dependencies() # passes references to the model and view to each piece
+	inject_all_dependencies()
 
 func initialize_default_pieces():
 	board[0][0] = Rook.new("black", Vector2i(0, 0))
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = ArakneKing.new("black", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
@@ -89,7 +109,7 @@ func initialize_default_pieces():
 	board[7][1] = Knight.new("white", Vector2i(7, 1))
 	board[7][2] = Bishop.new("white", Vector2i(7, 2))
 	board[7][3] = Queen.new("white", Vector2i(7, 3))
-	board[7][4] = ArakneKing.new("white", Vector2i(7, 4))
+	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
 	board[7][5] = Bishop.new("white", Vector2i(7, 5))
 	board[7][6] = Knight.new("white", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
@@ -131,43 +151,18 @@ func inject_all_dependencies():
 				inject_dependencies(piece)
 
 func inject_dependencies(piece: ModelPiece):
-	piece.view = view
 	piece.model = self
-	piece.controller = controller
 
 	var turn_callback := Callable(piece, "_on_turn_changed")
 	var death_callback := Callable(piece, "_on_piece_destroyed")
-	var selection_start_callback := Callable(piece, "_on_selection_processing_start")
-	var selection_end_callback := Callable(piece, "_on_selection_processing_end")
 
 	if not is_connected("turn_changed", turn_callback):
 		connect("turn_changed", turn_callback)
 	if not is_connected("piece_destroyed", death_callback):
 		connect("piece_destroyed", death_callback)
-	if not controller.is_connected("selection_piece_processing", selection_start_callback):
-		controller.connect("selection_piece_processing", selection_start_callback)
-	if not controller.is_connected("selection_piece_processed", selection_end_callback):
-		controller.connect("selection_piece_processed", selection_end_callback)
-
 	if piece is KingPiece:
 		var king_piece: KingPiece = piece
-		var cooldown_changed_callback := Callable(view, "update_cooldown_display")
-		var cooldown_ready_callback := Callable(view, "ready_cooldown_display")
-		if not king_piece.is_connected("cooldown_changed", cooldown_changed_callback):
-			king_piece.connect("cooldown_changed", cooldown_changed_callback)
-		if not king_piece.is_connected("cooldown_ready", cooldown_ready_callback):
-			king_piece.connect("cooldown_ready", cooldown_ready_callback)
-
-		# Abilities begin ready; this also initializes the button text.
 		king_piece.set_cooldown(king_piece.current_cooldown)
-
-		if king_piece is MinotaurKing:
-			var ability_callback := Callable(view, "_on_piece_started_ability")
-			var passive_callback := Callable(view, "_on_passive_ability_effect")
-			if not king_piece.is_connected("piece_started_ability", ability_callback):
-				king_piece.connect("piece_started_ability", ability_callback)
-			if not king_piece.is_connected("passive_ability_effect", passive_callback):
-				king_piece.connect("passive_ability_effect", passive_callback)
 
 func unregister_piece(piece: ModelPiece) -> void:
 	if not is_instance_valid(piece):
@@ -175,17 +170,17 @@ func unregister_piece(piece: ModelPiece) -> void:
 
 	var turn_callback := Callable(piece, "_on_turn_changed")
 	var death_callback := Callable(piece, "_on_piece_destroyed")
-	var selection_start_callback := Callable(piece, "_on_selection_processing_start")
-	var selection_end_callback := Callable(piece, "_on_selection_processing_end")
 
 	if is_connected("turn_changed", turn_callback):
 		disconnect("turn_changed", turn_callback)
 	if is_connected("piece_destroyed", death_callback):
 		disconnect("piece_destroyed", death_callback)
-	if controller.is_connected("selection_piece_processing", selection_start_callback):
-		controller.disconnect("selection_piece_processing", selection_start_callback)
-	if controller.is_connected("selection_piece_processed", selection_end_callback):
-		controller.disconnect("selection_piece_processed", selection_end_callback)
+
+func announce_ability_started(piece: KingPiece, ability_name: String) -> void:
+	var completion := CompletionGate.new()
+	ability_started.emit(piece, ability_name, completion)
+	completion.close()
+	await completion.wait_until_released()
 
 func add_piece(piece: ModelPiece, coord: Vector2i) -> bool:
 	if not is_instance_valid(piece):
@@ -201,7 +196,7 @@ func add_piece(piece: ModelPiece, coord: Vector2i) -> bool:
 	piece.coordinate = coord
 	board[coord.x][coord.y] = piece
 	inject_dependencies(piece)
-	view.draw_piece(piece)
+	piece_added.emit(piece)
 	return true
 
 
@@ -232,14 +227,14 @@ func begin_action(owner_color: String) -> bool:
 
 	action_in_progress = true
 	action_owner_color = owner_color
-	controller.is_input_locked = true
 	print("ACTION START — ", action_owner_color)
+	action_started.emit(action_owner_color)
 	return true
 
 func cancel_action() -> void:
 	action_in_progress = false
 	action_owner_color = ""
-	controller.is_input_locked = false
+	action_cancelled.emit()
 
 func finish_action() -> void:
 	if not action_in_progress:
@@ -254,7 +249,6 @@ func finish_action() -> void:
 	action_in_progress = false
 	action_owner_color = ""
 	switch_turn()
-	controller.is_input_locked = false
 	action_finished.emit()
 
 func has_defeated_king() -> bool:
@@ -273,6 +267,7 @@ func complete_battle() -> void:
 
 	battle_over = true
 	selection_queue.clear()
+	pending_reaction.clear()
 	action_in_progress = false
 	action_owner_color = ""
 
@@ -282,9 +277,6 @@ func complete_battle() -> void:
 		battle_result = "black"
 	else:
 		battle_result = "white"
-
-	if is_instance_valid(controller):
-		controller.lock_after_battle()
 
 	print("BATTLE FINISHED — ", battle_result)
 	battle_finished.emit(battle_result)
@@ -322,6 +314,14 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	update_last_move(piece, from, to)
 	await continue_action_resolution()
 
+func submit_move(piece: ModelPiece, to: Vector2i) -> bool:
+	if not is_piece_active(piece) or piece.color != current_turn or piece.stunned:
+		return false
+	if action_in_progress or battle_over or to not in get_legal_moves(piece):
+		return false
+	await move_piece(piece, to)
+	return true
+
 ## Entry point for a king's active ability.
 func perform_active_ability(king: KingPiece, target: Vector2i):
 	if not is_instance_valid(king):
@@ -333,23 +333,18 @@ func perform_active_ability(king: KingPiece, target: Vector2i):
 	await king.active_target_selected(target)
 	await continue_action_resolution()
 
+func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
+	if not is_piece_active(king) or king.color != current_turn or king.stunned:
+		return false
+	if action_in_progress or battle_over or king.current_cooldown > 0:
+		return false
+	if target not in king.get_active_ability_targets():
+		return false
+	await perform_active_ability(king, target)
+	return true
 
 
-### Moves a piece from one square to another.
-## Assumes empty destination square.
-## Validation is handled in move_piece()
-#func actually_move_piece(piece: ModelPiece, to: Vector2i):
-	#print("actually moving piece, ", piece.type)
-	#var from = piece.coordinate
-	#board[from.x][from.y] = null
-	#board[to.x][to.y] = piece
-	#piece.coordinate = to
-	#piece.has_moved = true
-	#view.move_piece_node(piece.view_node, to) # update the view
-	#if piece.type.contains("pawn"): promotion_check(piece)
-	
-	
-	
+
 ## Moves a piece from one square to another.
 # Assumes empty destination square for normal moves.
 # Validation is handled in move_piece() or callers like handle_combat.
@@ -368,14 +363,11 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		piece.coordinate = to # Update model coordinate *before* animation starts
 		piece.has_moved = true
 
-		# --- CHANGE HERE: Start animation and wait ---
-		if is_instance_valid(piece.view_node):
-			await view.move_piece_node(piece.view_node, to)
-			print("Animation finished for piece: ", piece.type)
-		else:
-			printerr("actually_move_piece: Tried to move view_node for ", piece.type, " at ", to, ", but view_node is invalid.")
-			# Decide if the logic should continue without animation confirmation. Maybe?
-			# Let's assume for now if the view_node is gone, the move is effectively instant.
+		var completion := CompletionGate.new()
+		piece_move_committed.emit(piece, from, to, completion)
+		completion.close()
+		await completion.wait_until_released()
+		print("Animation finished for piece: ", piece.type)
 
 		# Bone Pawns expire inside the action that moved them, before reactions drain.
 		if piece is BonePawn and piece._on_dead_row():
@@ -509,7 +501,6 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 			await actually_move_piece(attacker, to) # Attacker moves into the vacated square
 
 			# Now destroy the defender. Pass false because actually_move_piece already overwrote the square.
-			# If actually_move_piece fails, the defender might remain, but destroy_piece will try to remove its view node.
 			destroy_piece(defender_instance, false) 
 
 		else: # Defender survives, takes damage, attacker stays put
@@ -650,8 +641,6 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 	var piece_coord = piece.coordinate
 	if not is_in_bounds(piece_coord.x, piece_coord.y):
 		printerr("destroy_piece: Piece ", piece.type, " coordinate ", piece_coord, " is out of bounds.")
-		# Decide if we should still proceed with view node destruction etc.
-		# Let's proceed for now, as the view node might still exist.
 		
 	
 	last_destroyed_piece = piece
@@ -663,13 +652,6 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
 	
 	
-	if is_instance_valid(piece.view_node):
-		# Only tell the view to destroy the node if it's still valid
-		view.destroy_piece(piece.view_node) 
-	else:
-		# Log if we expected a view_node but didn't find one
-		print("destroy_piece: ModelPiece ", piece.type, " at ", piece_coord, " had no valid view_node to destroy (might have been handled elsewhere, e.g., promotion).")
-
 	# Only nullify if requested AND the piece is actually where we think it is
 	if nullify_square and is_in_bounds(piece_coord.x, piece_coord.y) and board[piece_coord.x][piece_coord.y] == piece:
 		board[piece_coord.x][piece_coord.y] = null
@@ -678,45 +660,20 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 	
 	unregister_piece(piece)
 
-	# Note: The ModelPiece object itself (piece) still exists until garbage collected.
-	# We've removed its view_node reference from the scene tree via view.destroy_piece
-	# and potentially its reference from the board array.
-	# Important: Don't queue_free(piece) here, as other systems might still need
-	# temporary access to its data via the last_destroyed_piece reference or signals.
-	
-	# Note: The ModelPiece object itself still exists until GDScript garbage collects it,
-	# but it should no longer be referenced by the board array (if nullify_square=true)
-	# or have a view_node.
-
-#func transform_piece(piece: ModelPiece, transformed_type: String):
-	#if transformed_type == "queen":
-		#piece.view_node.queue_free()
-		#var r = piece.coordinate.x
-		#var c = piece.coordinate.y
-		#
-		#var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
-		#inject_dependencies(transformed_piece)
-		#view.add_piece_node(transformed_piece)
-		#board[r][c] = transformed_piece
-		
-		
 func transform_piece(piece: ModelPiece, transformed_type: String):
 	if not is_instance_valid(piece):
 		printerr("transform_piece: Invalid piece instance provided.")
 		return
 		
 	if transformed_type == "queen":
-		if is_instance_valid(piece.view_node):
-			view.remove_piece(piece.view_node)
-
 		var r = piece.coordinate.x
 		var c = piece.coordinate.y
 		
 		unregister_piece(piece)
 		var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
 		inject_dependencies(transformed_piece)
-		view.draw_piece(transformed_piece)
 		board[r][c] = transformed_piece # Overwrite the old piece reference in the model
+		piece_transformed.emit(piece, transformed_piece)
 		
 		# Optional: Disconnect signals from the old piece if necessary,
 		# though it should get garbage collected eventually.
@@ -806,24 +763,43 @@ func continue_action_resolution() -> void:
 		if targets.is_empty():
 			continue
 
-		controller.initiate_non_move_selection_mode(calling_piece, targets)
+		pending_reaction = {
+			"calling_piece": calling_piece,
+			"action_type": action_type,
+			"event_data": event_data,
+			"targets": targets.duplicate(),
+		}
+		reaction_selection_requested.emit(calling_piece, action_type, targets.duplicate())
 		return
 
 	finish_action()
 
-func resolve_reaction_selection(calling_piece: ModelPiece, coord: Vector2i) -> void:
-	if battle_over:
-		return
-	if not action_in_progress:
-		printerr("resolve_reaction_selection: No action is in progress.")
-		return
-	if not is_instance_valid(calling_piece):
-		printerr("resolve_reaction_selection: Invalid reacting piece.")
-		return
+func has_pending_reaction() -> bool:
+	return not pending_reaction.is_empty()
 
+func get_pending_reaction() -> Dictionary:
+	return pending_reaction.duplicate(true)
+
+func submit_reaction_selection(coord: Vector2i) -> bool:
+	if battle_over:
+		return false
+	if not action_in_progress:
+		return false
+	if pending_reaction.is_empty():
+		return false
+
+	var calling_piece: ModelPiece = pending_reaction["calling_piece"]
+	if not is_piece_active(calling_piece):
+		return false
+	if coord not in pending_reaction["targets"]:
+		return false
+
+	var action_type: String = pending_reaction["action_type"]
+	pending_reaction.clear()
 	calling_piece._on_special_target_selected(coord)
-	controller.end_non_move_selection_mode()
+	reaction_selection_resolved.emit(calling_piece, action_type, coord)
 	await continue_action_resolution()
+	return true
 
 func get_other_color(color: String) -> String:
 	if color == "white": return "black"

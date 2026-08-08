@@ -2,9 +2,6 @@
 extends KingPiece
 class_name MinotaurKing
 
-signal piece_started_ability(piece: KingPiece, ability_name: String)
-signal passive_ability_effect(piece: KingPiece, ability_name: String, affected_coords: Array)
-
 const PASSIVE_ABILITY_NAME: String = "Retaliating Rage"
 const ACTIVE_ABILITY_NAME: String = "Charge"
 const ACTIVE_ABILITY_COOLDOWN = 4
@@ -54,7 +51,6 @@ func get_active_ability_targets() -> Array:
 
 ## Executes Charge, but the Model's action resolver owns turn completion.
 func active_target_selected(coord: Vector2i):
-	view.aura_loop_player.stop()
 	await charge(coord)
 	reset_cooldown()
 
@@ -91,8 +87,7 @@ func resolve_automatic_reaction(action_type: String, event_data) -> void:
 func retaliating_rage() -> void:
 	if stunned:
 		return
-	emit_signal("piece_started_ability", self, passive_ability_name)
-	await view.rage_intro_animation_completed
+	await model.announce_ability_started(self, passive_ability_name)
 	await _perform_rage_damage()
 
 func _perform_rage_damage() -> void:
@@ -105,10 +100,4 @@ func _perform_rage_damage() -> void:
 		if target != null:
 			target.take_damage(1)
 
-	emit_signal("passive_ability_effect", self, passive_ability_name, exploded_squares)
-
-func _on_active_selected():
-	view.spawn_ss_aura(view_node)
-
-func _on_active_deselected(play_powerdown_sound: bool = false):
-	view.fade_out_ss_aura(view_node, play_powerdown_sound)
+	model.ability_effect_resolved.emit(self, passive_ability_name, exploded_squares)

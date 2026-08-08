@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=11 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
 [ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
@@ -7,6 +7,8 @@
 [ext_resource type="Script" uid="uid://dm2av1txkn6la" path="res://scripts/core/chess_board.gd" id="3_yl173"]
 [ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scripts/view/squares.gd" id="5_s46tk"]
 [ext_resource type="Script" uid="uid://cqdlhvwaq4s2s" path="res://ui/ui.gd" id="7_qi3br"]
+[ext_resource type="Script" uid="uid://sx1hs8e01hds" path="res://scripts/view/chess_presentation_adapter.gd" id="8_bqtgu"]
+[ext_resource type="Script" path="res://ui/battle_result_view.gd" id="9_result"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
 bg_color = Color(0.1, 0.075, 0.14, 0.98)
@@ -25,21 +27,17 @@ shadow_size = 18
 [node name="ChessGame" type="Node"]
 script = ExtResource("1_wnm4a")
 
-[node name="ChessModel" type="Node" parent="." node_paths=PackedStringArray("view", "controller")]
+[node name="ChessModel" type="Node" parent="."]
 script = ExtResource("2_fv27a")
-view = NodePath("../CanvasLayer/ChessBoard")
-controller = NodePath("../ChessController")
 
-[node name="ChessController" type="Node" parent="." node_paths=PackedStringArray("model", "view")]
+[node name="ChessController" type="Node" parent="." node_paths=PackedStringArray("model")]
 script = ExtResource("3_s46tk")
 model = NodePath("../ChessModel")
-view = NodePath("../CanvasLayer/ChessBoard")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
-[node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("controller", "white_cooldown_button", "black_cooldown_button", "flash_overlay")]
+[node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("white_cooldown_button", "black_cooldown_button", "flash_overlay")]
 script = ExtResource("3_yl173")
-controller = NodePath("../../ChessController")
 white_cooldown_button = NodePath("../../UI/WhitePlayerUIContainer/WhiteActiveButton")
 black_cooldown_button = NodePath("../../UI/BlackPlayerUIContainer/BlackActiveButton")
 flash_overlay = NodePath("../FlashOverlay")
@@ -68,6 +66,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("9_result")
 
 [node name="DimBackground" type="ColorRect" parent="CanvasLayer/ResultOverlay"]
 layout_mode = 1
@@ -172,6 +171,13 @@ size_flags_horizontal = 8
 size_flags_vertical = 0
 text = "\"Ability Name\"
 CD: 4 turns"
+
+[node name="ChessPresentationAdapter" type="Node" parent="." node_paths=PackedStringArray("model", "controller", "view", "result_view")]
+script = ExtResource("8_bqtgu")
+model = NodePath("../ChessModel")
+controller = NodePath("../ChessController")
+view = NodePath("../CanvasLayer/ChessBoard")
+result_view = NodePath("../CanvasLayer/ResultOverlay")
 
 [connection signal="pressed" from="UI/WhitePlayerUIContainer/WhiteActiveButton" to="ChessController" method="_on_white_active_button_pressed"]
 [connection signal="pressed" from="UI/BlackPlayerUIContainer/BlackActiveButton" to="ChessController" method="_on_black_active_button_pressed"]

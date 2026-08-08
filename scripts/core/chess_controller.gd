@@ -6,7 +6,6 @@ class_name ChessBoardController
 # It translates clicks into player choices; the Model owns action/turn resolution.
 
 @export var model: ChessBoardModel
-@export var view: ChessBoardView
 var selected_piece: ModelPiece = null
 var active_king: KingPiece = null
 var active_piece: ModelPiece = null
@@ -18,9 +17,18 @@ var non_move_selection_mode: bool = false
 
 signal selection_piece_processing(piece: ModelPiece)
 signal selection_piece_processed()
+signal ability_targeting_started(king: KingPiece, ability_name: String, targets: Array)
+signal ability_targeting_ended(king: KingPiece, ability_name: String, reason: String)
+signal selection_targets_changed(targets: Array)
+signal selection_cleared()
 
 func _ready():
-	pass
+	model.action_started.connect(_on_action_started)
+	model.action_finished.connect(_on_action_finished)
+	model.action_cancelled.connect(_on_action_cancelled)
+	model.battle_finished.connect(_on_battle_finished)
+	model.reaction_selection_requested.connect(_on_reaction_selection_requested)
+	model.reaction_selection_resolved.connect(_on_reaction_selection_resolved)
 
 func _on_square_clicked(coord: Vector2i):
 	if model.battle_over:
@@ -49,7 +57,7 @@ func _on_square_clicked(coord: Vector2i):
 
 	if coord in legal_moves:
 		deselect_piece()
-		await model.move_piece(temp_selected_piece, coord)
+		await model.submit_move(temp_selected_piece, coord)
 		return
 
 	# Fallback: deselect and possibly select a different friendly piece.
@@ -61,33 +69,25 @@ func _handle_non_move_selection_mode_click(coord: Vector2i):
 	if coord not in legal_moves:
 		return
 
-	var reacting_piece := active_piece
-	model.resolve_reaction_selection(reacting_piece, coord)
+	await model.submit_reaction_selection(coord)
 
 func _handle_active_ability_selected_click(coord: Vector2i):
 	if coord in legal_moves:
 		var acting_king := active_king
 		deselect_active_ability(false)
-		await model.perform_active_ability(acting_king, coord)
+		await model.submit_active_ability(acting_king, coord)
 	else:
 		# Clicked outside valid targets: cancel ability selection.
 		deselect_active_ability(true)
-
-func get_piece_at(coord: Vector2i) -> Node:
-	for piece in view.get_node("Pieces").get_children():
-		if piece.coordinate == coord:
-			return piece
-	return null
 
 func select_piece(piece: ModelPiece):
 	if piece.stunned == false:
 		selected_piece = piece
 		legal_moves = model.get_legal_moves(selected_piece)
-		view.clear_highlights()
-		view.show_legal_moves(legal_moves)
+		selection_targets_changed.emit(legal_moves)
 
 func deselect_piece():
-	view.clear_highlights()
+	selection_cleared.emit()
 	selected_piece = null
 	legal_moves.clear()
 
@@ -135,17 +135,12 @@ func select_active_ability(color: String):
 
 	active_ability_selected = true
 	legal_moves = active_king.get_active_ability_targets()
-	view.show_legal_moves(legal_moves)
-	view.flash_screen()
-	active_king._on_active_selected()
+	ability_targeting_started.emit(active_king, active_king.get_active_ability_name(), legal_moves)
 
 func deselect_active_ability(play_powerdown_sound: bool):
 	if active_ability_selected and active_king != null:
-		if active_king.view_node:
-			active_king._on_active_deselected(play_powerdown_sound)
-		else:
-			printerr("Cannot fade aura, active_king has no view_node.")
-		view.clear_highlights()
+		var reason := "cancelled" if play_powerdown_sound else "confirmed"
+		ability_targeting_ended.emit(active_king, active_king.get_active_ability_name(), reason)
 
 	active_king = null
 	active_ability_selected = false
@@ -160,15 +155,14 @@ func initiate_non_move_selection_mode(calling_piece: ModelPiece, _legal_moves: A
 	if active_piece != last_active_piece:
 		selection_piece_processing.emit(calling_piece)
 	legal_moves = _legal_moves
-	view.clear_highlights()
-	view.highlight_squares(legal_moves)
+	selection_targets_changed.emit(legal_moves)
 
 func end_non_move_selection_mode():
 	non_move_selection_mode = false
 	active_piece = null
 	last_active_piece = null
 	selection_piece_processed.emit()
-	view.clear_highlights()
+	selection_cleared.emit()
 
 ## Permanently disables battle interactions after the Model declares a result.
 func lock_after_battle() -> void:
@@ -177,8 +171,7 @@ func lock_after_battle() -> void:
 	legal_moves.clear()
 
 	if active_ability_selected and is_instance_valid(active_king):
-		if active_king.has_method("_on_active_deselected"):
-			active_king._on_active_deselected(false)
+		ability_targeting_ended.emit(active_king, active_king.get_active_ability_name(), "battle_finished")
 
 	active_king = null
 	active_ability_selected = false
@@ -188,4 +181,22 @@ func lock_after_battle() -> void:
 	else:
 		active_piece = null
 		last_active_piece = null
-		view.clear_highlights()
+		selection_cleared.emit()
+
+func _on_action_started(_owner_color: String) -> void:
+	is_input_locked = true
+
+func _on_action_finished() -> void:
+	is_input_locked = false
+
+func _on_action_cancelled() -> void:
+	is_input_locked = false
+
+func _on_battle_finished(_winner_color: String) -> void:
+	lock_after_battle()
+
+func _on_reaction_selection_requested(calling_piece: ModelPiece, _action_type: String, targets: Array) -> void:
+	initiate_non_move_selection_mode(calling_piece, targets)
+
+func _on_reaction_selection_resolved(_calling_piece: ModelPiece, _action_type: String, _target: Vector2i) -> void:
+	end_non_move_selection_mode()

@@ -17,8 +17,8 @@ class_name ChessBoardView
 # without too much fussing about with the game logic.
 
 signal rage_intro_animation_completed()
+signal square_selected(coordinate: Vector2i)
 
-@export var controller: Node # ChessController is set here via the UI
 @export var white_cooldown_button: Node
 @export var black_cooldown_button: Node
 @export var flash_overlay: ColorRect
@@ -63,15 +63,20 @@ func setup_audio_players():
 	aura_loop_player.stream.loop = true
 	
 # renders the board.	
-func draw_board(modelBoard: Array):
+func draw_board(modelBoard: Array) -> Dictionary:
 	board = modelBoard
+	var rendered: Dictionary = {}
 	
 	for row in range(board.size()):
 		for col in range(board[row].size()):
 			var pos = grid_to_screen(row, col)
 			draw_square(row,col,pos)
 			#draw_piece(row,col,pos)
-			draw_piece(board[row][col])
+			var piece_data: ModelPiece = board[row][col]
+			var piece_node := draw_piece(piece_data)
+			if piece_data != null and piece_node != null:
+				rendered[piece_data] = piece_node
+	return rendered
 
 func draw_square(row: int, col: int, pos: Vector2):
 	var squares = $Squares
@@ -80,12 +85,15 @@ func draw_square(row: int, col: int, pos: Vector2):
 	square.set_color(square_color)
 	square.position = pos
 	square.coordinate = Vector2i(row, col)
-	square.connect("square_clicked", controller._on_square_clicked)
+	square.connect("square_clicked", _on_square_selected)
 	square.z_index = -2
 	squares.add_child(square)
 
-func draw_piece(piece_data: ModelPiece):
-	if piece_data == null: return # no need to draw a piece that doesn't exist!
+func _on_square_selected(coordinate: Vector2i) -> void:
+	square_selected.emit(coordinate)
+
+func draw_piece(piece_data: ModelPiece) -> Node:
+	if piece_data == null: return null # no need to draw a piece that doesn't exist!
 	var pieces = $Pieces
 	var row = piece_data.coordinate.x
 	var col = piece_data.coordinate.y
@@ -95,7 +103,6 @@ func draw_piece(piece_data: ModelPiece):
 	piece.set_model(piece_data)
 	piece.coordinate = Vector2i(row, col)
 	pieces.add_child(piece)
-	piece_data.view_node = piece
 
 	# Does it need an HP bar?
 	if piece_data.max_hp > 1:
@@ -104,6 +111,7 @@ func draw_piece(piece_data: ModelPiece):
 		hp_bar.current_hp = piece_data.max_hp
 		hp_bar.position = Vector2(0, 24)
 		piece.add_child(hp_bar)
+	return piece
 					
 func get_piece_node(coord: Vector2i) -> Node:
 	var desired_piece = null
@@ -219,6 +227,11 @@ func remove_stun_stars(coord: Vector2i):
 		if child.is_in_group("stun"):
 			child.queue_free()
 
+func remove_stun_stars_from_piece(piece_node: Node):
+	for child in piece_node.get_children():
+		if child.is_in_group("stun"):
+			child.queue_free()
+
 func remove_ss_aura(piece_node: Node):
 	for child in piece_node.get_children():
 		if child.is_in_group("aura"):
@@ -317,15 +330,3 @@ func ready_cooldown_display(king: KingPiece):
 	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
 	var ready_text = "%s Ready!" % king.get_active_ability_name() # Changed from "!!!"
 	button.text = ready_text
-
-
-## Called when a King signals it's starting an ability (e.g., Rage intro).
-func _on_piece_started_ability(piece: KingPiece, ability_name: String):
-	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_ABILITY_NAME:
-		start_minotaur_rage_intro(piece.view_node)
-		
-
-## Called when a King signals the effect of its passive ability.
-func _on_passive_ability_effect(piece: KingPiece, ability_name: String, affected_coords: Array):
-	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_ABILITY_NAME:
-		minotaur_retaliate(affected_coords)
