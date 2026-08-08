@@ -210,6 +210,33 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 		printerr("Piece type %s does not have get_legal_moves method!" % piece.type)
 		return []
 
+## Returns every primary command that color may legally submit right now.
+## Command methods remain the final authority and revalidate their inputs.
+func get_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
+	var actions: Array[ChessPrimaryAction] = []
+	if color != current_turn or battle_over or action_in_progress or has_pending_reaction():
+		return actions
+
+	for row in board:
+		for piece in row:
+			if piece == null or piece.color != color or piece.stunned or not is_piece_active(piece):
+				continue
+
+			for target in get_legal_moves(piece):
+				actions.append(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, target))
+
+			if piece is KingPiece:
+				var king := piece as KingPiece
+				if king.current_cooldown == 0 and king.has_active_ability():
+					for target in king.get_active_ability_targets():
+						actions.append(ChessPrimaryAction.new(
+							ChessPrimaryAction.Kind.ACTIVE_ABILITY,
+							king,
+							target
+						))
+
+	return actions
+
 ### A player's move.
 ## Handles special moves, normal moves, and ends the turn.
 ## For simply moving a piece in the model, see actually_move_piece()

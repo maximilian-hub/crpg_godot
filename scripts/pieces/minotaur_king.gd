@@ -49,6 +49,9 @@ func get_active_ability_targets() -> Array:
 
 	return moves
 
+func has_active_ability() -> bool:
+	return true
+
 ## Executes Charge, but the Model's action resolver owns turn completion.
 func active_target_selected(coord: Vector2i):
 	await charge(coord)

@@ -60,6 +60,10 @@ func get_active_ability_targets() -> Array:
 	return targets
 
 
+func has_active_ability() -> bool:
+	return true
+
+
 ## Executes Spike Burst. The ChessBoardModel action resolver owns reaction
 ## processing and turn completion, just as it does for Minotaur and Necromancer.
 func active_target_selected(coord: Vector2i) -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=12 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
 [ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://cqdlhvwaq4s2s" path="res://ui/ui.gd" id="7_qi3br"]
 [ext_resource type="Script" uid="uid://sx1hs8e01hds" path="res://scripts/view/chess_presentation_adapter.gd" id="8_bqtgu"]
 [ext_resource type="Script" path="res://ui/battle_result_view.gd" id="9_result"]
+[ext_resource type="Script" uid="uid://cdhbf2ba47ckc" path="res://scripts/ai/chess_cpu_player.gd" id="10_cpu"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
 bg_color = Color(0.1, 0.075, 0.14, 0.98)
@@ -32,6 +33,10 @@ script = ExtResource("2_fv27a")
 
 [node name="ChessController" type="Node" parent="." node_paths=PackedStringArray("model")]
 script = ExtResource("3_s46tk")
+model = NodePath("../ChessModel")
+
+[node name="ChessCpuPlayer" type="Node" parent="." node_paths=PackedStringArray("model")]
+script = ExtResource("10_cpu")
 model = NodePath("../ChessModel")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]

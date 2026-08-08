@@ -88,6 +88,10 @@ func get_active_ability_name() -> String:
 	# Subclasses should override this or set the active_ability_name property.
 	return active_ability_name
 
+## Whether this King implementation provides a player-selectable active ability.
+func has_active_ability() -> bool:
+	return false
+
 ## Calculate and return valid target squares for the active ability.
 func get_active_ability_targets() -> Array:
 	# Subclasses MUST implement this to define ability targeting.

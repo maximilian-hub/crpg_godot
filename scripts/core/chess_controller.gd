@@ -14,6 +14,7 @@ var legal_moves: Array = []
 var is_input_locked: bool = false
 var active_ability_selected: bool = false
 var non_move_selection_mode: bool = false
+var player_controlled_colors: Array[String] = ["white", "black"]
 
 signal selection_piece_processing(piece: ModelPiece)
 signal selection_piece_processed()
@@ -51,7 +52,7 @@ func _on_square_clicked(coord: Vector2i):
 		return
 
 	if selected_piece == null:
-		if piece and piece.color == model.current_turn:
+		if piece and piece.color == model.current_turn and is_player_controlled(piece.color):
 			select_piece(piece)
 		return
 
@@ -62,7 +63,7 @@ func _on_square_clicked(coord: Vector2i):
 
 	# Fallback: deselect and possibly select a different friendly piece.
 	deselect_piece()
-	if piece and piece.color == model.current_turn:
+	if piece and piece.color == model.current_turn and is_player_controlled(piece.color):
 		select_piece(piece)
 
 func _handle_non_move_selection_mode_click(coord: Vector2i):
@@ -81,9 +82,9 @@ func _handle_active_ability_selected_click(coord: Vector2i):
 		deselect_active_ability(true)
 
 func select_piece(piece: ModelPiece):
-	if piece.stunned == false:
+	if piece.stunned == false and is_player_controlled(piece.color):
 		selected_piece = piece
-		legal_moves = model.get_legal_moves(selected_piece)
+		legal_moves = _get_primary_targets(ChessPrimaryAction.Kind.MOVE, selected_piece)
 		selection_targets_changed.emit(legal_moves)
 
 func deselect_piece():
@@ -98,6 +99,8 @@ func _on_white_active_button_pressed() -> void:
 		return
 	if model.current_turn == "black":
 		return
+	if not is_player_controlled("white"):
+		return
 	if non_move_selection_mode:
 		return
 	if active_ability_selected:
@@ -111,6 +114,8 @@ func _on_black_active_button_pressed() -> void:
 	if is_input_locked:
 		return
 	if model.current_turn == "white":
+		return
+	if not is_player_controlled("black"):
 		return
 	if non_move_selection_mode:
 		return
@@ -134,8 +139,23 @@ func select_active_ability(color: String):
 		return
 
 	active_ability_selected = true
-	legal_moves = active_king.get_active_ability_targets()
+	legal_moves = _get_primary_targets(ChessPrimaryAction.Kind.ACTIVE_ABILITY, active_king)
 	ability_targeting_started.emit(active_king, active_king.get_active_ability_name(), legal_moves)
+
+func configure_player_controlled_colors(colors: Array[String]) -> void:
+	player_controlled_colors = colors.duplicate()
+	if selected_piece != null and not is_player_controlled(selected_piece.color):
+		deselect_piece()
+
+func is_player_controlled(color: String) -> bool:
+	return color in player_controlled_colors
+
+func _get_primary_targets(kind: ChessPrimaryAction.Kind, piece: ModelPiece) -> Array:
+	var targets: Array = []
+	for action in model.get_legal_primary_actions(model.current_turn):
+		if action.kind == kind and action.piece == piece:
+			targets.append(action.target)
+	return targets
 
 func deselect_active_ability(play_powerdown_sound: bool):
 	if active_ability_selected and active_king != null:
@@ -196,7 +216,9 @@ func _on_battle_finished(_winner_color: String) -> void:
 	lock_after_battle()
 
 func _on_reaction_selection_requested(calling_piece: ModelPiece, _action_type: String, targets: Array) -> void:
-	initiate_non_move_selection_mode(calling_piece, targets)
+	if is_player_controlled(calling_piece.color):
+		initiate_non_move_selection_mode(calling_piece, targets)
 
 func _on_reaction_selection_resolved(_calling_piece: ModelPiece, _action_type: String, _target: Vector2i) -> void:
-	end_non_move_selection_mode()
+	if non_move_selection_mode:
+		end_non_move_selection_mode()
