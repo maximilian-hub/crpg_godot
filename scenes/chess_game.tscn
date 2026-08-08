@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=9 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
 [ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
@@ -7,6 +7,20 @@
 [ext_resource type="Script" uid="uid://dm2av1txkn6la" path="res://scripts/core/chess_board.gd" id="3_yl173"]
 [ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scripts/view/squares.gd" id="5_s46tk"]
 [ext_resource type="Script" uid="uid://cqdlhvwaq4s2s" path="res://ui/ui.gd" id="7_qi3br"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
+bg_color = Color(0.1, 0.075, 0.14, 0.98)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.82, 0.64, 0.25, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0, 0, 0, 0.65)
+shadow_size = 18
 
 [node name="ChessGame" type="Node"]
 script = ExtResource("1_wnm4a")
@@ -44,6 +58,62 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+
+[node name="ResultOverlay" type="Control" parent="CanvasLayer"]
+visible = false
+z_index = 200
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DimBackground" type="ColorRect" parent="CanvasLayer/ResultOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.025, 0.02, 0.04, 0.82)
+
+[node name="ResultPanel" type="PanelContainer" parent="CanvasLayer/ResultOverlay"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -360.0
+offset_top = -125.0
+offset_right = 360.0
+offset_bottom = 125.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(360, 125)
+theme_override_styles/panel = SubResource("StyleBoxFlat_qi3br")
+
+[node name="ContentMargin" type="MarginContainer" parent="CanvasLayer/ResultOverlay/ResultPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 48
+theme_override_constants/margin_top = 48
+theme_override_constants/margin_right = 48
+theme_override_constants/margin_bottom = 48
+
+[node name="ResultLabel" type="Label" parent="CanvasLayer/ResultOverlay/ResultPanel/ContentMargin"]
+custom_minimum_size = Vector2(624, 154)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.93, 0.72, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.85)
+theme_override_constants/shadow_offset_x = 4
+theme_override_constants/shadow_offset_y = 4
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 64
+text = "Battle Complete"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Background" type="TextureRect" parent="."]
 offset_right = 384.0
