@@ -72,13 +72,3 @@ func active_target_selected(coord: Vector2i) -> void:
 
 	await target_piece.take_damage(SPIKE_BURST_DAMAGE)
 	reset_cooldown()
-
-
-## Targeting presentation hooks. These can remain empty until Arakne receives
-## an aura or other selection effect in the view layer.
-func _on_active_selected() -> void:
-	pass
-
-
-func _on_active_deselected(_play_powerdown_sound: bool = false) -> void:
-	pass

@@ -42,6 +42,7 @@ func take_damage(damage: int = 1):
 		model.destroy_piece(self, true) 
 	else:
 		model.piece_damaged.emit(self, damage, current_hp, max_hp)
+		
 func is_enemy(other: ModelPiece) -> bool:
 	return color != other.color
 

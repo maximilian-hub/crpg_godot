@@ -16,7 +16,7 @@ func _init(color: String, coord: Vector2i):
 func get_active_ability_targets() -> Array:
 	return model.get_empty_squares_to_furthest_rank(self.color)
 
-## Executes the active summon, but does not end the turn.
+## Executes Summon Bone Pawn, but does not end the turn.
 ## The Model's action resolver finishes the action after all reactions resolve.
 func active_target_selected(target: Vector2i):
 	summon_bone_pawn(target)

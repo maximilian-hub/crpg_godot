@@ -15,7 +15,7 @@ signal cooldown_ready(king: KingPiece)
 @export var base_cooldown: int = 4 # Default value, override in specific Kings
 
 ## The current remaining turns for the cooldown. 0 means ready.
-var current_cooldown: int = 0
+var current_cooldown: int = base_cooldown
 
 var active_ability_name: String = "Active Ability" 
 var passive_ability_name: String = "Passive Ability"

@@ -1,6 +1,19 @@
 extends Node
 class_name ChessPresentationAdapter
 
+## Bridges authoritative Model and Controller events to the visual chess board and UI.
+#
+# This scene-composed adapter receives its Model, Controller, board View, and result
+# View through exported references. It connects their signals, maintains the mapping
+# between each ModelPiece and its visual node, and translates domain or interaction
+# events into rendering, animation, audio, highlighting, cooldown, and result updates.
+#
+## Add presentation responses for new game events here rather than placing visual
+# behavior in the Model. Gameplay rules and authoritative state must remain in the
+# Model; this adapter and the Views only represent that state. When an action must
+# wait for presentation, a signal handler may synchronously hold its CompletionGate,
+# await the animation, and then release the gate.
+
 const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 
 @export var model: ChessBoardModel
