@@ -31,6 +31,8 @@ The automated checks preserve these current contracts:
 - Minotaur Rage is queued after surviving damage, waits for its current intro
   animation, damages adjacent pieces, and then completes the action;
 - Rage reactions remain ahead of already-queued Raise Dead choices;
+- Raise Dead can target the defeated piece's square after Rage leaves it empty;
+- Bone Pawns summoned on their opposite back rank are immediately destroyed;
 - Raise Dead pauses the action in the Controller's current non-move selection
   mode, then resumes the queue after a valid choice;
 - defeating a king completes the battle, reports the winner, and leaves input

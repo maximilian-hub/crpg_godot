@@ -20,8 +20,11 @@ func _run() -> void:
 	await _test_nonlethal_combat()
 	await _test_special_moves()
 	await _test_headless_rage()
+	await _test_rage_raise_dead_includes_death_square()
+	await _test_terminal_rank_raise_dead_expires_bone_pawn()
 	await _test_headless_reaction_priority()
 	await _test_model_owned_raise_dead_choice()
+	await _test_raise_dead_excludes_occupied_death_square()
 	await _test_complete_battle_from_commands()
 
 func _test_completion_gate_contract() -> void:
@@ -79,6 +82,57 @@ func _test_headless_rage() -> void:
 	await model.continue_action_resolution()
 	_expect(model.board[3][4] == null, "headless Rage resolves adjacent damage")
 	_expect(model.current_turn == "black", "headless Rage completes the action")
+	model.free()
+
+func _test_rage_raise_dead_includes_death_square() -> void:
+	var model := _new_empty_model()
+	var minotaur := MinotaurKing.new("black", Vector2i(3, 3))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
+	var rook := Rook.new("white", Vector2i(3, 4))
+	model.add_piece(minotaur, minotaur.coordinate)
+	model.add_piece(necromancer, necromancer.coordinate)
+	model.add_piece(rook, rook.coordinate)
+	model.begin_action("white")
+	await minotaur.take_damage(1)
+	await model.continue_action_resolution()
+
+	_expect(model.board[3][4] == null, "Rage leaves its defeated piece's square empty")
+	_expect(model.has_pending_reaction(), "Rage defeat queues a Raise Dead selection")
+	var pending := model.get_pending_reaction()
+	_expect(Vector2i(3, 4) in pending["targets"], "Raise Dead includes a death square emptied by Rage")
+	await model.submit_reaction_selection(Vector2i(3, 4))
+	_expect(model.board[3][4] is BonePawn, "Raise Dead can summon directly onto a Rage death square")
+	model.free()
+
+func _test_terminal_rank_raise_dead_expires_bone_pawn() -> void:
+	var model := _new_empty_model()
+	var minotaur := MinotaurKing.new("black", Vector2i(6, 3))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
+	var rook := Rook.new("white", Vector2i(7, 4))
+	model.add_piece(minotaur, minotaur.coordinate)
+	model.add_piece(necromancer, necromancer.coordinate)
+	model.add_piece(rook, rook.coordinate)
+	var observation := {"bone_pawns_added": 0, "bone_pawns_destroyed": 0}
+	model.piece_added.connect(
+		func(piece: ModelPiece):
+			if piece is BonePawn:
+				observation["bone_pawns_added"] += 1
+	)
+	model.piece_destroyed.connect(
+		func(piece: ModelPiece):
+			if piece is BonePawn:
+				observation["bone_pawns_destroyed"] += 1
+	)
+
+	model.begin_action("white")
+	await minotaur.take_damage(1)
+	await model.continue_action_resolution()
+	_expect(Vector2i(7, 4) in model.get_pending_reaction()["targets"], "opposite back rank remains a legal Raise Dead target")
+	await model.submit_reaction_selection(Vector2i(7, 4))
+	_expect(observation["bone_pawns_added"] == 1, "terminal-rank Bone Pawn is spawned through normal Model events")
+	_expect(observation["bone_pawns_destroyed"] == 1, "terminal-rank Bone Pawn is immediately destroyed")
+	_expect(model.board[7][4] == null, "terminal-rank summon leaves its square empty")
+	_expect(not model.action_in_progress and model.current_turn == "black", "terminal-rank expiration completes the reaction action")
 	model.free()
 
 func _test_headless_reaction_priority() -> void:
@@ -144,12 +198,29 @@ func _test_model_owned_raise_dead_choice() -> void:
 	_expect(model.has_pending_reaction(), "Model owns the pending Raise Dead decision")
 	var pending := model.get_pending_reaction()
 	_expect(pending["calling_piece"] == necromancer, "pending decision identifies its reacting piece")
-	var target: Vector2i = pending["targets"][0]
+	_expect(bishop.coordinate in pending["targets"], "direct destruction includes its empty death square")
+	var target: Vector2i = bishop.coordinate
 	_expect(not (await model.submit_reaction_selection(Vector2i(-1, -1))), "invalid reaction choice is rejected")
 	_expect(model.has_pending_reaction(), "invalid reaction choice preserves pending state")
 	_expect(await model.submit_reaction_selection(target), "valid reaction choice is accepted")
 	_expect(model.board[target.x][target.y] is BonePawn, "headless Raise Dead summons a Bone Pawn")
 	_expect(not model.action_in_progress and model.current_turn == "black", "reaction submission resumes and finishes the action")
+	model.free()
+
+func _test_raise_dead_excludes_occupied_death_square() -> void:
+	var model := _new_empty_model()
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var bishop := Bishop.new("black", Vector2i(4, 4))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
+	model.add_piece(rook, rook.coordinate)
+	model.add_piece(bishop, bishop.coordinate)
+	model.add_piece(necromancer, necromancer.coordinate)
+	_expect(await model.submit_move(rook, bishop.coordinate), "lethal capture that triggers Raise Dead is accepted")
+	_expect(model.board[4][4] == rook, "capturing piece occupies the defender's death square")
+	var pending := model.get_pending_reaction()
+	_expect(Vector2i(4, 4) not in pending["targets"], "Raise Dead excludes an occupied death square")
+	_expect(not pending["targets"].is_empty(), "occupied death square still leaves adjacent Raise Dead choices")
+	await model.submit_reaction_selection(pending["targets"][0])
 	model.free()
 
 func _test_complete_battle_from_commands() -> void:

@@ -33,6 +33,8 @@ func _run_suite() -> void:
 	await _test_nonlethal_attack_presentation()
 	await _test_arakne_spike_burst()
 	await _test_minotaur_rage_barrier()
+	await _test_rage_raise_dead_death_square_target()
+	await _test_terminal_rank_raise_dead_expiration()
 	await _test_rage_priority_before_raise_dead()
 	await _test_raise_dead_selection_resume()
 	await _test_battle_completion()
@@ -173,6 +175,59 @@ func _test_minotaur_rage_barrier() -> void:
 	_expect(model.current_turn == "black", "completed Rage chain switches the turn")
 	_expect(not model.action_in_progress, "completed Rage chain closes the action")
 
+	await _destroy_game(context.game)
+
+
+func _test_rage_raise_dead_death_square_target() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var minotaur := MinotaurKing.new("black", Vector2i(3, 3))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
+	var rook := Rook.new("white", Vector2i(3, 4))
+	_reset_battle(model, controller, [minotaur, necromancer, rook])
+
+	_expect(model.begin_action("white"), "Rage-to-Raise-Dead action starts")
+	await minotaur.take_damage(1)
+	await model.continue_action_resolution()
+	_expect(model.board[3][4] == null, "composed Rage leaves the defeated piece's square empty")
+	_expect(controller.non_move_selection_mode, "Rage defeat enters Raise Dead selection mode")
+	_expect(Vector2i(3, 4) in controller.legal_moves, "Controller receives the empty Rage death square as a Raise Dead target")
+	await model.submit_reaction_selection(Vector2i(3, 4))
+	_expect(model.board[3][4] is BonePawn, "composed Raise Dead summons on the Rage death square")
+	_expect(not controller.non_move_selection_mode, "death-square selection exits reaction mode")
+	await _destroy_game(context.game)
+
+
+func _test_terminal_rank_raise_dead_expiration() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var minotaur := MinotaurKing.new("black", Vector2i(6, 3))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
+	var rook := Rook.new("white", Vector2i(7, 4))
+	_reset_battle(model, controller, [minotaur, necromancer, rook])
+	var observation := {"bone_pawns_added": 0, "bone_pawns_destroyed": 0}
+	model.piece_added.connect(
+		func(piece: ModelPiece):
+			if piece is BonePawn:
+				observation["bone_pawns_added"] += 1
+	)
+	model.piece_destroyed.connect(
+		func(piece: ModelPiece):
+			if piece is BonePawn:
+				observation["bone_pawns_destroyed"] += 1
+	)
+
+	model.begin_action("white")
+	await minotaur.take_damage(1)
+	await model.continue_action_resolution()
+	_expect(Vector2i(7, 4) in controller.legal_moves, "Controller keeps the opposite back rank selectable")
+	await model.submit_reaction_selection(Vector2i(7, 4))
+	_expect(observation["bone_pawns_added"] == 1 and observation["bone_pawns_destroyed"] == 1, "composed summon immediately adds and destroys the terminal Bone Pawn")
+	_expect(model.board[7][4] == null, "composed terminal-rank summon leaves the Model square empty")
+	_expect(context.adapter.get_piece_view(model.last_destroyed_piece) == null, "presentation removes the expired Bone Pawn mapping")
+	_expect(not controller.non_move_selection_mode and model.current_turn == "black", "terminal-rank selection resolves and finishes the action")
 	await _destroy_game(context.game)
 
 

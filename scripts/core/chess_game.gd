@@ -11,7 +11,7 @@ signal battle_completed(player_result: String)
 @onready var controller: ChessBoardController = $ChessController
 @onready var cpu_player: ChessCpuPlayer = $ChessCpuPlayer
 @export_enum("white", "black") var player_color: String = "white"
-@export var is_ai_game: bool = true # For prototype/debugging, to select 1 or 2 player game
+@export var is_ai_game: bool = false # For prototype/debugging, to select 1 or 2 player game
 @export_enum("white", "black") var ai_color: String = "black"
 
 func _ready() -> void:

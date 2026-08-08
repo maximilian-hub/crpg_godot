@@ -27,7 +27,8 @@ func active_target_selected(target: Vector2i):
 
 func summon_bone_pawn(target: Vector2i):
 	var new_pawn := BonePawn.new(self.color, target)
-	model.add_piece(new_pawn, target)
+	if model.add_piece(new_pawn, target) and new_pawn._on_dead_row():
+		model.destroy_piece(new_pawn, true)
 
 func _on_piece_destroyed(destroyed_piece: ModelPiece):
 	for base_type in model.MAJOR_MINOR_BASE_TYPES:
@@ -41,7 +42,13 @@ func raise_dead(death_square: Vector2i):
 func get_selection_targets(action_type: String, event_data) -> Array:
 	if action_type == "raise_dead":
 		var death_square: Vector2i = event_data
-		return model.get_empty_adjacent_squares(death_square)
+		var targets := model.get_empty_adjacent_squares(death_square)
+		if (
+			model.is_in_bounds(death_square.x, death_square.y)
+			and model.board[death_square.x][death_square.y] == null
+		):
+			targets.append(death_square)
+		return targets
 	return []
 
 
