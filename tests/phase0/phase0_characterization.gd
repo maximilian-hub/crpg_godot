@@ -32,6 +32,7 @@ func _run_suite() -> void:
 	await _test_ai_configuration_and_turns()
 	await _test_nonlethal_attack_presentation()
 	await _test_arakne_spike_burst()
+	await _test_minotaur_charge_survivor_landing()
 	await _test_minotaur_rage_barrier()
 	await _test_rage_raise_dead_death_square_target()
 	await _test_terminal_rank_raise_dead_expiration()
@@ -149,6 +150,25 @@ func _test_arakne_spike_burst() -> void:
 	_expect(model.current_turn == "black", "Spike Burst consumes White's action")
 	_expect(not model.action_in_progress, "Spike Burst finishes its action")
 
+	await _destroy_game(context.game)
+
+
+func _test_minotaur_charge_survivor_landing() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	var defending_minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	defending_minotaur.stunned = true
+	_reset_battle(model, context.controller, [charging_minotaur, defending_minotaur])
+	var charging_view: Node = context.adapter.get_piece_view(charging_minotaur)
+
+	await model.submit_active_ability(charging_minotaur, defending_minotaur.coordinate)
+	_expect(defending_minotaur.current_hp == defending_minotaur.max_hp - 2, "composed Charge damages its surviving target")
+	_expect(model.board[4][4] == defending_minotaur, "composed surviving target retains its square")
+	_expect(model.board[4][3] == charging_minotaur and charging_minotaur.coordinate == Vector2i(4, 3), "composed Charge ends adjacent to its surviving target")
+	_expect(charging_view.coordinate == Vector2i(4, 3), "Charge presentation updates the Minotaur View coordinate")
+	_expect(charging_view.position.is_equal_approx(context.view.grid_to_screen(4, 3)), "Charge presentation finishes on the adjacent square")
+	_expect(model.current_turn == "black" and not model.action_in_progress, "surviving Charge landing completes before turn change")
 	await _destroy_game(context.game)
 
 

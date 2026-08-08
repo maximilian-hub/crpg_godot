@@ -64,8 +64,13 @@ func charge(coord: Vector2i):
 	if target_piece != null:
 		if target_piece.is_king:
 			await target_piece.take_damage(2)
-			# A surviving king still occupies the destination; do not overwrite it.
+			# Stop on the final empty square when the defending king survives.
 			if target_piece.current_hp > 0:
+				var direction := Vector2i(
+					sign(coord.x - coordinate.x),
+					sign(coord.y - coordinate.y)
+				)
+				await model.actually_move_piece(self, coord - direction)
 				return
 		else:
 			model.destroy_piece(target_piece, true)

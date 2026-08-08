@@ -19,6 +19,7 @@ func _run() -> void:
 	await _test_initialization_and_move()
 	await _test_nonlethal_combat()
 	await _test_special_moves()
+	await _test_minotaur_charge_landing()
 	await _test_headless_rage()
 	await _test_rage_raise_dead_includes_death_square()
 	await _test_terminal_rank_raise_dead_expires_bone_pawn()
@@ -185,6 +186,29 @@ func _test_special_moves() -> void:
 	_expect(await promotion_model.submit_move(promoting_pawn, Vector2i(0, 0)), "headless promotion move is accepted")
 	_expect(promotion_model.board[0][0] is Queen, "promotion replaces the pawn with a Queen")
 	promotion_model.free()
+
+func _test_minotaur_charge_landing() -> void:
+	var surviving_model := _new_empty_model()
+	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	var defending_minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	defending_minotaur.stunned = true
+	surviving_model.add_piece(charging_minotaur, charging_minotaur.coordinate)
+	surviving_model.add_piece(defending_minotaur, defending_minotaur.coordinate)
+	_expect(await surviving_model.submit_active_ability(charging_minotaur, defending_minotaur.coordinate), "Charge against a surviving king is accepted")
+	_expect(defending_minotaur.current_hp == defending_minotaur.max_hp - 2, "Charge damages the surviving king")
+	_expect(surviving_model.board[4][4] == defending_minotaur, "surviving Charge target keeps its square")
+	_expect(surviving_model.board[4][3] == charging_minotaur and charging_minotaur.coordinate == Vector2i(4, 3), "Charge lands adjacent to a surviving target")
+	_expect(not surviving_model.action_in_progress and surviving_model.current_turn == "black", "adjacent Charge landing completes the action")
+	surviving_model.free()
+
+	var lethal_model := _new_empty_model()
+	var lethal_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	var arakne := ArakneKing.new("black", Vector2i(4, 4))
+	lethal_model.add_piece(lethal_minotaur, lethal_minotaur.coordinate)
+	lethal_model.add_piece(arakne, arakne.coordinate)
+	_expect(await lethal_model.submit_active_ability(lethal_minotaur, arakne.coordinate), "lethal Charge command is accepted")
+	_expect(lethal_model.board[4][4] == lethal_minotaur and lethal_minotaur.coordinate == Vector2i(4, 4), "lethal Charge still occupies the target square")
+	lethal_model.free()
 
 func _test_model_owned_raise_dead_choice() -> void:
 	var model := _new_empty_model()

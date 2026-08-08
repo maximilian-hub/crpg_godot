@@ -28,6 +28,8 @@ The automated checks preserve these current contracts:
   before the action completes, without changing the attacker's board square;
 - Arakne Spike Burst damages its target, consumes the action, and starts its
   cooldown;
+- Charge stops adjacent to a surviving king and finishes its movement animation
+  before the turn changes;
 - Minotaur Rage is queued after surviving damage, waits for its current intro
   animation, damages adjacent pieces, and then completes the action;
 - Rage reactions remain ahead of already-queued Raise Dead choices;
