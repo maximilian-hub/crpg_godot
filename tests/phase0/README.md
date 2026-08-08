@@ -24,6 +24,8 @@ The automated checks preserve these current contracts:
 - the default board initializes with 32 pieces and White to move;
 - pawn two-step movement, action locking, last-move state, movement animation,
   and turn completion occur as one resolved action;
+- attacks against surviving multi-HP defenders lunge to the target and return
+  before the action completes, without changing the attacker's board square;
 - Arakne Spike Burst damages its target, consumes the action, and starts its
   cooldown;
 - Minotaur Rage is queued after surviving damage, waits for its current intro

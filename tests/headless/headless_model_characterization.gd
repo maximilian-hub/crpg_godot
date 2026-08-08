@@ -17,6 +17,7 @@ func _ready() -> void:
 func _run() -> void:
 	_test_completion_gate_contract()
 	await _test_initialization_and_move()
+	await _test_nonlethal_combat()
 	await _test_special_moves()
 	await _test_headless_rage()
 	await _test_headless_reaction_priority()
@@ -44,6 +45,27 @@ func _test_initialization_and_move() -> void:
 	_expect(model.board[4][0] == pawn and model.current_turn == "black", "headless move resolves state and turn")
 	_expect(not model.action_in_progress, "unobserved movement gate completes immediately")
 	_expect(not (await model.submit_move(pawn, Vector2i(3, 0))), "wrong-turn command is rejected")
+	model.free()
+
+func _test_nonlethal_combat() -> void:
+	var model := _new_empty_model()
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	model.add_piece(rook, rook.coordinate)
+	model.add_piece(minotaur, minotaur.coordinate)
+	var observation := {"attack_events": 0}
+	model.piece_attack_committed.connect(
+		func(piece: ModelPiece, from: Vector2i, to: Vector2i, _gate: CompletionGate):
+			if piece == rook and from == Vector2i(4, 0) and to == Vector2i(4, 4):
+				observation["attack_events"] += 1
+	)
+
+	_expect(await model.submit_move(rook, minotaur.coordinate), "headless nonlethal attack command is accepted")
+	_expect(minotaur.current_hp == minotaur.max_hp - rook.attack_power, "nonlethal attack damages its defender")
+	_expect(model.board[4][0] == rook and rook.coordinate == Vector2i(4, 0), "nonlethal attacker remains on its original square")
+	_expect(model.board[4][4] == minotaur, "surviving defender remains on its square")
+	_expect(observation["attack_events"] == 1, "nonlethal combat emits one attack presentation event")
+	_expect(not model.action_in_progress and model.current_turn == "black", "unobserved attack presentation gate completes headlessly")
 	model.free()
 
 func _test_headless_rage() -> void:

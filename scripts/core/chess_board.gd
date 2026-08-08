@@ -43,6 +43,7 @@ const POWERUP_VOLUME = -20
 const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
 const SQUARE_SIZE = 128
+const PIECE_MOVE_DURATION = 0.12
 
 
 func _ready():
@@ -161,12 +162,24 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 		return
 
 	piece_node.coordinate = to
+	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
+
+func attack_piece_node(piece_node: Node, to: Vector2i) -> void:
+	if not is_instance_valid(piece_node):
+		printerr("attack_piece_node: Invalid piece node.")
+		return
+
+	var original_position: Vector2 = piece_node.position
+	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
+	await _tween_piece_to(piece_node, original_position)
+
+func _tween_piece_to(piece_node: Node, target_position: Vector2) -> void:
 	var tween := create_tween()
 	tween.tween_property(
 		piece_node,
 		"position",
-		grid_to_screen(to.x, to.y),
-		0.12
+		target_position,
+		PIECE_MOVE_DURATION
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
 

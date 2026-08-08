@@ -30,6 +30,7 @@ func _ready() -> void:
 func _run_suite() -> void:
 	await _test_default_initialization_and_normal_move()
 	await _test_ai_configuration_and_turns()
+	await _test_nonlethal_attack_presentation()
 	await _test_arakne_spike_burst()
 	await _test_minotaur_rage_barrier()
 	await _test_rage_priority_before_raise_dead()
@@ -100,6 +101,35 @@ func _test_ai_configuration_and_turns() -> void:
 	_expect(not white_controller.is_player_controlled("white") and white_controller.is_player_controlled("black"), "White-AI game assigns Controller ownership to Black")
 	_expect(white_model.current_turn == "black" and not white_model.action_in_progress, "White CPU takes the opening turn")
 	await _destroy_game(white_context.game)
+
+
+func _test_nonlethal_attack_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	_reset_battle(model, context.controller, [rook, minotaur])
+	var rook_view: Node = context.adapter.get_piece_view(rook)
+	var original_position: Vector2 = rook_view.position
+	var observation := {"attack_events": 0, "action_open": false, "gate_pending": false}
+	model.piece_attack_committed.connect(
+		func(piece: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate):
+			if piece == rook and from == Vector2i(4, 0) and to == Vector2i(4, 4):
+				observation["attack_events"] += 1
+				await get_tree().process_frame
+				observation["action_open"] = model.action_in_progress
+				observation["gate_pending"] = not gate.is_completed()
+	)
+
+	await model.submit_move(rook, minotaur.coordinate)
+	_expect(observation["attack_events"] == 1, "surviving-defender combat emits one presentation event")
+	_expect(observation["action_open"] and observation["gate_pending"], "nonlethal attack animation runs inside the open Model action")
+	_expect(minotaur.current_hp == minotaur.max_hp - rook.attack_power, "animated nonlethal attack applies damage")
+	_expect(model.board[4][0] == rook and rook.coordinate == Vector2i(4, 0), "animated attacker remains on its Model square")
+	_expect(rook_view.coordinate == Vector2i(4, 0), "attack animation does not change the PieceView coordinate")
+	_expect(rook_view.position.is_equal_approx(original_position), "attack animation returns the PieceView to its original position")
+	_expect(model.current_turn == "black" and not model.action_in_progress, "turn completes after the attack returns")
+	await _destroy_game(context.game)
 
 
 func _test_arakne_spike_burst() -> void:

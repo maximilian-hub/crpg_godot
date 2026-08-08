@@ -30,6 +30,7 @@ func _ready() -> void:
 	model.board_initialized.connect(_on_board_initialized)
 	model.piece_added.connect(_on_piece_added)
 	model.piece_move_committed.connect(_on_piece_move_committed)
+	model.piece_attack_committed.connect(_on_piece_attack_committed)
 	model.piece_destroyed.connect(_on_piece_destroyed)
 	model.piece_transformed.connect(_on_piece_transformed)
 	model.piece_damaged.connect(_on_piece_damaged)
@@ -74,6 +75,17 @@ func _on_piece_move_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, 
 
 	gate.hold()
 	await view.move_piece_node(piece_node, to)
+	gate.release()
+
+
+func _on_piece_attack_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
+	var piece_node: Node = get_piece_view(piece)
+	if not is_instance_valid(piece_node):
+		printerr("Presentation has no visual node for attacking ", piece.type)
+		return
+
+	gate.hold()
+	await view.attack_piece_node(piece_node, to)
 	gate.release()
 
 

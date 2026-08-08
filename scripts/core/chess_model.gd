@@ -21,6 +21,7 @@ signal battle_finished(winner_color: String)
 signal board_initialized(board: Array)
 signal piece_added(piece: ModelPiece)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_attack_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
 signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: int)
 signal piece_stunned(piece: ModelPiece, duration: int)
@@ -96,7 +97,7 @@ func initialize_default_pieces():
 	board[0][1] = Knight.new("black", Vector2i(0, 1))
 	board[0][2] = Bishop.new("black", Vector2i(0, 2))
 	board[0][3] = Queen.new("black", Vector2i(0, 3))
-	board[0][4] = NecromancerKing.new("black", Vector2i(0, 4))
+	board[0][4] = MinotaurKing.new("black", Vector2i(0, 4))
 	board[0][5] = Bishop.new("black", Vector2i(0, 5))
 	board[0][6] = Knight.new("black", Vector2i(0, 6))
 	board[0][7] = Rook.new("black", Vector2i(0, 7))
@@ -109,7 +110,7 @@ func initialize_default_pieces():
 	board[7][1] = Knight.new("white", Vector2i(7, 1))
 	board[7][2] = Bishop.new("white", Vector2i(7, 2))
 	board[7][3] = Queen.new("white", Vector2i(7, 3))
-	board[7][4] = MinotaurKing.new("white", Vector2i(7, 4))
+	board[7][4] = NecromancerKing.new("white", Vector2i(7, 4))
 	board[7][5] = Bishop.new("white", Vector2i(7, 5))
 	board[7][6] = Knight.new("white", Vector2i(7, 6))
 	board[7][7] = Rook.new("white", Vector2i(7, 7))
@@ -179,6 +180,12 @@ func unregister_piece(piece: ModelPiece) -> void:
 func announce_ability_started(piece: KingPiece, ability_name: String) -> void:
 	var completion := CompletionGate.new()
 	ability_started.emit(piece, ability_name, completion)
+	completion.close()
+	await completion.wait_until_released()
+
+func announce_piece_attack(piece: ModelPiece, from: Vector2i, to: Vector2i) -> void:
+	var completion := CompletionGate.new()
+	piece_attack_committed.emit(piece, from, to, completion)
 	completion.close()
 	await completion.wait_until_released()
 
@@ -532,6 +539,7 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 
 		else: # Defender survives, takes damage, attacker stays put
 			await defender.take_damage(damage)
+			await announce_piece_attack(attacker, attacker.coordinate, to)
 		
 		
 		
