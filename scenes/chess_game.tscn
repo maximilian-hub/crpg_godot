@@ -8,7 +8,7 @@
 [ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scripts/view/squares.gd" id="5_s46tk"]
 [ext_resource type="Script" uid="uid://cqdlhvwaq4s2s" path="res://ui/ui.gd" id="7_qi3br"]
 [ext_resource type="Script" uid="uid://sx1hs8e01hds" path="res://scripts/view/chess_presentation_adapter.gd" id="8_bqtgu"]
-[ext_resource type="Script" path="res://ui/battle_result_view.gd" id="9_result"]
+[ext_resource type="Script" uid="uid://dh5jgb15ev2n6" path="res://ui/battle_result_view.gd" id="9_result"]
 [ext_resource type="Script" uid="uid://cdhbf2ba47ckc" path="res://scripts/ai/chess_cpu_player.gd" id="10_cpu"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
@@ -122,6 +122,13 @@ theme_override_font_sizes/font_size = 64
 text = "Battle Complete"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="ConfirmHint" type="Label" parent="CanvasLayer/ResultOverlay/ResultPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 18
+text = "Press K, Enter, or Space to continue"
+horizontal_alignment = 1
 
 [node name="Background" type="TextureRect" parent="."]
 offset_right = 384.0

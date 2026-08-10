@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/overworld/overworld_characterization.gd" id="1_test"]
+
+[node name="OverworldCharacterization" type="Node"]
+script = ExtResource("1_test")

@@ -6,6 +6,7 @@ class_name ChessGame
 ## player-facing win/loss/draw result for UI and future overworld flow.
 
 signal battle_completed(player_result: String)
+signal battle_exit_requested(player_result: String)
 
 enum ControlMode {
 	CPU_VS_CPU,
@@ -20,6 +21,7 @@ enum ControlMode {
 @export_enum("white", "black") var player_color: String = "white"
 @export var control_mode: ControlMode = ControlMode.CPU_VS_CPU
 @export_enum("white", "black") var ai_color: String = "black"
+var completed_player_result: String = ""
 
 func _ready() -> void:
 	if model == null:
@@ -28,6 +30,9 @@ func _ready() -> void:
 
 	if not model.battle_finished.is_connected(_on_battle_finished):
 		model.battle_finished.connect(_on_battle_finished)
+	var result_view := get_node_or_null("CanvasLayer/ResultOverlay") as BattleResultView
+	if result_view != null and not result_view.result_confirmed.is_connected(_on_result_confirmed):
+		result_view.result_confirmed.connect(_on_result_confirmed)
 
 	match control_mode:
 		ControlMode.CPU_VS_CPU:
@@ -59,7 +64,13 @@ func _on_battle_finished(winner_color: String) -> void:
 	else:
 		player_result = "loss"
 
+	completed_player_result = player_result
 	battle_completed.emit(player_result)
+
+func _on_result_confirmed() -> void:
+	if completed_player_result.is_empty():
+		return
+	battle_exit_requested.emit(completed_player_result)
 
 func restart_battle() -> void:
 	get_tree().reload_current_scene()

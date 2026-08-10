@@ -1,9 +1,16 @@
 extends Control
 class_name BattleResultView
 
+signal result_confirmed
+
 @onready var result_label: Label = $ResultPanel/ContentMargin/ResultLabel
+var can_confirm: bool = false
+
+func _ready() -> void:
+	set_process_unhandled_input(true)
 
 func show_battle_result(winner_color: String) -> void:
+	can_confirm = true
 	match winner_color:
 		"white":
 			result_label.text = "White Wins"
@@ -28,3 +35,11 @@ func show_battle_result(winner_color: String) -> void:
 	tween.tween_property(self, "modulate:a", 1.0, 0.28).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	if display_panel != null:
 		tween.tween_property(display_panel, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible or not can_confirm:
+		return
+	if event.is_action_pressed("interact"):
+		can_confirm = false
+		get_viewport().set_input_as_handled()
+		result_confirmed.emit()

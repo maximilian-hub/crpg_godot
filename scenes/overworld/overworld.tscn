@@ -1,0 +1,96 @@
+[gd_scene load_steps=11 format=4 uid="uid://piuej0d1064"]
+
+[ext_resource type="Script" uid="uid://bf5oj43hu2dm4" path="res://scripts/overworld/overworld.gd" id="1_overworld"]
+[ext_resource type="Texture2D" uid="uid://bl6kvqrccy6rn" path="res://assets/overworld/test_map.png" id="2_map"]
+[ext_resource type="Script" uid="uid://crntneqi44ncr" path="res://scripts/overworld/collision_grid.gd" id="3_grid"]
+[ext_resource type="Script" uid="uid://b12uuy1o1h52x" path="res://scripts/overworld/player.gd" id="4_player"]
+[ext_resource type="Script" uid="uid://4ybi0pmv1s7e" path="res://scripts/overworld/npc.gd" id="5_npc"]
+[ext_resource type="Texture2D" uid="uid://mlv8rpnhguhs" path="res://assets/overworld/collision_tile.svg" id="6_collision"]
+
+[sub_resource type="TileSetAtlasSource" id="CollisionAtlas"]
+texture = ExtResource("6_collision")
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+
+[sub_resource type="TileSet" id="CollisionTileSet"]
+physics_layer_0/collision_layer = 1
+sources/0 = SubResource("CollisionAtlas")
+
+[sub_resource type="RectangleShape2D" id="PlayerShape"]
+size = Vector2(9, 9)
+
+[sub_resource type="RectangleShape2D" id="NpcShape"]
+size = Vector2(12, 12)
+
+[node name="Overworld" type="Node2D"]
+texture_filter = 1
+script = ExtResource("1_overworld")
+
+[node name="Map" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_map")
+centered = false
+
+[node name="CollisionGrid" type="TileMapLayer" parent="."]
+tile_map_data = PackedByteArray("AAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAACAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAJAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAkAAAAAAAAAAAABAAkAAAAAAAAAAAACAAkAAAAAAAAAAAADAAkAAAAAAAAAAAAEAAkAAAAAAAAAAAAFAAkAAAAAAAAAAAAIAAkAAAAAAAAAAAAJAAkAAAAAAAAAAAAJAAEAAAAAAAAAAAAJAAIAAAAAAAAAAAAJAAMAAAAAAAAAAAAJAAQAAAAAAAAAAAAJAAUAAAAAAAAAAAAJAAYAAAAAAAAAAAAJAAcAAAAAAAAAAAAJAAgAAAAAAAAAAAAHAAIAAAAAAAAAAAACAAYAAAAAAAAAAAADAAYAAAAAAAAAAAAGAAIAAAAAAAAAAAAAAAIAAAAAAAAAAAABAAEAAAAAAAAAAAA=")
+tile_set = SubResource("CollisionTileSet")
+script = ExtResource("3_grid")
+
+[node name="PlayerSpawn" type="Marker2D" parent="."]
+position = Vector2(104, 120)
+
+[node name="Player" type="CharacterBody2D" parent="."]
+position = Vector2(104, 120)
+collision_layer = 2
+script = ExtResource("4_player")
+step_duration = 0.34
+
+[node name="Body" type="Polygon2D" parent="Player"]
+color = Color(0.2, 0.45, 1, 1)
+polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+shape = SubResource("PlayerShape")
+
+[node name="NpcSpawn" type="Marker2D" parent="."]
+position = Vector2(104, 88)
+
+[node name="Npc" type="StaticBody2D" parent="."]
+position = Vector2(104, 88)
+collision_mask = 2
+script = ExtResource("5_npc")
+
+[node name="Body" type="Polygon2D" parent="Npc"]
+color = Color(0.9, 0.3, 0.3, 1)
+polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Npc"]
+shape = SubResource("NpcShape")
+
+[node name="DialogueLayer" type="CanvasLayer" parent="."]
+layer = 10
+visible = false
+
+[node name="DialoguePanel" type="Panel" parent="DialogueLayer"]
+offset_left = 4.0
+offset_top = 112.0
+offset_right = 156.0
+offset_bottom = 156.0
+
+[node name="DialogueLabel" type="Label" parent="DialogueLayer/DialoguePanel"]
+layout_mode = 0
+offset_left = 6.0
+offset_top = 4.0
+offset_right = 146.0
+offset_bottom = 27.0
+theme_override_font_sizes/font_size = 8
+autowrap_mode = 2
+
+[node name="ChoiceLabel" type="Label" parent="DialogueLayer/DialoguePanel"]
+layout_mode = 0
+offset_left = 6.0
+offset_top = 29.0
+offset_right = 146.0
+offset_bottom = 40.0
+theme_override_font_sizes/font_size = 6
+horizontal_alignment = 1
