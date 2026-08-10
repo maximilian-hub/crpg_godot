@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=4 uid="uid://piuej0d1064"]
+[gd_scene load_steps=12 format=4 uid="uid://piuej0d1064"]
 
 [ext_resource type="Script" uid="uid://bf5oj43hu2dm4" path="res://scripts/overworld/overworld.gd" id="1_overworld"]
 [ext_resource type="Texture2D" uid="uid://bl6kvqrccy6rn" path="res://assets/overworld/test_map.png" id="2_map"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://b12uuy1o1h52x" path="res://scripts/overworld/player.gd" id="4_player"]
 [ext_resource type="Script" uid="uid://4ybi0pmv1s7e" path="res://scripts/overworld/npc.gd" id="5_npc"]
 [ext_resource type="Texture2D" uid="uid://mlv8rpnhguhs" path="res://assets/overworld/collision_tile.svg" id="6_collision"]
+[ext_resource type="Texture2D" uid="uid://dwbsjxbdwiokw" path="res://assets/overworld/OW_skeleton.png" id="7_player_texture"]
 
 [sub_resource type="TileSetAtlasSource" id="CollisionAtlas"]
 texture = ExtResource("6_collision")
@@ -45,9 +46,9 @@ collision_layer = 2
 script = ExtResource("4_player")
 step_duration = 0.34
 
-[node name="Body" type="Polygon2D" parent="Player"]
-color = Color(0.2, 0.45, 1, 1)
-polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
+[node name="Body" type="Sprite2D" parent="Player"]
+texture_filter = 1
+texture = ExtResource("7_player_texture")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
 shape = SubResource("PlayerShape")
