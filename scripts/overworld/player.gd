@@ -116,7 +116,7 @@ func _try_begin_step(direction: Vector2i) -> bool:
 	return true
 
 func _is_traversable(cell: Vector2i) -> bool:
-	if collision_grid == null or collision_grid.is_cell_blocked(cell):
+	if collision_grid == null or collision_grid.is_boundary_blocked(grid_cell, cell):
 		return false
 	if blocking_npc != null and blocking_npc.grid_cell == cell:
 		return false

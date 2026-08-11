@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <g fill="#3b9cff" fill-opacity="0.18" stroke="#54b5ff" stroke-width="1">
+    <g transform="translate(16 0)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16"/></g>
+    <g transform="translate(32 0)"><rect width="16" height="16" stroke="none"/><path d="M15.5 0V16"/></g>
+    <g transform="translate(48 0)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16M15.5 0V16"/></g>
+    <g transform="translate(0 16)"><rect width="16" height="16" stroke="none"/><path d="M0 15.5H16"/></g>
+    <g transform="translate(16 16)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16M0 15.5H16"/></g>
+    <g transform="translate(32 16)"><rect width="16" height="16" stroke="none"/><path d="M15.5 0V16M0 15.5H16"/></g>
+    <g transform="translate(48 16)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16M15.5 0V16M0 15.5H16"/></g>
+    <g transform="translate(0 32)"><rect width="16" height="16" stroke="none"/><path d="M0.5 0V16"/></g>
+    <g transform="translate(16 32)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16M0.5 0V16"/></g>
+    <g transform="translate(32 32)"><rect width="16" height="16" stroke="none"/><path d="M15.5 0V16M0.5 0V16"/></g>
+    <g transform="translate(48 32)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16M15.5 0V16M0.5 0V16"/></g>
+    <g transform="translate(0 48)"><rect width="16" height="16" stroke="none"/><path d="M0 15.5H16M0.5 0V16"/></g>
+    <g transform="translate(16 48)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16M0 15.5H16M0.5 0V16"/></g>
+    <g transform="translate(32 48)"><rect width="16" height="16" stroke="none"/><path d="M15.5 0V16M0 15.5H16M0.5 0V16"/></g>
+    <g transform="translate(48 48)"><rect width="16" height="16" stroke="none"/><path d="M0 0.5H16M15.5 0V16M0 15.5H16M0.5 0V16"/></g>
+  </g>
+</svg>

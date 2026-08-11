@@ -46,6 +46,7 @@ func _test_overworld_scene() -> void:
 	_check(player.test_move(player.global_transform, Vector2.LEFT * 16.0), "blocked tile contributes live physics geometry")
 	_check(not player._try_begin_step(Vector2i.LEFT), "grid check rejects blocked destination")
 	_check(player.facing == Vector2i.LEFT, "blocked direction still changes facing")
+	await _test_edge_barriers(overworld, player)
 
 	var open_run := _find_open_horizontal_run(overworld)
 	_check(not open_run.is_empty(), "painted collision map contains an open three-cell movement route")
@@ -142,6 +143,52 @@ func _test_main_starts_in_overworld() -> void:
 	main.queue_free()
 	await get_tree().process_frame
 
+func _test_edge_barriers(overworld: Overworld, player: OverworldPlayer) -> void:
+	var grid := overworld.collision_grid
+	var edge_cell := _find_open_cross(overworld)
+	_check(edge_cell != Vector2i(-1, -1), "collision map contains an open area for edge-barrier characterization")
+	if edge_cell == Vector2i(-1, -1):
+		return
+
+	var north := edge_cell + Vector2i.UP
+	var east := edge_cell + Vector2i.RIGHT
+	var south := edge_cell + Vector2i.DOWN
+	var west := edge_cell + Vector2i.LEFT
+	grid.set_cell(edge_cell, grid.EDGE_SOURCE_ID, grid.atlas_coords_for_edge_mask(grid.Edge.SOUTH))
+	grid.rebuild_edge_collision_geometry()
+	await get_tree().physics_frame
+
+	_check(not grid.is_cell_blocked(edge_cell), "edge-authored cell is not treated as fully blocked")
+	_check(not grid.is_boundary_blocked(north, edge_cell), "south-edge-only tile can be entered from the north")
+	_check(not grid.is_boundary_blocked(west, edge_cell), "south-edge-only tile can be entered laterally")
+	_check(not grid.is_boundary_blocked(edge_cell, east), "south-edge-only tile can be exited laterally")
+	_check(grid.is_boundary_blocked(edge_cell, south), "south edge blocks crossing from its owning cell")
+	_check(grid.is_boundary_blocked(south, edge_cell), "south edge blocks the same boundary from below")
+	_check(not grid.is_boundary_blocked(edge_cell, north), "other edges on a south-edge-only tile remain traversable")
+
+	player.configure(grid, overworld.npc, north, Vector2i.DOWN)
+	_check(player._try_begin_step(Vector2i.DOWN), "grid movement can enter a south-edge-only tile from above")
+	player.configure(grid, overworld.npc, west, Vector2i.RIGHT)
+	_check(player._try_begin_step(Vector2i.RIGHT), "grid movement can enter a south-edge-only tile laterally")
+	player.configure(grid, overworld.npc, edge_cell, Vector2i.DOWN)
+	_check(not player._try_begin_step(Vector2i.DOWN), "grid movement cannot cross the authored south boundary")
+	_check(player.test_move(player.global_transform, Vector2.DOWN * 16.0), "south edge creates live map-space physics from above")
+	player.configure(grid, overworld.npc, south, Vector2i.UP)
+	_check(not player._try_begin_step(Vector2i.UP), "grid movement cannot cross the south boundary from below")
+	_check(player.test_move(player.global_transform, Vector2.UP * 16.0), "south edge creates live two-sided physics from below")
+
+	var combined_mask := grid.Edge.NORTH | grid.Edge.EAST
+	grid.set_cell(edge_cell, grid.EDGE_SOURCE_ID, grid.atlas_coords_for_edge_mask(combined_mask))
+	grid.rebuild_edge_collision_geometry()
+	_check(grid.is_boundary_blocked(edge_cell, north), "multiple-edge tile blocks its north edge")
+	_check(grid.is_boundary_blocked(east, edge_cell), "multiple-edge tile blocks its east edge from either side")
+	_check(not grid.is_boundary_blocked(edge_cell, south), "multiple-edge tile leaves its unflagged south edge open")
+	_check(not grid.is_boundary_blocked(edge_cell, west), "multiple-edge tile leaves its unflagged west edge open")
+	_check(grid.get_node("GeneratedEdgeBarriers").get_child_count() == 2, "combined edge mask emits one physical segment per boundary")
+
+	grid.erase_cell(edge_cell)
+	grid.rebuild_edge_collision_geometry()
+
 func _check(condition: bool, message: String) -> void:
 	checks += 1
 	if not condition:
@@ -161,3 +208,17 @@ func _find_open_horizontal_run(overworld: Overworld) -> Array[Vector2i]:
 			if traversable:
 				return cells
 	return []
+
+func _find_open_cross(overworld: Overworld) -> Vector2i:
+	for y in range(1, OverworldCollisionGrid.GRID_SIZE.y - 1):
+		for x in range(1, OverworldCollisionGrid.GRID_SIZE.x - 1):
+			var center := Vector2i(x, y)
+			var cells := [center, center + Vector2i.UP, center + Vector2i.RIGHT, center + Vector2i.DOWN, center + Vector2i.LEFT]
+			var is_open := true
+			for cell in cells:
+				if overworld.collision_grid.is_cell_blocked(cell) or overworld.npc.grid_cell == cell:
+					is_open = false
+					break
+			if is_open:
+				return center
+	return Vector2i(-1, -1)
