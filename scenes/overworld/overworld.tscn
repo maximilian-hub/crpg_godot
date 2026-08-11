@@ -27,6 +27,18 @@ size = Vector2(12, 12)
 texture_filter = 1
 script = ExtResource("1_overworld")
 
+[node name="BackgroundLayer" type="CanvasLayer" parent="."]
+layer = -10
+
+[node name="Background" type="ColorRect" parent="BackgroundLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.025, 0.02, 0.035, 1)
+
 [node name="Map" type="Sprite2D" parent="."]
 texture_filter = 1
 texture = ExtResource("2_map")
@@ -48,10 +60,13 @@ step_duration = 0.34
 
 [node name="Body" type="Sprite2D" parent="Player"]
 texture_filter = 1
+position = Vector2(0, -4)
 texture = ExtResource("7_player_texture")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
 shape = SubResource("PlayerShape")
+
+[node name="Camera2D" type="Camera2D" parent="Player"]
 
 [node name="NpcSpawn" type="Marker2D" parent="."]
 position = Vector2(104, 88)
@@ -62,6 +77,7 @@ collision_mask = 2
 script = ExtResource("5_npc")
 
 [node name="Body" type="Polygon2D" parent="Npc"]
+position = Vector2(0, -4)
 color = Color(0.9, 0.3, 0.3, 1)
 polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
 

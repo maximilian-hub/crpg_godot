@@ -34,6 +34,15 @@ func _test_overworld_scene() -> void:
 	var player := overworld.player
 	_check(player is CharacterBody2D, "player uses CharacterBody2D")
 	_check(player.position == Vector2(24, 24), "player starts at configured cell center")
+	_check(player.get_node("Body").position == Vector2(0, -4), "player artwork has the visual-only vertical offset")
+	_check(player.get_node("CollisionShape2D").position == Vector2.ZERO, "player collision remains rooted at the gameplay position")
+	_check(overworld.npc.get_node("Body").position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
+	_check(overworld.npc.get_node("CollisionShape2D").position == Vector2.ZERO, "NPC collision remains rooted at the gameplay position")
+	var camera := player.get_node("Camera2D") as Camera2D
+	_check(camera != null and camera.enabled, "player camera is active")
+	_check(camera.position == Vector2.ZERO, "camera follows the authoritative player root without an artwork offset")
+	var background_layer := overworld.get_node("BackgroundLayer") as CanvasLayer
+	_check(background_layer.layer < 0 and not background_layer.follow_viewport_enabled, "dark background is viewport-fixed behind the world")
 	_check(player.test_move(player.global_transform, Vector2.LEFT * 16.0), "blocked tile contributes live physics geometry")
 	_check(not player._try_begin_step(Vector2i.LEFT), "grid check rejects blocked destination")
 	_check(player.facing == Vector2i.LEFT, "blocked direction still changes facing")
@@ -52,6 +61,10 @@ func _test_overworld_scene() -> void:
 		await get_tree().physics_frame
 	_check(player.grid_cell == open_run[2], "latest queued direction replaces the previous direction")
 	_check(player.position == player.cell_center(open_run[2]), "completed movement snaps exactly to cell center")
+	_check(camera.get_screen_center_position().is_equal_approx(player.global_position), "camera remains centered on the player after movement")
+	player.configure(overworld.collision_grid, overworld.npc, Vector2i(1, 1), Vector2i.RIGHT)
+	await get_tree().process_frame
+	_check(camera.get_screen_center_position().is_equal_approx(player.global_position), "camera does not clamp at the map edge")
 
 	player.configure(overworld.collision_grid, overworld.npc, Vector2i(6, 6), Vector2i.UP)
 	_check(overworld._can_talk_to_npc(), "idle adjacent player facing NPC can interact")
@@ -75,12 +88,32 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_overworld != null, "main starts with an overworld instance")
 	_check(main.active_battle == null, "main does not start directly in battle")
 	_check(main.active_overworld.get_player_cell() == Vector2i(6, 7), "main applies the scene-marker default player position")
+	var frame := main.active_content.get_node("OverworldFrame") as SubViewportContainer
+	var viewport := frame.get_node("OverworldViewport") as SubViewport
+	var window_size := Vector2i(main.get_viewport().get_visible_rect().size)
+	var expected_scale := maxi(1, floori(float(window_size.y) / GameFlow.TARGET_OVERWORLD_LOGICAL_SIDE))
+	var expected_logical_side := maxi(1, floori(float(window_size.y) / expected_scale))
+	var expected_frame_side := expected_logical_side * expected_scale
+	_check(frame.position.y == floori((window_size.y - expected_frame_side) * 0.5), "overworld minimizes vertical remainder")
+	_check(frame.position.x == floori((window_size.x - expected_frame_side) * 0.5), "overworld centers its side letterboxing")
+	_check(frame.size == Vector2(expected_frame_side, expected_frame_side), "overworld frame remains square")
+	_check(frame.stretch_shrink == expected_scale, "overworld selects an integer presentation scale")
+	_check(viewport.size == Vector2i(expected_logical_side, expected_logical_side), "overworld logical view adapts to the window height")
+	_check(viewport.snap_2d_transforms_to_pixel, "overworld viewport snaps rendered transforms to logical pixels")
+	var embedded_background := main.active_overworld.get_node("BackgroundLayer/Background") as ColorRect
+	_check(embedded_background.size == Vector2(expected_logical_side, expected_logical_side), "viewport-fixed background fills the logical viewport")
+	var fullscreen_layout := GameFlow.calculate_overworld_layout(Vector2i(2560, 1600))
+	_check(fullscreen_layout.position == Vector2(480, 0), "2560x1600 fullscreen uses side-only letterboxing")
+	_check(fullscreen_layout.frame_side == 1600, "2560x1600 fullscreen fills the complete display height")
+	_check(fullscreen_layout.integer_scale == 8 and fullscreen_layout.logical_side == 200, "2560x1600 fullscreen renders a 200x200 view at 8x")
 	var movement_event := InputEventAction.new()
 	movement_event.action = "move_left"
 	movement_event.pressed = true
 	Input.parse_input_event(movement_event)
-	for index in range(10):
+	for index in range(60):
 		await get_tree().physics_frame
+		if main.active_overworld.get_player_cell().x < 6:
+			break
 	movement_event.pressed = false
 	Input.parse_input_event(movement_event)
 	await get_tree().physics_frame

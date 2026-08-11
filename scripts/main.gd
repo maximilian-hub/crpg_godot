@@ -4,6 +4,7 @@ class_name GameFlow
 
 const OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
 const CHESS_SCENE := preload("res://scenes/chess_game.tscn")
+const TARGET_OVERWORLD_LOGICAL_SIDE := 180
 
 @export var transition_duration: float = 0.25
 
@@ -16,31 +17,57 @@ var encounter_state: String = "initial"
 var active_overworld: Overworld = null
 var active_battle: ChessGame = null
 var is_transitioning: bool = false
+var overworld_frame: SubViewportContainer = null
+var overworld_viewport: SubViewport = null
 
 func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
+	get_viewport().size_changed.connect(_layout_overworld_frame)
 	_show_overworld("")
 
 func _show_overworld(pending_result: String) -> void:
-	var frame := SubViewportContainer.new()
-	frame.name = "OverworldFrame"
-	frame.position = Vector2(480, 60)
-	frame.size = Vector2(960, 960)
-	frame.stretch = true
-	frame.stretch_shrink = 6
-	frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	active_content.add_child(frame)
+	overworld_frame = SubViewportContainer.new()
+	overworld_frame.name = "OverworldFrame"
+	overworld_frame.stretch = true
+	overworld_frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	active_content.add_child(overworld_frame)
 
-	var viewport := SubViewport.new()
-	viewport.name = "OverworldViewport"
-	viewport.size = Vector2i(160, 160)
-	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
-	frame.add_child(viewport)
+	overworld_viewport = SubViewport.new()
+	overworld_viewport.name = "OverworldViewport"
+	overworld_viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	overworld_viewport.snap_2d_transforms_to_pixel = true
+	overworld_frame.add_child(overworld_viewport)
+	_layout_overworld_frame()
 
 	active_overworld = OVERWORLD_SCENE.instantiate()
 	active_overworld.configure(player_cell, player_facing, encounter_state, pending_result)
 	active_overworld.challenge_requested.connect(_on_challenge_requested)
-	viewport.add_child(active_overworld)
+	overworld_viewport.add_child(active_overworld)
+
+func _layout_overworld_frame() -> void:
+	if not is_instance_valid(overworld_frame) or not is_instance_valid(overworld_viewport):
+		return
+	var window_size := Vector2i(get_viewport().get_visible_rect().size)
+	if window_size.x <= 0 or window_size.y <= 0:
+		return
+	var layout := calculate_overworld_layout(window_size)
+	overworld_frame.position = layout.position
+	overworld_frame.size = Vector2(layout.frame_side, layout.frame_side)
+	overworld_frame.stretch_shrink = layout.integer_scale
+
+static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
+	var integer_scale := maxi(1, floori(float(window_size.y) / TARGET_OVERWORLD_LOGICAL_SIDE))
+	var logical_side := maxi(1, floori(float(window_size.y) / integer_scale))
+	var frame_side := logical_side * integer_scale
+	return {
+		"position": Vector2(
+			floori((window_size.x - frame_side) * 0.5),
+			floori((window_size.y - frame_side) * 0.5)
+		),
+		"frame_side": frame_side,
+		"integer_scale": integer_scale,
+		"logical_side": logical_side,
+	}
 
 func _on_challenge_requested(_encounter_id: String) -> void:
 	if is_transitioning or active_overworld == null:
@@ -82,6 +109,8 @@ func _transition_to_overworld(player_result: String) -> void:
 func _clear_active_content() -> void:
 	active_overworld = null
 	active_battle = null
+	overworld_frame = null
+	overworld_viewport = null
 	for child in active_content.get_children():
 		child.queue_free()
 		active_content.remove_child(child)
