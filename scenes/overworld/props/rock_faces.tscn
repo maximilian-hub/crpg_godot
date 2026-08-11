@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Texture2D" uid="uid://begh382gdjboj" path="res://assets/overworld/rock_faces.png" id="1_texture"]
+
+[node name="RockFaces" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(-16, -16)
+texture = ExtResource("1_texture")
+centered = false

@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=4 uid="uid://piuej0d1064"]
+[gd_scene load_steps=17 format=4 uid="uid://piuej0d1064"]
 
 [ext_resource type="Script" uid="uid://bf5oj43hu2dm4" path="res://scripts/overworld/overworld.gd" id="1_overworld"]
 [ext_resource type="Texture2D" uid="uid://bl6kvqrccy6rn" path="res://assets/overworld/test_map.png" id="2_map"]
@@ -8,6 +8,9 @@
 [ext_resource type="Texture2D" uid="uid://mlv8rpnhguhs" path="res://assets/overworld/collision_tile.svg" id="6_collision"]
 [ext_resource type="Texture2D" uid="uid://dwbsjxbdwiokw" path="res://assets/overworld/OW_skeleton.png" id="7_player_texture"]
 [ext_resource type="Texture2D" uid="uid://c42mhus46brga" path="res://assets/overworld/collision_edges.svg" id="8_edge_collision"]
+[ext_resource type="PackedScene" path="res://scenes/overworld/props/mushroom_log.tscn" id="9_mushroom_log"]
+[ext_resource type="PackedScene" path="res://scenes/overworld/props/rock_faces.tscn" id="10_rock_faces"]
+[ext_resource type="PackedScene" path="res://scenes/overworld/props/pine_tree.tscn" id="11_pine_tree"]
 
 [sub_resource type="TileSetAtlasSource" id="CollisionAtlas"]
 resource_name = "Fully Blocked Cells"
@@ -63,6 +66,7 @@ mouse_filter = 2
 color = Color(0.025, 0.02, 0.035, 1)
 
 [node name="Map" type="Sprite2D" parent="."]
+z_index = -1
 texture_filter = 1
 texture = ExtResource("2_map")
 centered = false
@@ -75,37 +79,49 @@ script = ExtResource("3_grid")
 [node name="PlayerSpawn" type="Marker2D" parent="."]
 position = Vector2(104, 120)
 
-[node name="Player" type="CharacterBody2D" parent="."]
+[node name="YSortedWorld" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="MushroomLog" parent="YSortedWorld" instance=ExtResource("9_mushroom_log")]
+position = Vector2(48, 116)
+
+[node name="RockFaces" parent="YSortedWorld" instance=ExtResource("10_rock_faces")]
+position = Vector2(112, 50)
+
+[node name="PineTree" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(8, 105)
+
+[node name="Player" type="CharacterBody2D" parent="YSortedWorld"]
 position = Vector2(104, 120)
 collision_layer = 2
 script = ExtResource("4_player")
 step_duration = 0.34
 
-[node name="Body" type="Sprite2D" parent="Player"]
+[node name="Body" type="Sprite2D" parent="YSortedWorld/Player"]
 texture_filter = 1
 position = Vector2(0, -4)
 texture = ExtResource("7_player_texture")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="YSortedWorld/Player"]
 shape = SubResource("PlayerShape")
 
-[node name="Camera2D" type="Camera2D" parent="Player"]
+[node name="Camera2D" type="Camera2D" parent="YSortedWorld/Player"]
 
-[node name="NpcSpawn" type="Marker2D" parent="."]
-position = Vector2(104, 88)
-
-[node name="Npc" type="StaticBody2D" parent="."]
+[node name="Npc" type="StaticBody2D" parent="YSortedWorld"]
 position = Vector2(104, 88)
 collision_mask = 2
 script = ExtResource("5_npc")
 
-[node name="Body" type="Polygon2D" parent="Npc"]
+[node name="Body" type="Polygon2D" parent="YSortedWorld/Npc"]
 position = Vector2(0, -4)
 color = Color(0.9, 0.3, 0.3, 1)
 polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Npc"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="YSortedWorld/Npc"]
 shape = SubResource("NpcShape")
+
+[node name="NpcSpawn" type="Marker2D" parent="."]
+position = Vector2(104, 88)
 
 [node name="DialogueLayer" type="CanvasLayer" parent="."]
 layer = 10

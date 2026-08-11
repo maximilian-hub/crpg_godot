@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Texture2D" uid="uid://rlsf5mkbclhs" path="res://assets/overworld/pine_tree.png" id="1_texture"]
+
+[node name="PineTree" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(-8, -31)
+texture = ExtResource("1_texture")
+centered = false

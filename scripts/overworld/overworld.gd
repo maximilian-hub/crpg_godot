@@ -13,8 +13,8 @@ enum DialogueMode { CLOSED, PAGES, CHOICE }
 @export var rematch_pages: Array[String] = ["Want a rematch?"]
 
 @onready var collision_grid: OverworldCollisionGrid = $CollisionGrid
-@onready var player: OverworldPlayer = $Player
-@onready var npc: OverworldNpc = $Npc
+@onready var player: OverworldPlayer = $YSortedWorld/Player
+@onready var npc: OverworldNpc = $YSortedWorld/Npc
 @onready var dialogue_panel: Control = $DialogueLayer/DialoguePanel
 @onready var dialogue_label: Label = $DialogueLayer/DialoguePanel/DialogueLabel
 @onready var choice_label: Label = $DialogueLayer/DialoguePanel/ChoiceLabel
