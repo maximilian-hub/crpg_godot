@@ -71,8 +71,11 @@ texture_filter = 1
 texture = ExtResource("2_map")
 centered = false
 
+[node name="PineTree" parent="Map" instance=ExtResource("11_pine_tree")]
+position = Vector2(8.25881, 21.7657)
+
 [node name="CollisionGrid" type="TileMapLayer" parent="."]
-tile_map_data = PackedByteArray("AAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAACAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAJAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAkAAAAAAAAAAAABAAkAAAAAAAAAAAACAAkAAAAAAAAAAAADAAkAAAAAAAAAAAAEAAkAAAAAAAAAAAAFAAkAAAAAAAAAAAAIAAkAAAAAAAAAAAAJAAkAAAAAAAAAAAAJAAEAAAAAAAAAAAAJAAIAAAAAAAAAAAAJAAMAAAAAAAAAAAAJAAQAAAAAAAAAAAAJAAUAAAAAAAAAAAAJAAYAAAAAAAAAAAAJAAcAAAAAAAAAAAAJAAgAAAAAAAAAAAAAAAIAAAAAAAAAAAAGAAIAAQAAAAEAAAAHAAIAAQAAAAEAAAACAAYAAQAAAAEAAAADAAYAAQAAAAEAAAABAAEAAAAAAAAAAAA=")
+tile_map_data = PackedByteArray("AAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAACAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAJAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAkAAAAAAAAAAAABAAkAAAAAAAAAAAACAAkAAAAAAAAAAAADAAkAAAAAAAAAAAAEAAkAAAAAAAAAAAAFAAkAAAAAAAAAAAAIAAkAAAAAAAAAAAAJAAkAAAAAAAAAAAAJAAEAAAAAAAAAAAAJAAIAAAAAAAAAAAAJAAMAAAAAAAAAAAAJAAQAAAAAAAAAAAAJAAUAAAAAAAAAAAAJAAYAAAAAAAAAAAAJAAcAAAAAAAAAAAAJAAgAAAAAAAAAAAAAAAIAAAAAAAAAAAAGAAIAAQAAAAEAAAAHAAIAAQAAAAEAAAACAAYAAQAAAAEAAAADAAYAAQAAAAEAAAAAAAEAAAAAAAAAAAA=")
 tile_set = SubResource("CollisionTileSet")
 script = ExtResource("3_grid")
 
@@ -81,15 +84,6 @@ position = Vector2(104, 120)
 
 [node name="YSortedWorld" type="Node2D" parent="."]
 y_sort_enabled = true
-
-[node name="MushroomLog" parent="YSortedWorld" instance=ExtResource("9_mushroom_log")]
-position = Vector2(48, 116)
-
-[node name="RockFaces" parent="YSortedWorld" instance=ExtResource("10_rock_faces")]
-position = Vector2(112, 50)
-
-[node name="PineTree" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
-position = Vector2(8, 105)
 
 [node name="Player" type="CharacterBody2D" parent="YSortedWorld"]
 position = Vector2(104, 120)
@@ -120,8 +114,137 @@ polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
 [node name="CollisionShape2D" type="CollisionShape2D" parent="YSortedWorld/Npc"]
 shape = SubResource("NpcShape")
 
-[node name="NpcSpawn" type="Marker2D" parent="."]
-position = Vector2(104, 88)
+[node name="MushroomLog" parent="YSortedWorld" instance=ExtResource("9_mushroom_log")]
+position = Vector2(48, 116)
+
+[node name="RockFaces" parent="YSortedWorld" instance=ExtResource("10_rock_faces")]
+position = Vector2(112, 50)
+
+[node name="PineTree" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(8, 105)
+
+[node name="PineTree2" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(9, 122)
+
+[node name="PineTree3" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(5, 136)
+
+[node name="PineTree15" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(132, 158)
+
+[node name="PineTree4" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(11, 147)
+
+[node name="PineTree5" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(23, 156)
+
+[node name="PineTree6" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(4, 164)
+
+[node name="PineTree7" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(36, 152)
+
+[node name="PineTree8" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(48, 157)
+
+[node name="PineTree9" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(58, 154)
+
+[node name="PineTree10" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(68, 158)
+
+[node name="PineTree11" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(79, 156)
+
+[node name="PineTree12" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(90, 149)
+
+[node name="PineTree13" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(87, 169)
+
+[node name="PineTree14" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(10, 17)
+
+[node name="PineTree16" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(141, 151)
+
+[node name="PineTree17" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(152, 157)
+
+[node name="PineTree18" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(154, 139)
+
+[node name="PineTree19" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(149, 122)
+
+[node name="PineTree20" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(156, 108)
+
+[node name="PineTree21" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(148, 94)
+
+[node name="PineTree22" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(153, 83)
+
+[node name="PineTree23" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(150, 62)
+
+[node name="PineTree24" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(157, 40)
+
+[node name="PineTree25" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(149, 31)
+
+[node name="PineTree26" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(154, 18)
+
+[node name="PineTree27" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(116, 13)
+
+[node name="PineTree28" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(125, 13)
+
+[node name="PineTree29" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(138, 12)
+
+[node name="PineTree30" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(95, 12)
+
+[node name="PineTree31" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(104, 9)
+
+[node name="PineTree40" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(28.1761, 13.9186)
+
+[node name="PineTree39" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(56.7447, 13.1115)
+
+[node name="PineTree38" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(20.59, 14.6309)
+
+[node name="PineTree37" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(38, 13)
+
+[node name="PineTree36" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(47.0627, 12.9832)
+
+[node name="PineTree35" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(73.9506, 13.6604)
+
+[node name="PineTree32" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(84, 11)
+
+[node name="PineTree33" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(63.8803, 14.2744)
+
+[node name="PineTree42" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(10.1957, 44.201)
+
+[node name="PineTree41" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(4.22369, 35.6466)
+
+[node name="PineTree34" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
+position = Vector2(11.3255, 28.8676)
 
 [node name="DialogueLayer" type="CanvasLayer" parent="."]
 layer = 10
@@ -150,3 +273,6 @@ offset_right = 146.0
 offset_bottom = 40.0
 theme_override_font_sizes/font_size = 6
 horizontal_alignment = 1
+
+[node name="NpcSpawn" type="Marker2D" parent="."]
+position = Vector2(104, 88)

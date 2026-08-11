@@ -5,6 +5,7 @@ class_name GameFlow
 const OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
 const CHESS_SCENE := preload("res://scenes/chess_game.tscn")
 const TARGET_OVERWORLD_LOGICAL_SIDE := 180
+const INTEGER_SCALE_OFFSET := 2 ## for adjusting the relative sizing.
 
 @export var transition_duration: float = 0.25
 
@@ -65,7 +66,7 @@ static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
 			floori((window_size.y - frame_side) * 0.5)
 		),
 		"frame_side": frame_side,
-		"integer_scale": integer_scale,
+		"integer_scale": (integer_scale + INTEGER_SCALE_OFFSET),
 		"logical_side": logical_side,
 	}
 
