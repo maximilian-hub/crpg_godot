@@ -1,0 +1,57 @@
+[gd_resource type="SpriteFrames" load_steps=13 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_down_0001.png" id="1_down_idle"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_down_0002.png" id="2_down"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_down_0003.png" id="3_down"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_down_0004.png" id="4_down"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_up_0001.png" id="5_up_idle"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_up_0002.png" id="6_up"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_up_0003.png" id="7_up"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_up_0004.png" id="8_up"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_right_0001.png" id="9_right_idle"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_right_0002.png" id="10_right"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_right_0003.png" id="11_right"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/skeleton/skeleton_right_0004.png" id="12_right"]
+
+[resource]
+animations = [{
+"frames": [{"duration": 1.0, "texture": ExtResource("1_down_idle")}],
+"loop": false,
+"name": &"idle_down",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("9_right_idle")}],
+"loop": false,
+"name": &"idle_left",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("9_right_idle")}],
+"loop": false,
+"name": &"idle_right",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("5_up_idle")}],
+"loop": false,
+"name": &"idle_up",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_down_idle")}, {"duration": 1.0, "texture": ExtResource("2_down")}, {"duration": 1.0, "texture": ExtResource("3_down")}, {"duration": 1.0, "texture": ExtResource("4_down")}],
+"loop": true,
+"name": &"walk_down",
+"speed": 4.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("9_right_idle")}, {"duration": 1.0, "texture": ExtResource("10_right")}, {"duration": 1.0, "texture": ExtResource("11_right")}, {"duration": 1.0, "texture": ExtResource("12_right")}],
+"loop": true,
+"name": &"walk_left",
+"speed": 4.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("9_right_idle")}, {"duration": 1.0, "texture": ExtResource("10_right")}, {"duration": 1.0, "texture": ExtResource("11_right")}, {"duration": 1.0, "texture": ExtResource("12_right")}],
+"loop": true,
+"name": &"walk_right",
+"speed": 4.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("5_up_idle")}, {"duration": 1.0, "texture": ExtResource("6_up")}, {"duration": 1.0, "texture": ExtResource("7_up")}, {"duration": 1.0, "texture": ExtResource("8_up")}],
+"loop": true,
+"name": &"walk_up",
+"speed": 4.0
+}]

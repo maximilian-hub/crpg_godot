@@ -34,7 +34,12 @@ func _test_overworld_scene() -> void:
 	var player := overworld.player
 	_check(player is CharacterBody2D, "player uses CharacterBody2D")
 	_check(player.position == Vector2(24, 24), "player starts at configured cell center")
-	_check(player.get_node("Body").position == Vector2(0, -4), "player artwork has the visual-only vertical offset")
+	var player_body := player.get_node("Body") as AnimatedSprite2D
+	_check(player_body != null, "player artwork uses AnimatedSprite2D")
+	_check(player_body.position == Vector2(0, -4), "player artwork has the visual-only vertical offset")
+	for animation_name in [&"idle_up", &"idle_down", &"idle_left", &"idle_right", &"walk_up", &"walk_down", &"walk_left", &"walk_right"]:
+		_check(player_body.sprite_frames.has_animation(animation_name), "player has %s animation" % animation_name)
+	_check(player_body.animation == &"idle_left" and player_body.flip_h, "configured left facing uses mirrored left idle")
 	_check(player.get_node("CollisionShape2D").position == Vector2.ZERO, "player collision remains rooted at the gameplay position")
 	_check(overworld.npc.get_node("Body").position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
 	_check(overworld.npc.get_node("CollisionShape2D").position == Vector2.ZERO, "NPC collision remains rooted at the gameplay position")
@@ -46,6 +51,7 @@ func _test_overworld_scene() -> void:
 	_check(player.test_move(player.global_transform, Vector2.LEFT * 16.0), "blocked tile contributes live physics geometry")
 	_check(not player._try_begin_step(Vector2i.LEFT), "grid check rejects blocked destination")
 	_check(player.facing == Vector2i.LEFT, "blocked direction still changes facing")
+	_check(player_body.animation == &"idle_left" and not player_body.is_playing(), "blocked movement remains in the facing idle pose")
 	await _test_edge_barriers(overworld, player)
 
 	var open_run := _find_open_horizontal_run(overworld)
@@ -55,13 +61,18 @@ func _test_overworld_scene() -> void:
 		return
 	player.configure(overworld.collision_grid, overworld.npc, open_run[0], Vector2i.RIGHT)
 	player.step_duration = 0.01
+	var landing_frames: Array[int] = []
+	player.step_finished.connect(func(_cell: Vector2i): landing_frames.append(player_body.frame))
 	_check(player._try_begin_step(Vector2i.RIGHT), "open grid step begins")
+	_check(player_body.animation == &"walk_right" and player_body.is_playing() and not player_body.flip_h, "right step plays the unmirrored walk cycle")
 	player.queued_direction = Vector2i.UP
 	player.queued_direction = Vector2i.RIGHT
 	for index in range(8):
 		await get_tree().physics_frame
 	_check(player.grid_cell == open_run[2], "latest queued direction replaces the previous direction")
 	_check(player.position == player.cell_center(open_run[2]), "completed movement snaps exactly to cell center")
+	_check(landing_frames == [2, 0], "continuous walking alternates neutral 0003 and 0001 landing frames")
+	_check(player_body.animation == &"idle_right" and not player_body.is_playing(), "completed movement returns to the facing idle pose")
 	_check(camera.get_screen_center_position().is_equal_approx(player.global_position), "camera remains centered on the player after movement")
 	player.configure(overworld.collision_grid, overworld.npc, Vector2i(1, 1), Vector2i.RIGHT)
 	await get_tree().process_frame

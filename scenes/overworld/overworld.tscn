@@ -6,7 +6,7 @@
 [ext_resource type="Script" uid="uid://b12uuy1o1h52x" path="res://scripts/overworld/player.gd" id="4_player"]
 [ext_resource type="Script" uid="uid://4ybi0pmv1s7e" path="res://scripts/overworld/npc.gd" id="5_npc"]
 [ext_resource type="Texture2D" uid="uid://mlv8rpnhguhs" path="res://assets/overworld/collision_tile.svg" id="6_collision"]
-[ext_resource type="Texture2D" uid="uid://dwbsjxbdwiokw" path="res://assets/overworld/OW_skeleton.png" id="7_player_texture"]
+[ext_resource type="SpriteFrames" path="res://assets/overworld/characters/skeleton/skeleton_overworld_frames.tres" id="7_player_frames"]
 [ext_resource type="Texture2D" uid="uid://c42mhus46brga" path="res://assets/overworld/collision_edges.svg" id="8_edge_collision"]
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/mushroom_log.tscn" id="9_mushroom_log"]
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/rock_faces.tscn" id="10_rock_faces"]
@@ -91,10 +91,11 @@ collision_layer = 2
 script = ExtResource("4_player")
 step_duration = 0.34
 
-[node name="Body" type="Sprite2D" parent="YSortedWorld/Player"]
+[node name="Body" type="AnimatedSprite2D" parent="YSortedWorld/Player"]
 texture_filter = 1
 position = Vector2(0, -4)
-texture = ExtResource("7_player_texture")
+sprite_frames = ExtResource("7_player_frames")
+animation = &"idle_up"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="YSortedWorld/Player"]
 shape = SubResource("PlayerShape")

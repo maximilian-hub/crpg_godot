@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dwbsjxbdwiokw"
-path="res://.godot/imported/OW_skeleton.png-7b3dd6a7c1e1ac8ce8c42708779750b8.ctex"
+uid="uid://do6hgdqx38t05"
+path="res://.godot/imported/skeleton_up_0001.png-e739b581a23971cbbdccd04dee2ac391.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/overworld/OW_skeleton.png"
-dest_files=["res://.godot/imported/OW_skeleton.png-7b3dd6a7c1e1ac8ce8c42708779750b8.ctex"]
+source_file="res://assets/overworld/characters/skeleton/skeleton_up_0001.png"
+dest_files=["res://.godot/imported/skeleton_up_0001.png-e739b581a23971cbbdccd04dee2ac391.ctex"]
 
 [params]
 
