@@ -39,7 +39,10 @@ func _test_overworld_scene() -> void:
 	_check(player_body.position == Vector2(0, -4), "player artwork has the visual-only vertical offset")
 	for animation_name in [&"idle_up", &"idle_down", &"idle_left", &"idle_right", &"walk_up", &"walk_down", &"walk_left", &"walk_right"]:
 		_check(player_body.sprite_frames.has_animation(animation_name), "player has %s animation" % animation_name)
-	_check(player_body.animation == &"idle_left" and player_body.flip_h, "configured left facing uses mirrored left idle")
+	_check(player_body.animation == &"walk_left" and player_body.frame == 0 and player_body.flip_h, "configured left facing explicitly selects neutral 0001")
+	for phase in range(4):
+		var texture_path := player_body.sprite_frames.get_frame_texture(&"walk_down", phase).resource_path
+		_check(texture_path.ends_with("000%d.png" % (phase + 1)), "gait phase %d maps to sprite 000%d" % [phase, phase + 1])
 	_check(player.get_node("CollisionShape2D").position == Vector2.ZERO, "player collision remains rooted at the gameplay position")
 	_check(overworld.npc.get_node("Body").position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
 	_check(overworld.npc.get_node("CollisionShape2D").position == Vector2.ZERO, "NPC collision remains rooted at the gameplay position")
@@ -51,7 +54,7 @@ func _test_overworld_scene() -> void:
 	_check(player.test_move(player.global_transform, Vector2.LEFT * 16.0), "blocked tile contributes live physics geometry")
 	_check(not player._try_begin_step(Vector2i.LEFT), "grid check rejects blocked destination")
 	_check(player.facing == Vector2i.LEFT, "blocked direction still changes facing")
-	_check(player_body.animation == &"idle_left" and not player_body.is_playing(), "blocked movement remains in the facing idle pose")
+	_check(player_body.animation == &"walk_left" and player_body.frame == 0 and not player_body.is_playing(), "blocked movement remains in the facing neutral pose")
 	await _test_edge_barriers(overworld, player)
 
 	var open_run := _find_open_horizontal_run(overworld)
@@ -64,7 +67,7 @@ func _test_overworld_scene() -> void:
 	var landing_frames: Array[int] = []
 	player.step_finished.connect(func(_cell: Vector2i): landing_frames.append(player_body.frame))
 	_check(player._try_begin_step(Vector2i.RIGHT), "open grid step begins")
-	_check(player_body.animation == &"walk_right" and player_body.is_playing() and not player_body.flip_h, "right step plays the unmirrored walk cycle")
+	_check(player_body.animation == &"walk_right" and not player_body.is_playing() and not player_body.flip_h, "right step uses explicitly selected unmirrored gait frames")
 	player.queued_direction = Vector2i.UP
 	player.queued_direction = Vector2i.RIGHT
 	for index in range(8):
@@ -72,7 +75,31 @@ func _test_overworld_scene() -> void:
 	_check(player.grid_cell == open_run[2], "latest queued direction replaces the previous direction")
 	_check(player.position == player.cell_center(open_run[2]), "completed movement snaps exactly to cell center")
 	_check(landing_frames == [2, 0], "continuous walking alternates neutral 0003 and 0001 landing frames")
-	_check(player_body.animation == &"idle_right" and not player_body.is_playing(), "completed movement returns to the facing idle pose")
+	_check(player_body.animation == &"walk_right" and player_body.frame == 0 and not player_body.is_playing(), "completed movement preserves the alternating neutral gait phase")
+	_check(player.gait_phase == 0, "two isolated character-width movements preserve and wrap the four-phase gait")
+
+	player.configure(overworld.collision_grid, overworld.npc, open_run[0], Vector2i.RIGHT)
+	player._advance_gait_from_displacement(8.25)
+	_check(player.gait_phase == 1 and is_equal_approx(player.walking_distance_accumulator, 0.25), "actual displacement advances gait and preserves threshold remainder")
+	player._settle_gait_to_neutral()
+	_check(player.gait_phase == 2 and player_body.frame == 1, "stride A settles logically to neutral B before the next sprite sync")
+	player._sync_animation()
+	_check(player_body.frame == 2, "neutral B displays 0003 without resetting gait continuity")
+	player._advance_gait_from_displacement(0.0)
+	_check(player.gait_phase == 2, "zero collision displacement does not advance gait")
+	player._advance_gait_from_displacement(8.0)
+	_check(player.gait_phase == 3, "movement after neutral B advances to the opposite stride")
+	player._settle_gait_to_neutral()
+	player._sync_animation()
+	_check(player.gait_phase == 0 and player_body.frame == 0, "stride B settles to persistent neutral A")
+
+	player.configure(overworld.collision_grid, overworld.npc, open_run[0], Vector2i.DOWN)
+	var turn_origin := player.position
+	player._begin_turn(Vector2i.RIGHT)
+	_check(player.movement_state == player.MovementState.TURNING and player.position == turn_origin, "new standstill direction enters TURNING without translation")
+	_check(player.facing == Vector2i.RIGHT and player_body.frame == 1, "turn-in-place visibly uses the upcoming stride frame")
+	player._finish_turn()
+	_check(player.is_grid_idle() and player.position == turn_origin and player_body.frame == 0, "direction tap settles stationary in the new facing neutral")
 	_check(camera.get_screen_center_position().is_equal_approx(player.global_position), "camera remains centered on the player after movement")
 	player.configure(overworld.collision_grid, overworld.npc, Vector2i(1, 1), Vector2i.RIGHT)
 	await get_tree().process_frame
