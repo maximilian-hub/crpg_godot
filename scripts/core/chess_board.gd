@@ -48,6 +48,7 @@ const PIECE_MOVE_DURATION = 0.12
 
 func _ready():
 	setup_audio_players()
+	get_viewport().size_changed.connect(_layout_board)
 
 func setup_audio_players():
 	add_child(powerup_player)
@@ -78,6 +79,14 @@ func draw_board(modelBoard: Array) -> Dictionary:
 			if piece_data != null and piece_node != null:
 				rendered[piece_data] = piece_node
 	return rendered
+
+func _layout_board() -> void:
+	if board.is_empty():
+		return
+	for square in $Squares.get_children():
+		square.position = grid_to_screen(square.coordinate.x, square.coordinate.y)
+	for piece in $Pieces.get_children():
+		piece.position = grid_to_screen(piece.coordinate.x, piece.coordinate.y)
 
 func draw_square(row: int, col: int, pos: Vector2):
 	var squares = $Squares

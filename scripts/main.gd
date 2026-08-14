@@ -5,7 +5,9 @@ class_name GameFlow
 const OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
 const CHESS_SCENE := preload("res://scenes/chess_game.tscn")
 const TARGET_OVERWORLD_LOGICAL_SIDE := 180
-const INTEGER_SCALE_OFFSET := 2 ## for adjusting the relative sizing.
+const DIALOGUE_LOGICAL_MARGIN := 4
+const DIALOGUE_LOGICAL_HEIGHT := 44
+const DIALOGUE_LOGICAL_BOTTOM_MARGIN := 5
 
 @export var transition_duration: float = 0.25
 
@@ -20,6 +22,7 @@ var active_battle: ChessGame = null
 var is_transitioning: bool = false
 var overworld_frame: SubViewportContainer = null
 var overworld_viewport: SubViewport = null
+var overworld_dialogue_layer: CanvasLayer = null
 
 func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
@@ -44,6 +47,10 @@ func _show_overworld(pending_result: String) -> void:
 	active_overworld.configure(player_cell, player_facing, encounter_state, pending_result)
 	active_overworld.challenge_requested.connect(_on_challenge_requested)
 	overworld_viewport.add_child(active_overworld)
+	# Render text at window resolution while retaining the overworld's dialogue logic.
+	overworld_dialogue_layer = active_overworld.get_node("DialogueLayer") as CanvasLayer
+	overworld_dialogue_layer.reparent(self)
+	_layout_overworld_frame()
 
 func _layout_overworld_frame() -> void:
 	if not is_instance_valid(overworld_frame) or not is_instance_valid(overworld_viewport):
@@ -55,6 +62,29 @@ func _layout_overworld_frame() -> void:
 	overworld_frame.position = layout.position
 	overworld_frame.size = Vector2(layout.frame_side, layout.frame_side)
 	overworld_frame.stretch_shrink = layout.integer_scale
+	if is_instance_valid(overworld_dialogue_layer):
+		_layout_overworld_dialogue(layout)
+
+func _layout_overworld_dialogue(layout: Dictionary) -> void:
+	var scale: int = layout.integer_scale
+	var frame_position: Vector2 = layout.position
+	var frame_side: int = layout.frame_side
+	var panel := overworld_dialogue_layer.get_node("DialoguePanel") as Control
+	var dialogue_label := panel.get_node("DialogueLabel") as Label
+	var choice_label := panel.get_node("ChoiceLabel") as Label
+	var margin := DIALOGUE_LOGICAL_MARGIN * scale
+	var panel_height := DIALOGUE_LOGICAL_HEIGHT * scale
+	panel.position = frame_position + Vector2(
+		margin,
+		frame_side - panel_height - DIALOGUE_LOGICAL_BOTTOM_MARGIN * scale
+	)
+	panel.size = Vector2(frame_side - margin * 2, panel_height)
+	dialogue_label.position = Vector2(6, 4) * scale
+	dialogue_label.size = Vector2(panel.size.x - 12 * scale, 23 * scale)
+	dialogue_label.add_theme_font_size_override("font_size", 8 * scale)
+	choice_label.position = Vector2(6, 29) * scale
+	choice_label.size = Vector2(panel.size.x - 12 * scale, 11 * scale)
+	choice_label.add_theme_font_size_override("font_size", 6 * scale)
 
 static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
 	var integer_scale := maxi(1, floori(float(window_size.y) / TARGET_OVERWORLD_LOGICAL_SIDE))
@@ -66,7 +96,7 @@ static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
 			floori((window_size.y - frame_side) * 0.5)
 		),
 		"frame_side": frame_side,
-		"integer_scale": (integer_scale + INTEGER_SCALE_OFFSET),
+		"integer_scale": integer_scale,
 		"logical_side": logical_side,
 	}
 
@@ -112,6 +142,10 @@ func _clear_active_content() -> void:
 	active_battle = null
 	overworld_frame = null
 	overworld_viewport = null
+	if is_instance_valid(overworld_dialogue_layer):
+		overworld_dialogue_layer.get_parent().remove_child(overworld_dialogue_layer)
+		overworld_dialogue_layer.queue_free()
+	overworld_dialogue_layer = null
 	for child in active_content.get_children():
 		child.queue_free()
 		active_content.remove_child(child)

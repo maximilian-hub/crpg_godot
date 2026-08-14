@@ -153,6 +153,12 @@ func _test_main_starts_in_overworld() -> void:
 	_check(frame.stretch_shrink == expected_scale, "overworld selects an integer presentation scale")
 	_check(viewport.size == Vector2i(expected_logical_side, expected_logical_side), "overworld logical view adapts to the window height")
 	_check(viewport.snap_2d_transforms_to_pixel, "overworld viewport snaps rendered transforms to logical pixels")
+	var dialogue_layer := main.get_node("DialogueLayer") as CanvasLayer
+	var dialogue_panel := dialogue_layer.get_node("DialoguePanel") as Control
+	_check(dialogue_layer.get_parent() == main, "dialogue renders in full-resolution application space")
+	_check(dialogue_panel.position.x == frame.position.x + 4 * expected_scale, "dialogue aligns with the displayed overworld frame")
+	_check(dialogue_panel.size.x == frame.size.x - 8 * expected_scale, "dialogue width follows the displayed overworld frame")
+	_check((dialogue_panel.get_node("DialogueLabel") as Label).get_theme_font_size("font_size") == 8 * expected_scale, "dialogue font is rendered at presentation resolution")
 	var embedded_background := main.active_overworld.get_node("BackgroundLayer/Background") as ColorRect
 	_check(embedded_background.size == Vector2(expected_logical_side, expected_logical_side), "viewport-fixed background fills the logical viewport")
 	var fullscreen_layout := GameFlow.calculate_overworld_layout(Vector2i(2560, 1600))
@@ -177,6 +183,14 @@ func _test_main_starts_in_overworld() -> void:
 	await main._transition_to_battle()
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
+	var battle_background := main.active_battle.get_node("Background") as TextureRect
+	var battle_background_coverage := battle_background.size * battle_background.scale
+	var battle_viewport_size := main.get_viewport().get_visible_rect().size
+	_check(battle_background_coverage.x >= battle_viewport_size.x and battle_background_coverage.y >= battle_viewport_size.y, "battle background covers the complete viewport (%s vs %s)" % [battle_background_coverage, battle_viewport_size])
+	var white_ui := main.active_battle.get_node("UI/WhitePlayerUIContainer") as MarginContainer
+	var black_ui := main.active_battle.get_node("UI/BlackPlayerUIContainer") as MarginContainer
+	_check(white_ui.anchor_right == 1.0 and white_ui.anchor_bottom == 1.0, "white battle UI uses viewport anchors")
+	_check(black_ui.anchor_right == 1.0 and black_ui.anchor_top == 0.0, "black battle UI uses viewport anchors")
 	_check(main.active_battle.control_mode == ChessGame.ControlMode.PLAYER_VS_CPU, "NPC battle uses player-vs-CPU mode")
 	_check(main.active_battle.ai_color == "black", "NPC controls Black")
 
