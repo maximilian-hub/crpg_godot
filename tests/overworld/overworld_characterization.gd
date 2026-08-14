@@ -68,15 +68,29 @@ func _test_overworld_scene() -> void:
 	player.step_finished.connect(func(_cell: Vector2i): landing_frames.append(player_body.frame))
 	_check(player._try_begin_step(Vector2i.RIGHT), "open grid step begins")
 	_check(player_body.animation == &"walk_right" and not player_body.is_playing() and not player_body.flip_h, "right step uses explicitly selected unmirrored gait frames")
-	player.queued_direction = Vector2i.UP
-	player.queued_direction = Vector2i.RIGHT
+	var mid_step_tap := InputEventAction.new()
+	mid_step_tap.action = "move_up"
+	mid_step_tap.pressed = true
+	player._unhandled_input(mid_step_tap)
+	_check(player.facing == Vector2i.RIGHT and player_body.animation == &"walk_right", "mid-step direction tap does not change facing or animation")
 	for index in range(8):
 		await get_tree().physics_frame
-	_check(player.grid_cell == open_run[2], "latest queued direction replaces the previous direction")
-	_check(player.position == player.cell_center(open_run[2]), "completed movement snaps exactly to cell center")
-	_check(landing_frames == [2, 0], "continuous walking alternates neutral 0003 and 0001 landing frames")
-	_check(player_body.animation == &"walk_right" and player_body.frame == 0 and not player_body.is_playing(), "completed movement preserves the alternating neutral gait phase")
-	_check(player.gait_phase == 0, "two isolated character-width movements preserve and wrap the four-phase gait")
+	_check(player.grid_cell == open_run[1] and player.is_grid_idle(), "released mid-step tap does not queue another step")
+	_check(player.position == player.cell_center(open_run[1]), "completed movement lands exactly at its original destination")
+	_check(landing_frames == [2], "single movement lands on persistent neutral 0003")
+
+	var open_cross := _find_open_cross(overworld)
+	player.configure(overworld.collision_grid, overworld.npc, open_cross + Vector2i.LEFT, Vector2i.RIGHT)
+	player.step_duration = 0.01
+	_check(player._try_begin_step(Vector2i.RIGHT), "step toward held-direction test boundary begins")
+	Input.action_press("move_up")
+	for index in range(8):
+		await get_tree().physics_frame
+		if player.grid_cell == open_cross:
+			break
+	Input.action_release("move_up")
+	_check(player.grid_cell == open_cross and player.target_cell == open_cross + Vector2i.UP, "direction held at landing begins the next step")
+	_check(player.facing == Vector2i.UP and player_body.animation == &"walk_up", "held direction changes facing only at the step boundary")
 
 	player.configure(overworld.collision_grid, overworld.npc, open_run[0], Vector2i.RIGHT)
 	player._advance_gait_from_displacement(8.25)

@@ -249,13 +249,12 @@ position = Vector2(11.3255, 28.8676)
 
 [node name="DialogueLayer" type="CanvasLayer" parent="."]
 layer = 10
-visible = false
 
 [node name="DialoguePanel" type="Panel" parent="DialogueLayer"]
 offset_left = 4.0
-offset_top = 112.0
+offset_top = 111.0
 offset_right = 156.0
-offset_bottom = 156.0
+offset_bottom = 155.0
 
 [node name="DialogueLabel" type="Label" parent="DialogueLayer/DialoguePanel"]
 layout_mode = 0

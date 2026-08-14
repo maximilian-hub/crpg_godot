@@ -28,7 +28,6 @@ var target_cell := Vector2i.ZERO
 var step_origin_cell := Vector2i.ZERO
 var step_origin_gait_phase: int = 0
 var step_origin_gait_distance: float = 0.0
-var queued_direction := Vector2i.ZERO
 var input_lock_pending: bool = false
 var gait_phase: int = 0
 var walking_distance_accumulator: float = 0.0
@@ -53,7 +52,6 @@ func configure(
 	facing = start_facing
 	position = cell_center(start_cell)
 	velocity = Vector2.ZERO
-	queued_direction = Vector2i.ZERO
 	input_lock_pending = false
 	gait_phase = 0
 	walking_distance_accumulator = 0.0
@@ -68,7 +66,6 @@ func set_input_enabled(enabled: bool) -> void:
 		if movement_state == MovementState.INPUT_LOCKED:
 			movement_state = MovementState.GRID_IDLE
 	else:
-		queued_direction = Vector2i.ZERO
 		turn_direction = Vector2i.ZERO
 		velocity = Vector2.ZERO
 		if movement_state == MovementState.GRID_STEPPING:
@@ -87,8 +84,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed(action):
 			var direction: Vector2i = DIRECTIONS[action]
 			if movement_state == MovementState.GRID_STEPPING:
-				facing = direction
-				queued_direction = direction
+				# Keep facing locked to the active step. Landing samples held input.
+				pass
 			elif movement_state == MovementState.TURNING:
 				_begin_turn(direction)
 			elif direction != facing:
@@ -130,7 +127,7 @@ func _physics_process(delta: float) -> void:
 			input_lock_pending = false
 			movement_state = MovementState.INPUT_LOCKED
 		else:
-			_begin_buffered_or_held_step()
+			_begin_held_step()
 		_sync_animation()
 		return
 
@@ -207,17 +204,13 @@ func _cancel_step_after_contact() -> void:
 	gait_phase = step_origin_gait_phase
 	walking_distance_accumulator = step_origin_gait_distance
 	velocity = Vector2.ZERO
-	queued_direction = Vector2i.ZERO
 	movement_state = MovementState.INPUT_LOCKED if input_lock_pending else MovementState.GRID_IDLE
 	input_lock_pending = false
 	_settle_gait_to_neutral()
 	_sync_animation()
 
-func _begin_buffered_or_held_step() -> void:
-	var next_direction := queued_direction
-	queued_direction = Vector2i.ZERO
-	if next_direction == Vector2i.ZERO:
-		next_direction = _get_held_direction()
+func _begin_held_step() -> void:
+	var next_direction := _get_held_direction()
 	if next_direction != Vector2i.ZERO:
 		_try_begin_step(next_direction)
 
