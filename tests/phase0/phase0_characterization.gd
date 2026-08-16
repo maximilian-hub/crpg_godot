@@ -34,11 +34,40 @@ func _run_suite() -> void:
 	await _test_arakne_spike_burst()
 	await _test_minotaur_charge_survivor_landing()
 	await _test_minotaur_rage_barrier()
+	await _test_active_bone_pawn_summon_presentation()
 	await _test_rage_raise_dead_death_square_target()
 	await _test_terminal_rank_raise_dead_expiration()
 	await _test_rage_priority_before_raise_dead()
 	await _test_raise_dead_selection_resume()
 	await _test_battle_completion()
+
+
+func _test_active_bone_pawn_summon_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var necromancer := NecromancerKing.new("white", Vector2i(7, 4))
+	var pawn := Pawn.new("white", Vector2i(6, 0))
+	_reset_battle(model, controller, [necromancer, pawn])
+	var observation := {"summoned_count": 0}
+	model.piece_summoned.connect(
+		func(piece: ModelPiece, _completion: CompletionGate):
+			if piece is BonePawn:
+				observation["summoned_count"] += 1
+	)
+	var target: Vector2i = necromancer.get_active_ability_targets()[0]
+	await model.submit_active_ability(necromancer, target)
+	await get_tree().process_frame
+
+	var summoned_piece: ModelPiece = model.board[target.x][target.y]
+	var piece_node: Node2D = context.adapter.get_piece_view(summoned_piece)
+	_expect(summoned_piece is BonePawn and observation["summoned_count"] == 1, "active ability emits one Bone Pawn summon presentation event")
+	_expect(piece_node.position == context.view.grid_to_screen(target.x, target.y), "summoned Bone Pawn settles exactly on its square")
+	_expect((piece_node.get_node("Sprite2D") as Sprite2D).material == null, "summoned Bone Pawn restores its original sprite material")
+	_expect(_count_summon_portals(context.view) == 0, "active summon portal cleans itself up")
+	_expect(not model.action_in_progress, "active summon animation completes before action resolution ends")
+
+	await _destroy_game(context.game)
 
 
 func _test_default_initialization_and_normal_move() -> void:
@@ -239,7 +268,9 @@ func _test_rage_raise_dead_death_square_target() -> void:
 	_expect(controller.non_move_selection_mode, "Rage defeat enters Raise Dead selection mode")
 	_expect(Vector2i(3, 4) in controller.legal_moves, "Controller receives the empty Rage death square as a Raise Dead target")
 	await model.submit_reaction_selection(Vector2i(3, 4))
+	await get_tree().process_frame
 	_expect(model.board[3][4] is BonePawn, "composed Raise Dead summons on the Rage death square")
+	_expect(_count_summon_portals(context.view) == 0, "Raise Dead uses and cleans up the shared summon portal")
 	_expect(not controller.non_move_selection_mode, "death-square selection exits reaction mode")
 	await _destroy_game(context.game)
 
@@ -252,16 +283,22 @@ func _test_terminal_rank_raise_dead_expiration() -> void:
 	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
 	var rook := Rook.new("white", Vector2i(7, 4))
 	_reset_battle(model, controller, [minotaur, necromancer, rook])
-	var observation := {"bone_pawns_added": 0, "bone_pawns_destroyed": 0}
+	var observation := {"bone_pawns_added": 0, "bone_pawns_destroyed": 0, "event_order": []}
 	model.piece_added.connect(
 		func(piece: ModelPiece):
 			if piece is BonePawn:
 				observation["bone_pawns_added"] += 1
 	)
+	model.piece_summoned.connect(
+		func(piece: ModelPiece, _completion: CompletionGate):
+			if piece is BonePawn:
+				observation["event_order"].append("summoned")
+	)
 	model.piece_destroyed.connect(
 		func(piece: ModelPiece):
 			if piece is BonePawn:
 				observation["bone_pawns_destroyed"] += 1
+				observation["event_order"].append("destroyed")
 	)
 
 	model.begin_action("white")
@@ -270,6 +307,7 @@ func _test_terminal_rank_raise_dead_expiration() -> void:
 	_expect(Vector2i(7, 4) in controller.legal_moves, "Controller keeps the opposite back rank selectable")
 	await model.submit_reaction_selection(Vector2i(7, 4))
 	_expect(observation["bone_pawns_added"] == 1 and observation["bone_pawns_destroyed"] == 1, "composed summon immediately adds and destroys the terminal Bone Pawn")
+	_expect(observation["event_order"] == ["summoned", "destroyed"], "terminal Bone Pawn finishes its summon event before destruction")
 	_expect(model.board[7][4] == null, "composed terminal-rank summon leaves the Model square empty")
 	_expect(context.adapter.get_piece_view(model.last_destroyed_piece) == null, "presentation removes the expired Bone Pawn mapping")
 	_expect(not controller.non_move_selection_mode and model.current_turn == "black", "terminal-rank selection resolves and finishes the action")
@@ -442,6 +480,14 @@ func _count_board_pieces(model: ChessBoardModel) -> int:
 		for piece in row:
 			if piece != null:
 				count += 1
+	return count
+
+
+func _count_summon_portals(view: ChessBoardView) -> int:
+	var count := 0
+	for child in view.get_children():
+		if child is BonePawnSummonPortal:
+			count += 1
 	return count
 
 

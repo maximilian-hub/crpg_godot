@@ -87,7 +87,7 @@ func _layout_overworld_dialogue(layout: Dictionary) -> void:
 	choice_label.add_theme_font_size_override("font_size", 6 * scale)
 
 static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
-	var integer_scale := maxi(1, floori(float(window_size.y) / TARGET_OVERWORLD_LOGICAL_SIDE))
+	var integer_scale := maxi(1, floori(float(window_size.y) / TARGET_OVERWORLD_LOGICAL_SIDE)) + 2
 	var logical_side := maxi(1, floori(float(window_size.y) / integer_scale))
 	var frame_side := logical_side * integer_scale
 	return {

@@ -22,13 +22,15 @@ func has_active_ability() -> bool:
 ## Executes Summon Bone Pawn, but does not end the turn.
 ## The Model's action resolver finishes the action after all reactions resolve.
 func active_target_selected(target: Vector2i):
-	summon_bone_pawn(target)
+	await summon_bone_pawn(target)
 	reset_cooldown()
 
 func summon_bone_pawn(target: Vector2i):
 	var new_pawn := BonePawn.new(self.color, target)
-	if model.add_piece(new_pawn, target) and new_pawn._on_dead_row():
-		model.destroy_piece(new_pawn, true)
+	if model.add_piece(new_pawn, target):
+		await model.announce_piece_summoned(new_pawn)
+		if new_pawn._on_dead_row():
+			model.destroy_piece(new_pawn, true)
 
 func _on_piece_destroyed(destroyed_piece: ModelPiece):
 	for base_type in model.MAJOR_MINOR_BASE_TYPES:
@@ -54,4 +56,4 @@ func get_selection_targets(action_type: String, event_data) -> Array:
 
 ## Called by the action resolver after this Necromancer's reaction target is chosen.
 func _on_special_target_selected(coord: Vector2i):
-	summon_bone_pawn(coord)
+	await summon_bone_pawn(coord)

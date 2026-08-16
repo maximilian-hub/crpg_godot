@@ -32,6 +32,8 @@ var stun_stars_scene = preload("res://effects/stun_stars.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
 var splatter_scene = preload("res://effects/blood_splatter.tscn")
 var ss_aura_scene = preload("res://effects/ss_aura.tscn")
+var bone_pawn_portal_scene = preload("res://effects/bone_pawn_portal.tscn")
+var bone_pawn_reveal_shader = preload("res://effects/bone_pawn_reveal.gdshader")
 var powerup_sound = preload("res://assets/ss_aura/ss_powerup.mp3")
 var aura_loop_sound = preload("res://assets/ss_aura/ss_aura.mp3") 
 var powerdown_sound = preload("res://assets/ss_aura/ss_powerdown.mp3")
@@ -44,6 +46,11 @@ const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
 const SQUARE_SIZE = 128
 const PIECE_MOVE_DURATION = 0.12
+
+const BONE_PAWN_SUMMON_RISE_DURATION := 1
+const BONE_PAWN_SUMMON_RISE_DISTANCE := 28.0
+const BONE_PAWN_SUMMON_SHAKE_AMPLITUDE := 4.0
+const BONE_PAWN_SUMMON_SHAKE_CYCLES := 6.0
 
 
 func _ready():
@@ -241,6 +248,50 @@ func spawn_ss_aura(piece: Node):
 	aura.add_to_group("aura")
 	piece.add_child(aura)
 	play_power_activation_sound()
+
+func play_bone_pawn_summon(piece_node: Node2D) -> void:
+	if not is_instance_valid(piece_node):
+		return
+	var sprite := piece_node.get_node_or_null("Sprite2D") as Sprite2D
+	if sprite == null:
+		return
+
+	var original_position := piece_node.position
+	var original_material := sprite.material
+	var reveal_material := ShaderMaterial.new()
+	reveal_material.shader = bone_pawn_reveal_shader
+	reveal_material.set_shader_parameter("reveal", 0.0)
+	sprite.material = reveal_material
+	piece_node.position = original_position + Vector2.DOWN * BONE_PAWN_SUMMON_RISE_DISTANCE
+
+	var portal := bone_pawn_portal_scene.instantiate() as BonePawnSummonPortal
+	portal.position = original_position + Vector2.DOWN * 35.0
+	add_child(portal)
+	await portal.open()
+
+	var elapsed := 0.0
+	while elapsed < BONE_PAWN_SUMMON_RISE_DURATION and is_instance_valid(piece_node):
+		await get_tree().process_frame
+		elapsed += get_process_delta_time()
+		var target_position := grid_to_screen(piece_node.coordinate.x, piece_node.coordinate.y)
+		var progress := clampf(elapsed / BONE_PAWN_SUMMON_RISE_DURATION, 0.0, 1.0)
+		var eased_progress := 1.0 - pow(1.0 - progress, 3.0)
+		var shake := sin(progress * TAU * BONE_PAWN_SUMMON_SHAKE_CYCLES)
+		shake *= BONE_PAWN_SUMMON_SHAKE_AMPLITUDE * (1.0 - progress)
+		piece_node.position = target_position + Vector2(
+			shake,
+			lerpf(BONE_PAWN_SUMMON_RISE_DISTANCE, 0.0, eased_progress)
+		)
+		reveal_material.set_shader_parameter("reveal", eased_progress)
+		portal.position = target_position + Vector2.DOWN * 35.0
+		portal.rotation = sin(progress * TAU * 2.0) * 0.08
+
+	if is_instance_valid(piece_node):
+		piece_node.position = grid_to_screen(piece_node.coordinate.x, piece_node.coordinate.y)
+		if is_instance_valid(sprite):
+			sprite.material = original_material
+	if is_instance_valid(portal):
+		await portal.close()
 
 	
 func remove_stun_stars(coord: Vector2i):

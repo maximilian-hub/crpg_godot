@@ -29,6 +29,7 @@ var selection_effect_piece: ModelPiece = null
 func _ready() -> void:
 	model.board_initialized.connect(_on_board_initialized)
 	model.piece_added.connect(_on_piece_added)
+	model.piece_summoned.connect(_on_piece_summoned)
 	model.piece_move_committed.connect(_on_piece_move_committed)
 	model.piece_attack_committed.connect(_on_piece_attack_committed)
 	model.piece_destroyed.connect(_on_piece_destroyed)
@@ -65,6 +66,17 @@ func _on_board_initialized(board: Array) -> void:
 
 func _on_piece_added(piece: ModelPiece) -> void:
 	_register_piece(piece, view.draw_piece(piece))
+
+
+func _on_piece_summoned(piece: ModelPiece, completion: CompletionGate) -> void:
+	if not piece is BonePawn:
+		return
+	var piece_node: Node = get_piece_view(piece)
+	if not is_instance_valid(piece_node):
+		return
+	completion.hold()
+	await view.play_bone_pawn_summon(piece_node)
+	completion.release()
 
 
 func _on_piece_move_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:

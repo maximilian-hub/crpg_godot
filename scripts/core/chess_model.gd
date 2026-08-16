@@ -20,6 +20,7 @@ signal action_cancelled()
 signal battle_finished(winner_color: String)
 signal board_initialized(board: Array)
 signal piece_added(piece: ModelPiece)
+signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_attack_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
@@ -186,6 +187,12 @@ func announce_ability_started(piece: KingPiece, ability_name: String) -> void:
 func announce_piece_attack(piece: ModelPiece, from: Vector2i, to: Vector2i) -> void:
 	var completion := CompletionGate.new()
 	piece_attack_committed.emit(piece, from, to, completion)
+	completion.close()
+	await completion.wait_until_released()
+
+func announce_piece_summoned(piece: ModelPiece) -> void:
+	var completion := CompletionGate.new()
+	piece_summoned.emit(piece, completion)
 	completion.close()
 	await completion.wait_until_released()
 
@@ -831,7 +838,7 @@ func submit_reaction_selection(coord: Vector2i) -> bool:
 
 	var action_type: String = pending_reaction["action_type"]
 	pending_reaction.clear()
-	calling_piece._on_special_target_selected(coord)
+	await calling_piece._on_special_target_selected(coord)
 	reaction_selection_resolved.emit(calling_piece, action_type, coord)
 	await continue_action_resolution()
 	return true
