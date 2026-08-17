@@ -183,21 +183,34 @@ func _test_main_starts_in_overworld() -> void:
 	await main._transition_to_battle()
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
-	var battle_frame := main.active_content.get_node("BattleFrame") as SubViewportContainer
-	var battle_viewport := battle_frame.get_node("BattleViewport") as SubViewport
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as TextureRect
-	var battle_layout := GameFlow.calculate_battle_layout(Vector2i(main.get_viewport().get_visible_rect().size))
-	_check(battle_viewport.size == GameFlow.BATTLE_LOGICAL_SIZE, "battle uses the fixed 960x540 logical canvas")
-	_check(battle_frame.stretch_shrink == battle_layout.integer_scale, "battle selects the largest fitting integer scale")
-	_check(battle_frame.position == battle_layout.position and battle_frame.size == Vector2(battle_layout.frame_size), "battle frame is centered at its integer-scaled size")
 	_check(battle_environment.size == main.get_viewport().get_visible_rect().size, "battle environment fills native window space")
-	_check(main.active_battle.get_parent() == battle_viewport, "chess game renders inside the battle viewport")
+	_check(main.battle_frame == null and main.battle_viewport == null, "fluid battle does not create a fixed-resolution frame")
+	_check(main.active_battle.get_parent() == main.active_content, "fluid chess game renders directly in native window space")
+	var battle_board := main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
+	_check(battle_board.scale_world_with_projection, "fluid battle scales its pieces and physical effects with the projected board")
+	_check(is_equal_approx(battle_board.viewport_height_width_ratio, GameFlow.FLUID_BOARD_HEIGHT_RATIO), "fluid board uses the large safe height profile")
+	_check(is_equal_approx(battle_board.viewport_width_cap_ratio, GameFlow.FLUID_BOARD_WIDTH_CAP_RATIO), "fluid board retains side clearance on narrower displays")
 	var white_ui := main.active_battle.get_node("UI/WhitePlayerUIContainer") as MarginContainer
 	var black_ui := main.active_battle.get_node("UI/BlackPlayerUIContainer") as MarginContainer
 	_check(white_ui.anchor_right == 1.0 and white_ui.anchor_bottom == 1.0, "white battle UI uses viewport anchors")
 	_check(black_ui.anchor_right == 1.0 and black_ui.anchor_top == 0.0, "black battle UI uses viewport anchors")
 	_check(main.active_battle.control_mode == ChessGame.ControlMode.PLAYER_VS_CPU, "NPC battle uses player-vs-CPU mode")
 	_check(main.active_battle.ai_color == "black", "NPC controls Black")
+	var controller := main.active_battle.get_node("ChessController") as ChessBoardController
+	var model := main.active_battle.get_node("ChessModel") as ChessBoardModel
+	var click_position := battle_board.grid_to_screen(6, 0)
+	var click_event := InputEventMouseButton.new()
+	click_event.button_index = MOUSE_BUTTON_LEFT
+	click_event.position = click_position
+	click_event.global_position = click_position
+	click_event.pressed = true
+	Input.parse_input_event(click_event)
+	await get_tree().physics_frame
+	click_event.pressed = false
+	Input.parse_input_event(click_event)
+	await get_tree().physics_frame
+	_check(controller.selected_piece == model.board[6][0], "fluid native viewport routes pointer selection to projected square collision")
 
 	var exit_results: Array[String] = []
 	main.active_battle.battle_exit_requested.connect(func(result: String): exit_results.append(result))
@@ -212,6 +225,20 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_overworld.get_player_facing() == Vector2i.LEFT, "return restores saved facing")
 	_check(main.active_overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "result dialogue opens automatically after return")
 	main.queue_free()
+	await get_tree().process_frame
+
+	var fixed_main: GameFlow = MAIN.instantiate()
+	fixed_main.transition_duration = 0.0
+	fixed_main.battle_presentation_mode = GameFlow.BattlePresentationMode.FIXED_LOGICAL
+	add_child(fixed_main)
+	await get_tree().process_frame
+	await fixed_main._transition_to_battle()
+	var fixed_frame := fixed_main.active_content.get_node("BattleFrame") as SubViewportContainer
+	var fixed_viewport := fixed_frame.get_node("BattleViewport") as SubViewport
+	_check(fixed_main.active_battle.get_parent() == fixed_viewport, "fixed comparison mode retains the logical battle viewport")
+	_check(fixed_viewport.physics_object_picking, "fixed comparison viewport retains square picking")
+	_check(not (fixed_main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView).scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
+	fixed_main.queue_free()
 	await get_tree().process_frame
 
 func _test_edge_barriers(overworld: Overworld, player: OverworldPlayer) -> void:

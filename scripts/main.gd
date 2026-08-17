@@ -10,8 +10,16 @@ const TARGET_OVERWORLD_LOGICAL_SIDE := 180
 const DIALOGUE_LOGICAL_MARGIN := 4
 const DIALOGUE_LOGICAL_HEIGHT := 44
 const DIALOGUE_LOGICAL_BOTTOM_MARGIN := 5
+const FLUID_BOARD_HEIGHT_RATIO := 1.0
+const FLUID_BOARD_WIDTH_CAP_RATIO := 0.72
+
+enum BattlePresentationMode {
+	FLUID_NATIVE,
+	FIXED_LOGICAL,
+}
 
 @export var transition_duration: float = 0.25
+@export var battle_presentation_mode: BattlePresentationMode = BattlePresentationMode.FLUID_NATIVE
 
 @onready var active_content: Node = $ActiveContent
 @onready var fade_overlay: ColorRect = $TransitionLayer/FadeOverlay
@@ -122,17 +130,25 @@ func _transition_to_battle() -> void:
 	await _fade_to(1.0)
 	_clear_active_content()
 
-	_create_battle_presentation()
+	_create_battle_environment()
 	active_battle = CHESS_SCENE.instantiate()
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.ai_color = "black"
 	active_battle.player_color = "white"
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
-	battle_viewport.add_child(active_battle)
+	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
+	if battle_presentation_mode == BattlePresentationMode.FLUID_NATIVE:
+		board_view.viewport_height_width_ratio = FLUID_BOARD_HEIGHT_RATIO
+		board_view.viewport_width_cap_ratio = FLUID_BOARD_WIDTH_CAP_RATIO
+		board_view.scale_world_with_projection = true
+		active_content.add_child(active_battle)
+	else:
+		_create_fixed_battle_frame()
+		battle_viewport.add_child(active_battle)
 	await _fade_to(0.0)
 	is_transitioning = false
 
-func _create_battle_presentation() -> void:
+func _create_battle_environment() -> void:
 	battle_environment = TextureRect.new()
 	battle_environment.name = "BattleEnvironment"
 	battle_environment.texture = BATTLE_BACKGROUND_TEXTURE
@@ -142,6 +158,7 @@ func _create_battle_presentation() -> void:
 	active_content.add_child(battle_environment)
 	battle_environment.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+func _create_fixed_battle_frame() -> void:
 	battle_frame = SubViewportContainer.new()
 	battle_frame.name = "BattleFrame"
 	battle_frame.stretch = true

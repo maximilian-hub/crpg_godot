@@ -17,6 +17,7 @@ func _ready() -> void:
 	_test_board_body(Vector2(960, 540))
 	_test_piece_ground_anchors()
 	_test_fixed_battle_layout()
+	_test_fluid_world_scale()
 	if failures.is_empty():
 		print("BOARD PROJECTION CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -135,6 +136,11 @@ func _test_fixed_battle_layout() -> void:
 		_expect(layout.integer_scale == cases[window_size], "%s selects the expected integer battle scale" % window_size)
 		_expect(layout.frame_size == GameFlow.BATTLE_LOGICAL_SIZE * layout.integer_scale, "%s preserves the fixed logical aspect" % window_size)
 		_expect(layout.position == Vector2((window_size - layout.frame_size) / 2), "%s centers the battle frame" % window_size)
+
+func _test_fluid_world_scale() -> void:
+	_expect(is_equal_approx(ChessBoardView.calculate_world_scale(486.0), 1.0), "960x540 projected board remains the 1x piece reference")
+	_expect(is_equal_approx(ChessBoardView.calculate_world_scale(972.0), 2.0), "doubling projected board width doubles every piece")
+	_expect(is_equal_approx(ChessBoardView.calculate_world_scale(1440.0), 1440.0 / 486.0), "fluid piece scale preserves fractional window fit")
 
 
 func _expect(condition: bool, description: String) -> void:

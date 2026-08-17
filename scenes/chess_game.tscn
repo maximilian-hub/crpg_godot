@@ -47,6 +47,7 @@ model = NodePath("../ChessModel")
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
 [node name="ChessBoard" type="Node2D" parent="CanvasLayer" node_paths=PackedStringArray("white_cooldown_button", "black_cooldown_button", "flash_overlay")]
+texture_filter = 1
 script = ExtResource("3_yl173")
 white_cooldown_button = NodePath("../../UI/WhitePlayerUIContainer/WhiteActiveButton")
 black_cooldown_button = NodePath("../../UI/BlackPlayerUIContainer/BlackActiveButton")

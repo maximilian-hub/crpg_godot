@@ -5,6 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_tvnf0"]
 
 [node name="Piece" type="Area2D"]
+texture_filter = 1
 input_pickable = false
 script = ExtResource("1_gebih")
 

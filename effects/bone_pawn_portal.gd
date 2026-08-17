@@ -5,21 +5,28 @@ const DISPLAY_SCALE := Vector2(0.5, 0.5)
 
 const OPEN_DURATION := 0.12
 const CLOSE_DURATION := 0.15
+var presentation_scale := 1.0
+
+func configure_presentation_scale(value: float) -> void:
+	presentation_scale = maxf(value, 0.01)
+
+func _open_scale() -> Vector2:
+	return DISPLAY_SCALE * presentation_scale
 
 func _ready() -> void:
 	z_index = -1
-	scale = DISPLAY_SCALE * 0.05
+	scale = _open_scale() * 0.05
 	modulate.a = 0.0
 
 func open() -> void:
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "scale", DISPLAY_SCALE, OPEN_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "scale", _open_scale(), OPEN_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(self, "modulate:a", 1.0, OPEN_DURATION)
 	await tween.finished
 
 func close() -> void:
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "scale", DISPLAY_SCALE * 0.05, CLOSE_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "scale", _open_scale() * 0.05, CLOSE_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "modulate:a", 0.0, CLOSE_DURATION)
 	await tween.finished
 	queue_free()

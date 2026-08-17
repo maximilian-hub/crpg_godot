@@ -43,9 +43,10 @@ Camera and Board
   acceptable for dramatic moments, but ordinary play must preserve a clear view
   of all 64 squares.
 * Board readability takes precedence over physically exact perspective.
-* Pieces should retain a consistent screen size. Do not make distant pieces
-  smaller merely to imitate real perspective; consistent scale protects
-  readability and pixel crispness.
+* Pieces should retain a consistent scale relative to one another within a
+  battle view. Do not make distant pieces smaller merely to imitate real
+  perspective. The complete piece set may scale uniformly with the board and
+  window so the position remains as large and readable as the display allows.
 * Taller pieces may obscure a modest portion of the square behind them. This is
   desirable when it reinforces the physical viewpoint, provided the board state
   and interaction markers remain quickly readable.
@@ -87,8 +88,9 @@ The current working asset standard is:
 This exact canvas standard is not irrevocably final, but all piece assets should
 be authored against a deliberate common standard. The chess presentation may
 feel analogous to "32-bit" art while the overworld feels more "16-bit": still
-pixelated, but with greater detail and physical presence. Pixel crispness must
-be preserved.
+pixelated, but with greater detail and physical presence. Nearest-neighbor
+sampling remains preferred, but fractional pixel scaling and its uneven pixel
+dimensions are acceptable when they materially improve board readability.
 
 Visual effects should probably be normalized around the same pixel-art scale
 and presentation, although the exact standard for effects is not yet decided.

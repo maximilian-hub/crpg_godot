@@ -54,6 +54,10 @@ signal square_selected(coordinate: Vector2i)
 	set(value):
 		piece_forward_bias = value
 		_request_layout()
+@export var scale_world_with_projection := false:
+	set(value):
+		scale_world_with_projection = value
+		_request_layout()
 var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
 @export_enum("white", "black") var viewing_color: String = "white"
@@ -78,6 +82,7 @@ const POWERUP_VOLUME = -20
 const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
 const PIECE_MOVE_DURATION = 0.12
+const PIECE_REFERENCE_NEAR_EDGE_WIDTH := 486.0
 
 const BONE_PAWN_SUMMON_RISE_DURATION := 1
 const BONE_PAWN_SUMMON_RISE_DISTANCE := 28.0
@@ -130,6 +135,7 @@ func _layout_board() -> void:
 		square.set_color(get_square_color(square.coordinate.x, square.coordinate.y))
 	for piece in $Pieces.get_children():
 		piece.position = grid_to_screen(piece.coordinate.x, piece.coordinate.y)
+		piece.scale = Vector2.ONE * get_world_scale()
 		_update_piece_depth(piece)
 
 func set_viewing_color(color: String) -> void:
@@ -193,6 +199,7 @@ func draw_piece(piece_data: ModelPiece) -> Node:
 	var piece = piece_scene.instantiate()
 	piece.position = pos
 	piece.set_model(piece_data)
+	piece.scale = Vector2.ONE * get_world_scale()
 	piece.coordinate = Vector2i(row, col)
 	_update_piece_depth(piece)
 	pieces.add_child(piece)
@@ -224,6 +231,14 @@ func grid_to_screen(row: int, col: int) -> Vector2:
 
 func cell_to_screen_center(row: int, col: int) -> Vector2:
 	return projection.get_cell_center(Vector2i(row, col))
+
+func get_world_scale() -> float:
+	if not scale_world_with_projection:
+		return 1.0
+	return calculate_world_scale(projection.get_near_edge_width())
+
+static func calculate_world_scale(near_edge_width: float) -> float:
+	return maxf(near_edge_width / PIECE_REFERENCE_NEAR_EDGE_WIDTH, 0.01)
 
 func _update_piece_depth(piece_node: Node2D) -> void:
 	piece_node.z_index = projection.get_display_coordinate(piece_node.coordinate).x
@@ -310,6 +325,7 @@ func promote_piece_at(coord: Vector2i, new_name: String):
 func spawn_explosion(pos: Vector2):
 	var explosion = explosion_scene.instantiate()
 	explosion.position = pos
+	explosion.scale *= get_world_scale()
 	explosion.z_index = 20
 	add_child(explosion)
 	
@@ -317,6 +333,7 @@ func spawn_splatter(piece_node: Node2D):
 	if not is_instance_valid(piece_node):
 		return
 	var splatter = splatter_scene.instantiate()
+	splatter.scale *= get_world_scale()
 	if piece_node.has_method("get_body_anchor") and piece_node.has_method("get_anchor_position_in"):
 		splatter.position = piece_node.get_anchor_position_in(self, piece_node.get_body_anchor())
 	else:
@@ -350,6 +367,9 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 	if sprite == null:
 		return
 
+	var world_scale := get_world_scale()
+	var summon_rise_distance := BONE_PAWN_SUMMON_RISE_DISTANCE * world_scale
+	var summon_shake_amplitude := BONE_PAWN_SUMMON_SHAKE_AMPLITUDE * world_scale
 	var original_position := piece_node.position
 	var target_position := grid_to_screen(piece_node.coordinate.x, piece_node.coordinate.y)
 	var original_material := sprite.material
@@ -357,9 +377,10 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 	reveal_material.shader = bone_pawn_reveal_shader
 	reveal_material.set_shader_parameter("reveal", 0.0)
 	sprite.material = reveal_material
-	piece_node.position = original_position + Vector2.DOWN * BONE_PAWN_SUMMON_RISE_DISTANCE
+	piece_node.position = original_position + Vector2.DOWN * summon_rise_distance
 
 	var portal := bone_pawn_portal_scene.instantiate() as BonePawnSummonPortal
+	portal.configure_presentation_scale(world_scale)
 	portal.position = target_position
 	add_child(portal)
 	await portal.open()
@@ -372,10 +393,10 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 		var progress := clampf(elapsed / BONE_PAWN_SUMMON_RISE_DURATION, 0.0, 1.0)
 		var eased_progress := 1.0 - pow(1.0 - progress, 3.0)
 		var shake := sin(progress * TAU * BONE_PAWN_SUMMON_SHAKE_CYCLES)
-		shake *= BONE_PAWN_SUMMON_SHAKE_AMPLITUDE * (1.0 - progress)
+		shake *= summon_shake_amplitude * (1.0 - progress)
 		piece_node.position = target_position + Vector2(
 			shake,
-			lerpf(BONE_PAWN_SUMMON_RISE_DISTANCE, 0.0, eased_progress)
+			lerpf(summon_rise_distance, 0.0, eased_progress)
 		)
 		reveal_material.set_shader_parameter("reveal", eased_progress)
 		portal.position = target_position
