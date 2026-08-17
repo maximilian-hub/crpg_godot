@@ -27,6 +27,9 @@ var completed_player_result: String = ""
 func _ready() -> void:
 	get_viewport().size_changed.connect(_layout_background)
 	_layout_background()
+	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
+	if board_view != null:
+		board_view.set_viewing_color(player_color)
 	if model == null:
 		printerr("ChessGame has no ChessBoardModel assigned.")
 		return

@@ -1,21 +1,27 @@
 extends Area2D
+class_name SquareView
 
 var coordinate: Vector2i
-signal square_clicked(coordinate)
+signal square_clicked(coordinate: Vector2i)
 
-func _ready():
-	connect("input_event", _on_input_event)
+func _ready() -> void:
+	input_event.connect(_on_input_event)
 
-func _on_input_event(_viewport, event, _shape_idx):
+func _on_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		emit_signal("square_clicked", coordinate)
+		square_clicked.emit(coordinate)
 
-func set_color(color: Color):
-	var sprite = $Sprite2D
-	sprite.modulate = color
+func configure_geometry(model_coordinate: Vector2i, points: PackedVector2Array) -> void:
+	coordinate = model_coordinate
+	$Surface.polygon = points
+	$CollisionPolygon2D.polygon = points
+	$Highlight.polygon = points
 
-func highlight():
+func set_color(color: Color) -> void:
+	$Surface.color = color
+
+func highlight() -> void:
 	$Highlight.visible = true
 
-func clear_highlight():
+func clear_highlight() -> void:
 	$Highlight.visible = false

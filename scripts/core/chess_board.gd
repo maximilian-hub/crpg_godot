@@ -26,7 +26,9 @@ var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
 @export var light_square_color = Color(1, 1, 1) 
 @export var dark_square_color = Color(0.3, 0.3, 0.3)
+@export_enum("white", "black") var viewing_color: String = "white"
 var board: Array
+var projection := ChessBoardProjection.new()
 var hp_bar_scene = preload("res://ui/hp_bar.tscn")
 var stun_stars_scene = preload("res://effects/stun_stars.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
@@ -44,7 +46,6 @@ var active_loop_player: AudioStreamPlayer
 const POWERUP_VOLUME = -20
 const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
-const SQUARE_SIZE = 128
 const PIECE_MOVE_DURATION = 0.12
 
 const BONE_PAWN_SUMMON_RISE_DURATION := 1
@@ -74,12 +75,12 @@ func setup_audio_players():
 # renders the board.	
 func draw_board(modelBoard: Array) -> Dictionary:
 	board = modelBoard
+	_configure_projection()
 	var rendered: Dictionary = {}
 	
 	for row in range(board.size()):
 		for col in range(board[row].size()):
-			var pos = grid_to_screen(row, col)
-			draw_square(row,col,pos)
+			draw_square(row, col)
 			#draw_piece(row,col,pos)
 			var piece_data: ModelPiece = board[row][col]
 			var piece_node := draw_piece(piece_data)
@@ -90,18 +91,34 @@ func draw_board(modelBoard: Array) -> Dictionary:
 func _layout_board() -> void:
 	if board.is_empty():
 		return
+	_configure_projection()
 	for square in $Squares.get_children():
-		square.position = grid_to_screen(square.coordinate.x, square.coordinate.y)
+		square.configure_geometry(square.coordinate, projection.get_cell_polygon(square.coordinate))
 	for piece in $Pieces.get_children():
 		piece.position = grid_to_screen(piece.coordinate.x, piece.coordinate.y)
+		_update_piece_depth(piece)
 
-func draw_square(row: int, col: int, pos: Vector2):
+func set_viewing_color(color: String) -> void:
+	viewing_color = color if color == "black" else "white"
+	_layout_board()
+
+func _configure_projection() -> void:
+	projection.configure(
+		get_viewport_rect().size,
+		board.size(),
+		board[0].size(),
+		viewing_color
+	)
+
+func draw_square(row: int, col: int):
 	var squares = $Squares
-	var square = square_scene.instantiate()
+	var square: SquareView = square_scene.instantiate()
 	var square_color = get_square_color(row, col)
 	square.set_color(square_color)
-	square.position = pos
-	square.coordinate = Vector2i(row, col)
+	square.configure_geometry(
+		Vector2i(row, col),
+		projection.get_cell_polygon(Vector2i(row, col))
+	)
 	square.connect("square_clicked", _on_square_selected)
 	square.z_index = -2
 	squares.add_child(square)
@@ -119,6 +136,7 @@ func draw_piece(piece_data: ModelPiece) -> Node:
 	piece.position = pos
 	piece.set_model(piece_data)
 	piece.coordinate = Vector2i(row, col)
+	_update_piece_depth(piece)
 	pieces.add_child(piece)
 
 	# Does it need an HP bar?
@@ -141,14 +159,12 @@ func get_piece_node(coord: Vector2i) -> Node:
 	
 	return desired_piece
 
-## Converts a board position (eg 0,1) into a screen position for rendering purposes
+## Compatibility wrapper for presentation code that targets a logical cell.
 func grid_to_screen(row: int, col: int) -> Vector2:
-	var board_pixel_width = board[0].size() * SQUARE_SIZE
-	var board_pixel_height = board.size() * SQUARE_SIZE
-	var viewport_size = get_viewport_rect().size
-	var offset_x = (viewport_size.x - board_pixel_width) / 2 + SQUARE_SIZE / 2
-	var offset_y = (viewport_size.y - board_pixel_height) / 2 + SQUARE_SIZE / 2
-	return Vector2(col * SQUARE_SIZE + offset_x, row * SQUARE_SIZE + offset_y)
+	return projection.get_cell_anchor(Vector2i(row, col))
+
+func _update_piece_depth(piece_node: Node2D) -> void:
+	piece_node.z_index = projection.get_display_coordinate(piece_node.coordinate).x
 			
 func get_square_color(row: int, col: int):
 	var square_color
@@ -178,6 +194,7 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 		return
 
 	piece_node.coordinate = to
+	_update_piece_depth(piece_node)
 	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
 
 func attack_piece_node(piece_node: Node, to: Vector2i) -> void:
@@ -229,11 +246,13 @@ func promote_piece_at(coord: Vector2i, new_name: String):
 func spawn_explosion(pos: Vector2):
 	var explosion = explosion_scene.instantiate()
 	explosion.position = pos
+	explosion.z_index = 20
 	add_child(explosion)
 	
 func spawn_splatter(coord: Vector2i):
 	var splatter = splatter_scene.instantiate()
 	splatter.position = grid_to_screen(coord.x, coord.y)
+	splatter.z_index = 20
 	add_child(splatter)
 	
 func spawn_stun_stars(stunned_piece: Node):
