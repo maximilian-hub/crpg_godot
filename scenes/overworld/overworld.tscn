@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=4 uid="uid://piuej0d1064"]
+[gd_scene load_steps=18 format=4 uid="uid://piuej0d1064"]
 
 [ext_resource type="Script" uid="uid://bf5oj43hu2dm4" path="res://scripts/overworld/overworld.gd" id="1_overworld"]
 [ext_resource type="Texture2D" uid="uid://bl6kvqrccy6rn" path="res://assets/overworld/test_map.png" id="2_map"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/mushroom_log.tscn" id="9_mushroom_log"]
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/rock_faces.tscn" id="10_rock_faces"]
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/pine_tree.tscn" id="11_pine_tree"]
+[ext_resource type="Texture2D" uid="uid://drb71dllp55k6" path="res://assets/overworld/characters/hood/hood_down_0001.png" id="12_hood_down"]
 
 [sub_resource type="TileSetAtlasSource" id="CollisionAtlas"]
 resource_name = "Fully Blocked Cells"
@@ -107,10 +108,10 @@ position = Vector2(104, 88)
 collision_mask = 2
 script = ExtResource("5_npc")
 
-[node name="Body" type="Polygon2D" parent="YSortedWorld/Npc"]
+[node name="Body" type="Sprite2D" parent="YSortedWorld/Npc"]
+texture_filter = 1
 position = Vector2(0, -4)
-color = Color(0.9, 0.3, 0.3, 1)
-polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
+texture = ExtResource("12_hood_down")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="YSortedWorld/Npc"]
 shape = SubResource("NpcShape")
