@@ -1,5 +1,8 @@
 extends Node
 
+const BOARD_BODY_SCENE := preload("res://scenes/board_body.tscn")
+const DEFAULT_VISUAL_STYLE := preload("res://assets/chess_board_default_style.tres")
+
 var failures: Array[String] = []
 var checks := 0
 
@@ -8,6 +11,9 @@ func _ready() -> void:
 	_test_geometry(Vector2(1920, 1080))
 	_test_geometry(Vector2(960, 540))
 	_test_player_relative_orientation()
+	_test_adjustable_layout()
+	_test_board_body(Vector2(1920, 1080))
+	_test_board_body(Vector2(960, 540))
 	if failures.is_empty():
 		print("BOARD PROJECTION CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -45,6 +51,41 @@ func _test_player_relative_orientation() -> void:
 	_expect(white_view.get_cell_anchor(Vector2i(7, 0)).y > white_view.get_cell_anchor(Vector2i(0, 0)).y, "White back rank is nearest from White's seat")
 	_expect(black_view.get_cell_anchor(Vector2i(0, 0)).y > black_view.get_cell_anchor(Vector2i(7, 0)).y, "Black back rank is nearest from Black's seat")
 	_expect(black_view.get_cell_anchor(Vector2i(0, 0)).x > black_view.get_cell_anchor(Vector2i(0, 7)).x, "Black viewpoint reverses files")
+
+
+func _test_adjustable_layout() -> void:
+	var projection := ChessBoardProjection.new()
+	projection.configure(Vector2(1920, 1080), 8, 8, "white")
+	var original_outline := projection.get_board_outline()
+	projection.configure(Vector2(1920, 1080), 8, 8, "white", 0.80, 0.55, 0.90, 0.98, 0.42)
+	var adjusted_outline := projection.get_board_outline()
+	_expect(adjusted_outline != original_outline, "layout ratios change projected geometry")
+	_expect(adjusted_outline[0].y < original_outline[0].y, "vertical center ratio moves the board")
+	_expect(projection.get_near_edge_width() > 0.0, "projection exposes its near-edge width")
+	_expect(projection.get_presentation_scale() > 0.0, "projection exposes a positive presentation scale")
+
+
+func _test_board_body(viewport_size: Vector2) -> void:
+	var projection := ChessBoardProjection.new()
+	projection.configure(viewport_size, 8, 8, "white")
+	var body := BOARD_BODY_SCENE.instantiate()
+	add_child(body)
+	body.configure(
+		projection.get_board_outline(),
+		projection.get_presentation_scale(),
+		DEFAULT_VISUAL_STYLE
+	)
+	var near_frame := body.get_node("TopFrame/Near") as Polygon2D
+	var front := body.get_node("Thickness/Front") as Polygon2D
+	var shadow := body.get_node("Shadow") as Polygon2D
+	_expect(near_frame.polygon.size() == 4, "generated renderer creates a four-point near frame")
+	_expect(front.polygon.size() == 4, "generated renderer creates a four-point front face")
+	_expect(shadow.polygon.size() == 4, "generated renderer creates a four-point contact shadow")
+	for polygon_node in [near_frame, front, shadow]:
+		for point in polygon_node.polygon:
+			_expect(point.x >= 0.0 and point.x <= viewport_size.x, "physical board remains inside viewport width")
+			_expect(point.y >= 0.0 and point.y <= viewport_size.y, "physical board remains inside viewport height")
+	body.queue_free()
 
 
 func _expect(condition: bool, description: String) -> void:

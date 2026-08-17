@@ -5,42 +5,50 @@ class_name ChessBoardProjection
 ## All rendered cells share points from one intersection grid so their surfaces,
 ## highlights, and hit regions cannot drift apart.
 
-const VIEWPORT_HEIGHT_WIDTH_RATIO := 0.90
-const VIEWPORT_WIDTH_CAP_RATIO := 0.64
-const PROJECTED_DEPTH_RATIO := 0.70
-const FAR_EDGE_WIDTH_RATIO := 0.88
+const DEFAULT_VIEWPORT_HEIGHT_WIDTH_RATIO := 0.90
+const DEFAULT_VIEWPORT_WIDTH_CAP_RATIO := 0.64
+const DEFAULT_PROJECTED_DEPTH_RATIO := 0.70
+const DEFAULT_FAR_EDGE_WIDTH_RATIO := 0.88
+const DEFAULT_VERTICAL_CENTER_RATIO := 0.50
+const REFERENCE_NEAR_EDGE_WIDTH := 972.0
 
 var rows: int = 8
 var columns: int = 8
 var viewing_color: String = "white"
 var intersections: Array = []
 var corners := PackedVector2Array()
+var near_edge_width := REFERENCE_NEAR_EDGE_WIDTH
 
 
 func configure(
 	viewport_size: Vector2,
 	board_rows: int,
 	board_columns: int,
-	new_viewing_color: String = "white"
+	new_viewing_color: String = "white",
+	viewport_height_width_ratio: float = DEFAULT_VIEWPORT_HEIGHT_WIDTH_RATIO,
+	viewport_width_cap_ratio: float = DEFAULT_VIEWPORT_WIDTH_CAP_RATIO,
+	projected_depth_ratio: float = DEFAULT_PROJECTED_DEPTH_RATIO,
+	far_edge_width_ratio: float = DEFAULT_FAR_EDGE_WIDTH_RATIO,
+	vertical_center_ratio: float = DEFAULT_VERTICAL_CENTER_RATIO
 ) -> void:
 	rows = maxi(board_rows, 1)
 	columns = maxi(board_columns, 1)
 	viewing_color = new_viewing_color if new_viewing_color == "black" else "white"
 
-	var near_width := minf(
-		viewport_size.y * VIEWPORT_HEIGHT_WIDTH_RATIO,
-		viewport_size.x * VIEWPORT_WIDTH_CAP_RATIO
+	near_edge_width = minf(
+		viewport_size.y * viewport_height_width_ratio,
+		viewport_size.x * viewport_width_cap_ratio
 	)
-	var projected_depth := near_width * PROJECTED_DEPTH_RATIO
-	var far_width := near_width * FAR_EDGE_WIDTH_RATIO
-	var center := viewport_size * 0.5
+	var projected_depth := near_edge_width * projected_depth_ratio
+	var far_width := near_edge_width * far_edge_width_ratio
+	var center := Vector2(viewport_size.x * 0.5, viewport_size.y * vertical_center_ratio)
 	var top_y := center.y - projected_depth * 0.5
 	var bottom_y := center.y + projected_depth * 0.5
 
 	var far_left := Vector2(center.x - far_width * 0.5, top_y).round()
 	var far_right := Vector2(center.x + far_width * 0.5, top_y).round()
-	var near_right := Vector2(center.x + near_width * 0.5, bottom_y).round()
-	var near_left := Vector2(center.x - near_width * 0.5, bottom_y).round()
+	var near_right := Vector2(center.x + near_edge_width * 0.5, bottom_y).round()
+	var near_left := Vector2(center.x - near_edge_width * 0.5, bottom_y).round()
 	corners = PackedVector2Array([far_left, far_right, near_right, near_left])
 
 	intersections.clear()
@@ -83,3 +91,11 @@ func get_cell_anchor(model_coordinate: Vector2i) -> Vector2:
 
 func get_board_outline() -> PackedVector2Array:
 	return corners.duplicate()
+
+
+func get_near_edge_width() -> float:
+	return near_edge_width
+
+
+func get_presentation_scale() -> float:
+	return near_edge_width / REFERENCE_NEAR_EDGE_WIDTH

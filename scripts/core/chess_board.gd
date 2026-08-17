@@ -22,10 +22,36 @@ signal square_selected(coordinate: Vector2i)
 @export var white_cooldown_button: Node
 @export var black_cooldown_button: Node
 @export var flash_overlay: ColorRect
+@export var visual_style: Resource:
+	set(value):
+		if visual_style != null and visual_style.changed.is_connected(_on_visual_style_changed):
+			visual_style.changed.disconnect(_on_visual_style_changed)
+		visual_style = value
+		if is_inside_tree():
+			_connect_visual_style()
+		_request_layout()
+@export_range(0.5, 1.0, 0.01) var viewport_height_width_ratio := 0.90:
+	set(value):
+		viewport_height_width_ratio = value
+		_request_layout()
+@export_range(0.3, 0.9, 0.01) var viewport_width_cap_ratio := 0.64:
+	set(value):
+		viewport_width_cap_ratio = value
+		_request_layout()
+@export_range(0.5, 1.0, 0.01) var projected_depth_ratio := 0.70:
+	set(value):
+		projected_depth_ratio = value
+		_request_layout()
+@export_range(0.7, 1.0, 0.01) var far_edge_width_ratio := 0.88:
+	set(value):
+		far_edge_width_ratio = value
+		_request_layout()
+@export_range(0.3, 0.7, 0.01) var vertical_center_ratio := 0.50:
+	set(value):
+		vertical_center_ratio = value
+		_request_layout()
 var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
-@export var light_square_color = Color(1, 1, 1) 
-@export var dark_square_color = Color(0.3, 0.3, 0.3)
 @export_enum("white", "black") var viewing_color: String = "white"
 var board: Array
 var projection := ChessBoardProjection.new()
@@ -43,6 +69,7 @@ var active_loop_player: AudioStreamPlayer
 @onready var powerup_player = AudioStreamPlayer.new()
 @onready var aura_loop_player = AudioStreamPlayer.new()
 @onready var powerdown_player = AudioStreamPlayer.new()
+@onready var board_body: Node2D = $BoardBody
 const POWERUP_VOLUME = -20
 const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
@@ -56,6 +83,7 @@ const BONE_PAWN_SUMMON_SHAKE_CYCLES := 6.0
 
 func _ready():
 	setup_audio_players()
+	_connect_visual_style()
 	get_viewport().size_changed.connect(_layout_board)
 
 func setup_audio_players():
@@ -92,8 +120,10 @@ func _layout_board() -> void:
 	if board.is_empty():
 		return
 	_configure_projection()
+	_layout_board_body()
 	for square in $Squares.get_children():
 		square.configure_geometry(square.coordinate, projection.get_cell_polygon(square.coordinate))
+		square.set_color(get_square_color(square.coordinate.x, square.coordinate.y))
 	for piece in $Pieces.get_children():
 		piece.position = grid_to_screen(piece.coordinate.x, piece.coordinate.y)
 		_update_piece_depth(piece)
@@ -102,13 +132,37 @@ func set_viewing_color(color: String) -> void:
 	viewing_color = color if color == "black" else "white"
 	_layout_board()
 
+func _request_layout() -> void:
+	if is_node_ready() and not board.is_empty():
+		_layout_board()
+
+func _on_visual_style_changed() -> void:
+	_request_layout()
+
+func _connect_visual_style() -> void:
+	if visual_style != null and not visual_style.changed.is_connected(_on_visual_style_changed):
+		visual_style.changed.connect(_on_visual_style_changed)
+
 func _configure_projection() -> void:
 	projection.configure(
 		get_viewport_rect().size,
 		board.size(),
 		board[0].size(),
-		viewing_color
+		viewing_color,
+		viewport_height_width_ratio,
+		viewport_width_cap_ratio,
+		projected_depth_ratio,
+		far_edge_width_ratio,
+		vertical_center_ratio
 	)
+
+func _layout_board_body() -> void:
+	if board_body != null and visual_style != null:
+		board_body.configure(
+			projection.get_board_outline(),
+			projection.get_presentation_scale(),
+			visual_style
+		)
 
 func draw_square(row: int, col: int):
 	var squares = $Squares
@@ -167,12 +221,11 @@ func _update_piece_depth(piece_node: Node2D) -> void:
 	piece_node.z_index = projection.get_display_coordinate(piece_node.coordinate).x
 			
 func get_square_color(row: int, col: int):
-	var square_color
+	if visual_style == null:
+		return Color.WHITE if ((row + col) % 2 == 0) else Color(0.3, 0.3, 0.3)
 	if ((row + col) % 2 == 0):
-		square_color = light_square_color
-	else:
-		square_color = dark_square_color	
-	return square_color
+		return visual_style.light_square_color
+	return visual_style.dark_square_color
 
 func show_legal_moves(legal_moves: Array):
 	highlight_squares(legal_moves)

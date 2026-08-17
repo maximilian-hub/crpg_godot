@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=14 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
 [ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
@@ -10,6 +10,8 @@
 [ext_resource type="Script" uid="uid://sx1hs8e01hds" path="res://scripts/view/chess_presentation_adapter.gd" id="8_bqtgu"]
 [ext_resource type="Script" uid="uid://dh5jgb15ev2n6" path="res://ui/battle_result_view.gd" id="9_result"]
 [ext_resource type="Script" uid="uid://cdhbf2ba47ckc" path="res://scripts/ai/chess_cpu_player.gd" id="10_cpu"]
+[ext_resource type="PackedScene" path="res://scenes/board_body.tscn" id="11_board_body"]
+[ext_resource type="Resource" path="res://assets/chess_board_default_style.tres" id="12_board_style"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
 bg_color = Color(0.1, 0.075, 0.14, 0.98)
@@ -50,6 +52,9 @@ script = ExtResource("3_yl173")
 white_cooldown_button = NodePath("../../UI/WhitePlayerUIContainer/WhiteActiveButton")
 black_cooldown_button = NodePath("../../UI/BlackPlayerUIContainer/BlackActiveButton")
 flash_overlay = NodePath("../FlashOverlay")
+visual_style = ExtResource("12_board_style")
+
+[node name="BoardBody" parent="CanvasLayer/ChessBoard" instance=ExtResource("11_board_body")]
 
 [node name="Squares" type="Node2D" parent="CanvasLayer/ChessBoard"]
 script = ExtResource("5_s46tk")
