@@ -51,7 +51,7 @@ func _on_animation_finished():
 "
 
 [node name="BloodSplatter" type="AnimatedSprite2D"]
-scale = Vector2(0.3, 0.3)
+scale = Vector2(0.15, 0.15)
 sprite_frames = SubResource("SpriteFrames_c6f07")
 animation = &"splatter"
 autoplay = "splatter"

@@ -183,10 +183,15 @@ func _test_main_starts_in_overworld() -> void:
 	await main._transition_to_battle()
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
-	var battle_background := main.active_battle.get_node("Background") as TextureRect
-	var battle_background_coverage := battle_background.size * battle_background.scale
-	var battle_viewport_size := main.get_viewport().get_visible_rect().size
-	_check(battle_background_coverage.x >= battle_viewport_size.x and battle_background_coverage.y >= battle_viewport_size.y, "battle background covers the complete viewport (%s vs %s)" % [battle_background_coverage, battle_viewport_size])
+	var battle_frame := main.active_content.get_node("BattleFrame") as SubViewportContainer
+	var battle_viewport := battle_frame.get_node("BattleViewport") as SubViewport
+	var battle_environment := main.active_content.get_node("BattleEnvironment") as TextureRect
+	var battle_layout := GameFlow.calculate_battle_layout(Vector2i(main.get_viewport().get_visible_rect().size))
+	_check(battle_viewport.size == GameFlow.BATTLE_LOGICAL_SIZE, "battle uses the fixed 960x540 logical canvas")
+	_check(battle_frame.stretch_shrink == battle_layout.integer_scale, "battle selects the largest fitting integer scale")
+	_check(battle_frame.position == battle_layout.position and battle_frame.size == Vector2(battle_layout.frame_size), "battle frame is centered at its integer-scaled size")
+	_check(battle_environment.size == main.get_viewport().get_visible_rect().size, "battle environment fills native window space")
+	_check(main.active_battle.get_parent() == battle_viewport, "chess game renders inside the battle viewport")
 	var white_ui := main.active_battle.get_node("UI/WhitePlayerUIContainer") as MarginContainer
 	var black_ui := main.active_battle.get_node("UI/BlackPlayerUIContainer") as MarginContainer
 	_check(white_ui.anchor_right == 1.0 and white_ui.anchor_bottom == 1.0, "white battle UI uses viewport anchors")

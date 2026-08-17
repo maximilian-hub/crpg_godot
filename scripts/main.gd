@@ -4,6 +4,8 @@ class_name GameFlow
 
 const OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
 const CHESS_SCENE := preload("res://scenes/chess_game.tscn")
+const BATTLE_BACKGROUND_TEXTURE := preload("res://assets/woodtile.png")
+const BATTLE_LOGICAL_SIZE := Vector2i(960, 540)
 const TARGET_OVERWORLD_LOGICAL_SIDE := 180
 const DIALOGUE_LOGICAL_MARGIN := 4
 const DIALOGUE_LOGICAL_HEIGHT := 44
@@ -23,10 +25,16 @@ var is_transitioning: bool = false
 var overworld_frame: SubViewportContainer = null
 var overworld_viewport: SubViewport = null
 var overworld_dialogue_layer: CanvasLayer = null
+var battle_environment: TextureRect = null
+var battle_frame: SubViewportContainer = null
+var battle_viewport: SubViewport = null
 
 func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
 	get_viewport().size_changed.connect(_layout_overworld_frame)
+	get_viewport().size_changed.connect(_layout_battle_frame)
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_min_size(BATTLE_LOGICAL_SIZE)
 	_show_overworld("")
 
 func _show_overworld(pending_result: String) -> void:
@@ -114,14 +122,68 @@ func _transition_to_battle() -> void:
 	await _fade_to(1.0)
 	_clear_active_content()
 
+	_create_battle_presentation()
 	active_battle = CHESS_SCENE.instantiate()
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.ai_color = "black"
 	active_battle.player_color = "white"
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
-	active_content.add_child(active_battle)
+	battle_viewport.add_child(active_battle)
 	await _fade_to(0.0)
 	is_transitioning = false
+
+func _create_battle_presentation() -> void:
+	battle_environment = TextureRect.new()
+	battle_environment.name = "BattleEnvironment"
+	battle_environment.texture = BATTLE_BACKGROUND_TEXTURE
+	battle_environment.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	battle_environment.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	battle_environment.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	active_content.add_child(battle_environment)
+	battle_environment.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	battle_frame = SubViewportContainer.new()
+	battle_frame.name = "BattleFrame"
+	battle_frame.stretch = true
+	battle_frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	active_content.add_child(battle_frame)
+
+	battle_viewport = SubViewport.new()
+	battle_viewport.name = "BattleViewport"
+	battle_viewport.size = BATTLE_LOGICAL_SIZE
+	battle_viewport.transparent_bg = true
+	battle_viewport.physics_object_picking = true
+	battle_viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	battle_viewport.snap_2d_transforms_to_pixel = true
+	battle_viewport.snap_2d_vertices_to_pixel = true
+	battle_frame.add_child(battle_viewport)
+	_layout_battle_frame()
+
+func _layout_battle_frame() -> void:
+	if not is_instance_valid(battle_frame) or not is_instance_valid(battle_viewport):
+		return
+	var window_size := Vector2i(get_viewport().get_visible_rect().size)
+	if window_size.x <= 0 or window_size.y <= 0:
+		return
+	var layout := calculate_battle_layout(window_size)
+	battle_frame.position = layout.position
+	battle_frame.size = Vector2(layout.frame_size)
+	battle_frame.stretch_shrink = layout.integer_scale
+
+static func calculate_battle_layout(window_size: Vector2i) -> Dictionary:
+	var integer_scale := maxi(1, mini(
+		floori(float(window_size.x) / BATTLE_LOGICAL_SIZE.x),
+		floori(float(window_size.y) / BATTLE_LOGICAL_SIZE.y)
+	))
+	var frame_size := BATTLE_LOGICAL_SIZE * integer_scale
+	return {
+		"position": Vector2(
+			floori((window_size.x - frame_size.x) * 0.5),
+			floori((window_size.y - frame_size.y) * 0.5)
+		),
+		"frame_size": frame_size,
+		"integer_scale": integer_scale,
+	}
 
 func _on_battle_exit_requested(player_result: String) -> void:
 	if is_transitioning:
@@ -140,6 +202,9 @@ func _transition_to_overworld(player_result: String) -> void:
 func _clear_active_content() -> void:
 	active_overworld = null
 	active_battle = null
+	battle_environment = null
+	battle_frame = null
+	battle_viewport = null
 	overworld_frame = null
 	overworld_viewport = null
 	if is_instance_valid(overworld_dialogue_layer):

@@ -22,11 +22,8 @@ enum ControlMode {
 @export var control_mode: ControlMode = ControlMode.CPU_VS_CPU
 @export_enum("white", "black") var ai_color: String = "black"
 var completed_player_result: String = ""
-@onready var background: TextureRect = $Background
 
 func _ready() -> void:
-	get_viewport().size_changed.connect(_layout_background)
-	_layout_background()
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
 	if board_view != null:
 		board_view.set_viewing_color(player_color)
@@ -53,13 +50,6 @@ func _ready() -> void:
 			controller.configure_player_controlled_colors(["white", "black"])
 			white_cpu_player.configure(false, "white")
 			black_cpu_player.configure(false, "black")
-
-func _layout_background() -> void:
-	# Preserve the authored 5x wood grain while covering the complete viewport.
-	var background_scale := maxf(background.scale.x, 0.001)
-	background.position = Vector2.ZERO
-	background.size = get_viewport().get_visible_rect().size / background_scale
-
 
 func _on_battle_finished(winner_color: String) -> void:
 	var player_result: String

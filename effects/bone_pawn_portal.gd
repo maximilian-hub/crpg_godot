@@ -1,23 +1,25 @@
 extends Node2D
 class_name BonePawnSummonPortal
 
+const DISPLAY_SCALE := Vector2(0.5, 0.5)
+
 const OPEN_DURATION := 0.12
 const CLOSE_DURATION := 0.15
 
 func _ready() -> void:
 	z_index = -1
-	scale = Vector2(0.05, 0.05)
+	scale = DISPLAY_SCALE * 0.05
 	modulate.a = 0.0
 
 func open() -> void:
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "scale", Vector2.ONE, OPEN_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "scale", DISPLAY_SCALE, OPEN_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(self, "modulate:a", 1.0, OPEN_DURATION)
 	await tween.finished
 
 func close() -> void:
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "scale", Vector2(0.05, 0.05), CLOSE_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "scale", DISPLAY_SCALE * 0.05, CLOSE_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "modulate:a", 0.0, CLOSE_DURATION)
 	await tween.finished
 	queue_free()

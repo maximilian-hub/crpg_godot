@@ -5,6 +5,9 @@
 extends Area2D
 class_name PieceView
 
+const STANDARD_PIECE_DIRECTORY := "res://assets/pieces/standard/"
+const WHITE_PALETTE_SHADER := preload("res://assets/pieces/white_piece_palette.gdshader")
+
 var coordinate: Vector2i
 var model: ModelPiece
 
@@ -17,24 +20,42 @@ func set_model(model_data: ModelPiece) -> void:
 	update_sprite()
 
 func set_sprite(sprite_name: String) -> void: # "white_queen"
-	sprite.texture = load("res://assets/pieces/" + sprite_name + ".png")
-	align_sprite_to_ground()
+	var color := model.color if model != null else "white"
+	var type := sprite_name
+	if sprite_name.begins_with("white_"):
+		color = "white"
+		type = sprite_name.trim_prefix("white_")
+	elif sprite_name.begins_with("black_"):
+		color = "black"
+		type = sprite_name.trim_prefix("black_")
+	_apply_piece_art(color, type)
 
 func update_sprite() -> void:
-	var sprite_name = model.color + "_" + model.type
-	sprite.texture = load("res://assets/pieces/" + sprite_name + ".png")
-	sprite.scale = Vector2.ONE
+	_apply_piece_art(model.color, model.type)
 
-	#TODO: This feels really bad lmao. Standardize your image sizes or some sh*t.
-	if model.type == "minotaur_king":
-		sprite.scale = Vector2(0.5, 0.5)
-	elif model.type == "bone_pawn":
-		sprite.scale = Vector2(0.11, 0.11)
-	elif model.type == "necromancer_king":
-		sprite.scale = Vector2(0.13,0.13)
-	elif model.type == "arakne_king":
-		sprite.scale = Vector2(0.5,0.5)
+func _apply_piece_art(color: String, requested_type: String) -> void:
+	var standard_type := _get_standard_type(requested_type)
+	var authored_path := STANDARD_PIECE_DIRECTORY + color + "_" + standard_type + ".png"
+	var uses_authored_color := ResourceLoader.exists(authored_path)
+	var texture_path := authored_path if uses_authored_color else STANDARD_PIECE_DIRECTORY + "black_" + standard_type + ".png"
+	sprite.texture = load(texture_path)
+	sprite.scale = Vector2.ONE
+	sprite.material = null
+	if color == "white" and not uses_authored_color:
+		var white_material := ShaderMaterial.new()
+		white_material.shader = WHITE_PALETTE_SHADER
+		sprite.material = white_material
 	align_sprite_to_ground()
+
+func _get_standard_type(requested_type: String) -> String:
+	if requested_type == "bone_pawn":
+		return "pawn"
+	if requested_type == "king" or requested_type == "classic_king" or requested_type.ends_with("_king"):
+		return "king"
+	if requested_type in ["pawn", "rook", "knight", "bishop", "queen"]:
+		return requested_type
+	push_warning("Unknown piece art type '%s'; using pawn art." % requested_type)
+	return "pawn"
 
 func align_sprite_to_ground() -> void:
 	if sprite == null or sprite.texture == null:

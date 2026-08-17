@@ -16,6 +16,7 @@ func _ready() -> void:
 	_test_board_body(Vector2(1920, 1080))
 	_test_board_body(Vector2(960, 540))
 	_test_piece_ground_anchors()
+	_test_fixed_battle_layout()
 	if failures.is_empty():
 		print("BOARD PROJECTION CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -111,7 +112,29 @@ func _test_piece_ground_anchors() -> void:
 		_expect(piece.get_ground_anchor().position == Vector2.ZERO, "%s ground effect anchor remains at the board-contact origin" % model.type)
 		_expect(piece.get_body_anchor().position == piece.sprite.position, "%s body effect anchor tracks the artwork center" % model.type)
 		_expect(is_equal_approx(piece.get_head_anchor().position.y, piece.get_sprite_top_local_y()), "%s head effect anchor tracks the artwork top" % model.type)
+		_expect(piece.sprite.texture.resource_path.begins_with("res://assets/pieces/standard/black_"), "%s resolves through standardized source art" % model.type)
+		_expect(piece.sprite.material is ShaderMaterial, "%s receives the temporary White palette" % model.type)
 		piece.queue_free()
+	var black_piece := PIECE_SCENE.instantiate() as PieceView
+	add_child(black_piece)
+	black_piece.set_model(Queen.new("black", Vector2i.ZERO))
+	_expect(black_piece.sprite.texture.resource_path == "res://assets/pieces/standard/black_queen.png", "Black Queen uses its standardized authored texture")
+	_expect(black_piece.sprite.material == null, "Black authored art is not palette transformed")
+	black_piece.queue_free()
+
+func _test_fixed_battle_layout() -> void:
+	var cases := {
+		Vector2i(960, 540): 1,
+		Vector2i(1280, 720): 1,
+		Vector2i(1920, 1080): 2,
+		Vector2i(2560, 1440): 2,
+		Vector2i(3840, 2160): 4,
+	}
+	for window_size in cases:
+		var layout := GameFlow.calculate_battle_layout(window_size)
+		_expect(layout.integer_scale == cases[window_size], "%s selects the expected integer battle scale" % window_size)
+		_expect(layout.frame_size == GameFlow.BATTLE_LOGICAL_SIZE * layout.integer_scale, "%s preserves the fixed logical aspect" % window_size)
+		_expect(layout.position == Vector2((window_size - layout.frame_size) / 2), "%s centers the battle frame" % window_size)
 
 
 func _expect(condition: bool, description: String) -> void:

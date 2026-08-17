@@ -63,7 +63,7 @@ func _test_active_bone_pawn_summon_presentation() -> void:
 	var piece_node: Node2D = context.adapter.get_piece_view(summoned_piece)
 	_expect(summoned_piece is BonePawn and observation["summoned_count"] == 1, "active ability emits one Bone Pawn summon presentation event")
 	_expect(piece_node.position == context.view.grid_to_screen(target.x, target.y), "summoned Bone Pawn settles exactly on its square")
-	_expect((piece_node.get_node("Sprite2D") as Sprite2D).material == null, "summoned Bone Pawn restores its original sprite material")
+	_expect((piece_node.get_node("Sprite2D") as Sprite2D).material is ShaderMaterial, "summoned White Bone Pawn restores its palette material")
 	_expect(_count_summon_portals(context.view) == 0, "active summon portal cleans itself up")
 	_expect(not model.action_in_progress, "active summon animation completes before action resolution ends")
 
@@ -396,10 +396,15 @@ func _test_battle_completion() -> void:
 
 
 func _create_game(control_mode: ChessGame.ControlMode = ChessGame.ControlMode.PLAYER_VS_PLAYER, ai_color: String = "black") -> Dictionary:
+	var viewport := SubViewport.new()
+	viewport.size = GameFlow.BATTLE_LOGICAL_SIZE
+	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	viewport.snap_2d_transforms_to_pixel = true
+	add_child(viewport)
 	var game := CHESS_GAME_SCENE.instantiate()
 	game.control_mode = control_mode
 	game.ai_color = ai_color
-	add_child(game)
+	viewport.add_child(game)
 	await get_tree().process_frame
 	return {
 		"game": game,
@@ -411,7 +416,11 @@ func _create_game(control_mode: ChessGame.ControlMode = ChessGame.ControlMode.PL
 
 
 func _destroy_game(game: Node) -> void:
-	game.queue_free()
+	var viewport := game.get_parent() as SubViewport
+	if viewport != null:
+		viewport.queue_free()
+	else:
+		game.queue_free()
 	await get_tree().process_frame
 	await get_tree().process_frame
 
