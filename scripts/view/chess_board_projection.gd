@@ -81,12 +81,24 @@ func get_cell_polygon(model_coordinate: Vector2i) -> PackedVector2Array:
 	])
 
 
-func get_cell_anchor(model_coordinate: Vector2i) -> Vector2:
+func get_cell_center(model_coordinate: Vector2i) -> Vector2:
 	var polygon := get_cell_polygon(model_coordinate)
 	var center := Vector2.ZERO
 	for point in polygon:
 		center += point
 	return (center / polygon.size()).round()
+
+
+func get_piece_ground_anchor(model_coordinate: Vector2i, forward_bias: float = 0.0) -> Vector2:
+	var polygon := get_cell_polygon(model_coordinate)
+	var center := get_cell_center(model_coordinate)
+	var near_edge_midpoint := (polygon[2] + polygon[3]) * 0.5
+	return center.lerp(near_edge_midpoint, clampf(forward_bias, 0.0, 1.0)).round()
+
+
+## Compatibility alias for callers that need the geometric center of a cell.
+func get_cell_anchor(model_coordinate: Vector2i) -> Vector2:
+	return get_cell_center(model_coordinate)
 
 
 func get_board_outline() -> PackedVector2Array:

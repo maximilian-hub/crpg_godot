@@ -2,6 +2,7 @@ extends Node
 
 const BOARD_BODY_SCENE := preload("res://scenes/board_body.tscn")
 const DEFAULT_VISUAL_STYLE := preload("res://assets/chess_board_default_style.tres")
+const PIECE_SCENE := preload("res://scenes/piece.tscn")
 
 var failures: Array[String] = []
 var checks := 0
@@ -14,6 +15,7 @@ func _ready() -> void:
 	_test_adjustable_layout()
 	_test_board_body(Vector2(1920, 1080))
 	_test_board_body(Vector2(960, 540))
+	_test_piece_ground_anchors()
 	if failures.is_empty():
 		print("BOARD PROJECTION CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -63,6 +65,10 @@ func _test_adjustable_layout() -> void:
 	_expect(adjusted_outline[0].y < original_outline[0].y, "vertical center ratio moves the board")
 	_expect(projection.get_near_edge_width() > 0.0, "projection exposes its near-edge width")
 	_expect(projection.get_presentation_scale() > 0.0, "projection exposes a positive presentation scale")
+	var coordinate := Vector2i(4, 4)
+	var center := projection.get_cell_center(coordinate)
+	var forward_anchor := projection.get_piece_ground_anchor(coordinate, 0.10)
+	_expect(forward_anchor.y > center.y, "piece bias moves the ground anchor toward the viewer")
 
 
 func _test_board_body(viewport_size: Vector2) -> void:
@@ -86,6 +92,26 @@ func _test_board_body(viewport_size: Vector2) -> void:
 			_expect(point.x >= 0.0 and point.x <= viewport_size.x, "physical board remains inside viewport width")
 			_expect(point.y >= 0.0 and point.y <= viewport_size.y, "physical board remains inside viewport height")
 	body.queue_free()
+
+
+func _test_piece_ground_anchors() -> void:
+	var models: Array[ModelPiece] = [
+		Pawn.new("white", Vector2i.ZERO),
+		MinotaurKing.new("white", Vector2i.ZERO),
+		BonePawn.new("white", Vector2i.ZERO),
+		NecromancerKing.new("white", Vector2i.ZERO),
+		ArakneKing.new("white", Vector2i.ZERO),
+	]
+	for model in models:
+		var piece := PIECE_SCENE.instantiate() as PieceView
+		add_child(piece)
+		piece.set_model(model)
+		_expect(is_zero_approx(piece.get_sprite_bottom_local_y()), "%s artwork rests on the PieceView ground origin" % model.type)
+		_expect(piece.get_sprite_top_local_y() < 0.0, "%s artwork extends upward from its ground origin" % model.type)
+		_expect(piece.get_ground_anchor().position == Vector2.ZERO, "%s ground effect anchor remains at the board-contact origin" % model.type)
+		_expect(piece.get_body_anchor().position == piece.sprite.position, "%s body effect anchor tracks the artwork center" % model.type)
+		_expect(is_equal_approx(piece.get_head_anchor().position.y, piece.get_sprite_top_local_y()), "%s head effect anchor tracks the artwork top" % model.type)
+		piece.queue_free()
 
 
 func _expect(condition: bool, description: String) -> void:

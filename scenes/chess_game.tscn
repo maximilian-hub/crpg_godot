@@ -10,7 +10,7 @@
 [ext_resource type="Script" uid="uid://sx1hs8e01hds" path="res://scripts/view/chess_presentation_adapter.gd" id="8_bqtgu"]
 [ext_resource type="Script" uid="uid://dh5jgb15ev2n6" path="res://ui/battle_result_view.gd" id="9_result"]
 [ext_resource type="Script" uid="uid://cdhbf2ba47ckc" path="res://scripts/ai/chess_cpu_player.gd" id="10_cpu"]
-[ext_resource type="PackedScene" path="res://scenes/board_body.tscn" id="11_board_body"]
+[ext_resource type="PackedScene" uid="uid://bsvn40v11grhl" path="res://scenes/board_body.tscn" id="11_board_body"]
 [ext_resource type="Resource" path="res://assets/chess_board_default_style.tres" id="12_board_style"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]

@@ -119,8 +119,8 @@ func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void
 
 func _on_piece_damaged(piece: ModelPiece, _amount: int, current_hp: int, _max_hp: int) -> void:
 	var piece_node: Node = get_piece_view(piece)
-	view.spawn_splatter(piece.coordinate)
 	if is_instance_valid(piece_node):
+		view.spawn_splatter(piece_node)
 		piece_node.update_hp(current_hp)
 
 
@@ -199,7 +199,10 @@ func _show_necromancer_aura(piece: NecromancerKing) -> void:
 	var aura: Node = necromancer_auras.get(piece)
 	if not is_instance_valid(aura):
 		aura = SKULL_AURA_SCENE.instantiate()
-		piece_node.add_child(aura)
+		if piece_node.has_method("get_body_anchor"):
+			piece_node.get_body_anchor().add_child(aura)
+		else:
+			piece_node.add_child(aura)
 		necromancer_auras[piece] = aura
 	aura.restart()
 	aura.emitting = true

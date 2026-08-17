@@ -50,6 +50,10 @@ signal square_selected(coordinate: Vector2i)
 	set(value):
 		vertical_center_ratio = value
 		_request_layout()
+@export_range(0.0, 0.25, 0.01) var piece_forward_bias := 0.55: # adjust this for piece placement
+	set(value):
+		piece_forward_bias = value
+		_request_layout()
 var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
 @export_enum("white", "black") var viewing_color: String = "white"
@@ -198,7 +202,8 @@ func draw_piece(piece_data: ModelPiece) -> Node:
 		var hp_bar = hp_bar_scene.instantiate()
 		hp_bar.max_hp = piece_data.max_hp
 		hp_bar.current_hp = piece_data.max_hp
-		hp_bar.position = Vector2(0, 24)
+		# PieceView's origin is the board-contact point; keep HP just below the base.
+		hp_bar.position = Vector2(0, 4)
 		piece.add_child(hp_bar)
 	return piece
 					
@@ -213,9 +218,12 @@ func get_piece_node(coord: Vector2i) -> Node:
 	
 	return desired_piece
 
-## Compatibility wrapper for presentation code that targets a logical cell.
+## Compatibility wrapper for presentation code that targets a physical piece.
 func grid_to_screen(row: int, col: int) -> Vector2:
-	return projection.get_cell_anchor(Vector2i(row, col))
+	return projection.get_piece_ground_anchor(Vector2i(row, col), piece_forward_bias)
+
+func cell_to_screen_center(row: int, col: int) -> Vector2:
+	return projection.get_cell_center(Vector2i(row, col))
 
 func _update_piece_depth(piece_node: Node2D) -> void:
 	piece_node.z_index = projection.get_display_coordinate(piece_node.coordinate).x
@@ -282,7 +290,10 @@ func get_piece_at(coord: Vector2i) -> Node:
 ## Destroy a sprite with a visual effect.
 func destroy_piece(piece: Node):
 	# TODO: if piece.is_king: play king death sound, spawn king death effect
-	spawn_explosion(piece.position)
+	var effect_position: Vector2 = piece.position
+	if piece.has_method("get_body_anchor") and piece.has_method("get_anchor_position_in"):
+		effect_position = piece.get_anchor_position_in(self, piece.get_body_anchor())
+	spawn_explosion(effect_position)
 	piece.queue_free()
 
 ## Disappear a sprite.
@@ -302,23 +313,34 @@ func spawn_explosion(pos: Vector2):
 	explosion.z_index = 20
 	add_child(explosion)
 	
-func spawn_splatter(coord: Vector2i):
+func spawn_splatter(piece_node: Node2D):
+	if not is_instance_valid(piece_node):
+		return
 	var splatter = splatter_scene.instantiate()
-	splatter.position = grid_to_screen(coord.x, coord.y)
+	if piece_node.has_method("get_body_anchor") and piece_node.has_method("get_anchor_position_in"):
+		splatter.position = piece_node.get_anchor_position_in(self, piece_node.get_body_anchor())
+	else:
+		splatter.position = piece_node.position
 	splatter.z_index = 20
 	add_child(splatter)
 	
 func spawn_stun_stars(stunned_piece: Node):
 	var stun_stars = stun_stars_scene.instantiate()
-	stun_stars.position = Vector2(0,-10)
+	if stunned_piece.has_method("get_head_anchor"):
+		stunned_piece.get_head_anchor().add_child(stun_stars)
+		stun_stars.position = Vector2(0, 4.0)
+	else:
+		stun_stars.position = Vector2(0, -10)
+		stunned_piece.add_child(stun_stars)
 	stun_stars.add_to_group("stun")
-	stunned_piece.add_child(stun_stars)
 
 func spawn_ss_aura(piece: Node):
 	var aura = ss_aura_scene.instantiate()
-	aura.position = Vector2(0,-20)
 	aura.add_to_group("aura")
-	piece.add_child(aura)
+	if piece.has_method("get_body_anchor"):
+		piece.get_body_anchor().add_child(aura)
+	else:
+		piece.add_child(aura)
 	play_power_activation_sound()
 
 func play_bone_pawn_summon(piece_node: Node2D) -> void:
@@ -329,6 +351,7 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 		return
 
 	var original_position := piece_node.position
+	var target_position := grid_to_screen(piece_node.coordinate.x, piece_node.coordinate.y)
 	var original_material := sprite.material
 	var reveal_material := ShaderMaterial.new()
 	reveal_material.shader = bone_pawn_reveal_shader
@@ -337,7 +360,7 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 	piece_node.position = original_position + Vector2.DOWN * BONE_PAWN_SUMMON_RISE_DISTANCE
 
 	var portal := bone_pawn_portal_scene.instantiate() as BonePawnSummonPortal
-	portal.position = original_position + Vector2.DOWN * 35.0
+	portal.position = target_position
 	add_child(portal)
 	await portal.open()
 
@@ -345,7 +368,7 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 	while elapsed < BONE_PAWN_SUMMON_RISE_DURATION and is_instance_valid(piece_node):
 		await get_tree().process_frame
 		elapsed += get_process_delta_time()
-		var target_position := grid_to_screen(piece_node.coordinate.x, piece_node.coordinate.y)
+		target_position = grid_to_screen(piece_node.coordinate.x, piece_node.coordinate.y)
 		var progress := clampf(elapsed / BONE_PAWN_SUMMON_RISE_DURATION, 0.0, 1.0)
 		var eased_progress := 1.0 - pow(1.0 - progress, 3.0)
 		var shake := sin(progress * TAU * BONE_PAWN_SUMMON_SHAKE_CYCLES)
@@ -355,7 +378,7 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 			lerpf(BONE_PAWN_SUMMON_RISE_DISTANCE, 0.0, eased_progress)
 		)
 		reveal_material.set_shader_parameter("reveal", eased_progress)
-		portal.position = target_position + Vector2.DOWN * 35.0
+		portal.position = target_position
 		portal.rotation = sin(progress * TAU * 2.0) * 0.08
 
 	if is_instance_valid(piece_node):
@@ -368,39 +391,44 @@ func play_bone_pawn_summon(piece_node: Node2D) -> void:
 	
 func remove_stun_stars(coord: Vector2i):
 	var stunned_piece = get_piece_node(coord)
-	for child in stunned_piece.get_children():
-		if child.is_in_group("stun"):
-			child.queue_free()
+	remove_stun_stars_from_piece(stunned_piece)
 
 func remove_stun_stars_from_piece(piece_node: Node):
-	for child in piece_node.get_children():
-		if child.is_in_group("stun"):
-			child.queue_free()
+	for effect in _get_descendant_effects_in_group(piece_node, &"stun"):
+		effect.queue_free()
 
 func remove_ss_aura(piece_node: Node):
-	for child in piece_node.get_children():
-		if child.is_in_group("aura"):
-			child.queue_free()
+	for effect in _get_descendant_effects_in_group(piece_node, &"aura"):
+		effect.queue_free()
 
 # In chess_board.gd (your view class)
 func fade_out_ss_aura(piece_node: Node, include_powerdown: bool = true):
 	if include_powerdown: play_power_deactivation_sound()
 	
-	for child in piece_node.get_children():
-		if child.is_in_group("aura"):
-			# Create a tween for the fade out animation
-			var tween = create_tween()
+	for child in _get_descendant_effects_in_group(piece_node, &"aura"):
+		# Create a tween for the fade out animation
+		var tween = create_tween()
 
-			# Animate scale increase (1.5x) and opacity decrease (to 0)
-			tween.parallel().tween_property(child, "scale", child.scale * 1.5, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-			tween.parallel().tween_property(child, "modulate:a", 0.0, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		# Animate scale increase (1.5x) and opacity decrease (to 0)
+		tween.parallel().tween_property(child, "scale", child.scale * 1.5, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tween.parallel().tween_property(child, "modulate:a", 0.0, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
-			# Queue free the aura after animation completes
-			tween.tween_callback(child.queue_free)
+		# Queue free the aura after animation completes
+		tween.tween_callback(child.queue_free)
 			
-			powerup_player.stop()
-			aura_loop_player.stop()
-			if include_powerdown: powerdown_player.play()
+		powerup_player.stop()
+		aura_loop_player.stop()
+		if include_powerdown: powerdown_player.play()
+
+func _get_descendant_effects_in_group(root: Node, group: StringName) -> Array[Node]:
+	var matches: Array[Node] = []
+	if not is_instance_valid(root):
+		return matches
+	for child in root.get_children():
+		if child.is_in_group(group):
+			matches.append(child)
+		matches.append_array(_get_descendant_effects_in_group(child, group))
+	return matches
 
 # Plays the powerup sound with a fadeout for the tail
 func play_power_activation_sound():
@@ -435,7 +463,7 @@ func update_piece(piece_node: Node):
 	
 func minotaur_retaliate(targets: Array):
 	for coord in targets:
-		var pos = grid_to_screen(coord.x, coord.y)
+		var pos = cell_to_screen_center(coord.x, coord.y)
 		spawn_explosion(pos)
 
 func start_minotaur_rage_intro(minotaur_node: Node) -> void:

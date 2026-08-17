@@ -11,6 +11,12 @@ script = ExtResource("1_gebih")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 
+[node name="GroundAnchor" type="Marker2D" parent="."]
+
+[node name="BodyAnchor" type="Marker2D" parent="."]
+
+[node name="HeadAnchor" type="Marker2D" parent="."]
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 visible = false
 shape = SubResource("RectangleShape2D_tvnf0")
