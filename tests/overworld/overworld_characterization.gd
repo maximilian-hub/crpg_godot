@@ -44,8 +44,19 @@ func _test_overworld_scene() -> void:
 		var texture_path := player_body.sprite_frames.get_frame_texture(&"walk_down", phase).resource_path
 		_check(texture_path.ends_with("000%d.png" % (phase + 1)), "gait phase %d maps to sprite 000%d" % [phase, phase + 1])
 	_check(player.get_node("CollisionShape2D").position == Vector2.ZERO, "player collision remains rooted at the gameplay position")
-	_check(overworld.npc.get_node("Body").position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
+	var npc_body := overworld.npc.get_node("Body") as Sprite2D
+	_check(npc_body.position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
 	_check(overworld.npc.get_node("CollisionShape2D").position == Vector2.ZERO, "NPC collision remains rooted at the gameplay position")
+	_check(npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "NPC starts in its authored down-facing pose")
+	var npc_cell := overworld.npc.grid_cell
+	overworld.npc.face_toward(npc_cell + Vector2i.UP)
+	_check(overworld.npc.facing == Vector2i.UP and npc_body.texture.resource_path.ends_with("hood_up_0001.png") and not npc_body.flip_h, "NPC uses its up-facing sprite")
+	overworld.npc.face_toward(npc_cell + Vector2i.RIGHT)
+	_check(overworld.npc.facing == Vector2i.RIGHT and npc_body.texture.resource_path.ends_with("hood_right_0001.png") and not npc_body.flip_h, "NPC uses its unmirrored right-facing sprite")
+	overworld.npc.face_toward(npc_cell + Vector2i.LEFT)
+	_check(overworld.npc.facing == Vector2i.LEFT and npc_body.texture.resource_path.ends_with("hood_right_0001.png") and npc_body.flip_h, "NPC mirrors its right-facing sprite when looking left")
+	overworld.npc.face_toward(npc_cell)
+	_check(overworld.npc.facing == Vector2i.LEFT and npc_body.flip_h, "NPC ignores a request to face its own cell")
 	var camera := player.get_node("Camera2D") as Camera2D
 	_check(camera != null and camera.enabled, "player camera is active")
 	_check(camera.position == Vector2.ZERO, "camera follows the authoritative player root without an artwork offset")
@@ -123,12 +134,14 @@ func _test_overworld_scene() -> void:
 	_check(overworld._can_talk_to_npc(), "idle adjacent player facing NPC can interact")
 	overworld._begin_challenge_dialogue()
 	_check(overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "challenge opens page dialogue")
+	_check(overworld.npc.facing == Vector2i.DOWN and npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "challenge dialogue turns the NPC toward the player")
 	overworld._advance_page()
 	_check(overworld.dialogue_mode == Overworld.DialogueMode.CHOICE, "challenge pages lead to yes/no choice")
 	overworld._decline_challenge()
 	_check(overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "decline shows configured response")
 	overworld._advance_page()
 	_check(overworld.dialogue_mode == Overworld.DialogueMode.CLOSED, "decline response returns to exploration")
+	_check(overworld.npc.facing == Vector2i.DOWN and npc_body.texture.resource_path.ends_with("hood_down_0001.png"), "NPC keeps its last facing after dialogue closes")
 
 	overworld.queue_free()
 	await get_tree().process_frame

@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=4 uid="uid://piuej0d1064"]
+[gd_scene load_steps=20 format=4 uid="uid://piuej0d1064"]
 
 [ext_resource type="Script" uid="uid://bf5oj43hu2dm4" path="res://scripts/overworld/overworld.gd" id="1_overworld"]
 [ext_resource type="Texture2D" uid="uid://bl6kvqrccy6rn" path="res://assets/overworld/test_map.png" id="2_map"]
@@ -12,6 +12,8 @@
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/rock_faces.tscn" id="10_rock_faces"]
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/pine_tree.tscn" id="11_pine_tree"]
 [ext_resource type="Texture2D" uid="uid://drb71dllp55k6" path="res://assets/overworld/characters/hood/hood_down_0001.png" id="12_hood_down"]
+[ext_resource type="Texture2D" uid="uid://ds25rs4ncei8m" path="res://assets/overworld/characters/hood/hood_right_0001.png" id="13_hood_right"]
+[ext_resource type="Texture2D" uid="uid://dxt7icybgfyhl" path="res://assets/overworld/characters/hood/hood_up_0001.png" id="14_hood_up"]
 
 [sub_resource type="TileSetAtlasSource" id="CollisionAtlas"]
 resource_name = "Fully Blocked Cells"
@@ -107,6 +109,9 @@ shape = SubResource("PlayerShape")
 position = Vector2(104, 88)
 collision_mask = 2
 script = ExtResource("5_npc")
+down_texture = ExtResource("12_hood_down")
+up_texture = ExtResource("14_hood_up")
+right_texture = ExtResource("13_hood_right")
 
 [node name="Body" type="Sprite2D" parent="YSortedWorld/Npc"]
 texture_filter = 1
