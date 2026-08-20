@@ -157,27 +157,32 @@ func play_piece_capture(
 	await _wait(grasp_hold_duration)
 
 	# Arc to the defender's left, then swipe across it in a straight line.
+	# Keep the waiting defender visually in front of the carried attacker during the approach.
+	defender_node.z_index = z_index + captured_piece_pivot.z_index
 	capture_stage_changed.emit(&"initiation")
 	carry_path_started.emit(CARRY_PATH_JUMP)
 	var swipe_start := defender_contact + Vector2.LEFT * capture_approach_offset * world_scale
 	await _tween_jump_position(swipe_start, capture_approach_duration, capture_approach_arc_height * world_scale)
 	var swipe_end := swipe_start + Vector2.RIGHT * capture_swipe_distance * world_scale
 	capture_stage_changed.emit(&"swipe")
+	var pickup_progress := 0.0
+	if capture_swipe_distance > 0.0:
+		pickup_progress = clampf(capture_approach_offset / capture_swipe_distance, 0.0, 1.0)
+	var pickup_state := {"attached": false}
 	var swipe_tween := create_tween()
-	swipe_tween.tween_property(self, "position", swipe_end, capture_swipe_duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	swipe_tween.tween_method(
+		func(progress: float):
+			position = swipe_start.lerp(swipe_end, progress)
+			if not pickup_state["attached"] and progress >= pickup_progress:
+				pickup_state["attached"] = true
+				_attach_captured_piece(attacker_node, defender_node, world_scale),
+		0.0,
+		1.0,
+		capture_swipe_duration
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await swipe_tween.finished
-
-	# Pin the defender's grip to the pivot, so tilting it cannot lift the entire piece.
-	defender_node.reparent(captured_piece_pivot, true)
-	defender_node.z_index = 0
-	var attacker_anchor := _get_grip_anchor(attacker_node)
-	var defender_anchor := _get_grip_anchor(defender_node)
-	if attacker_anchor != null:
-		captured_piece_pivot.global_position = attacker_anchor.global_position + captured_piece_grip_offset * world_scale
-	captured_piece_pivot.rotation = deg_to_rad(captured_piece_rotation_degrees)
-	if defender_anchor != null:
-		defender_node.global_position += captured_piece_pivot.global_position - defender_anchor.global_position
-	captured_piece_grabbed.emit(defender_node)
+	if not pickup_state["attached"]:
+		_attach_captured_piece(attacker_node, defender_node, world_scale)
 
 	# Jump to the destination, open the hand, and leave the attacker on its exact square.
 	capture_stage_changed.emit(&"placement")
@@ -198,6 +203,20 @@ func play_piece_capture(
 	is_animating = false
 	move_animation_finished.emit()
 	return true
+
+
+func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_scale: float) -> void:
+	# Pin the defender's grip to the pivot, so tilting it cannot lift the entire piece.
+	defender_node.reparent(captured_piece_pivot, true)
+	defender_node.z_index = 0
+	var attacker_anchor := _get_grip_anchor(attacker_node)
+	var defender_anchor := _get_grip_anchor(defender_node)
+	if attacker_anchor != null:
+		captured_piece_pivot.global_position = attacker_anchor.global_position + captured_piece_grip_offset * world_scale
+	captured_piece_pivot.rotation = deg_to_rad(captured_piece_rotation_degrees)
+	if defender_anchor != null:
+		defender_node.global_position += captured_piece_pivot.global_position - defender_anchor.global_position
+	captured_piece_grabbed.emit(defender_node)
 
 
 func _piece_grip_position(piece_node: Node2D) -> Vector2:

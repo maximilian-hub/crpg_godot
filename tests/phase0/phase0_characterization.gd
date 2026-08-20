@@ -138,8 +138,8 @@ func _test_player_hand_capture_presentation() -> void:
 		func(piece: Node2D):
 			var moving_view: Node2D = context.adapter.get_piece_view(rook)
 			observation["grips_aligned"] = piece.get_grip_anchor().global_position.is_equal_approx(moving_view.get_grip_anchor().global_position)
-			_expect(piece.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece is attached to its rear hand-rig pivot")
-			_expect(rig.get_node("CapturedPiecePivot").z_index < rig.get_node("PieceSlot").z_index, "captured piece renders behind the attacking piece")
+			_expect(piece.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece is attached to its hand-rig pivot")
+			_expect(rig.get_node("CapturedPiecePivot").z_index > rig.get_node("PieceSlot").z_index, "captured piece renders in front of the attacking piece")
 	)
 
 	controller.select_piece(rook)
