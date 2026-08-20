@@ -2,19 +2,9 @@
 extends Node2D
 class_name ChessBoardView
 
-## This node serves as the main View component.
+## This node serves as the main View component of the chess game.
 # It receives signals from the Model,
 # and renders the scene accordingly.
-
-##This is just for prototyping. 
-# Eventually, the Chess scene will look very different,
-# with a slightly angled board, 
-# hands that move the pieces,
-# and other features.
-# I'm using MVC for this part of the project largely for this,
-# so that a little ways down the road,
-# I can completely replace this View with another,
-# without too much fussing about with the game logic.
 
 signal rage_intro_animation_completed()
 signal square_selected(coordinate: Vector2i)
@@ -50,7 +40,7 @@ signal square_selected(coordinate: Vector2i)
 	set(value):
 		vertical_center_ratio = value
 		_request_layout()
-@export_range(0.0, 0.25, 0.01) var piece_forward_bias := 0.55: # adjust this for piece placement
+@export_range(0.0, 0.25, 0.01) var piece_forward_bias := 0.35: # adjust this for piece placement
 	set(value):
 		piece_forward_bias = value
 		_request_layout()
