@@ -11,6 +11,10 @@ signal move_animation_finished()
 
 const CARRY_PATH_SLIDE := &"slide"
 const CARRY_PATH_JUMP := &"jump"
+const SOUND_GRAB := &"grab"
+const SOUND_CAPTURE_PICKUP := &"capture_pickup"
+const SOUND_PLACE := &"place"
+const SOUND_RELEASE := &"release"
 
 @export var hand_style: Resource
 ## Grip location measured from the top-left of the 96 x 160 source artwork.
@@ -40,8 +44,15 @@ const CARRY_PATH_JUMP := &"jump"
 @onready var captured_piece_pivot: Node2D = $CapturedPiecePivot
 @onready var piece_slot: Node2D = $PieceSlot
 @onready var front_sprite: Sprite2D = $Front
+@onready var grab_sound: AudioStreamPlayer = $GrabSound
+@onready var capture_pickup_sound: AudioStreamPlayer = $CapturePickupSound
+@onready var place_sound: AudioStreamPlayer = $PlaceSound
+@onready var release_sound: AudioStreamPlayer = $ReleaseSound
+@onready var slide_sound: AudioStreamPlayer = $SlideSound
 
 var is_animating := false
+var board_sound_set: ChessBoardSoundSet
+var slide_fade_tween: Tween
 
 
 func _ready() -> void:
@@ -53,6 +64,10 @@ func set_hand_style(style: Resource) -> void:
 	hand_style = style
 	if is_node_ready():
 		_apply_pose(false)
+
+
+func set_board_sound_set(sound_set: ChessBoardSoundSet) -> void:
+	board_sound_set = sound_set
 
 
 func can_animate() -> bool:
@@ -94,6 +109,7 @@ func play_piece_move(
 	piece_grabbed.emit(piece_node)
 	_apply_pose(true)
 	pose_changed.emit(&"closed")
+	_play_hand_sound(SOUND_GRAB)
 	await _wait(grasp_hold_duration)
 
 	# Carry the closed hand and grabbed piece to the destination together.
@@ -101,7 +117,10 @@ func play_piece_move(
 	if carry_path == CARRY_PATH_JUMP:
 		await _tween_jump_position(destination_contact, jump_carry_duration, jump_arc_height * world_scale)
 	else:
+		_start_slide_sound()
 		await _tween_position(destination_contact, carry_duration)
+		_stop_slide_sound()
+	_play_board_sound(SOUND_PLACE)
 	await _wait(release_hold_duration)
 
 	# Open the hand, return the piece to the board, and snap it to its exact square.
@@ -112,6 +131,7 @@ func play_piece_move(
 	piece_node.z_index = original_z_index
 	piece_node.position = destination
 	piece_released.emit(piece_node)
+	_play_hand_sound(SOUND_RELEASE)
 
 	# Lower the empty open hand until it is fully out of view.
 	await _tween_position(_offscreen_position(destination_contact.x, effective_hand_scale), retreat_duration)
@@ -154,6 +174,7 @@ func play_piece_capture(
 	piece_grabbed.emit(attacker_node)
 	_apply_pose(true)
 	pose_changed.emit(&"closed")
+	_play_hand_sound(SOUND_GRAB)
 	await _wait(grasp_hold_duration)
 
 	# Arc to the defender's left, then swipe across it in a straight line.
@@ -187,6 +208,7 @@ func play_piece_capture(
 	# Jump to the destination, open the hand, and leave the attacker on its exact square.
 	capture_stage_changed.emit(&"placement")
 	await _tween_jump_position(destination_contact, capture_placement_duration, capture_placement_arc_height * world_scale)
+	_play_board_sound(SOUND_PLACE)
 	await _wait(release_hold_duration)
 	_apply_pose(false)
 	pose_changed.emit(&"open")
@@ -195,6 +217,7 @@ func play_piece_capture(
 	attacker_node.z_index = attacker_z_index
 	attacker_node.position = destination
 	piece_released.emit(attacker_node)
+	_play_hand_sound(SOUND_RELEASE)
 
 	# Retreat below the screen with the captured piece; its normal removal can now be silent.
 	capture_stage_changed.emit(&"exit")
@@ -216,7 +239,72 @@ func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_
 	captured_piece_pivot.rotation = deg_to_rad(captured_piece_rotation_degrees)
 	if defender_anchor != null:
 		defender_node.global_position += captured_piece_pivot.global_position - defender_anchor.global_position
+	_play_board_sound(SOUND_CAPTURE_PICKUP)
 	captured_piece_grabbed.emit(defender_node)
+
+
+func _play_hand_sound(cue: StringName) -> void:
+	if hand_style == null or hand_style.sounds == null:
+		return
+	var sound_set: ChessHandSoundSet = hand_style.sounds
+	var player: AudioStreamPlayer
+	var stream: AudioStream
+	match cue:
+		SOUND_GRAB:
+			player = grab_sound
+			stream = sound_set.grab
+		SOUND_RELEASE:
+			player = release_sound
+			stream = sound_set.release
+	_play_one_shot(player, stream, sound_set.volume_db, sound_set.pitch_variation)
+
+
+func _play_board_sound(cue: StringName) -> void:
+	if board_sound_set == null:
+		return
+	# Universal cues are temporary; future piece/board material properties will
+	# resolve the appropriate stream before this playback step.
+	var player: AudioStreamPlayer
+	var stream: AudioStream
+	match cue:
+		SOUND_CAPTURE_PICKUP:
+			player = capture_pickup_sound
+			stream = board_sound_set.default_capture_pickup
+		SOUND_PLACE:
+			player = place_sound
+			stream = board_sound_set.default_place
+	_play_one_shot(player, stream, board_sound_set.volume_db, board_sound_set.pitch_variation)
+
+
+func _play_one_shot(player: AudioStreamPlayer, stream: AudioStream, volume_db: float, pitch_variation: float) -> void:
+	if player == null or stream == null:
+		return
+	player.stream = stream
+	player.volume_db = volume_db
+	player.pitch_scale = randf_range(1.0 - pitch_variation, 1.0 + pitch_variation)
+	player.play()
+
+
+func _start_slide_sound() -> void:
+	if board_sound_set == null or board_sound_set.default_slide == null:
+		return
+	if slide_fade_tween != null and slide_fade_tween.is_valid():
+		slide_fade_tween.kill()
+	slide_sound.stream = board_sound_set.default_slide
+	slide_sound.volume_db = board_sound_set.volume_db
+	slide_sound.pitch_scale = randf_range(1.0 - board_sound_set.pitch_variation, 1.0 + board_sound_set.pitch_variation)
+	slide_sound.play()
+
+
+func _stop_slide_sound() -> void:
+	if not slide_sound.playing:
+		return
+	if board_sound_set == null or board_sound_set.slide_fade_duration <= 0.0:
+		slide_sound.stop()
+		return
+	slide_fade_tween = create_tween()
+	slide_fade_tween.tween_property(slide_sound, "volume_db", -60.0, board_sound_set.slide_fade_duration)
+	slide_fade_tween.tween_callback(slide_sound.stop)
 
 
 func _piece_grip_position(piece_node: Node2D) -> Vector2:

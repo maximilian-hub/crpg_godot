@@ -53,6 +53,12 @@ func _test_player_hand_move_presentation() -> void:
 	var piece_slot: Node2D = rig.get_node("PieceSlot")
 	var back: Sprite2D = rig.get_node("Back")
 	var front: Sprite2D = rig.get_node("Front")
+	var sound_set := _make_test_hand_sound_set()
+	var board_sound_set := _make_test_board_sound_set()
+	var test_hand_style: ChessHandStyle = rig.hand_style.duplicate()
+	test_hand_style.sounds = sound_set
+	rig.set_hand_style(test_hand_style)
+	rig.set_board_sound_set(board_sound_set)
 	rig.approach_duration = 0.01
 	rig.grasp_hold_duration = 0.01
 	rig.carry_duration = 0.01
@@ -82,6 +88,7 @@ func _test_player_hand_move_presentation() -> void:
 		func(piece: Node2D):
 			observations.append("released")
 			_expect(piece.get_parent() == view.get_node("Pieces"), "player hand restores the released piece to the board piece layer")
+			_expect(rig.get_node("PlaceSound").stream == board_sound_set.default_place and rig.get_node("ReleaseSound").stream == null, "placement sounds at board contact before the hand releases")
 	)
 	rig.move_animation_finished.connect(func(): observations.append("finished"))
 
@@ -96,6 +103,13 @@ func _test_player_hand_move_presentation() -> void:
 	_expect(back.z_index < piece_slot.z_index and piece_slot.z_index < front.z_index, "carried piece renders between the rear hand and front thumb")
 	_expect(back.texture.resource_path.ends_with("skeleton_open.png"), "released hand displays the open rear artwork")
 	_expect(front.texture.resource_path.ends_with("skeleton_open_thumb.png"), "released hand displays the open thumb artwork")
+	_expect(rig.get_node("GrabSound").stream == sound_set.grab, "ordinary movement plays its grab sound")
+	_expect(rig.get_node("PlaceSound").stream == board_sound_set.default_place, "ordinary movement plays the board's default placement sound")
+	_expect(rig.get_node("ReleaseSound").stream == sound_set.release, "ordinary movement plays its release sound")
+	_expect(rig.get_node("CapturePickupSound").stream == null, "ordinary movement does not play a capture pickup sound")
+	_expect(rig.get_node("SlideSound").stream == board_sound_set.default_slide, "sliding movement uses the board's default slide sound")
+	_expect(rig.get_node("GrabSound").bus == &"SFX" and is_equal_approx(rig.get_node("GrabSound").volume_db, sound_set.volume_db), "hand sounds use the SFX bus and configured volume")
+	_expect(rig.get_node("GrabSound").pitch_scale >= 0.92 and rig.get_node("GrabSound").pitch_scale <= 1.08, "hand sound pitch stays inside its configured variation")
 	_expect(not rig.visible and not rig.is_animating and rig.position.y > rig.get_viewport_rect().size.y, "player hand retreats fully below the viewport")
 	_expect(pawn_view.position == view.grid_to_screen(4, 0) and pawn_view.coordinate == Vector2i(4, 0), "hand-carried piece lands exactly on its projected destination")
 	_expect(model.current_turn == "black" and not model.action_in_progress, "hand animation completes before the player move changes turns")
@@ -108,6 +122,12 @@ func _test_player_hand_capture_presentation() -> void:
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
 	var rig: Node2D = context.view.get_node("PlayerHandRig")
+	var sound_set := _make_test_hand_sound_set()
+	var board_sound_set := _make_test_board_sound_set()
+	var test_hand_style: ChessHandStyle = rig.hand_style.duplicate()
+	test_hand_style.sounds = sound_set
+	rig.set_hand_style(test_hand_style)
+	rig.set_board_sound_set(board_sound_set)
 	for property_name in ["approach_duration", "grasp_hold_duration", "capture_approach_duration", "capture_swipe_duration", "capture_placement_duration", "release_hold_duration", "retreat_duration"]:
 		rig.set(property_name, 0.01)
 
@@ -138,6 +158,7 @@ func _test_player_hand_capture_presentation() -> void:
 		func(piece: Node2D):
 			var moving_view: Node2D = context.adapter.get_piece_view(rook)
 			observation["grips_aligned"] = piece.get_grip_anchor().global_position.is_equal_approx(moving_view.get_grip_anchor().global_position)
+			_expect(rig.get_node("CapturePickupSound").stream == board_sound_set.default_capture_pickup, "the board's default capture pickup sounds at the instant the defender attaches")
 			_expect(piece.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece is attached to its hand-rig pivot")
 			_expect(rig.get_node("CapturedPiecePivot").z_index > rig.get_node("PieceSlot").z_index, "captured piece renders in front of the attacking piece")
 	)
@@ -148,6 +169,8 @@ func _test_player_hand_capture_presentation() -> void:
 
 	var rook_view: Node2D = context.adapter.get_piece_view(rook)
 	_expect(observation["hand_completions"] == 1, "player lethal capture reuses one ordinary hand-carry sequence")
+	_expect(rig.get_node("GrabSound").stream == sound_set.grab and rig.get_node("PlaceSound").stream == board_sound_set.default_place and rig.get_node("ReleaseSound").stream == sound_set.release, "captures combine race-specific hand sounds with the board's default placement sound")
+	_expect(rig.get_node("SlideSound").stream == null, "jumping capture movement does not play a slide sound")
 	_expect(capture_stages == [&"initiation", &"swipe", &"placement", &"exit"], "player capture runs initiation, swipe, placement, and exit in order")
 	_expect(observation["grips_aligned"], "capture swipe stacks attacker and defender grip anchors at pickup")
 	_expect(is_equal_approx(rad_to_deg(rig.get_node("CapturedPiecePivot").rotation), rig.captured_piece_rotation_degrees), "captured piece finishes at its configured carry angle")
@@ -157,6 +180,25 @@ func _test_player_hand_capture_presentation() -> void:
 	_expect(_count_children_named(context.view, &"Explosion") == 0, "hand-carried defender does not spawn a capture explosion")
 
 	await _destroy_game(context.game)
+
+
+func _make_test_hand_sound_set() -> ChessHandSoundSet:
+	var sound_set := ChessHandSoundSet.new()
+	sound_set.grab = AudioStreamWAV.new()
+	sound_set.release = AudioStreamWAV.new()
+	sound_set.volume_db = -7.0
+	sound_set.pitch_variation = 0.08
+	return sound_set
+
+
+func _make_test_board_sound_set() -> ChessBoardSoundSet:
+	var sound_set := ChessBoardSoundSet.new()
+	sound_set.default_capture_pickup = AudioStreamWAV.new()
+	sound_set.default_place = AudioStreamWAV.new()
+	sound_set.default_slide = AudioStreamWAV.new()
+	sound_set.volume_db = -5.0
+	sound_set.pitch_variation = 0.04
+	return sound_set
 
 
 func _test_active_bone_pawn_summon_presentation() -> void:

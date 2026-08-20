@@ -89,6 +89,7 @@ const BONE_PAWN_SUMMON_SHAKE_CYCLES := 6.0
 func _ready():
 	setup_audio_players()
 	_connect_visual_style()
+	_sync_hand_board_sounds()
 	get_viewport().size_changed.connect(_layout_board)
 
 func setup_audio_players():
@@ -152,7 +153,12 @@ func _request_layout() -> void:
 		_layout_board()
 
 func _on_visual_style_changed() -> void:
+	_sync_hand_board_sounds()
 	_request_layout()
+
+func _sync_hand_board_sounds() -> void:
+	if is_instance_valid(player_hand_rig):
+		player_hand_rig.set_board_sound_set(visual_style.interaction_sounds if visual_style != null else null)
 
 func _connect_visual_style() -> void:
 	if visual_style != null and not visual_style.changed.is_connected(_on_visual_style_changed):

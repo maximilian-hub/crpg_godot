@@ -8,6 +8,7 @@ class_name ChessHandStyle
 @export var open_front: Texture2D
 @export var closed_back: Texture2D
 @export var closed_front: Texture2D
+@export var sounds: ChessHandSoundSet
 
 
 func is_complete() -> bool:

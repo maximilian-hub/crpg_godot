@@ -1,10 +1,11 @@
-[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=7 format=3 uid="uid://b702w2llvnxct"]
 
-[ext_resource type="Script" path="res://scripts/view/chess_hand_style.gd" id="1_style"]
-[ext_resource type="Texture2D" path="res://assets/arms/player/skeleton_open.png" id="2_open_back"]
-[ext_resource type="Texture2D" path="res://assets/arms/player/skeleton_open_thumb.png" id="3_open_front"]
-[ext_resource type="Texture2D" path="res://assets/arms/player/skeleton_closed.png" id="4_closed_back"]
-[ext_resource type="Texture2D" path="res://assets/arms/player/skeleton_closed_thumb.png" id="5_closed_front"]
+[ext_resource type="Script" uid="uid://behhgroodpugy" path="res://scripts/view/chess_hand_style.gd" id="1_style"]
+[ext_resource type="Texture2D" uid="uid://2j43yos4x8ad" path="res://assets/arms/player/skeleton_open.png" id="2_open_back"]
+[ext_resource type="Texture2D" uid="uid://cpsbjkiunw636" path="res://assets/arms/player/skeleton_open_thumb.png" id="3_open_front"]
+[ext_resource type="Texture2D" uid="uid://bksgvdyt43ga7" path="res://assets/arms/player/skeleton_closed.png" id="4_closed_back"]
+[ext_resource type="Texture2D" uid="uid://clua4t4nexvp0" path="res://assets/arms/player/skeleton_closed_thumb.png" id="5_closed_front"]
+[ext_resource type="Resource" path="res://assets/arms/player/skeleton_hand_sounds.tres" id="6_sounds"]
 
 [resource]
 script = ExtResource("1_style")
@@ -12,3 +13,4 @@ open_back = ExtResource("2_open_back")
 open_front = ExtResource("3_open_front")
 closed_back = ExtResource("4_closed_back")
 closed_front = ExtResource("5_closed_front")
+sounds = ExtResource("6_sounds")

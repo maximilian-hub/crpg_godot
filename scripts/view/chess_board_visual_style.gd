@@ -5,6 +5,13 @@ class_name ChessBoardVisualStyle
 ## renderer uses these values today; later material-specific renderers can keep
 ## the same resource boundary.
 
+## These are universal defaults for now. Later, piece and board material
+## properties can select a more specific interaction sound set.
+@export var interaction_sounds: ChessBoardSoundSet:
+	set(value):
+		interaction_sounds = value
+		emit_changed()
+
 @export var light_square_color := Color("d8c6a0"):
 	set(value):
 		light_square_color = value

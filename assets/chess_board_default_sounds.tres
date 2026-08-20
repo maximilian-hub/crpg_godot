@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ChessBoardSoundSet" load_steps=4 format=3 uid="uid://b27w0mpafvjqe"]
+
+[ext_resource type="AudioStream" uid="uid://baig6akqw5kqe" path="res://assets/audio/chess/interactions/default/capture_pickup.wav" id="1_avyvh"]
+[ext_resource type="Script" path="res://scripts/view/chess_board_sound_set.gd" id="1_sound_set"]
+[ext_resource type="AudioStream" uid="uid://dk7blw74txx2e" path="res://assets/audio/chess/interactions/default/place.wav" id="2_wyktu"]
+
+[resource]
+script = ExtResource("1_sound_set")
+default_capture_pickup = ExtResource("1_avyvh")
+default_place = ExtResource("2_wyktu")
+volume_db = 0.0
+pitch_variation = 0.05
+slide_fade_duration = 0.05
