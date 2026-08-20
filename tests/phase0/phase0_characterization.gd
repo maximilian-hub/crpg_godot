@@ -108,16 +108,39 @@ func _test_player_hand_capture_presentation() -> void:
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
 	var rig: Node2D = context.view.get_node("PlayerHandRig")
-	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
+	for property_name in ["approach_duration", "grasp_hold_duration", "capture_approach_duration", "capture_swipe_duration", "capture_placement_duration", "release_hold_duration", "retreat_duration"]:
 		rig.set(property_name, 0.01)
 
 	var rook := Rook.new("white", Vector2i(7, 0))
 	var bishop := Bishop.new("black", Vector2i(3, 0))
 	_reset_battle(model, controller, [rook, bishop])
-	var observation := {"hand_completions": 0}
-	var carry_paths: Array[StringName] = []
-	rig.move_animation_finished.connect(func(): observation["hand_completions"] += 1)
-	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
+	var bishop_view: Node2D = context.adapter.get_piece_view(bishop)
+	var observation := {"hand_completions": 0, "grips_aligned": false}
+	var capture_stages: Array[StringName] = []
+	var removal_timeline: Array[String] = []
+	rig.move_animation_finished.connect(
+		func():
+			observation["hand_completions"] += 1
+			removal_timeline.append("hand_finished")
+	)
+	model.piece_destroyed.connect(
+		func(piece: ModelPiece):
+			if piece == bishop:
+				removal_timeline.append("defender_destroyed")
+	)
+	rig.capture_stage_changed.connect(
+		func(stage: StringName):
+			capture_stages.append(stage)
+			if stage == &"exit":
+				_expect(bishop_view.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece remains attached while the hand exits")
+	)
+	rig.captured_piece_grabbed.connect(
+		func(piece: Node2D):
+			var moving_view: Node2D = context.adapter.get_piece_view(rook)
+			observation["grips_aligned"] = piece.get_grip_anchor().global_position.is_equal_approx(moving_view.get_grip_anchor().global_position)
+			_expect(piece.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece is attached to its rear hand-rig pivot")
+			_expect(rig.get_node("CapturedPiecePivot").z_index < rig.get_node("PieceSlot").z_index, "captured piece renders behind the attacking piece")
+	)
 
 	controller.select_piece(rook)
 	await controller._on_square_clicked(bishop.coordinate)
@@ -125,9 +148,13 @@ func _test_player_hand_capture_presentation() -> void:
 
 	var rook_view: Node2D = context.adapter.get_piece_view(rook)
 	_expect(observation["hand_completions"] == 1, "player lethal capture reuses one ordinary hand-carry sequence")
-	_expect(carry_paths == [&"jump"], "long sliding-piece capture uses the jump carry path")
+	_expect(capture_stages == [&"initiation", &"swipe", &"placement", &"exit"], "player capture runs initiation, swipe, placement, and exit in order")
+	_expect(observation["grips_aligned"], "capture swipe stacks attacker and defender grip anchors at pickup")
+	_expect(is_equal_approx(rad_to_deg(rig.get_node("CapturedPiecePivot").rotation), rig.captured_piece_rotation_degrees), "captured piece finishes at its configured carry angle")
 	_expect(model.board[3][0] == rook and rook_view.position == context.view.grid_to_screen(3, 0), "hand-carried attacker occupies the captured piece's square")
-	_expect(context.adapter.get_piece_view(bishop) == null, "captured defender is removed by the existing destruction presentation")
+	_expect(removal_timeline == ["hand_finished", "defender_destroyed"], "captured defender is destroyed only after the hand retreats offscreen")
+	_expect(context.adapter.get_piece_view(bishop) == null and not is_instance_valid(bishop_view), "captured defender is silently removed after leaving the viewport")
+	_expect(_count_children_named(context.view, &"Explosion") == 0, "hand-carried defender does not spawn a capture explosion")
 
 	await _destroy_game(context.game)
 
@@ -586,6 +613,14 @@ func _count_summon_portals(view: ChessBoardView) -> int:
 	var count := 0
 	for child in view.get_children():
 		if child is BonePawnSummonPortal:
+			count += 1
+	return count
+
+
+func _count_children_named(parent: Node, child_name: StringName) -> int:
+	var count := 0
+	for child in parent.get_children():
+		if child.name == child_name:
 			count += 1
 	return count
 

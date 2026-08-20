@@ -22,6 +22,7 @@ signal board_initialized(board: Array)
 signal piece_added(piece: ModelPiece)
 signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, completion: CompletionGate)
 signal piece_attack_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
 signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: int)
@@ -419,6 +420,31 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
 			promotion_check(piece)
 
+## Commits a lethal capture while leaving presentation time to carry both views.
+func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: Vector2i, captured_at: Vector2i) -> void:
+	if not is_instance_valid(piece) or not is_instance_valid(captured_piece):
+		printerr("actually_capture_piece: Invalid attacker or defender.")
+		return
+
+	var from := piece.coordinate
+	board[from.x][from.y] = null
+	if captured_at != to and board[captured_at.x][captured_at.y] == captured_piece:
+		board[captured_at.x][captured_at.y] = null
+	board[to.x][to.y] = piece
+	piece.coordinate = to
+	piece.has_moved = true
+
+	var completion := CompletionGate.new()
+	piece_capture_committed.emit(piece, captured_piece, from, to, captured_at, completion)
+	completion.close()
+	await completion.wait_until_released()
+
+	if piece is BonePawn and piece._on_dead_row():
+		destroy_piece(piece, true)
+		return
+	if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
+		promotion_check(piece)
+
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
 	if rook_piece == null or rook_piece.color != color or rook_piece.type != "rook":
@@ -484,8 +510,9 @@ func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 		printerr("handle_en_passant: No pawn to capture.")
 		return
 
-	destroy_piece(captured_piece, true)
-	await actually_move_piece(piece, to)
+	var captured_at := Vector2i(captured_row, captured_col)
+	await actually_capture_piece(piece, captured_piece, to, captured_at)
+	destroy_piece(captured_piece, false)
 
 # Assumes a piece is moving to attack another piece.
 #func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
@@ -539,7 +566,7 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 			var defender_instance = defender # Keep a reference before the board changes
 			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
 
-			await actually_move_piece(attacker, to) # Attacker moves into the vacated square
+			await actually_capture_piece(attacker, defender_instance, to, to)
 
 			# Now destroy the defender. Pass false because actually_move_piece already overwrote the square.
 			destroy_piece(defender_instance, false) 

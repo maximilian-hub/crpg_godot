@@ -25,6 +25,7 @@ var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
 var selection_effect_piece: ModelPiece = null
 var player_move_submission_active := false
+var silently_removed_piece_views: Dictionary = {}
 
 
 func _ready() -> void:
@@ -32,6 +33,7 @@ func _ready() -> void:
 	model.piece_added.connect(_on_piece_added)
 	model.piece_summoned.connect(_on_piece_summoned)
 	model.piece_move_committed.connect(_on_piece_move_committed)
+	model.piece_capture_committed.connect(_on_piece_capture_committed)
 	model.piece_attack_committed.connect(_on_piece_attack_committed)
 	model.piece_destroyed.connect(_on_piece_destroyed)
 	model.piece_transformed.connect(_on_piece_transformed)
@@ -96,6 +98,23 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 	gate.release()
 
 
+func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, _captured_at: Vector2i, gate: CompletionGate) -> void:
+	var attacker_node: Node = get_piece_view(attacker)
+	var defender_node: Node = get_piece_view(defender)
+	if not is_instance_valid(attacker_node):
+		return
+
+	gate.hold()
+	var carried_offscreen := false
+	if player_move_submission_active and attacker.color == view.viewing_color and controller.is_player_controlled(attacker.color) and is_instance_valid(defender_node):
+		carried_offscreen = await view.capture_piece_node_with_player_hand(attacker_node, defender_node, from, to)
+	else:
+		await view.move_piece_node(attacker_node, to)
+	if carried_offscreen:
+		silently_removed_piece_views[defender] = true
+	gate.release()
+
+
 func _on_ordinary_move_submission_started(_piece: ModelPiece, _target: Vector2i) -> void:
 	player_move_submission_active = true
 
@@ -120,7 +139,11 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 	piece_views.erase(piece)
 	necromancer_auras.erase(piece)
 	if is_instance_valid(piece_node):
-		view.destroy_piece(piece_node)
+		if silently_removed_piece_views.has(piece):
+			silently_removed_piece_views.erase(piece)
+			view.remove_piece(piece_node)
+		else:
+			view.destroy_piece(piece_node)
 
 
 func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void:

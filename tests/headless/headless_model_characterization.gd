@@ -176,8 +176,14 @@ func _test_special_moves() -> void:
 	passant_model.add_piece(white_pawn, white_pawn.coordinate)
 	passant_model.add_piece(black_pawn, black_pawn.coordinate)
 	passant_model.last_move = {"piece": black_pawn, "from": Vector2i(1, 5), "to": Vector2i(3, 5)}
+	var passant_captures: Array[Dictionary] = []
+	passant_model.piece_capture_committed.connect(
+		func(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, _completion: CompletionGate):
+			passant_captures.append({"attacker": attacker, "defender": defender, "from": from, "to": to, "captured_at": captured_at})
+	)
 	_expect(await passant_model.submit_move(white_pawn, Vector2i(2, 5)), "headless en passant command is accepted")
 	_expect(passant_model.board[2][5] == white_pawn and passant_model.board[3][5] == null, "en passant removes the adjacent pawn")
+	_expect(passant_captures.size() == 1 and passant_captures[0]["captured_at"] == Vector2i(3, 5), "en passant reports its separate captured square through the lethal-capture event")
 	passant_model.free()
 
 	var promotion_model := _new_empty_model()
@@ -239,7 +245,13 @@ func _test_raise_dead_excludes_occupied_death_square() -> void:
 	model.add_piece(rook, rook.coordinate)
 	model.add_piece(bishop, bishop.coordinate)
 	model.add_piece(necromancer, necromancer.coordinate)
+	var capture_events: Array[Dictionary] = []
+	model.piece_capture_committed.connect(
+		func(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, _completion: CompletionGate):
+			capture_events.append({"attacker": attacker, "defender": defender, "from": from, "to": to, "captured_at": captured_at})
+	)
 	_expect(await model.submit_move(rook, bishop.coordinate), "lethal capture that triggers Raise Dead is accepted")
+	_expect(capture_events.size() == 1 and capture_events[0]["defender"] == bishop and capture_events[0]["captured_at"] == Vector2i(4, 4), "ordinary lethal capture reports both pieces and its destination square")
 	_expect(model.board[4][4] == rook, "capturing piece occupies the defender's death square")
 	var pending := model.get_pending_reaction()
 	_expect(Vector2i(4, 4) not in pending["targets"], "Raise Dead excludes an occupied death square")

@@ -5,6 +5,8 @@ signal pose_changed(pose: StringName)
 signal piece_grabbed(piece: Node2D)
 signal piece_released(piece: Node2D)
 signal carry_path_started(path: StringName)
+signal capture_stage_changed(stage: StringName)
+signal captured_piece_grabbed(piece: Node2D)
 signal move_animation_finished()
 
 const CARRY_PATH_SLIDE := &"slide"
@@ -19,13 +21,23 @@ const CARRY_PATH_JUMP := &"jump"
 @export_range(0.01, 2.0, 0.01) var approach_duration := 0.24
 @export_range(0.0, 1.0, 0.01) var grasp_hold_duration := 0.18
 @export_range(0.01, 2.0, 0.01) var carry_duration := .24
-@export_range(0.0, 128.0, 1.0) var jump_arc_height := 64.0
+@export_range(0.0, 128.0, 1.0) var jump_arc_height := 32.0
 @export_range(0.01, 2.0, 0.01) var jump_carry_duration := 0.36
+@export_range(0.0, 64.0, 1.0) var capture_approach_offset := 18.0 # Distance left of the defender where the capture approach ends.
+@export_range(0.0, 128.0, 1.0) var capture_approach_arc_height := 32.0 # Height of the arc used to approach a capture.
+@export_range(0.01, 2.0, 0.01) var capture_approach_duration := 0.36 # Time taken to arc toward the defender's left side.
+@export_range(0.0, 128.0, 1.0) var capture_swipe_distance := 36.0 # Total left-to-right distance of the pickup swipe.
+@export_range(0.01, 2.0, 0.01) var capture_swipe_duration := 0.18 # Time taken to swipe across and collect the defender.
+@export var captured_piece_grip_offset := Vector2.ZERO # Fine-tunes the captured grip relative to the attacker's grip.
+@export_range(-180.0, 180.0, 1.0) var captured_piece_rotation_degrees := -20.0 # Tilts the captured piece while it is carried away.
+@export_range(0.0, 128.0, 1.0) var capture_placement_arc_height := 32.0 # Height of the arc used to place the attacker.
+@export_range(0.01, 2.0, 0.01) var capture_placement_duration := 0.30 # Time taken to arc back and place the attacker.
 @export_range(0.0, 1.0, 0.01) var release_hold_duration := 0.35
 @export_range(0.01, 2.0, 0.01) var retreat_duration := 0.24
 @export_range(0.0, 128.0, 1.0) var offscreen_margin := 8.0
 
 @onready var back_sprite: Sprite2D = $Back
+@onready var captured_piece_pivot: Node2D = $CapturedPiecePivot
 @onready var piece_slot: Node2D = $PieceSlot
 @onready var front_sprite: Sprite2D = $Front
 
@@ -108,11 +120,97 @@ func play_piece_move(
 	move_animation_finished.emit()
 
 
+func play_piece_capture(
+	attacker_node: Node2D,
+	defender_node: Node2D,
+	destination: Vector2,
+	world_scale: float
+) -> bool:
+	if not can_animate() or not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
+		return false
+
+	# Raise the open hand to the attacker and close around it just like a normal move.
+	is_animating = true
+	captured_piece_pivot.position = Vector2.ZERO
+	captured_piece_pivot.rotation = 0.0
+	var effective_hand_scale := world_scale * art_scale_multiplier
+	scale = Vector2.ONE * effective_hand_scale
+	_apply_pose(false)
+	pose_changed.emit(&"open")
+
+	var attacker_parent := attacker_node.get_parent()
+	var attacker_scale := attacker_node.scale
+	var attacker_z_index := attacker_node.z_index
+	var attacker_origin := attacker_node.position
+	var attacker_contact := _piece_grip_position(attacker_node)
+	var destination_contact := attacker_contact + destination - attacker_origin
+	var defender_contact := _piece_grip_position(defender_node)
+
+	position = _offscreen_position(attacker_contact.x, effective_hand_scale)
+	visible = true
+	await _tween_position(attacker_contact, approach_duration)
+	attacker_node.reparent(piece_slot, true)
+	attacker_node.z_index = 0
+	piece_grabbed.emit(attacker_node)
+	_apply_pose(true)
+	pose_changed.emit(&"closed")
+	await _wait(grasp_hold_duration)
+
+	# Arc to the defender's left, then swipe across it in a straight line.
+	capture_stage_changed.emit(&"initiation")
+	carry_path_started.emit(CARRY_PATH_JUMP)
+	var swipe_start := defender_contact + Vector2.LEFT * capture_approach_offset * world_scale
+	await _tween_jump_position(swipe_start, capture_approach_duration, capture_approach_arc_height * world_scale)
+	var swipe_end := swipe_start + Vector2.RIGHT * capture_swipe_distance * world_scale
+	capture_stage_changed.emit(&"swipe")
+	var swipe_tween := create_tween()
+	swipe_tween.tween_property(self, "position", swipe_end, capture_swipe_duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await swipe_tween.finished
+
+	# Pin the defender's grip to the pivot, so tilting it cannot lift the entire piece.
+	defender_node.reparent(captured_piece_pivot, true)
+	defender_node.z_index = 0
+	var attacker_anchor := _get_grip_anchor(attacker_node)
+	var defender_anchor := _get_grip_anchor(defender_node)
+	if attacker_anchor != null:
+		captured_piece_pivot.global_position = attacker_anchor.global_position + captured_piece_grip_offset * world_scale
+	captured_piece_pivot.rotation = deg_to_rad(captured_piece_rotation_degrees)
+	if defender_anchor != null:
+		defender_node.global_position += captured_piece_pivot.global_position - defender_anchor.global_position
+	captured_piece_grabbed.emit(defender_node)
+
+	# Jump to the destination, open the hand, and leave the attacker on its exact square.
+	capture_stage_changed.emit(&"placement")
+	await _tween_jump_position(destination_contact, capture_placement_duration, capture_placement_arc_height * world_scale)
+	await _wait(release_hold_duration)
+	_apply_pose(false)
+	pose_changed.emit(&"open")
+	attacker_node.reparent(attacker_parent, true)
+	attacker_node.scale = attacker_scale
+	attacker_node.z_index = attacker_z_index
+	attacker_node.position = destination
+	piece_released.emit(attacker_node)
+
+	# Retreat below the screen with the captured piece; its normal removal can now be silent.
+	capture_stage_changed.emit(&"exit")
+	await _tween_position(_offscreen_position(destination_contact.x, effective_hand_scale), retreat_duration)
+	visible = false
+	is_animating = false
+	move_animation_finished.emit()
+	return true
+
+
 func _piece_grip_position(piece_node: Node2D) -> Vector2:
-	if piece_node.has_method("get_grip_anchor"):
-		var anchor := piece_node.get_grip_anchor() as Node2D
+	var anchor := _get_grip_anchor(piece_node)
+	if anchor != null:
 		return get_parent().to_local(anchor.to_global(piece_grip_offset))
 	return piece_node.position
+
+
+func _get_grip_anchor(piece_node: Node2D) -> Node2D:
+	if piece_node.has_method("get_grip_anchor"):
+		return piece_node.get_grip_anchor() as Node2D
+	return null
 
 
 func _offscreen_position(horizontal_position: float, world_scale: float) -> Vector2:

@@ -293,6 +293,19 @@ func move_piece_node_with_player_hand(piece_node: Node, from: Vector2i, to: Vect
 	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path)
 	_update_piece_depth(piece_node)
 
+func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Node, _from: Vector2i, to: Vector2i) -> bool:
+	if not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
+		return false
+	if not is_instance_valid(player_hand_rig) or not player_hand_rig.can_animate():
+		await move_piece_node(attacker_node, to)
+		return false
+
+	attacker_node.coordinate = to
+	var destination := grid_to_screen(to.x, to.y)
+	var carried_offscreen: bool = await player_hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale())
+	_update_piece_depth(attacker_node)
+	return carried_offscreen
+
 func get_player_hand_carry_path(piece_node: Node, from: Vector2i, to: Vector2i) -> StringName:
 	var piece_model: ModelPiece = piece_node.get("model") if piece_node != null else null
 	var piece_type: String = piece_model.type if piece_model != null else ""
