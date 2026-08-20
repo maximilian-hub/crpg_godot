@@ -48,6 +48,11 @@ signal square_selected(coordinate: Vector2i)
 	set(value):
 		scale_world_with_projection = value
 		_request_layout()
+@export var show_piece_grip_anchors := false:
+	set(value):
+		show_piece_grip_anchors = value
+		if is_node_ready():
+			_sync_piece_grip_anchor_debug()
 var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
 @export_enum("white", "black") var viewing_color: String = "white"
@@ -68,6 +73,7 @@ var active_loop_player: AudioStreamPlayer
 @onready var aura_loop_player = AudioStreamPlayer.new()
 @onready var powerdown_player = AudioStreamPlayer.new()
 @onready var board_body: Node2D = $BoardBody
+@onready var player_hand_rig: Node2D = $PlayerHandRig
 const POWERUP_VOLUME = -20
 const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
@@ -132,6 +138,15 @@ func set_viewing_color(color: String) -> void:
 	viewing_color = color if color == "black" else "white"
 	_layout_board()
 
+func set_player_hand_style(style: Resource) -> void:
+	if is_instance_valid(player_hand_rig):
+		player_hand_rig.set_hand_style(style)
+
+func _sync_piece_grip_anchor_debug() -> void:
+	for piece in $Pieces.get_children():
+		if piece.has_method("set_grip_anchor_debug_visible"):
+			piece.set_grip_anchor_debug_visible(show_piece_grip_anchors)
+
 func _request_layout() -> void:
 	if is_node_ready() and not board.is_empty():
 		_layout_board()
@@ -189,6 +204,7 @@ func draw_piece(piece_data: ModelPiece) -> Node:
 	var piece = piece_scene.instantiate()
 	piece.position = pos
 	piece.set_model(piece_data)
+	piece.set_grip_anchor_debug_visible(show_piece_grip_anchors)
 	piece.scale = Vector2.ONE * get_world_scale()
 	piece.coordinate = Vector2i(row, col)
 	_update_piece_depth(piece)
@@ -262,6 +278,19 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 	piece_node.coordinate = to
 	_update_piece_depth(piece_node)
 	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
+
+func move_piece_node_with_player_hand(piece_node: Node, to: Vector2i) -> void:
+	if not is_instance_valid(piece_node):
+		printerr("move_piece_node_with_player_hand: Invalid piece node.")
+		return
+	if not is_instance_valid(player_hand_rig) or not player_hand_rig.can_animate():
+		await move_piece_node(piece_node, to)
+		return
+
+	piece_node.coordinate = to
+	var destination := grid_to_screen(to.x, to.y)
+	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale())
+	_update_piece_depth(piece_node)
 
 func attack_piece_node(piece_node: Node, to: Vector2i) -> void:
 	if not is_instance_valid(piece_node):

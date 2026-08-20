@@ -24,6 +24,7 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
 var selection_effect_piece: ModelPiece = null
+var player_move_submission_active := false
 
 
 func _ready() -> void:
@@ -46,6 +47,8 @@ func _ready() -> void:
 	controller.selection_piece_processed.connect(_on_selection_piece_processed)
 	controller.selection_targets_changed.connect(_on_selection_targets_changed)
 	controller.selection_cleared.connect(_on_selection_cleared)
+	controller.ordinary_move_submission_started.connect(_on_ordinary_move_submission_started)
+	controller.ordinary_move_submission_finished.connect(_on_ordinary_move_submission_finished)
 	view.square_selected.connect(controller._on_square_clicked)
 
 	if not model.board.is_empty():
@@ -86,8 +89,19 @@ func _on_piece_move_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, 
 		return
 
 	gate.hold()
-	await view.move_piece_node(piece_node, to)
+	if player_move_submission_active and piece.color == view.viewing_color and controller.is_player_controlled(piece.color):
+		await view.move_piece_node_with_player_hand(piece_node, to)
+	else:
+		await view.move_piece_node(piece_node, to)
 	gate.release()
+
+
+func _on_ordinary_move_submission_started(_piece: ModelPiece, _target: Vector2i) -> void:
+	player_move_submission_active = true
+
+
+func _on_ordinary_move_submission_finished(_piece: ModelPiece, _target: Vector2i, _accepted: bool) -> void:
+	player_move_submission_active = false
 
 
 func _on_piece_attack_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:

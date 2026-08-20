@@ -113,6 +113,7 @@ func _test_piece_ground_anchors() -> void:
 		_expect(piece.get_ground_anchor().position == Vector2.ZERO, "%s ground effect anchor remains at the board-contact origin" % model.type)
 		_expect(piece.get_body_anchor().position == piece.sprite.position, "%s body effect anchor tracks the artwork center" % model.type)
 		_expect(is_equal_approx(piece.get_head_anchor().position.y, piece.get_sprite_top_local_y()), "%s head effect anchor tracks the artwork top" % model.type)
+		_expect(piece.get_grip_anchor().position != piece.get_head_anchor().position, "%s grip anchor is independently configured from its head anchor" % model.type)
 		_expect(piece.sprite.texture.resource_path.begins_with("res://assets/pieces/standard/black_"), "%s resolves through standardized source art" % model.type)
 		_expect(piece.sprite.material is ShaderMaterial, "%s receives the temporary White palette" % model.type)
 		piece.queue_free()

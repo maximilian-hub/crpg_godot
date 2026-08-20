@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=3 format=3 uid="uid://cqmr7yvuqlcxk"]
+
+[ext_resource type="Script" path="res://scripts/view/piece_art_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" uid="uid://cdfiurb06m7sq" path="res://assets/pieces/standard/black_bishop.png" id="2_texture"]
+
+[resource]
+script = ExtResource("1_profile")
+reference_texture = ExtResource("2_texture")
+grip_anchor = Vector2(0, -43)

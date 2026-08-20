@@ -29,6 +29,8 @@ func _ready() -> void:
 
 func _run_suite() -> void:
 	await _test_default_initialization_and_normal_move()
+	await _test_player_hand_move_presentation()
+	await _test_player_hand_capture_presentation()
 	await _test_ai_configuration_and_turns()
 	await _test_nonlethal_attack_presentation()
 	await _test_arakne_spike_burst()
@@ -40,6 +42,79 @@ func _run_suite() -> void:
 	await _test_rage_priority_before_raise_dead()
 	await _test_raise_dead_selection_resume()
 	await _test_battle_completion()
+
+
+func _test_player_hand_move_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var view: ChessBoardView = context.view
+	var rig: Node2D = view.get_node("PlayerHandRig")
+	var piece_slot: Node2D = rig.get_node("PieceSlot")
+	var back: Sprite2D = rig.get_node("Back")
+	var front: Sprite2D = rig.get_node("Front")
+	rig.approach_duration = 0.01
+	rig.grasp_hold_duration = 0.01
+	rig.carry_duration = 0.01
+	rig.release_hold_duration = 0.01
+	rig.retreat_duration = 0.01
+
+	var pawn: ModelPiece = model.board[6][0]
+	var pawn_view: Node2D = context.adapter.get_piece_view(pawn)
+	var expected_grip_position := view.to_local(pawn_view.get_grip_anchor().to_global(rig.piece_grip_offset))
+	var observations: Array[String] = []
+	rig.pose_changed.connect(func(pose: StringName): observations.append(String(pose)))
+	rig.piece_grabbed.connect(
+		func(piece: Node2D):
+			observations.append("grabbed")
+			_expect(piece == pawn_view and piece.get_parent() == piece_slot, "player hand sandwiches the grabbed piece in its carry slot")
+			_expect(rig.position.is_equal_approx(expected_grip_position), "player hand aligns its grip to the piece head anchor plus the configured offset")
+	)
+	rig.piece_released.connect(
+		func(piece: Node2D):
+			observations.append("released")
+			_expect(piece.get_parent() == view.get_node("Pieces"), "player hand restores the released piece to the board piece layer")
+	)
+	rig.move_animation_finished.connect(func(): observations.append("finished"))
+
+	controller.select_piece(pawn)
+	await controller._on_square_clicked(Vector2i(4, 0))
+
+	_expect(observations == ["open", "grabbed", "closed", "open", "released", "finished"], "player hand uses the open-grab-close-carry-open-release sequence")
+	_expect(back.z_index < piece_slot.z_index and piece_slot.z_index < front.z_index, "carried piece renders between the rear hand and front thumb")
+	_expect(back.texture.resource_path.ends_with("skeleton_open.png"), "released hand displays the open rear artwork")
+	_expect(front.texture.resource_path.ends_with("skeleton_open_thumb.png"), "released hand displays the open thumb artwork")
+	_expect(not rig.visible and not rig.is_animating and rig.position.y > rig.get_viewport_rect().size.y, "player hand retreats fully below the viewport")
+	_expect(pawn_view.position == view.grid_to_screen(4, 0) and pawn_view.coordinate == Vector2i(4, 0), "hand-carried piece lands exactly on its projected destination")
+	_expect(model.current_turn == "black" and not model.action_in_progress, "hand animation completes before the player move changes turns")
+
+	await _destroy_game(context.game)
+
+
+func _test_player_hand_capture_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var rig: Node2D = context.view.get_node("PlayerHandRig")
+	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "release_hold_duration", "retreat_duration"]:
+		rig.set(property_name, 0.01)
+
+	var rook := Rook.new("white", Vector2i(7, 0))
+	var bishop := Bishop.new("black", Vector2i(5, 0))
+	_reset_battle(model, controller, [rook, bishop])
+	var observation := {"hand_completions": 0}
+	rig.move_animation_finished.connect(func(): observation["hand_completions"] += 1)
+
+	controller.select_piece(rook)
+	await controller._on_square_clicked(bishop.coordinate)
+	await get_tree().process_frame
+
+	var rook_view: Node2D = context.adapter.get_piece_view(rook)
+	_expect(observation["hand_completions"] == 1, "player lethal capture reuses one ordinary hand-carry sequence")
+	_expect(model.board[5][0] == rook and rook_view.position == context.view.grid_to_screen(5, 0), "hand-carried attacker occupies the captured piece's square")
+	_expect(context.adapter.get_piece_view(bishop) == null, "captured defender is removed by the existing destruction presentation")
+
+	await _destroy_game(context.game)
 
 
 func _test_active_bone_pawn_summon_presentation() -> void:

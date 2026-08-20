@@ -7,9 +7,19 @@ class_name PieceView
 
 const STANDARD_PIECE_DIRECTORY := "res://assets/pieces/standard/"
 const WHITE_PALETTE_SHADER := preload("res://assets/pieces/white_piece_palette.gdshader")
+const PIECE_ART_PROFILES := {
+	"pawn": preload("res://assets/pieces/profiles/pawn.tres"),
+	"rook": preload("res://assets/pieces/profiles/rook.tres"),
+	"knight": preload("res://assets/pieces/profiles/knight.tres"),
+	"bishop": preload("res://assets/pieces/profiles/bishop.tres"),
+	"queen": preload("res://assets/pieces/profiles/queen.tres"),
+	"king": preload("res://assets/pieces/profiles/king.tres"),
+}
 
 var coordinate: Vector2i
 var model: ModelPiece
+var art_profile: Resource
+var show_grip_anchor_debug := false
 
 var sprite: Sprite2D:
 	get:
@@ -35,6 +45,7 @@ func update_sprite() -> void:
 
 func _apply_piece_art(color: String, requested_type: String) -> void:
 	var standard_type := _get_standard_type(requested_type)
+	art_profile = PIECE_ART_PROFILES.get(standard_type)
 	var authored_path := STANDARD_PIECE_DIRECTORY + color + "_" + standard_type + ".png"
 	var uses_authored_color := ResourceLoader.exists(authored_path)
 	var texture_path := authored_path if uses_authored_color else STANDARD_PIECE_DIRECTORY + "black_" + standard_type + ".png"
@@ -68,6 +79,8 @@ func _update_effect_anchors() -> void:
 	get_ground_anchor().position = Vector2.ZERO
 	get_body_anchor().position = sprite.position
 	get_head_anchor().position = Vector2(0.0, get_sprite_top_local_y())
+	get_grip_anchor().position = art_profile.grip_anchor if art_profile != null else get_head_anchor().position
+	queue_redraw()
 
 func get_ground_anchor() -> Marker2D:
 	return get_node("GroundAnchor") as Marker2D
@@ -77,6 +90,21 @@ func get_body_anchor() -> Marker2D:
 
 func get_head_anchor() -> Marker2D:
 	return get_node("HeadAnchor") as Marker2D
+
+func get_grip_anchor() -> Marker2D:
+	return get_node("GripAnchor") as Marker2D
+
+func set_grip_anchor_debug_visible(enabled: bool) -> void:
+	show_grip_anchor_debug = enabled
+	queue_redraw()
+
+func _draw() -> void:
+	if not show_grip_anchor_debug:
+		return
+	var point := get_grip_anchor().position
+	var color := Color(1.0, 0.0, 0.8, 1.0)
+	draw_line(point + Vector2(-4, 0), point + Vector2(4, 0), color, 1.0)
+	draw_line(point + Vector2(0, -4), point + Vector2(0, 4), color, 1.0)
 
 func get_anchor_position_in(target_parent: Node2D, anchor: Node2D) -> Vector2:
 	return target_parent.to_local(anchor.global_position)

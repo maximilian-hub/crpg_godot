@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/view/player_hand_rig.gd" id="1_hand_rig"]
+
+[node name="PlayerHandRig" type="Node2D"]
+visible = false
+z_index = 100
+script = ExtResource("1_hand_rig")
+
+[node name="Back" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="PieceSlot" type="Node2D" parent="."]
+z_index = 1
+
+[node name="Front" type="Sprite2D" parent="."]
+texture_filter = 1
+z_index = 2

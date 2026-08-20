@@ -22,6 +22,8 @@ signal ability_targeting_started(king: KingPiece, ability_name: String, targets:
 signal ability_targeting_ended(king: KingPiece, ability_name: String, reason: String)
 signal selection_targets_changed(targets: Array)
 signal selection_cleared()
+signal ordinary_move_submission_started(piece: ModelPiece, target: Vector2i)
+signal ordinary_move_submission_finished(piece: ModelPiece, target: Vector2i, accepted: bool)
 
 func _ready():
 	model.action_started.connect(_on_action_started)
@@ -58,7 +60,9 @@ func _on_square_clicked(coord: Vector2i):
 
 	if coord in legal_moves:
 		deselect_piece()
-		await model.submit_move(temp_selected_piece, coord)
+		ordinary_move_submission_started.emit(temp_selected_piece, coord)
+		var accepted := await model.submit_move(temp_selected_piece, coord)
+		ordinary_move_submission_finished.emit(temp_selected_piece, coord, accepted)
 		return
 
 	# Fallback: deselect and possibly select a different friendly piece.

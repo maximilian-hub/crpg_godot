@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=3 format=3 uid="uid://caidxdtyvpo3y"]
+
+[ext_resource type="Script" path="res://scripts/view/piece_art_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" uid="uid://c5lyn25e2y2ee" path="res://assets/pieces/standard/black_rook.png" id="2_texture"]
+
+[resource]
+script = ExtResource("1_profile")
+reference_texture = ExtResource("2_texture")
+grip_anchor = Vector2(0, -39)

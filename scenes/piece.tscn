@@ -17,6 +17,8 @@ script = ExtResource("1_gebih")
 
 [node name="HeadAnchor" type="Marker2D" parent="."]
 
+[node name="GripAnchor" type="Marker2D" parent="."]
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 visible = false
 shape = SubResource("RectangleShape2D_tvnf0")
