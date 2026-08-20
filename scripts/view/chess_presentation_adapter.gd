@@ -82,7 +82,7 @@ func _on_piece_summoned(piece: ModelPiece, completion: CompletionGate) -> void:
 	completion.release()
 
 
-func _on_piece_move_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
+func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		printerr("Presentation has no visual node for ", piece.type, " at ", to)
@@ -90,7 +90,7 @@ func _on_piece_move_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, 
 
 	gate.hold()
 	if player_move_submission_active and piece.color == view.viewing_color and controller.is_player_controlled(piece.color):
-		await view.move_piece_node_with_player_hand(piece_node, to)
+		await view.move_piece_node_with_player_hand(piece_node, from, to)
 	else:
 		await view.move_piece_node(piece_node, to)
 	gate.release()

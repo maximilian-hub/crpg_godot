@@ -4,17 +4,23 @@ class_name PlayerHandRig
 signal pose_changed(pose: StringName)
 signal piece_grabbed(piece: Node2D)
 signal piece_released(piece: Node2D)
+signal carry_path_started(path: StringName)
 signal move_animation_finished()
+
+const CARRY_PATH_SLIDE := &"slide"
+const CARRY_PATH_JUMP := &"jump"
 
 @export var hand_style: Resource
 ## Grip location measured from the top-left of the 96 x 160 source artwork.
 @export var grip_anchor_pixels := Vector2(11.0, 29.0)
-## Offset from the piece's HeadAnchor, measured in the piece's local pixels.
+## Offset from the piece's configured GripAnchor, measured in local piece pixels.
 @export var piece_grip_offset := Vector2(0.0, 6.0)
 @export_range(0.25, 4.0, 0.05) var art_scale_multiplier := 3.5
 @export_range(0.01, 2.0, 0.01) var approach_duration := 0.24
 @export_range(0.0, 1.0, 0.01) var grasp_hold_duration := 0.18
 @export_range(0.01, 2.0, 0.01) var carry_duration := .24
+@export_range(0.0, 128.0, 1.0) var jump_arc_height := 64.0
+@export_range(0.01, 2.0, 0.01) var jump_carry_duration := 0.36
 @export_range(0.0, 1.0, 0.01) var release_hold_duration := 0.35
 @export_range(0.01, 2.0, 0.01) var retreat_duration := 0.24
 @export_range(0.0, 128.0, 1.0) var offscreen_margin := 8.0
@@ -41,7 +47,12 @@ func can_animate() -> bool:
 	return hand_style != null and hand_style.has_method("is_complete") and hand_style.is_complete()
 
 
-func play_piece_move(piece_node: Node2D, destination: Vector2, world_scale: float) -> void:
+func play_piece_move(
+	piece_node: Node2D,
+	destination: Vector2,
+	world_scale: float,
+	carry_path: StringName = CARRY_PATH_SLIDE
+) -> void:
 	if not can_animate() or not is_instance_valid(piece_node):
 		return
 
@@ -74,7 +85,11 @@ func play_piece_move(piece_node: Node2D, destination: Vector2, world_scale: floa
 	await _wait(grasp_hold_duration)
 
 	# Carry the closed hand and grabbed piece to the destination together.
-	await _tween_position(destination_contact, carry_duration)
+	carry_path_started.emit(carry_path)
+	if carry_path == CARRY_PATH_JUMP:
+		await _tween_jump_position(destination_contact, jump_carry_duration, jump_arc_height * world_scale)
+	else:
+		await _tween_position(destination_contact, carry_duration)
 	await _wait(release_hold_duration)
 
 	# Open the hand, return the piece to the board, and snap it to its exact square.
@@ -130,6 +145,25 @@ func _tween_position(target: Vector2, duration: float) -> void:
 	var tween := create_tween()
 	tween.tween_property(self, "position", target, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
+
+
+func _tween_jump_position(target: Vector2, duration: float, arc_height: float) -> void:
+	var start := position
+	var tween := create_tween()
+	tween.tween_method(
+		func(progress: float): position = calculate_jump_position(start, target, progress, arc_height),
+		0.0,
+		1.0,
+		duration
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
+
+
+static func calculate_jump_position(start: Vector2, destination: Vector2, progress: float, arc_height: float) -> Vector2:
+	var normalized_progress := clampf(progress, 0.0, 1.0)
+	var straight_position := start.lerp(destination, normalized_progress)
+	var lift := 4.0 * arc_height * normalized_progress * (1.0 - normalized_progress)
+	return straight_position + Vector2.UP * lift
 
 
 func _wait(duration: float) -> void:

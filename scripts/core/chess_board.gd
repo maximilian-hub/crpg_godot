@@ -279,7 +279,7 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 	_update_piece_depth(piece_node)
 	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
 
-func move_piece_node_with_player_hand(piece_node: Node, to: Vector2i) -> void:
+func move_piece_node_with_player_hand(piece_node: Node, from: Vector2i, to: Vector2i) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("move_piece_node_with_player_hand: Invalid piece node.")
 		return
@@ -289,8 +289,19 @@ func move_piece_node_with_player_hand(piece_node: Node, to: Vector2i) -> void:
 
 	piece_node.coordinate = to
 	var destination := grid_to_screen(to.x, to.y)
-	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale())
+	var carry_path := get_player_hand_carry_path(piece_node, from, to)
+	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path)
 	_update_piece_depth(piece_node)
+
+func get_player_hand_carry_path(piece_node: Node, from: Vector2i, to: Vector2i) -> StringName:
+	var piece_model: ModelPiece = piece_node.get("model") if piece_node != null else null
+	var piece_type: String = piece_model.type if piece_model != null else ""
+	if piece_type == "knight":
+		return &"jump"
+	var distance := maxi(absi(to.x - from.x), absi(to.y - from.y))
+	if piece_type in ["rook", "bishop", "queen"] and distance > 2:
+		return &"jump"
+	return &"slide"
 
 func attack_piece_node(piece_node: Node, to: Vector2i) -> void:
 	if not is_instance_valid(piece_node):

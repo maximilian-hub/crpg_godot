@@ -61,9 +61,17 @@ func _test_player_hand_move_presentation() -> void:
 
 	var pawn: ModelPiece = model.board[6][0]
 	var pawn_view: Node2D = context.adapter.get_piece_view(pawn)
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][1]), Vector2i(7, 1), Vector2i(5, 2)) == &"jump", "knights always use the jump carry path")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][0]), Vector2i(7, 0), Vector2i(5, 0)) == &"slide", "two-square rook movement retains the slide carry path")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][0]), Vector2i(7, 0), Vector2i(4, 0)) == &"jump", "long rook movement uses the jump carry path")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][2]), Vector2i(7, 2), Vector2i(4, 5)) == &"jump", "long bishop movement uses the jump carry path")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(7, 3), Vector2i(4, 6)) == &"jump", "long queen movement uses the jump carry path")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][4]), Vector2i(7, 4), Vector2i(4, 4)) == &"slide", "kings retain the slide carry path")
 	var expected_grip_position := view.to_local(pawn_view.get_grip_anchor().to_global(rig.piece_grip_offset))
 	var observations: Array[String] = []
+	var carry_paths: Array[StringName] = []
 	rig.pose_changed.connect(func(pose: StringName): observations.append(String(pose)))
+	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
 	rig.piece_grabbed.connect(
 		func(piece: Node2D):
 			observations.append("grabbed")
@@ -81,6 +89,10 @@ func _test_player_hand_move_presentation() -> void:
 	await controller._on_square_clicked(Vector2i(4, 0))
 
 	_expect(observations == ["open", "grabbed", "closed", "open", "released", "finished"], "player hand uses the open-grab-close-carry-open-release sequence")
+	_expect(carry_paths == [&"slide"], "two-square pawn movement retains the sliding carry path")
+	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.0, 32.0) == Vector2.ZERO, "jump arc begins at the exact grip position")
+	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.5, 32.0) == Vector2(50, -12), "jump arc reaches its configured height above the straight midpoint")
+	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 1.0, 32.0) == Vector2(100, 40), "jump arc ends at the exact destination")
 	_expect(back.z_index < piece_slot.z_index and piece_slot.z_index < front.z_index, "carried piece renders between the rear hand and front thumb")
 	_expect(back.texture.resource_path.ends_with("skeleton_open.png"), "released hand displays the open rear artwork")
 	_expect(front.texture.resource_path.ends_with("skeleton_open_thumb.png"), "released hand displays the open thumb artwork")
@@ -96,14 +108,16 @@ func _test_player_hand_capture_presentation() -> void:
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
 	var rig: Node2D = context.view.get_node("PlayerHandRig")
-	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "release_hold_duration", "retreat_duration"]:
+	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
 		rig.set(property_name, 0.01)
 
 	var rook := Rook.new("white", Vector2i(7, 0))
-	var bishop := Bishop.new("black", Vector2i(5, 0))
+	var bishop := Bishop.new("black", Vector2i(3, 0))
 	_reset_battle(model, controller, [rook, bishop])
 	var observation := {"hand_completions": 0}
+	var carry_paths: Array[StringName] = []
 	rig.move_animation_finished.connect(func(): observation["hand_completions"] += 1)
+	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
 
 	controller.select_piece(rook)
 	await controller._on_square_clicked(bishop.coordinate)
@@ -111,7 +125,8 @@ func _test_player_hand_capture_presentation() -> void:
 
 	var rook_view: Node2D = context.adapter.get_piece_view(rook)
 	_expect(observation["hand_completions"] == 1, "player lethal capture reuses one ordinary hand-carry sequence")
-	_expect(model.board[5][0] == rook and rook_view.position == context.view.grid_to_screen(5, 0), "hand-carried attacker occupies the captured piece's square")
+	_expect(carry_paths == [&"jump"], "long sliding-piece capture uses the jump carry path")
+	_expect(model.board[3][0] == rook and rook_view.position == context.view.grid_to_screen(3, 0), "hand-carried attacker occupies the captured piece's square")
 	_expect(context.adapter.get_piece_view(bishop) == null, "captured defender is removed by the existing destruction presentation")
 
 	await _destroy_game(context.game)
