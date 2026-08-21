@@ -55,7 +55,9 @@ var execute_button: Button
 
 func _ready() -> void:
 	editor.model = model
-	interaction.configure(model, editor, $ChessGame/CanvasLayer/ChessBoard)
+	var board_view: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
+	interaction.configure(model, editor, board_view)
+	board_view.square_selected.connect(_release_gui_focus)
 	editor.edit_committed.connect(_on_edit_committed)
 	editor.tool_selection_changed.connect(func(_tool: BoardEditorController.Tool, _type_id: StringName, _color: String): _refresh_control_states())
 	model.settled_action_completed.connect(_on_settled_action_completed)
@@ -76,9 +78,9 @@ func _build_panel() -> void:
 	mode_button = _add_button("", func(): _set_mode(Mode.PLAY if mode == Mode.EDIT else Mode.EDIT))
 	var history_row := HBoxContainer.new()
 	panel.add_child(history_row)
-	undo_button = _add_button_to(history_row, "Undo", undo)
-	redo_button = _add_button_to(history_row, "Redo", redo)
-	reset_button = _add_button("Reset", reset)
+	undo_button = _add_button_to(history_row, "Undo [←]", undo)
+	redo_button = _add_button_to(history_row, "Redo [→]", redo)
+	reset_button = _add_button("Reset [R]", reset)
 	clear_button = _add_button("Clear", func(): editor.clear_board())
 	copy_button = _add_button("Copy Position", copy_position)
 	paste_button = _add_button("Paste Position", paste_position)
@@ -161,6 +163,52 @@ func _build_panel() -> void:
 func _on_palette_piece_drag_requested(type_id: StringName, color: String) -> void:
 	if editor.select_palette_piece(type_id, color):
 		interaction.begin_palette_drag(type_id, color)
+
+func _release_gui_focus(_coordinate := Vector2i.ZERO) -> void:
+	get_viewport().gui_release_focus()
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not event is InputEventKey:
+		return
+	var key_event := event as InputEventKey
+	if not key_event.pressed or key_event.echo:
+		return
+	if key_event.ctrl_pressed or key_event.alt_pressed or key_event.meta_pressed or key_event.shift_pressed:
+		return
+
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	if focus_owner != null:
+		if key_event.keycode == KEY_ESCAPE and mode == Mode.EDIT:
+			_release_gui_focus()
+			_restore_cursor_tool()
+			get_viewport().set_input_as_handled()
+		return
+
+	match key_event.keycode:
+		KEY_LEFT:
+			if not undo_button.disabled:
+				undo()
+				get_viewport().set_input_as_handled()
+		KEY_RIGHT:
+			if not redo_button.disabled:
+				redo()
+				get_viewport().set_input_as_handled()
+		KEY_P:
+			if not mode_button.disabled:
+				_set_mode(Mode.PLAY if mode == Mode.EDIT else Mode.EDIT)
+				get_viewport().set_input_as_handled()
+		KEY_R:
+			if not reset_button.disabled:
+				reset()
+				get_viewport().set_input_as_handled()
+		KEY_ESCAPE:
+			if mode == Mode.EDIT:
+				_restore_cursor_tool()
+				get_viewport().set_input_as_handled()
+
+func _restore_cursor_tool() -> void:
+	interaction.cancel_drag()
+	editor.select_cursor_tool()
 
 func _add_ai_mode_button(parent: Control, label: String, value: ChessCpuPlayer.ExecutionMode) -> void:
 	var button := _add_button_to(parent, label, func(): _configure_ai(value))
@@ -359,7 +407,7 @@ func _refresh_control_states() -> void:
 		return
 	var settled := model.is_settled()
 	var editing := mode == Mode.EDIT and settled
-	mode_button.text = "Mode: Edit" if mode == Mode.EDIT else "Mode: Play"
+	mode_button.text = "Mode: Edit [P]" if mode == Mode.EDIT else "Mode: Play [P]"
 	mode_button.disabled = not settled
 	_style_button(mode_button, true, COLOR_EDIT if mode == Mode.EDIT else COLOR_PLAY)
 	undo_button.disabled = not settled or not history.can_undo()

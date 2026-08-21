@@ -116,6 +116,9 @@ func _cancel_drag() -> void:
 	dragged_color = ""
 	_set_cursor_shape(Input.CURSOR_ARROW)
 
+func cancel_drag() -> void:
+	_cancel_drag()
+
 func _input(event: InputEvent) -> void:
 	if drag_source == DragSource.NONE or not editor.editor_enabled:
 		return

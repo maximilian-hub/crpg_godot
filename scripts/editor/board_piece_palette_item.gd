@@ -14,6 +14,7 @@ var is_delete_tool := false
 var selected_state := false
 var interaction_enabled := true
 var preview: PieceView = null
+var shortcut_label: Label = null
 var press_position := Vector2.ZERO
 var press_active := false
 var drag_started := false
@@ -30,6 +31,17 @@ func configure_piece(piece_type_id: StringName, piece_color: String) -> void:
 
 func configure_cursor() -> void:
 	is_cursor_tool = true
+	shortcut_label = Label.new()
+	shortcut_label.text = "Esc"
+	shortcut_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shortcut_label.add_theme_font_size_override("font_size", 10)
+	shortcut_label.add_theme_color_override("font_color", Color("d8c6a0"))
+	shortcut_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	shortcut_label.offset_left = -27.0
+	shortcut_label.offset_top = -18.0
+	shortcut_label.offset_right = -3.0
+	shortcut_label.offset_bottom = -2.0
+	add_child(shortcut_label)
 	queue_redraw()
 
 func configure_delete() -> void:
