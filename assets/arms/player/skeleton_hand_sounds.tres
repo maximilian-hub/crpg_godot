@@ -8,5 +8,5 @@
 script = ExtResource("1_sound_set")
 grab = ExtResource("1_oevle")
 release = ExtResource("2_b0j54")
-volume_db = 0.0
+volume_db = -11.5
 pitch_variation = 0.05

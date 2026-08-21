@@ -7,6 +7,7 @@ signal piece_released(piece: Node2D)
 signal carry_path_started(path: StringName)
 signal capture_stage_changed(stage: StringName)
 signal captured_piece_grabbed(piece: Node2D)
+signal attack_contact(piece: Node2D)
 signal move_animation_finished()
 
 const CARRY_PATH_SLIDE := &"slide"
@@ -27,6 +28,8 @@ const SOUND_RELEASE := &"release"
 @export_range(0.01, 2.0, 0.01) var carry_duration := .24
 @export_range(0.0, 128.0, 1.0) var jump_arc_height := 32.0
 @export_range(0.01, 2.0, 0.01) var jump_carry_duration := 0.36
+@export_range(0.01, 2.0, 0.01) var attack_slam_duration := 0.16
+@export_range(0.01, 2.0, 0.01) var attack_rebound_duration := 0.28
 @export_range(0.0, 64.0, 1.0) var capture_approach_offset := 18.0 # Distance left of the defender where the capture approach ends.
 @export_range(0.0, 128.0, 1.0) var capture_approach_arc_height := 32.0 # Height of the arc used to approach a capture.
 @export_range(0.01, 2.0, 0.01) var capture_approach_duration := 0.18 # Time taken to arc toward the defender's left side.
@@ -79,7 +82,9 @@ func play_piece_move(
 	piece_node: Node2D,
 	destination: Vector2,
 	world_scale: float,
-	carry_path: StringName = CARRY_PATH_SLIDE
+	carry_path: StringName = CARRY_PATH_SLIDE,
+	enter_from_offscreen := true,
+	retreat_offscreen := true
 ) -> void:
 	if not can_animate() or not is_instance_valid(piece_node):
 		return
@@ -100,7 +105,8 @@ func play_piece_move(
 	var destination_contact := contact_position + destination - origin
 
 	# Raise the open hand from below the screen to the piece's grip point.
-	position = _offscreen_position(contact_position.x, effective_hand_scale)
+	if enter_from_offscreen:
+		position = _offscreen_position(contact_position.x, effective_hand_scale)
 	visible = true
 	await _tween_position(contact_position, approach_duration)
 
@@ -134,11 +140,13 @@ func play_piece_move(
 	piece_released.emit(piece_node)
 	_play_hand_sound(SOUND_RELEASE)
 
-	# Lower the empty open hand until it is fully out of view.
-	await _tween_position(_offscreen_position(destination_contact.x, effective_hand_scale), retreat_duration)
-	visible = false
-	is_animating = false
-	move_animation_finished.emit()
+	# A compound move such as castling can keep the open hand on the board and
+	# continue directly to its next piece.
+	if retreat_offscreen:
+		await _tween_position(_offscreen_position(destination_contact.x, effective_hand_scale), retreat_duration)
+		visible = false
+		is_animating = false
+		move_animation_finished.emit()
 
 
 func play_piece_capture(
@@ -179,8 +187,9 @@ func play_piece_capture(
 	await _wait(grasp_hold_duration)
 
 	# Arc to the defender's left, then swipe across it in a straight line.
-	# Keep the waiting defender visually in front of the carried attacker during the approach.
-	defender_node.z_index = z_index + captured_piece_pivot.z_index
+	# Keep the waiting defender at its board depth so the approaching hand passes
+	# over it. At contact, _attach_captured_piece moves it between the hand's
+	# back and front artwork.
 	capture_stage_changed.emit(&"initiation")
 	carry_path_started.emit(CARRY_PATH_JUMP)
 	var swipe_start := defender_contact + Vector2.LEFT * capture_approach_offset * world_scale
@@ -227,6 +236,56 @@ func play_piece_capture(
 	is_animating = false
 	move_animation_finished.emit()
 	return true
+
+
+func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, contact_callback: Callable = Callable()) -> void:
+	if not can_animate() or not is_instance_valid(piece_node):
+		return
+
+	is_animating = true
+	var effective_hand_scale := world_scale * art_scale_multiplier
+	scale = Vector2.ONE * effective_hand_scale
+	_apply_pose(false)
+	pose_changed.emit(&"open")
+
+	var original_parent := piece_node.get_parent()
+	var original_scale := piece_node.scale
+	var original_z_index := piece_node.z_index
+	var origin := piece_node.position
+	var contact_position := _piece_grip_position(piece_node)
+	var target_contact := contact_position + target - origin
+
+	position = _offscreen_position(contact_position.x, effective_hand_scale)
+	visible = true
+	await _tween_position(contact_position, approach_duration)
+	piece_node.reparent(piece_slot, true)
+	piece_node.z_index = 0
+	piece_grabbed.emit(piece_node)
+	_apply_pose(true)
+	pose_changed.emit(&"closed")
+	_play_hand_sound(SOUND_GRAB)
+	await _wait(grasp_hold_duration)
+
+	carry_path_started.emit(&"slam")
+	await _tween_attack_position(target_contact, attack_slam_duration, Tween.EASE_IN)
+	if contact_callback.is_valid():
+		contact_callback.call()
+	attack_contact.emit(piece_node)
+	await _tween_attack_position(contact_position, attack_rebound_duration, Tween.EASE_OUT)
+
+	_apply_pose(false)
+	pose_changed.emit(&"open")
+	piece_node.reparent(original_parent, true)
+	piece_node.scale = original_scale
+	piece_node.z_index = original_z_index
+	piece_node.position = origin
+	piece_released.emit(piece_node)
+	_play_hand_sound(SOUND_RELEASE)
+
+	await _tween_position(_offscreen_position(contact_position.x, effective_hand_scale), retreat_duration)
+	visible = false
+	is_animating = false
+	move_animation_finished.emit()
 
 
 func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_scale: float) -> void:
@@ -350,6 +409,12 @@ func _position_sprite_from_grip(sprite: Sprite2D) -> void:
 func _tween_position(target: Vector2, duration: float) -> void:
 	var tween := create_tween()
 	tween.tween_property(self, "position", target, duration * animation_duration_scale).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
+
+
+func _tween_attack_position(target: Vector2, duration: float, easing: Tween.EaseType) -> void:
+	var tween := create_tween()
+	tween.tween_property(self, "position", target, duration * animation_duration_scale).set_trans(Tween.TRANS_QUAD).set_ease(easing)
 	await tween.finished
 
 

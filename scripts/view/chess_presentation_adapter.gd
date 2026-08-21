@@ -29,6 +29,8 @@ var necromancer_auras: Dictionary = {}
 var selection_effect_piece: ModelPiece = null
 var player_move_submission_active := false
 var silently_removed_piece_views: Dictionary = {}
+var player_castling_hand_continuation := false
+var pending_attack_damage_visuals: Dictionary = {}
 
 
 func _ready() -> void:
@@ -79,6 +81,7 @@ func _on_board_rebuilt(board: Array) -> void:
 	piece_views.clear()
 	necromancer_auras.clear()
 	silently_removed_piece_views.clear()
+	pending_attack_damage_visuals.clear()
 	selection_effect_piece = null
 	player_move_submission_active = false
 	piece_views = view.rebuild_board(board)
@@ -123,7 +126,16 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 
 	gate.hold()
 	if player_move_submission_active and piece.color == view.viewing_color and controller.is_player_controlled(piece.color):
-		await view.move_piece_node_with_player_hand(piece_node, from, to)
+		var starts_castling := piece.type.ends_with("king") and from.x == to.x and absi(to.y - from.y) == 2
+		var continues_castling := player_castling_hand_continuation and piece.type == "rook"
+		if starts_castling:
+			await view.move_piece_node_with_player_hand(piece_node, from, to, true, false)
+			player_castling_hand_continuation = true
+		elif continues_castling:
+			await view.move_piece_node_with_player_hand(piece_node, from, to, false, true, &"jump")
+			player_castling_hand_continuation = false
+		else:
+			await view.move_piece_node_with_player_hand(piece_node, from, to)
 	else:
 		await view.move_piece_node(piece_node, to)
 	gate.release()
@@ -157,7 +169,7 @@ func _on_ordinary_move_submission_finished(_piece: ModelPiece, _target: Vector2i
 	player_move_submission_active = false
 
 
-func _on_piece_attack_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
+func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, _from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		printerr("Presentation has no visual node for attacking ", piece.type)
@@ -166,11 +178,21 @@ func _on_piece_attack_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i
 		return
 
 	gate.hold()
-	await view.attack_piece_node(piece_node, to)
+	pending_attack_damage_visuals[defender] = []
+	var contact_callback := func(): _flush_pending_attack_damage(defender)
+	if player_move_submission_active and piece.color == view.viewing_color and controller.is_player_controlled(piece.color):
+		await view.attack_piece_node_with_player_hand(piece_node, to, contact_callback)
+	else:
+		await view.attack_piece_node(piece_node, to, contact_callback)
+	# Never strand an HP display if an animation implementation exits without
+	# invoking its contact callback.
+	_flush_pending_attack_damage(defender)
+	pending_attack_damage_visuals.erase(defender)
 	gate.release()
 
 
 func _on_piece_destroyed(piece: ModelPiece) -> void:
+	pending_attack_damage_visuals.erase(piece)
 	var piece_node: Node = piece_views.get(piece)
 	piece_views.erase(piece)
 	necromancer_auras.erase(piece)
@@ -194,6 +216,22 @@ func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void
 
 
 func _on_piece_damaged(piece: ModelPiece, _amount: int, current_hp: int, _max_hp: int) -> void:
+	if pending_attack_damage_visuals.has(piece):
+		var queued_visuals: Array = pending_attack_damage_visuals[piece]
+		queued_visuals.append(current_hp)
+		return
+	_present_piece_damage(piece, current_hp)
+
+
+func _flush_pending_attack_damage(piece: ModelPiece) -> void:
+	if not pending_attack_damage_visuals.has(piece):
+		return
+	var queued_visuals: Array = pending_attack_damage_visuals[piece]
+	while not queued_visuals.is_empty():
+		_present_piece_damage(piece, int(queued_visuals.pop_front()))
+
+
+func _present_piece_damage(piece: ModelPiece, current_hp: int) -> void:
 	var piece_node: Node = get_piece_view(piece)
 	if is_instance_valid(piece_node):
 		view.spawn_splatter(piece_node)

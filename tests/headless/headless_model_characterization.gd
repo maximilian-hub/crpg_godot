@@ -76,8 +76,8 @@ func _test_nonlethal_combat() -> void:
 	model.add_piece(minotaur, minotaur.coordinate)
 	var observation := {"attack_events": 0}
 	model.piece_attack_committed.connect(
-		func(piece: ModelPiece, from: Vector2i, to: Vector2i, _gate: CompletionGate):
-			if piece == rook and from == Vector2i(4, 0) and to == Vector2i(4, 4):
+		func(piece: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, _gate: CompletionGate):
+			if piece == rook and defender == minotaur and from == Vector2i(4, 0) and to == Vector2i(4, 4):
 				observation["attack_events"] += 1
 	)
 
@@ -184,7 +184,7 @@ func _test_special_moves() -> void:
 	castle_model.add_piece(king, king.coordinate)
 	castle_model.add_piece(rook, rook.coordinate)
 	_expect(await castle_model.submit_move(king, Vector2i(7, 6)), "headless castling command is accepted")
-	_expect(castle_model.board[7][6] == king and castle_model.board[7][5] == rook, "castling moves rook before completing king move")
+	_expect(castle_model.board[7][6] == king and castle_model.board[7][5] == rook, "castling places the king and rook on their destination squares")
 	castle_model.free()
 
 	var passant_model := _new_empty_model()

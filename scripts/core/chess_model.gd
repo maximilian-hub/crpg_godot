@@ -25,7 +25,7 @@ signal piece_added(piece: ModelPiece)
 signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, completion: CompletionGate)
-signal piece_attack_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_attack_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
 signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: int)
 signal piece_stunned(piece: ModelPiece, duration: int)
@@ -267,10 +267,13 @@ func announce_ability_started(piece: KingPiece, ability_name: String) -> void:
 	completion.close()
 	await completion.wait_until_released()
 
-func announce_piece_attack(piece: ModelPiece, from: Vector2i, to: Vector2i) -> void:
+func announce_piece_attack(piece: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, damage: int) -> void:
 	var completion := CompletionGate.new()
-	piece_attack_committed.emit(piece, from, to, completion)
+	piece_attack_committed.emit(piece, defender, from, to, completion)
 	completion.close()
+	# Model damage remains authoritative and immediate. Presentation subscribers
+	# may hold the action open and reveal its visual feedback at contact.
+	await defender.take_damage(damage)
 	await completion.wait_until_released()
 
 func announce_piece_summoned(piece: ModelPiece) -> void:
@@ -579,14 +582,15 @@ func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	
 func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
 	var row := from.x
+	# Present castling in the order the hand performs it: place the king first,
+	# then carry the rook over it into the adjacent square.
+	await actually_move_piece(king, to)
 	if to.y == 6: # King-side castle
 		var kingside_rook = board[row][7]
 		await actually_move_piece(kingside_rook, Vector2i(row, 5))
 	elif to.y == 2: # Queen-side castle
 		var queenside_rook = board[row][0]
 		await actually_move_piece(queenside_rook, Vector2i(row, 3))
-
-	await actually_move_piece(king, to)
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row := from.x
@@ -658,8 +662,7 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 			destroy_piece(defender_instance, false) 
 
 		else: # Defender survives, takes damage, attacker stays put
-			await defender.take_damage(damage)
-			await announce_piece_attack(attacker, attacker.coordinate, to)
+			await announce_piece_attack(attacker, defender, attacker.coordinate, to, damage)
 		
 		
 		

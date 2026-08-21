@@ -30,6 +30,7 @@ func _ready() -> void:
 func _run_suite() -> void:
 	await _test_default_initialization_and_normal_move()
 	await _test_player_hand_move_presentation()
+	await _test_player_hand_castling_presentation()
 	await _test_player_hand_capture_presentation()
 	await _test_ai_configuration_and_turns()
 	await _test_nonlethal_attack_presentation()
@@ -113,6 +114,45 @@ func _test_player_hand_move_presentation() -> void:
 	_expect(not rig.visible and not rig.is_animating and rig.position.y > rig.get_viewport_rect().size.y, "player hand retreats fully below the viewport")
 	_expect(pawn_view.position == view.grid_to_screen(4, 0) and pawn_view.coordinate == Vector2i(4, 0), "hand-carried piece lands exactly on its projected destination")
 	_expect(model.current_turn == "black" and not model.action_in_progress, "hand animation completes before the player move changes turns")
+
+	await _destroy_game(context.game)
+
+
+func _test_player_hand_castling_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var view: ChessBoardView = context.view
+	var rig: PlayerHandRig = view.player_hand_rig
+	var king := ClassicKing.new("white", Vector2i(7, 4))
+	var rook := Rook.new("white", Vector2i(7, 7))
+	_reset_battle(model, controller, [king, rook])
+	rig.approach_duration = 0.01
+	rig.grasp_hold_duration = 0.01
+	rig.carry_duration = 0.01
+	rig.jump_carry_duration = 0.01
+	rig.release_hold_duration = 0.01
+	rig.retreat_duration = 0.01
+
+	var moved_types: Array[String] = []
+	var carry_paths: Array[StringName] = []
+	var observation := {"visible_after_king_release": false, "completion_count": 0}
+	model.piece_move_committed.connect(func(piece: ModelPiece, _from: Vector2i, _to: Vector2i, _gate: CompletionGate): moved_types.append(piece.type))
+	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
+	rig.piece_released.connect(
+		func(piece_node: Node2D):
+			if piece_node.model == king:
+				observation["visible_after_king_release"] = rig.visible
+	)
+	rig.move_animation_finished.connect(func(): observation["completion_count"] += 1)
+
+	controller.select_piece(king)
+	await controller._on_square_clicked(Vector2i(7, 6))
+
+	_expect(moved_types == ["king", "rook"], "castling presents the king before the rook")
+	_expect(carry_paths == [&"slide", &"jump"], "castling slides the king and jumps the rook")
+	_expect(observation["visible_after_king_release"] and observation["completion_count"] == 1, "castling keeps one continuous hand visit between pieces")
+	_expect(model.board[7][6] == king and model.board[7][5] == rook, "continuous hand castling lands both pieces on their final squares")
 
 	await _destroy_game(context.game)
 
@@ -322,24 +362,49 @@ func _test_ai_configuration_and_turns() -> void:
 func _test_nonlethal_attack_presentation() -> void:
 	var context := await _create_game()
 	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var rig: PlayerHandRig = context.view.player_hand_rig
 	var rook := Rook.new("white", Vector2i(4, 0))
 	var minotaur := MinotaurKing.new("black", Vector2i(4, 4))
-	_reset_battle(model, context.controller, [rook, minotaur])
+	_reset_battle(model, controller, [rook, minotaur])
 	var rook_view: Node = context.adapter.get_piece_view(rook)
+	var minotaur_view: Node = context.adapter.get_piece_view(minotaur)
+	var hp_bar = minotaur_view.get_node("HpBar")
 	var original_position: Vector2 = rook_view.position
-	var observation := {"attack_events": 0, "action_open": false, "gate_pending": false}
+	var initial_displayed_hp: int = hp_bar.current_hp
+	rig.approach_duration = 0.01
+	rig.grasp_hold_duration = 0.01
+	rig.attack_slam_duration = 0.01
+	rig.attack_rebound_duration = 0.01
+	rig.retreat_duration = 0.01
+	var observation := {"attack_events": 0, "action_open": false, "gate_pending": false, "grabbed": false, "released": false, "visuals_delayed": false, "visuals_at_contact": false}
+	var carry_paths: Array[StringName] = []
 	model.piece_attack_committed.connect(
-		func(piece: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate):
-			if piece == rook and from == Vector2i(4, 0) and to == Vector2i(4, 4):
+		func(piece: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate):
+			if piece == rook and defender == minotaur and from == Vector2i(4, 0) and to == Vector2i(4, 4):
 				observation["attack_events"] += 1
 				await get_tree().process_frame
 				observation["action_open"] = model.action_in_progress
 				observation["gate_pending"] = not gate.is_completed()
 	)
+	rig.piece_grabbed.connect(
+		func(piece_node: Node2D):
+			observation["grabbed"] = piece_node == rook_view and piece_node.get_parent() == rig.piece_slot
+			observation["visuals_delayed"] = minotaur.current_hp < minotaur.max_hp and hp_bar.current_hp == initial_displayed_hp and _count_children_named(context.view, &"BloodSplatter") == 0
+	)
+	rig.attack_contact.connect(
+		func(piece_node: Node2D):
+			observation["visuals_at_contact"] = piece_node == rook_view and hp_bar.current_hp == minotaur.current_hp and _count_children_named(context.view, &"BloodSplatter") == 1
+	)
+	rig.piece_released.connect(func(piece_node: Node2D): observation["released"] = piece_node == rook_view and piece_node.get_parent() == context.view.get_node("Pieces"))
+	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
 
-	await model.submit_move(rook, minotaur.coordinate)
+	controller.select_piece(rook)
+	await controller._on_square_clicked(minotaur.coordinate)
 	_expect(observation["attack_events"] == 1, "surviving-defender combat emits one presentation event")
 	_expect(observation["action_open"] and observation["gate_pending"], "nonlethal attack animation runs inside the open Model action")
+	_expect(observation["grabbed"] and observation["released"] and carry_paths == [&"slam"], "player ranged attack is carried through a hand-rig slam and rebound")
+	_expect(observation["visuals_delayed"] and observation["visuals_at_contact"], "damage HP, splatter, and sound presentation begins when the hand-carried attacker contacts the king")
 	_expect(minotaur.current_hp == minotaur.max_hp - rook.attack_power, "animated nonlethal attack applies damage")
 	_expect(model.board[4][0] == rook and rook.coordinate == Vector2i(4, 0), "animated attacker remains on its Model square")
 	_expect(rook_view.coordinate == Vector2i(4, 0), "attack animation does not change the PieceView coordinate")

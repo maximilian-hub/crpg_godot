@@ -364,7 +364,14 @@ func snap_piece_node(piece_node: Node, to: Vector2i) -> void:
 	piece_node.position = grid_to_screen(to.x, to.y)
 	_update_piece_depth(piece_node)
 
-func move_piece_node_with_player_hand(piece_node: Node, from: Vector2i, to: Vector2i) -> void:
+func move_piece_node_with_player_hand(
+	piece_node: Node,
+	from: Vector2i,
+	to: Vector2i,
+	enter_from_offscreen := true,
+	retreat_offscreen := true,
+	carry_path_override: StringName = &""
+) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("move_piece_node_with_player_hand: Invalid piece node.")
 		return
@@ -374,8 +381,8 @@ func move_piece_node_with_player_hand(piece_node: Node, from: Vector2i, to: Vect
 
 	piece_node.coordinate = to
 	var destination := grid_to_screen(to.x, to.y)
-	var carry_path := get_player_hand_carry_path(piece_node, from, to)
-	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path)
+	var carry_path := carry_path_override if not carry_path_override.is_empty() else get_player_hand_carry_path(piece_node, from, to)
+	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path, enter_from_offscreen, retreat_offscreen)
 	_update_piece_depth(piece_node)
 
 func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Node, _from: Vector2i, to: Vector2i) -> bool:
@@ -401,14 +408,27 @@ func get_player_hand_carry_path(piece_node: Node, from: Vector2i, to: Vector2i) 
 		return &"jump"
 	return &"slide"
 
-func attack_piece_node(piece_node: Node, to: Vector2i) -> void:
+func attack_piece_node(piece_node: Node, to: Vector2i, contact_callback: Callable = Callable()) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("attack_piece_node: Invalid piece node.")
 		return
 
 	var original_position: Vector2 = piece_node.position
 	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
+	if contact_callback.is_valid():
+		contact_callback.call()
 	await _tween_piece_to(piece_node, original_position)
+
+func attack_piece_node_with_player_hand(piece_node: Node, to: Vector2i, contact_callback: Callable = Callable()) -> void:
+	if not is_instance_valid(piece_node):
+		printerr("attack_piece_node_with_player_hand: Invalid piece node.")
+		return
+	if not is_instance_valid(player_hand_rig) or not player_hand_rig.can_animate():
+		await attack_piece_node(piece_node, to, contact_callback)
+		return
+
+	await player_hand_rig.play_piece_attack(piece_node, grid_to_screen(to.x, to.y), get_world_scale(), contact_callback)
+	_update_piece_depth(piece_node)
 
 func _tween_piece_to(piece_node: Node, target_position: Vector2) -> void:
 	var tween := create_tween()

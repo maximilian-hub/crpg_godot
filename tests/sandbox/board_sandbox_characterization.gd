@@ -151,6 +151,8 @@ func _ready() -> void:
 	_check(sandbox.thought_label.text != "No prepared action" and not sandbox.execute_button.disabled, "Think displays a prepared action and enables Execute", failures)
 	sandbox._on_seed_changed(9)
 	_check(sandbox.thought_label.text == "No prepared action" and sandbox.execute_button.disabled, "seed changes clear prepared AI actions", failures)
+	sandbox._set_speed(sandbox.PresentationPolicy.Speed.SLOW)
+	_check(sandbox.speed_value_label.text == "Slow" and int(sandbox.speed_slider.value) == sandbox.PresentationPolicy.Speed.SLOW and is_equal_approx(adapter.presentation_policy.duration_scale(), 2.0), "animation slider exposes a double-duration Slow speed", failures)
 	sandbox._set_speed(sandbox.PresentationPolicy.Speed.FAST)
 	_check(sandbox.speed_value_label.text == "Fast" and int(sandbox.speed_slider.value) == sandbox.PresentationPolicy.Speed.FAST, "animation slider and label synchronize", failures)
 	sandbox._on_grip_toggled(true)
