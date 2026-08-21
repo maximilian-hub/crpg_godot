@@ -16,6 +16,7 @@ func _ready() -> void:
 
 func _run() -> void:
 	_test_completion_gate_contract()
+	_test_stun_timer_saturates_at_zero()
 	await _test_initialization_and_move()
 	await _test_nonlethal_combat()
 	await _test_special_moves()
@@ -38,6 +39,22 @@ func _test_completion_gate_contract() -> void:
 	_expect(not claimed.is_completed(), "claimed completion gate waits after emission closes")
 	claimed.release()
 	_expect(claimed.is_completed(), "claimed completion gate resolves after release")
+
+func _test_stun_timer_saturates_at_zero() -> void:
+	var model := ChessBoardModel.new()
+	model.initialize_battle()
+	var pawn: ModelPiece = model.board[6][0]
+	pawn.decrement_stun_timer()
+	pawn.decrement_stun_timer()
+	_expect(pawn.stun_timer == 0 and not pawn.stunned, "unstunned pieces do not accumulate negative stun timers")
+	pawn.stun(2)
+	pawn.decrement_stun_timer()
+	_expect(pawn.stunned and pawn.stun_timer == 1, "active stun timer counts down while positive")
+	pawn.decrement_stun_timer()
+	_expect(not pawn.stunned and pawn.stun_timer == 0, "stun recovery stops exactly at zero")
+	pawn.decrement_stun_timer()
+	_expect(pawn.stun_timer == 0, "recovered stun timer remains saturated at zero")
+	model.free()
 
 func _test_initialization_and_move() -> void:
 	var model := ChessBoardModel.new()

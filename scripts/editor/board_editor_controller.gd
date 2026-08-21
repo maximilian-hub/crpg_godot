@@ -1,14 +1,18 @@
 extends Node
 class_name BoardEditorController
 
+enum Tool { CURSOR, DELETE, PIECE }
+
 signal editor_enabled_changed(enabled: bool)
-signal palette_selection_changed(type_id: StringName, color: String)
+signal tool_selection_changed(tool: Tool, type_id: StringName, color: String)
 signal edit_committed(before: ChessPosition, after: ChessPosition, label: String)
 signal edit_rejected(errors: Array)
 signal validation_changed(report: ChessPositionValidation)
 
 @export var model: ChessBoardModel
+
 var editor_enabled := false
+var selected_tool := Tool.CURSOR
 var selected_type_id: StringName = &"pawn"
 var selected_color := "white"
 
@@ -24,14 +28,31 @@ func select_palette_piece(type_id: StringName, color: String) -> bool:
 		return false
 	selected_type_id = ChessPieceCatalog.normalize_type_id(type_id)
 	selected_color = color
-	palette_selection_changed.emit(selected_type_id, selected_color)
+	selected_tool = Tool.PIECE
+	tool_selection_changed.emit(selected_tool, selected_type_id, selected_color)
 	return true
 
+func select_cursor_tool() -> void:
+	selected_tool = Tool.CURSOR
+	tool_selection_changed.emit(selected_tool, selected_type_id, selected_color)
+
+func select_delete_tool() -> void:
+	selected_tool = Tool.DELETE
+	tool_selection_changed.emit(selected_tool, selected_type_id, selected_color)
+
+func has_selected_piece_tool() -> bool:
+	return selected_tool == Tool.PIECE
+
 func place_selected(at: Vector2i) -> bool:
-	var piece := ChessPieceCatalog.create_piece(selected_type_id, selected_color, at)
+	if not has_selected_piece_tool():
+		return false
+	return place_piece(selected_type_id, selected_color, at)
+
+func place_piece(type_id: StringName, color: String, at: Vector2i) -> bool:
+	var piece := ChessPieceCatalog.create_piece(type_id, color, at)
 	if piece == null:
 		return false
-	return _commit(ChessPositionEditor.place_piece(model.capture_position(), piece.capture_piece_state()), "Place %s" % selected_type_id)
+	return _commit(ChessPositionEditor.place_piece(model.capture_position(), piece.capture_piece_state()), "Place %s" % type_id)
 
 func move_piece(from: Vector2i, to: Vector2i) -> bool:
 	return _commit(ChessPositionEditor.move_piece(model.capture_position(), from, to), "Move piece")

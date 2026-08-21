@@ -92,7 +92,8 @@ func print_piece():
 	print("~~~~~~~~~~~~~~~~~~~~")
 
 func _on_turn_changed(current_turn: String):
-	if current_turn == color: decrement_stun_timer()
+	if current_turn == color and stunned:
+		decrement_stun_timer()
 
 func _on_piece_destroyed(piece: ModelPiece):
 	pass
@@ -106,8 +107,12 @@ func stun(duration: int = 2):
 	model.piece_stunned.emit(self, duration)
 
 func decrement_stun_timer():
+	if stun_timer <= 0:
+		stun_timer = 0
+		return
 	stun_timer -= 1
-	if stun_timer == 0: unstun()
+	if stun_timer == 0 and stunned:
+		unstun()
 
 func unstun():
 	stunned = false

@@ -3,6 +3,8 @@ class_name ChessCpuPlayer
 
 const ChessAiThoughtData = preload("res://scripts/ai/chess_ai_thought.gd")
 
+signal thought_changed(thought)
+
 ## Headless client that chooses actions for one color and submits Model commands.
 
 @export var model: ChessBoardModel
@@ -40,17 +42,17 @@ func configure_mode(mode: ExecutionMode, color: String) -> void:
 	_primary_action_scheduled = false
 	_reaction_scheduled = false
 	_schedule_generation += 1
-	last_thought = null
+	clear_thought()
 	if execution_mode == ExecutionMode.AUTO:
 		_schedule_primary_action()
 
 
 func set_random_seed(value: int) -> void:
 	rng.seed = value
-	last_thought = null
+	clear_thought()
 
 func think():
-	last_thought = null
+	clear_thought()
 	if not is_enabled or execution_mode == ExecutionMode.DISABLED or model == null or model.battle_over or not model.is_settled() or model.current_turn != controlled_color:
 		return null
 	var action := choose_primary_action(model.get_legal_primary_actions(controlled_color))
@@ -65,13 +67,17 @@ func think():
 	thought.target = action.target
 	thought.score = _score_primary_action(action)
 	last_thought = thought
+	thought_changed.emit(last_thought)
 	return thought
 
 func get_last_thought():
 	return last_thought
 
 func clear_thought() -> void:
+	if last_thought == null:
+		return
 	last_thought = null
+	thought_changed.emit(null)
 
 func execute_thought() -> bool:
 	if last_thought == null or model == null or last_thought.model_revision != model.position_revision or model.current_turn != last_thought.color or not model.is_settled():
@@ -81,7 +87,7 @@ func execute_thought() -> bool:
 		if action.kind == last_thought.action_kind and action.target == last_thought.target and action.piece.coordinate == last_thought.piece_coordinate and action.piece.get_position_type_id() == last_thought.piece_type_id:
 			matching = action
 			break
-	last_thought = null
+	clear_thought()
 	if matching == null:
 		return false
 	var accepted: bool

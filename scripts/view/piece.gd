@@ -20,6 +20,7 @@ var coordinate: Vector2i
 var model: ModelPiece
 var art_profile: Resource
 var show_grip_anchor_debug := false
+var grip_anchor_debug_overlay: Node2D = null
 
 var sprite: Sprite2D:
 	get:
@@ -80,7 +81,7 @@ func _update_effect_anchors() -> void:
 	get_body_anchor().position = sprite.position
 	get_head_anchor().position = Vector2(0.0, get_sprite_top_local_y())
 	get_grip_anchor().position = art_profile.grip_anchor if art_profile != null else get_head_anchor().position
-	queue_redraw()
+	_sync_grip_anchor_debug_overlay()
 
 func get_ground_anchor() -> Marker2D:
 	return get_node("GroundAnchor") as Marker2D
@@ -96,15 +97,23 @@ func get_grip_anchor() -> Marker2D:
 
 func set_grip_anchor_debug_visible(enabled: bool) -> void:
 	show_grip_anchor_debug = enabled
-	queue_redraw()
+	_sync_grip_anchor_debug_overlay()
 
-func _draw() -> void:
-	if not show_grip_anchor_debug:
-		return
-	var point := get_grip_anchor().position
-	var color := Color(1.0, 0.0, 0.8, 1.0)
-	draw_line(point + Vector2(-4, 0), point + Vector2(4, 0), color, 1.0)
-	draw_line(point + Vector2(0, -4), point + Vector2(0, 4), color, 1.0)
+func _sync_grip_anchor_debug_overlay() -> void:
+	if grip_anchor_debug_overlay == null:
+		grip_anchor_debug_overlay = Node2D.new()
+		grip_anchor_debug_overlay.name = "GripAnchorDebugOverlay"
+		grip_anchor_debug_overlay.z_index = 1000
+		for points in [PackedVector2Array([Vector2(-4, 0), Vector2(4, 0)]), PackedVector2Array([Vector2(0, -4), Vector2(0, 4)])]:
+			var line := Line2D.new()
+			line.points = points
+			line.width = 1.0
+			line.default_color = Color(1.0, 0.0, 0.8, 1.0)
+			line.antialiased = true
+			grip_anchor_debug_overlay.add_child(line)
+		add_child(grip_anchor_debug_overlay)
+	grip_anchor_debug_overlay.position = get_grip_anchor().position
+	grip_anchor_debug_overlay.visible = show_grip_anchor_debug
 
 func get_anchor_position_in(target_parent: Node2D, anchor: Node2D) -> Vector2:
 	return target_parent.to_local(anchor.global_position)

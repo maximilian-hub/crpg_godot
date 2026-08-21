@@ -114,12 +114,16 @@ func setup_audio_players():
 func draw_board(modelBoard: Array) -> Dictionary:
 	board = modelBoard
 	_configure_projection()
-	var rendered: Dictionary = {}
 	
 	for row in range(board.size()):
 		for col in range(board[row].size()):
 			draw_square(row, col)
-			#draw_piece(row,col,pos)
+	return _draw_pieces()
+
+func _draw_pieces() -> Dictionary:
+	var rendered: Dictionary = {}
+	for row in range(board.size()):
+		for col in range(board[row].size()):
 			var piece_data: ModelPiece = board[row][col]
 			var piece_node := draw_piece(piece_data)
 			if piece_data != null and piece_node != null:
@@ -128,12 +132,41 @@ func draw_board(modelBoard: Array) -> Dictionary:
 
 func rebuild_board(model_board: Array) -> Dictionary:
 	clear_transient_presentation()
-	for child in $Squares.get_children():
-		child.free()
 	for child in $Pieces.get_children():
 		child.free()
-	board = []
-	return draw_board(model_board)
+
+	var preserve_squares := _squares_match_board(model_board)
+	board = model_board
+	_configure_projection()
+	_layout_board_body()
+	if preserve_squares:
+		# Position restores change occupancy, not board geometry. Keeping the square
+		# Area2Ds alive also avoids freeing the square currently emitting input_event.
+		return _draw_pieces()
+
+	# A genuine geometry change needs new hit regions. queue_free() is required
+	# here because rebuild_board can be reached synchronously from a square signal.
+	for child in $Squares.get_children():
+		child.input_pickable = false
+		child.queue_free()
+	for row in range(board.size()):
+		for col in range(board[row].size()):
+			draw_square(row, col)
+	return _draw_pieces()
+
+func _squares_match_board(model_board: Array) -> bool:
+	var expected_count := 0
+	for row in model_board:
+		expected_count += row.size()
+	if $Squares.get_child_count() != expected_count:
+		return false
+	for square in $Squares.get_children():
+		var coordinate: Vector2i = square.coordinate
+		if coordinate.x < 0 or coordinate.x >= model_board.size():
+			return false
+		if coordinate.y < 0 or coordinate.y >= model_board[coordinate.x].size():
+			return false
+	return true
 
 func clear_transient_presentation() -> void:
 	clear_highlights()
@@ -247,6 +280,23 @@ func draw_piece(piece_data: ModelPiece) -> Node:
 		hp_bar.position = Vector2(0, 4)
 		piece.add_child(hp_bar)
 	return piece
+
+func create_piece_drag_ghost(piece_data: ModelPiece) -> PieceView:
+	if piece_data == null:
+		return null
+	var ghost: PieceView = piece_scene.instantiate()
+	ghost.name = "PieceDragGhost"
+	ghost.input_pickable = false
+	ghost.set_model(piece_data)
+	ghost.scale = Vector2.ONE * get_world_scale()
+	ghost.modulate.a = 0.55
+	ghost.z_index = 100
+	$Pieces.add_child(ghost)
+	return ghost
+
+func position_piece_drag_ghost(ghost: PieceView, canvas_position: Vector2) -> void:
+	if is_instance_valid(ghost):
+		ghost.global_position = canvas_position
 					
 func get_piece_node(coord: Vector2i) -> Node:
 	var desired_piece = null
