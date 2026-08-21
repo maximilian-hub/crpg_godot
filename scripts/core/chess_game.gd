@@ -35,6 +35,8 @@ func _ready() -> void:
 
 	if not model.battle_finished.is_connected(_on_battle_finished):
 		model.battle_finished.connect(_on_battle_finished)
+	if not model.board_rebuilt.is_connected(_on_board_rebuilt):
+		model.board_rebuilt.connect(_on_board_rebuilt)
 	var result_view := get_node_or_null("CanvasLayer/ResultOverlay") as BattleResultView
 	if result_view != null and not result_view.result_confirmed.is_connected(_on_result_confirmed):
 		result_view.result_confirmed.connect(_on_result_confirmed)
@@ -75,6 +77,18 @@ func _on_result_confirmed() -> void:
 	if completed_player_result.is_empty():
 		return
 	battle_exit_requested.emit(completed_player_result)
+
+func _on_board_rebuilt(_board: Array) -> void:
+	if not model.battle_over:
+		completed_player_result = ""
+		return
+	var result_player_color := model.get_other_color(ai_color) if control_mode == ControlMode.PLAYER_VS_CPU else player_color
+	if model.battle_result == "draw":
+		completed_player_result = "draw"
+	elif model.battle_result == result_player_color:
+		completed_player_result = "win"
+	else:
+		completed_player_result = "loss"
 
 func restart_battle() -> void:
 	get_tree().reload_current_scene()

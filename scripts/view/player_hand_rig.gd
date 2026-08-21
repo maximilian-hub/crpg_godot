@@ -29,7 +29,7 @@ const SOUND_RELEASE := &"release"
 @export_range(0.01, 2.0, 0.01) var jump_carry_duration := 0.36
 @export_range(0.0, 64.0, 1.0) var capture_approach_offset := 18.0 # Distance left of the defender where the capture approach ends.
 @export_range(0.0, 128.0, 1.0) var capture_approach_arc_height := 32.0 # Height of the arc used to approach a capture.
-@export_range(0.01, 2.0, 0.01) var capture_approach_duration := 0.36 # Time taken to arc toward the defender's left side.
+@export_range(0.01, 2.0, 0.01) var capture_approach_duration := 5.0 # Time taken to arc toward the defender's left side.
 @export_range(0.0, 128.0, 1.0) var capture_swipe_distance := 36.0 # Total left-to-right distance of the pickup swipe.
 @export_range(0.01, 2.0, 0.01) var capture_swipe_duration := 0.18 # Time taken to swipe across and collect the defender.
 @export var captured_piece_grip_offset := Vector2.ZERO # Fine-tunes the captured grip relative to the attacker's grip.
@@ -53,6 +53,7 @@ const SOUND_RELEASE := &"release"
 var is_animating := false
 var board_sound_set: ChessBoardSoundSet
 var slide_fade_tween: Tween
+var animation_duration_scale := 1.0
 
 
 func _ready() -> void:
@@ -348,7 +349,7 @@ func _position_sprite_from_grip(sprite: Sprite2D) -> void:
 
 func _tween_position(target: Vector2, duration: float) -> void:
 	var tween := create_tween()
-	tween.tween_property(self, "position", target, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(self, "position", target, duration * animation_duration_scale).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
 
 
@@ -359,7 +360,7 @@ func _tween_jump_position(target: Vector2, duration: float, arc_height: float) -
 		func(progress: float): position = calculate_jump_position(start, target, progress, arc_height),
 		0.0,
 		1.0,
-		duration
+			duration * animation_duration_scale
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
 
@@ -374,4 +375,4 @@ static func calculate_jump_position(start: Vector2, destination: Vector2, progre
 func _wait(duration: float) -> void:
 	if duration <= 0.0:
 		return
-	await get_tree().create_timer(duration).timeout
+	await get_tree().create_timer(duration * animation_duration_scale).timeout

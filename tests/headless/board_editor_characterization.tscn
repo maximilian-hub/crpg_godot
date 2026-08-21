@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/headless/board_editor_characterization.gd" id="1"]
+
+[node name="BoardEditorCharacterization" type="Node"]
+script = ExtResource("1")

@@ -19,6 +19,8 @@ signal action_finished()
 signal action_cancelled()
 signal battle_finished(winner_color: String)
 signal board_initialized(board: Array)
+signal board_rebuilt(board: Array)
+signal settled_action_completed()
 signal piece_added(piece: ModelPiece)
 signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
@@ -41,6 +43,7 @@ var selection_queue: Array = [] # {calling_piece, action_type, priority, sequenc
 var selection_sequence: int = 0
 var pending_reaction: Dictionary = {}
 var is_initialized: bool = false
+var position_revision: int = 0
 
 # One primary move/ability and every consequence it causes are one action.
 # current_turn does not change until the action and reaction queue are finished.
@@ -69,6 +72,85 @@ func initialize_battle() -> bool:
 	initialize_board()
 	is_initialized = true
 	board_initialized.emit(board)
+	return true
+
+func is_settled() -> bool:
+	return not action_in_progress and pending_reaction.is_empty() and selection_queue.is_empty()
+
+func capture_position() -> ChessPosition:
+	var position := ChessPosition.new()
+	position.board_size = Vector2i(board.size(), board[0].size() if not board.is_empty() else 0)
+	position.board_type = StringName(BOARD_TYPE)
+	position.current_turn = current_turn
+	position.battle_over = battle_over
+	position.battle_result = battle_result
+	position.defeated_king_colors.assign(defeated_king_colors)
+	for row in board:
+		for piece in row:
+			if piece != null:
+				position.pieces.append(piece.capture_piece_state())
+	if last_move.has("piece"):
+		var moved_piece: ModelPiece = last_move.get("piece")
+		position.last_move.is_present = true
+		position.last_move.from = last_move.get("from", Vector2i.ZERO)
+		position.last_move.to = last_move.get("to", Vector2i.ZERO)
+		position.last_move.piece_type_id = moved_piece.get_position_type_id() if is_instance_valid(moved_piece) else &""
+		position.last_move.piece_color = moved_piece.color if is_instance_valid(moved_piece) else ""
+	return position
+
+func load_position(position: ChessPosition) -> bool:
+	if not is_settled():
+		printerr("load_position: Model must be settled.")
+		return false
+	var validation := ChessPositionValidator.validate(position)
+	if not validation.is_structurally_valid():
+		printerr("load_position: ", "; ".join(validation.structural_errors))
+		return false
+	var replacement: Array = []
+	for row_index in range(position.board_size.x):
+		var row: Array = []
+		row.resize(position.board_size.y)
+		row.fill(null)
+		replacement.append(row)
+	var created: Array[ModelPiece] = []
+	for state in position.pieces:
+		var piece := ChessPieceCatalog.create_piece(state.type_id, state.color, state.coordinate)
+		if piece == null:
+			return false
+		piece.restore_piece_state(state)
+		replacement[state.coordinate.x][state.coordinate.y] = piece
+		created.append(piece)
+	for row in board:
+		for old_piece in row:
+			if old_piece != null:
+				unregister_piece(old_piece)
+				old_piece.free()
+	board = replacement
+	for piece in created:
+		inject_dependencies(piece)
+	current_turn = position.current_turn
+	battle_over = position.battle_over
+	battle_result = position.battle_result
+	defeated_king_colors.assign(position.defeated_king_colors)
+	last_destroyed_piece = null
+	last_move = {}
+	if position.last_move != null and position.last_move.is_present:
+		var moved_piece: ModelPiece = null
+		var target := position.last_move.to
+		if is_in_bounds(target.x, target.y):
+			var candidate: ModelPiece = board[target.x][target.y]
+			if candidate != null and candidate.color == position.last_move.piece_color and candidate.get_position_type_id() == ChessPieceCatalog.normalize_type_id(position.last_move.piece_type_id):
+				moved_piece = candidate
+		if moved_piece != null:
+			last_move = {"from": position.last_move.from, "to": target, "piece": moved_piece}
+	selection_queue.clear()
+	pending_reaction.clear()
+	selection_sequence = 0
+	action_in_progress = false
+	action_owner_color = ""
+	is_initialized = true
+	position_revision += 1
+	board_rebuilt.emit(board)
 	return true
 
 func initialize_board():
@@ -292,6 +374,8 @@ func finish_action() -> void:
 	action_owner_color = ""
 	switch_turn()
 	action_finished.emit()
+	position_revision += 1
+	settled_action_completed.emit()
 
 func has_defeated_king() -> bool:
 	return not defeated_king_colors.is_empty()
@@ -322,6 +406,8 @@ func complete_battle() -> void:
 
 	print("BATTLE FINISHED — ", battle_result)
 	battle_finished.emit(battle_result)
+	position_revision += 1
+	settled_action_completed.emit()
 
 ## Entry point for a player's normal move/capture/castle/en-passant action.
 func move_piece(piece: ModelPiece, to: Vector2i):

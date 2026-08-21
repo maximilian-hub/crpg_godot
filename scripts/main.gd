@@ -10,9 +10,6 @@ const TARGET_OVERWORLD_LOGICAL_SIDE := 180
 const DIALOGUE_LOGICAL_MARGIN := 4
 const DIALOGUE_LOGICAL_HEIGHT := 44
 const DIALOGUE_LOGICAL_BOTTOM_MARGIN := 5
-const FLUID_BOARD_HEIGHT_RATIO := 1.0
-const FLUID_BOARD_WIDTH_CAP_RATIO := 0.72
-
 enum BattlePresentationMode {
 	FLUID_NATIVE,
 	FIXED_LOGICAL,
@@ -138,11 +135,11 @@ func _transition_to_battle() -> void:
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	if battle_presentation_mode == BattlePresentationMode.FLUID_NATIVE:
-		board_view.viewport_height_width_ratio = FLUID_BOARD_HEIGHT_RATIO
-		board_view.viewport_width_cap_ratio = FLUID_BOARD_WIDTH_CAP_RATIO
-		board_view.scale_world_with_projection = true
 		active_content.add_child(active_battle)
 	else:
+		board_view.viewport_height_width_ratio = 0.90
+		board_view.viewport_width_cap_ratio = 0.64
+		board_view.scale_world_with_projection = false
 		_create_fixed_battle_frame()
 		battle_viewport.add_child(active_battle)
 	await _fade_to(0.0)

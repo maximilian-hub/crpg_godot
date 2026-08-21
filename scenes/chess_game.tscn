@@ -56,6 +56,9 @@ white_cooldown_button = NodePath("../../UI/WhitePlayerUIContainer/WhiteActiveBut
 black_cooldown_button = NodePath("../../UI/BlackPlayerUIContainer/BlackActiveButton")
 flash_overlay = NodePath("../FlashOverlay")
 visual_style = ExtResource("12_board_style")
+viewport_height_width_ratio = 1.0
+viewport_width_cap_ratio = 0.72
+scale_world_with_projection = true
 
 [node name="BoardBody" parent="CanvasLayer/ChessBoard" instance=ExtResource("11_board_body")]
 

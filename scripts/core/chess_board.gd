@@ -8,6 +8,9 @@ class_name ChessBoardView
 
 signal rage_intro_animation_completed()
 signal square_selected(coordinate: Vector2i)
+signal editor_square_pressed(coordinate: Vector2i)
+signal editor_square_entered(coordinate: Vector2i)
+signal editor_square_exited(coordinate: Vector2i)
 
 @export var white_cooldown_button: Node
 @export var black_cooldown_button: Node
@@ -58,6 +61,7 @@ var piece_scene = preload("res://scenes/piece.tscn")
 @export_enum("white", "black") var viewing_color: String = "white"
 var board: Array
 var projection := ChessBoardProjection.new()
+var animation_duration_scale := 1.0
 var hp_bar_scene = preload("res://ui/hp_bar.tscn")
 var stun_stars_scene = preload("res://effects/stun_stars.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
@@ -121,6 +125,21 @@ func draw_board(modelBoard: Array) -> Dictionary:
 			if piece_data != null and piece_node != null:
 				rendered[piece_data] = piece_node
 	return rendered
+
+func rebuild_board(model_board: Array) -> Dictionary:
+	clear_transient_presentation()
+	for child in $Squares.get_children():
+		child.free()
+	for child in $Pieces.get_children():
+		child.free()
+	board = []
+	return draw_board(model_board)
+
+func clear_transient_presentation() -> void:
+	clear_highlights()
+	for child in get_children():
+		if child != $BoardBody and child != $Squares and child != $Pieces and child != $PlayerHandRig and (child.is_in_group("aura") or child.is_in_group("stun")):
+			child.queue_free()
 
 func _layout_board() -> void:
 	if board.is_empty():
@@ -195,6 +214,9 @@ func draw_square(row: int, col: int):
 		projection.get_cell_polygon(Vector2i(row, col))
 	)
 	square.connect("square_clicked", _on_square_selected)
+	square.editor_pointer_pressed.connect(func(coord: Vector2i): editor_square_pressed.emit(coord))
+	square.editor_pointer_entered.connect(func(coord: Vector2i): editor_square_entered.emit(coord))
+	square.editor_pointer_exited.connect(func(coord: Vector2i): editor_square_exited.emit(coord))
 	square.z_index = -2
 	squares.add_child(square)
 
@@ -220,7 +242,7 @@ func draw_piece(piece_data: ModelPiece) -> Node:
 	if piece_data.max_hp > 1:
 		var hp_bar = hp_bar_scene.instantiate()
 		hp_bar.max_hp = piece_data.max_hp
-		hp_bar.current_hp = piece_data.max_hp
+		hp_bar.current_hp = piece_data.current_hp
 		# PieceView's origin is the board-contact point; keep HP just below the base.
 		hp_bar.position = Vector2(0, 4)
 		piece.add_child(hp_bar)
@@ -285,6 +307,13 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 	_update_piece_depth(piece_node)
 	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
 
+func snap_piece_node(piece_node: Node, to: Vector2i) -> void:
+	if not is_instance_valid(piece_node):
+		return
+	piece_node.coordinate = to
+	piece_node.position = grid_to_screen(to.x, to.y)
+	_update_piece_depth(piece_node)
+
 func move_piece_node_with_player_hand(piece_node: Node, from: Vector2i, to: Vector2i) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("move_piece_node_with_player_hand: Invalid piece node.")
@@ -337,7 +366,7 @@ func _tween_piece_to(piece_node: Node, target_position: Vector2) -> void:
 		piece_node,
 		"position",
 		target_position,
-		PIECE_MOVE_DURATION
+		PIECE_MOVE_DURATION * animation_duration_scale
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
 
@@ -544,9 +573,9 @@ func start_minotaur_rage_intro(minotaur_node: Node) -> void:
 
 	var original_scale = minotaur_node.scale
 	var tween = create_tween()
-	tween.tween_property(minotaur_node, "scale", original_scale * 1.25, 1).set_trans(Tween.TRANS_ELASTIC)
-	tween.tween_interval(0.15) # Adjust timing as needed
-	tween.tween_property(minotaur_node, "scale", original_scale, 0.1)
+	tween.tween_property(minotaur_node, "scale", original_scale * 1.25, 1.0 * animation_duration_scale).set_trans(Tween.TRANS_ELASTIC)
+	tween.tween_interval(0.15 * animation_duration_scale)
+	tween.tween_property(minotaur_node, "scale", original_scale, 0.1 * animation_duration_scale)
 	await tween.finished
 
 	# The Model owns input locking for the complete action/reaction chain.

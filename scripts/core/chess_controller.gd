@@ -30,6 +30,7 @@ func _ready():
 	model.action_finished.connect(_on_action_finished)
 	model.action_cancelled.connect(_on_action_cancelled)
 	model.battle_finished.connect(_on_battle_finished)
+	model.board_rebuilt.connect(_on_board_rebuilt)
 	model.reaction_selection_requested.connect(_on_reaction_selection_requested)
 	model.reaction_selection_resolved.connect(_on_reaction_selection_resolved)
 
@@ -150,6 +151,17 @@ func configure_player_controlled_colors(colors: Array[String]) -> void:
 	player_controlled_colors = colors.duplicate()
 	if selected_piece != null and not is_player_controlled(selected_piece.color):
 		deselect_piece()
+
+func _on_board_rebuilt(_board: Array) -> void:
+	selected_piece = null
+	active_king = null
+	active_piece = null
+	last_active_piece = null
+	legal_moves.clear()
+	active_ability_selected = false
+	non_move_selection_mode = false
+	is_input_locked = model.battle_over
+	selection_cleared.emit()
 
 func is_player_controlled(color: String) -> bool:
 	return color in player_controlled_colors

@@ -36,6 +36,11 @@ func show_battle_result(winner_color: String) -> void:
 	if display_panel != null:
 		tween.tween_property(display_panel, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
+func reset_result() -> void:
+	can_confirm = false
+	hide()
+	modulate.a = 1.0
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or not can_confirm:
 		return

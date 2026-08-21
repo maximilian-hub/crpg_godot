@@ -27,6 +27,42 @@ func _init(_color: String, _coordinate: Vector2i):
 	color = _color
 	coordinate = _coordinate	
 	current_hp = max_hp
+
+func get_position_type_id() -> StringName:
+	return ChessPieceCatalog.normalize_type_id(StringName(type))
+
+func capture_piece_state() -> ChessPieceState:
+	var state := ChessPieceState.new()
+	state.type_id = get_position_type_id()
+	state.color = color
+	state.coordinate = coordinate
+	state.max_hp = max_hp
+	state.current_hp = current_hp
+	state.attack_power = attack_power
+	state.has_moved = has_moved
+	state.stunned = stunned
+	state.stun_timer = stun_timer
+	if self is KingPiece:
+		state.current_cooldown = (self as KingPiece).current_cooldown
+	state.custom_state = capture_custom_state()
+	return state
+
+func restore_piece_state(state: ChessPieceState) -> void:
+	max_hp = state.max_hp
+	current_hp = state.current_hp
+	attack_power = state.attack_power
+	has_moved = state.has_moved
+	stunned = state.stunned
+	stun_timer = state.stun_timer
+	if self is KingPiece:
+		(self as KingPiece).current_cooldown = state.current_cooldown
+	restore_custom_state(state.custom_state)
+
+func capture_custom_state() -> Dictionary:
+	return {}
+
+func restore_custom_state(_state: Dictionary) -> void:
+	pass
 	
 	
 	

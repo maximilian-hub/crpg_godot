@@ -1,6 +1,8 @@
 extends Node
 class_name ChessPresentationAdapter
 
+const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
+
 ## Bridges authoritative Model and Controller events to the visual chess board and UI.
 #
 # This scene-composed adapter receives its Model, Controller, board View, and result
@@ -20,6 +22,7 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var controller: ChessBoardController
 @export var view: ChessBoardView
 @export var result_view: BattleResultView
+@export var presentation_policy: Resource
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -29,7 +32,11 @@ var silently_removed_piece_views: Dictionary = {}
 
 
 func _ready() -> void:
+	if presentation_policy == null:
+		presentation_policy = PresentationPolicy.new()
+	_apply_presentation_policy()
 	model.board_initialized.connect(_on_board_initialized)
+	model.board_rebuilt.connect(_on_board_rebuilt)
 	model.piece_added.connect(_on_piece_added)
 	model.piece_summoned.connect(_on_piece_summoned)
 	model.piece_move_committed.connect(_on_piece_move_committed)
@@ -66,7 +73,26 @@ func _on_board_initialized(board: Array) -> void:
 	for row in board:
 		for piece in row:
 			if piece != null:
+					_register_piece(piece, view.get_piece_node(piece.coordinate))
+
+func _on_board_rebuilt(board: Array) -> void:
+	piece_views.clear()
+	necromancer_auras.clear()
+	silently_removed_piece_views.clear()
+	selection_effect_piece = null
+	player_move_submission_active = false
+	piece_views = view.rebuild_board(board)
+	for row in board:
+		for piece in row:
+			if piece != null:
 				_register_piece(piece, view.get_piece_node(piece.coordinate))
+				if piece.stunned:
+					view.spawn_stun_stars(piece_views.get(piece))
+	if result_view != null:
+		if model.battle_over:
+			result_view.show_battle_result(model.battle_result)
+		else:
+			result_view.reset_result()
 
 
 func _on_piece_added(piece: ModelPiece) -> void:
@@ -79,6 +105,8 @@ func _on_piece_summoned(piece: ModelPiece, completion: CompletionGate) -> void:
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		return
+	if not presentation_policy.should_hold_completion_gate():
+		return
 	completion.hold()
 	await view.play_bone_pawn_summon(piece_node)
 	completion.release()
@@ -88,6 +116,9 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		printerr("Presentation has no visual node for ", piece.type, " at ", to)
+		return
+	if not presentation_policy.should_hold_completion_gate():
+		view.snap_piece_node(piece_node, to)
 		return
 
 	gate.hold()
@@ -102,6 +133,9 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 	var attacker_node: Node = get_piece_view(attacker)
 	var defender_node: Node = get_piece_view(defender)
 	if not is_instance_valid(attacker_node):
+		return
+	if not presentation_policy.should_hold_completion_gate():
+		view.snap_piece_node(attacker_node, to)
 		return
 
 	gate.hold()
@@ -128,6 +162,8 @@ func _on_piece_attack_committed(piece: ModelPiece, _from: Vector2i, to: Vector2i
 	if not is_instance_valid(piece_node):
 		printerr("Presentation has no visual node for attacking ", piece.type)
 		return
+	if not presentation_policy.should_hold_completion_gate():
+		return
 
 	gate.hold()
 	await view.attack_piece_node(piece_node, to)
@@ -139,6 +175,9 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 	piece_views.erase(piece)
 	necromancer_auras.erase(piece)
 	if is_instance_valid(piece_node):
+		if not presentation_policy.should_animate():
+			view.remove_piece(piece_node)
+			return
 		if silently_removed_piece_views.has(piece):
 			silently_removed_piece_views.erase(piece)
 			view.remove_piece(piece_node)
@@ -174,6 +213,8 @@ func _on_piece_recovered(piece: ModelPiece) -> void:
 
 
 func _on_ability_started(piece: KingPiece, ability_name: String, gate: CompletionGate) -> void:
+	if not presentation_policy.should_hold_completion_gate():
+		return
 	if piece is MinotaurKing and ability_name == MinotaurKing.PASSIVE_ABILITY_NAME:
 		var piece_node: Node = get_piece_view(piece)
 		if not is_instance_valid(piece_node):
@@ -273,3 +314,14 @@ func _on_cooldown_changed(king: KingPiece, new_cooldown: int) -> void:
 
 func _on_cooldown_ready(king: KingPiece) -> void:
 	view.ready_cooldown_display(king)
+
+func set_presentation_speed(speed: int) -> void:
+	presentation_policy.speed = speed
+	_apply_presentation_policy()
+
+func _apply_presentation_policy() -> void:
+	if view == null:
+		return
+	view.animation_duration_scale = presentation_policy.duration_scale()
+	if is_instance_valid(view.player_hand_rig):
+		view.player_hand_rig.animation_duration_scale = presentation_policy.duration_scale()

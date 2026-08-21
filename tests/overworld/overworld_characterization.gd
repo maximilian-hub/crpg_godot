@@ -202,8 +202,8 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_battle.get_parent() == main.active_content, "fluid chess game renders directly in native window space")
 	var battle_board := main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	_check(battle_board.scale_world_with_projection, "fluid battle scales its pieces and physical effects with the projected board")
-	_check(is_equal_approx(battle_board.viewport_height_width_ratio, GameFlow.FLUID_BOARD_HEIGHT_RATIO), "fluid board uses the large safe height profile")
-	_check(is_equal_approx(battle_board.viewport_width_cap_ratio, GameFlow.FLUID_BOARD_WIDTH_CAP_RATIO), "fluid board retains side clearance on narrower displays")
+	_check(is_equal_approx(battle_board.viewport_height_width_ratio, 1.0), "fluid board inherits the battle scene's large safe height profile")
+	_check(is_equal_approx(battle_board.viewport_width_cap_ratio, 0.72), "fluid board inherits the battle scene's side clearance")
 	var white_ui := main.active_battle.get_node("UI/WhitePlayerUIContainer") as MarginContainer
 	var black_ui := main.active_battle.get_node("UI/BlackPlayerUIContainer") as MarginContainer
 	_check(white_ui.anchor_right == 1.0 and white_ui.anchor_bottom == 1.0, "white battle UI uses viewport anchors")

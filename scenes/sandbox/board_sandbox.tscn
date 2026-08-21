@@ -1,0 +1,28 @@
+[gd_scene load_steps=5 format=3 uid="uid://cswxkif03ucqu"]
+
+[ext_resource type="Script" uid="uid://mo8hobdn3rwf" path="res://scripts/sandbox/board_sandbox.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://d08pm3rm8pke7" path="res://scenes/chess_game.tscn" id="2"]
+[ext_resource type="Script" uid="uid://c7usn4djn426g" path="res://scripts/editor/board_editor_controller.gd" id="3"]
+[ext_resource type="Script" uid="uid://d0sy186s00xuv" path="res://scripts/editor/board_editor_interaction.gd" id="4"]
+
+[node name="BoardSandbox" type="Node"]
+script = ExtResource("1")
+
+[node name="ChessGame" parent="." instance=ExtResource("2")]
+control_mode = 2
+
+[node name="BoardEditorController" type="Node" parent="."]
+script = ExtResource("3")
+
+[node name="BoardEditorInteraction" type="Node" parent="."]
+script = ExtResource("4")
+
+[node name="SandboxLayer" type="CanvasLayer" parent="."]
+layer = 500
+
+[node name="Panel" type="VBoxContainer" parent="SandboxLayer"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 180.0
+offset_bottom = 900.0
+theme_override_constants/separation = 4
