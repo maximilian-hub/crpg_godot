@@ -209,7 +209,8 @@ func _test_main_starts_in_overworld() -> void:
 	_check(white_ui.anchor_right == 1.0 and white_ui.anchor_bottom == 1.0, "white battle UI uses viewport anchors")
 	_check(black_ui.anchor_right == 1.0 and black_ui.anchor_top == 0.0, "black battle UI uses viewport anchors")
 	_check(main.active_battle.control_mode == ChessGame.ControlMode.PLAYER_VS_CPU, "NPC battle uses player-vs-CPU mode")
-	_check(main.active_battle.ai_color == "black", "NPC controls Black")
+	_check(main.active_battle.player_color == "white", "current NPC battle assigns the player to White")
+	_check(not main.active_battle.white_cpu_player.is_enabled and main.active_battle.black_cpu_player.is_enabled, "current NPC battle assigns the CPU to Black")
 	var controller := main.active_battle.get_node("ChessController") as ChessBoardController
 	var model := main.active_battle.get_node("ChessModel") as ChessBoardModel
 	var click_position := battle_board.grid_to_screen(6, 0)

@@ -125,6 +125,11 @@ func _test_piece_ground_anchors() -> void:
 			_expect(piece.sprite.material == null, "authored White Necromancer art bypasses the White palette shader")
 			var displayed_height := float(piece.sprite.texture.get_height()) * absf(piece.sprite.scale.y)
 			_expect(is_equal_approx(displayed_height, piece.art_profile.display_height), "Necromancer King source resolution normalizes to its configured board height")
+		elif model is ArakneKing:
+			_expect(piece.sprite.texture.resource_path == "res://assets/pieces/kings/white_arakne.png", "White Arakne King resolves its authored White art")
+			_expect(piece.sprite.material == null, "authored White Arakne art bypasses the White palette shader")
+			var displayed_height := float(piece.sprite.texture.get_height()) * absf(piece.sprite.scale.y)
+			_expect(is_equal_approx(displayed_height, piece.art_profile.display_height), "Arakne King source resolution normalizes to its configured board height")
 		else:
 			_expect(piece.sprite.material is ShaderMaterial, "%s receives the fallback White palette" % model.type)
 		piece.queue_free()
@@ -146,6 +151,12 @@ func _test_piece_ground_anchors() -> void:
 	_expect(black_necromancer.sprite.texture.resource_path == "res://assets/pieces/kings/black_necromancer.png", "Black Necromancer King resolves its authored Black art")
 	_expect(black_necromancer.sprite.material == null, "authored Black Necromancer art is not palette transformed")
 	black_necromancer.queue_free()
+	var black_arakne := PIECE_SCENE.instantiate() as PieceView
+	add_child(black_arakne)
+	black_arakne.set_model(ArakneKing.new("black", Vector2i.ZERO))
+	_expect(black_arakne.sprite.texture.resource_path == "res://assets/pieces/kings/black_arakne.png", "Black Arakne King resolves its authored Black art")
+	_expect(black_arakne.sprite.material == null, "authored Black Arakne art is not palette transformed")
+	black_arakne.queue_free()
 	var profile := PieceArtProfile.new()
 	profile.display_height = 64.0
 	profile.reference_texture = ImageTexture.create_from_image(Image.create_empty(8, 128, false, Image.FORMAT_RGBA8))

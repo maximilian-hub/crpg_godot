@@ -13,6 +13,7 @@ const PIECE_ART_PROFILES := {
 	&"bishop": preload("res://assets/pieces/profiles/bishop.tres"),
 	&"queen": preload("res://assets/pieces/profiles/queen.tres"),
 	&"king": preload("res://assets/pieces/profiles/king.tres"),
+	&"arakne_king": preload("res://assets/pieces/profiles/arakne_king.tres"),
 	&"minotaur_king": preload("res://assets/pieces/profiles/minotaur_king.tres"),
 	&"necromancer_king": preload("res://assets/pieces/profiles/necromancer_king.tres"),
 }

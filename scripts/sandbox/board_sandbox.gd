@@ -34,6 +34,7 @@ var ai_sides := {"white": false, "black": true}
 var seed_value := 1
 
 var mode_button: Button
+var view_side_button: Button
 var undo_button: Button
 var redo_button: Button
 var reset_button: Button
@@ -77,6 +78,7 @@ func _ready() -> void:
 
 func _build_panel() -> void:
 	mode_button = _add_button("", func(): _set_mode(Mode.PLAY if mode == Mode.EDIT else Mode.EDIT))
+	view_side_button = _add_button("", _toggle_viewing_side)
 	var history_row := HBoxContainer.new()
 	panel.add_child(history_row)
 	undo_button = _add_button_to(history_row, "Undo [←]", undo)
@@ -210,6 +212,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _restore_cursor_tool() -> void:
 	interaction.cancel_drag()
 	editor.select_cursor_tool()
+
+
+func _toggle_viewing_side() -> void:
+	if not model.is_settled():
+		return
+	_restore_cursor_tool()
+	var board_view: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
+	game.set_viewing_color("black" if board_view.viewing_color == "white" else "white")
+	_refresh_control_states()
 
 func _add_ai_mode_button(parent: Control, label: String, value: ChessCpuPlayer.ExecutionMode) -> void:
 	var button := _add_button_to(parent, label, func(): _configure_ai(value))
@@ -411,6 +422,10 @@ func _refresh_control_states() -> void:
 	mode_button.text = "Mode: Edit [P]" if mode == Mode.EDIT else "Mode: Play [P]"
 	mode_button.disabled = not settled
 	_style_button(mode_button, true, COLOR_EDIT if mode == Mode.EDIT else COLOR_PLAY)
+	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
+	view_side_button.text = "View: White" if board.viewing_color == "white" else "View: Black"
+	view_side_button.disabled = not settled
+	_style_button(view_side_button, true, COLOR_WHITE_SIDE if board.viewing_color == "white" else COLOR_BLACK_SIDE, board.viewing_color == "white")
 	undo_button.disabled = not settled or not history.can_undo()
 	redo_button.disabled = not settled or not history.can_redo()
 	reset_button.disabled = not settled or not history.can_undo()
@@ -441,7 +456,6 @@ func _refresh_control_states() -> void:
 	var speed_colors := [COLOR_SLOW, COLOR_EDIT, COLOR_MANUAL, COLOR_INSTANT]
 	speed_value_label.text = speed_names[speed]
 	speed_value_label.add_theme_color_override("font_color", speed_colors[speed])
-	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
 	grip_check.set_pressed_no_signal(board.show_piece_grip_anchors)
 	grip_check.add_theme_color_override("font_color", COLOR_CYAN if board.show_piece_grip_anchors else Color.WHITE)
 	turn_option.select(0 if model.current_turn == "white" else 1)
@@ -494,7 +508,7 @@ func _style_button(button: Button, active: bool, color: Color, dark_text := fals
 
 func _sync_disabled_focus_states() -> void:
 	var controls: Array[Control] = [
-		mode_button, undo_button, redo_button, reset_button, clear_button,
+		mode_button, view_side_button, undo_button, redo_button, reset_button, clear_button,
 		copy_button, paste_button, think_button, execute_button, step_button,
 		preset_option, turn_option,
 	]

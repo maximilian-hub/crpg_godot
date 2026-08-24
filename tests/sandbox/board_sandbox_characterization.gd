@@ -16,6 +16,7 @@ func _ready() -> void:
 	_check(is_equal_approx(view.viewport_height_width_ratio, 1.0), "sandbox inherits fluid board height ratio", failures)
 	_check(is_equal_approx(view.viewport_width_cap_ratio, 0.72), "sandbox inherits fluid board width cap", failures)
 	_check(sandbox.mode_button.text == "Mode: Edit [P]", "mode button identifies Edit Mode and its shortcut", failures)
+	_check(sandbox.view_side_button.text == "View: White" and view.viewing_color == "white", "sandbox starts from White perspective", failures)
 	_check(sandbox.undo_button.text == "Undo [←]" and sandbox.redo_button.text == "Redo [→]" and sandbox.reset_button.text == "Reset [R]", "history controls display keyboard shortcuts", failures)
 	_check(sandbox.ai_mode_buttons[ChessCpuPlayer.ExecutionMode.DISABLED].button_pressed, "AI Off is visibly selected at startup", failures)
 	_check(not sandbox.ai_side_buttons["white"].button_pressed and sandbox.ai_side_buttons["black"].button_pressed, "AI side toggles show the default Black selection", failures)
@@ -29,6 +30,30 @@ func _ready() -> void:
 	var palette_pawn = sandbox.piece_palette.piece_items["pawn:white"].preview
 	var board_pawn = view.get_piece_node(Vector2i(6, 0))
 	_check(palette_pawn.sprite.texture == board_pawn.sprite.texture, "palette previews reuse in-game PieceView artwork", failures)
+	var white_back_rank_piece: PieceView = view.get_piece_node(Vector2i(7, 0))
+	var black_back_rank_piece: PieceView = view.get_piece_node(Vector2i(0, 0))
+	_check(white_back_rank_piece.position.y > black_back_rank_piece.position.y, "White back rank starts nearest in White view", failures)
+	var position_before_flip := ChessPositionCodec.to_json(model.capture_position())
+	var history_cursor_before_flip: int = sandbox.history.cursor
+	var controlled_colors_before_flip: Array[String] = sandbox.game_controller.player_controlled_colors.duplicate()
+	var ai_sides_before_flip: Dictionary = sandbox.ai_sides.duplicate()
+	sandbox._toggle_viewing_side()
+	var white_ui := sandbox.game.get_node("UI/WhitePlayerUIContainer") as MarginContainer
+	var black_ui := sandbox.game.get_node("UI/BlackPlayerUIContainer") as MarginContainer
+	_check(view.viewing_color == "black" and sandbox.view_side_button.text == "View: Black", "sandbox view button switches to Black perspective", failures)
+	_check(black_back_rank_piece.position.y > white_back_rank_piece.position.y and black_back_rank_piece.z_index > white_back_rank_piece.z_index, "Black perspective moves and depth-sorts Black's back rank nearest", failures)
+	_check(black_ui.anchor_top == 1.0 and black_ui.anchor_bottom == 1.0 and white_ui.anchor_top == 0.0 and white_ui.anchor_bottom == 0.0, "Black perspective puts Black ability UI near and White ability UI far", failures)
+	_check(ChessPositionCodec.to_json(model.capture_position()) == position_before_flip and sandbox.history.cursor == history_cursor_before_flip, "view switching does not mutate position or history", failures)
+	_check(sandbox.game_controller.player_controlled_colors == controlled_colors_before_flip and sandbox.ai_sides == ai_sides_before_flip, "view switching does not alter human or AI ownership", failures)
+	model.action_in_progress = true
+	sandbox._refresh_control_states()
+	_check(sandbox.view_side_button.disabled, "view switching is disabled while an action is unresolved", failures)
+	sandbox._toggle_viewing_side()
+	_check(view.viewing_color == "black", "disabled view switching cannot rotate during an action", failures)
+	model.action_in_progress = false
+	sandbox._refresh_control_states()
+	sandbox._toggle_viewing_side()
+	_check(view.viewing_color == "white" and white_back_rank_piece.position.y > black_back_rank_piece.position.y, "sandbox can return to White perspective after settling", failures)
 	var minotaur_index: int = sandbox.piece_palette.king_type_ids.find(&"minotaur_king")
 	sandbox.piece_palette.king_selector.select(minotaur_index)
 	sandbox.piece_palette._on_king_selected(minotaur_index)
@@ -159,6 +184,8 @@ func _ready() -> void:
 	sandbox.editor.select_palette_piece(&"classic_king", "white")
 	sandbox.piece_palette._on_king_selected(1)
 	_check(sandbox.piece_palette.king_items["white"].type_id == &"arakne_king" and sandbox.piece_palette.king_items["black"].type_id == &"arakne_king", "king selector rebuilds both color previews", failures)
+	_check(sandbox.piece_palette.king_items["white"].preview.sprite.texture.resource_path == "res://assets/pieces/kings/white_arakne.png" and sandbox.piece_palette.king_items["white"].preview.sprite.material == null, "White Arakne palette preview uses authored White art without the palette shader", failures)
+	_check(sandbox.piece_palette.king_items["black"].preview.sprite.texture.resource_path == "res://assets/pieces/kings/black_arakne.png" and sandbox.piece_palette.king_items["black"].preview.sprite.material == null, "Black Arakne palette preview uses authored Black art without a palette shader", failures)
 	_check(sandbox.editor.selected_type_id == &"arakne_king" and sandbox.editor.selected_color == "white", "king selector updates an active king tool while preserving color", failures)
 	sandbox._toggle_ai_side("white")
 	sandbox._set_mode(sandbox.Mode.PLAY)

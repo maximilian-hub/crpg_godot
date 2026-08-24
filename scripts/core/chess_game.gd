@@ -20,15 +20,15 @@ enum ControlMode {
 @onready var black_cpu_player: ChessCpuPlayer = $BlackCpuPlayer
 @export_enum("white", "black") var player_color: String = "white"
 @export var control_mode: ControlMode = ControlMode.CPU_VS_CPU
-@export_enum("white", "black") var ai_color: String = "black"
 @export var player_hand_style: Resource
 var completed_player_result: String = ""
 
 func _ready() -> void:
+	player_color = _normalize_color(player_color)
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
 	if board_view != null:
 		board_view.set_player_hand_style(player_hand_style)
-		board_view.set_viewing_color(player_color)
+	set_viewing_color(player_color)
 	if model == null:
 		printerr("ChessGame has no ChessBoardModel assigned.")
 		return
@@ -47,9 +47,10 @@ func _ready() -> void:
 			white_cpu_player.configure(true, "white")
 			black_cpu_player.configure(true, "black")
 		ControlMode.PLAYER_VS_CPU:
-			controller.configure_player_controlled_colors([model.get_other_color(ai_color)])
-			white_cpu_player.configure(ai_color == "white", "white")
-			black_cpu_player.configure(ai_color == "black", "black")
+			var opponent_color := model.get_other_color(player_color)
+			controller.configure_player_controlled_colors([player_color])
+			white_cpu_player.configure(opponent_color == "white", "white")
+			black_cpu_player.configure(opponent_color == "black", "black")
 		ControlMode.PLAYER_VS_PLAYER:
 			controller.configure_player_controlled_colors(["white", "black"])
 			white_cpu_player.configure(false, "white")
@@ -57,15 +58,10 @@ func _ready() -> void:
 
 func _on_battle_finished(winner_color: String) -> void:
 	var player_result: String
-	var result_player_color := (
-		model.get_other_color(ai_color)
-		if control_mode == ControlMode.PLAYER_VS_CPU
-		else player_color
-	)
 
 	if winner_color == "draw":
 		player_result = "draw"
-	elif winner_color == result_player_color:
+	elif winner_color == player_color:
 		player_result = "win"
 	else:
 		player_result = "loss"
@@ -82,13 +78,51 @@ func _on_board_rebuilt(_board: Array) -> void:
 	if not model.battle_over:
 		completed_player_result = ""
 		return
-	var result_player_color := model.get_other_color(ai_color) if control_mode == ControlMode.PLAYER_VS_CPU else player_color
 	if model.battle_result == "draw":
 		completed_player_result = "draw"
-	elif model.battle_result == result_player_color:
+	elif model.battle_result == player_color:
 		completed_player_result = "win"
 	else:
 		completed_player_result = "loss"
 
 func restart_battle() -> void:
 	get_tree().reload_current_scene()
+
+
+## Changes presentation perspective only. Controller ownership, CPUs, turn state,
+## and the authoritative position are intentionally unaffected.
+func set_viewing_color(color: String) -> void:
+	var normalized := _normalize_color(color)
+	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
+	if board_view != null:
+		board_view.set_viewing_color(normalized)
+	_layout_side_ui(normalized)
+
+
+func _layout_side_ui(viewing_color: String) -> void:
+	var white_container := get_node_or_null("UI/WhitePlayerUIContainer") as MarginContainer
+	var black_container := get_node_or_null("UI/BlackPlayerUIContainer") as MarginContainer
+	if white_container == null or black_container == null:
+		return
+	_place_side_ui(white_container, viewing_color == "white")
+	_place_side_ui(black_container, viewing_color == "black")
+
+
+func _place_side_ui(container: MarginContainer, near_player: bool) -> void:
+	container.set_anchors_preset(Control.PRESET_BOTTOM_WIDE if near_player else Control.PRESET_TOP_WIDE)
+	container.offset_left = 0.0
+	container.offset_right = 0.0
+	container.offset_top = -125.0 if near_player else 0.0
+	container.offset_bottom = 0.0 if near_player else 125.0
+	for margin_name in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		container.add_theme_constant_override(margin_name, 0)
+	container.add_theme_constant_override("margin_left" if near_player else "margin_right", 50)
+	container.add_theme_constant_override("margin_bottom" if near_player else "margin_top", 50)
+	var button := container.get_child(0) as Control if container.get_child_count() > 0 else null
+	if button != null:
+		button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN if near_player else Control.SIZE_SHRINK_END
+		button.size_flags_vertical = Control.SIZE_SHRINK_END if near_player else Control.SIZE_SHRINK_BEGIN
+
+
+func _normalize_color(color: String) -> String:
+	return "black" if color == "black" else "white"
