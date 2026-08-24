@@ -40,6 +40,14 @@ func _ready() -> void:
 	var normalized_size: Vector2 = Vector2(minotaur_preview.sprite.texture.get_size()) * minotaur_preview.sprite.scale.abs()
 	var preview_display_size: Vector2 = normalized_size * minotaur_preview.scale.abs()
 	_check(preview_display_size.x <= minotaur_preview.get_parent().size.x and preview_display_size.y <= minotaur_preview.get_parent().size.y and preview_display_size.y > 32.0, "high-resolution king preview fits from its normalized display footprint without double-shrinking", failures)
+	var necromancer_index: int = sandbox.piece_palette.king_type_ids.find(&"necromancer_king")
+	sandbox.piece_palette.king_selector.select(necromancer_index)
+	sandbox.piece_palette._on_king_selected(necromancer_index)
+	await get_tree().process_frame
+	var white_necromancer_preview: PieceView = sandbox.piece_palette.king_items["white"].preview
+	var black_necromancer_preview: PieceView = sandbox.piece_palette.king_items["black"].preview
+	_check(white_necromancer_preview.sprite.texture.resource_path == "res://assets/pieces/kings/white_necromancer.png" and white_necromancer_preview.sprite.material == null, "White Necromancer palette preview uses authored White art without the palette shader", failures)
+	_check(black_necromancer_preview.sprite.texture.resource_path == "res://assets/pieces/kings/black_necromancer.png" and black_necromancer_preview.sprite.material == null, "Black Necromancer palette preview uses authored Black art without a palette shader", failures)
 	sandbox.piece_palette.king_selector.select(0)
 	sandbox.piece_palette._on_king_selected(0)
 	_check(sandbox.undo_button.disabled and sandbox.redo_button.disabled, "history actions start disabled", failures)
