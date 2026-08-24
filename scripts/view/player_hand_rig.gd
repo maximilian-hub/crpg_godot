@@ -215,13 +215,12 @@ func play_piece_capture(
 	if not pickup_state["attached"]:
 		_attach_captured_piece(attacker_node, defender_node, world_scale)
 
-	# Jump to the destination, open the hand, and leave the attacker on its exact square.
+	# Jump to the destination and leave the attacker on its exact square. Keep the
+	# hand closed around the captured defender while carrying it offscreen.
 	capture_stage_changed.emit(&"placement")
 	await _tween_jump_position(destination_contact, capture_placement_duration, capture_placement_arc_height * world_scale)
 	_play_board_sound(SOUND_PLACE)
 	await _wait(release_hold_duration)
-	_apply_pose(false)
-	pose_changed.emit(&"open")
 	attacker_node.reparent(attacker_parent, true)
 	attacker_node.scale = attacker_scale
 	attacker_node.z_index = attacker_z_index

@@ -177,7 +177,9 @@ func _test_player_hand_capture_presentation() -> void:
 	var bishop_view: Node2D = context.adapter.get_piece_view(bishop)
 	var observation := {"hand_completions": 0, "grips_aligned": false}
 	var capture_stages: Array[StringName] = []
+	var capture_poses: Array[StringName] = []
 	var removal_timeline: Array[String] = []
+	rig.pose_changed.connect(func(pose: StringName): capture_poses.append(pose))
 	rig.move_animation_finished.connect(
 		func():
 			observation["hand_completions"] += 1
@@ -193,6 +195,9 @@ func _test_player_hand_capture_presentation() -> void:
 			capture_stages.append(stage)
 			if stage == &"exit":
 				_expect(bishop_view.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece remains attached while the hand exits")
+				_expect(rig.get_node("Back").texture == test_hand_style.closed_back and rig.get_node("Front").texture == test_hand_style.closed_front, "capture withdrawal keeps both hand layers in the closed pose")
+				var moving_view: Node2D = context.adapter.get_piece_view(rook)
+				_expect(moving_view.get_parent() == context.view.get_node("Pieces") and moving_view.position == context.view.grid_to_screen(3, 0), "attacker is released onto the board before the closed hand withdraws")
 	)
 	rig.captured_piece_grabbed.connect(
 		func(piece: Node2D):
@@ -212,6 +217,7 @@ func _test_player_hand_capture_presentation() -> void:
 	_expect(rig.get_node("GrabSound").stream == sound_set.grab and rig.get_node("PlaceSound").stream == board_sound_set.default_place and rig.get_node("ReleaseSound").stream == sound_set.release, "captures combine race-specific hand sounds with the board's default placement sound")
 	_expect(rig.get_node("SlideSound").stream == null, "jumping capture movement does not play a slide sound")
 	_expect(capture_stages == [&"initiation", &"swipe", &"placement", &"exit"], "player capture runs initiation, swipe, placement, and exit in order")
+	_expect(capture_poses == [&"open", &"closed"], "player capture opens for approach, closes on pickup, and stays closed through withdrawal")
 	_expect(observation["grips_aligned"], "capture swipe stacks attacker and defender grip anchors at pickup")
 	_expect(is_equal_approx(rad_to_deg(rig.get_node("CapturedPiecePivot").rotation), rig.captured_piece_rotation_degrees), "captured piece finishes at its configured carry angle")
 	_expect(model.board[3][0] == rook and rook_view.position == context.view.grid_to_screen(3, 0), "hand-carried attacker occupies the captured piece's square")
