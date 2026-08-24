@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=4 format=3 uid="uid://ecuio88wa00c"]
+
+[ext_resource type="Script" uid="uid://bixky4gegipld" path="res://scripts/view/piece_art_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" uid="uid://bytmvrjto0f82" path="res://assets/pieces/kings/black_minotaur.png" id="2_texture"]
+[ext_resource type="Texture2D" uid="uid://pfjsrveas3so" path="res://assets/pieces/kings/white_minotaur.png" id="3_white_texture"]
+
+[resource]
+script = ExtResource("1_profile")
+reference_texture = ExtResource("2_texture")
+white_texture = ExtResource("3_white_texture")
+display_height = 64.0
+grip_anchor = Vector2(0, -51)

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d1alvnbmvltkh"
-path="res://.godot/imported/black_knight.png-5f1d7b2f751e7191824425bd081bbb9f.ctex"
+uid="uid://boue0hwxsbx6m"
+path="res://.godot/imported/black_pawn.png-3c62e6a8d8404038b8236f9795957e6a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/pieces/standard/black_knight.png"
-dest_files=["res://.godot/imported/black_knight.png-5f1d7b2f751e7191824425bd081bbb9f.ctex"]
+source_file="res://assets/pieces/deprecated/01 first update 64/black_pawn.png"
+dest_files=["res://.godot/imported/black_pawn.png-3c62e6a8d8404038b8236f9795957e6a.ctex"]
 
 [params]
 

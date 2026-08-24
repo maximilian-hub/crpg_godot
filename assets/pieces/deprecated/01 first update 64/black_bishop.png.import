@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d4ips7jjpirqf"
-path="res://.godot/imported/black_arakne_king.png-b827ddd332629a88ee466852dd465674.ctex"
+uid="uid://cdfiurb06m7sq"
+path="res://.godot/imported/black_bishop.png-c5f9de00d782ec175b395b37dbba38cb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/pieces/black_arakne_king.png"
-dest_files=["res://.godot/imported/black_arakne_king.png-b827ddd332629a88ee466852dd465674.ctex"]
+source_file="res://assets/pieces/deprecated/01 first update 64/black_bishop.png"
+dest_files=["res://.godot/imported/black_bishop.png-c5f9de00d782ec175b395b37dbba38cb.ctex"]
 
 [params]
 

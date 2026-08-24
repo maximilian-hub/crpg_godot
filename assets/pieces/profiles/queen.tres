@@ -1,9 +1,10 @@
-[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=3 format=3 uid="uid://dessg8nrrnu8o"]
 
-[ext_resource type="Script" path="res://scripts/view/piece_art_profile.gd" id="1_profile"]
-[ext_resource type="Texture2D" path="res://assets/pieces/standard/black_queen.png" id="2_texture"]
+[ext_resource type="Script" uid="uid://bixky4gegipld" path="res://scripts/view/piece_art_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" uid="uid://dyqaicyi7qrtk" path="res://assets/pieces/standard/black_queen.png" id="2_texture"]
 
 [resource]
 script = ExtResource("1_profile")
 reference_texture = ExtResource("2_texture")
+display_height = 64.0
 grip_anchor = Vector2(0, -49)

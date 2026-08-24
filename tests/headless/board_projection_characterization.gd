@@ -114,8 +114,14 @@ func _test_piece_ground_anchors() -> void:
 		_expect(piece.get_body_anchor().position == piece.sprite.position, "%s body effect anchor tracks the artwork center" % model.type)
 		_expect(is_equal_approx(piece.get_head_anchor().position.y, piece.get_sprite_top_local_y()), "%s head effect anchor tracks the artwork top" % model.type)
 		_expect(piece.get_grip_anchor().position != piece.get_head_anchor().position, "%s grip anchor is independently configured from its head anchor" % model.type)
-		_expect(piece.sprite.texture.resource_path.begins_with("res://assets/pieces/standard/black_"), "%s resolves through standardized source art" % model.type)
-		_expect(piece.sprite.material is ShaderMaterial, "%s receives the temporary White palette" % model.type)
+		_expect(piece.sprite.texture.resource_path.begins_with("res://assets/pieces/"), "%s resolves through its configured art profile" % model.type)
+		if model is MinotaurKing:
+			_expect(piece.sprite.texture.resource_path == "res://assets/pieces/kings/white_minotaur.png", "White Minotaur King resolves its authored White art")
+			_expect(piece.sprite.material == null, "authored White Minotaur art bypasses the White palette shader")
+			var displayed_height := float(piece.sprite.texture.get_height()) * absf(piece.sprite.scale.y)
+			_expect(is_equal_approx(displayed_height, piece.art_profile.display_height), "Minotaur King source resolution normalizes to its configured board height")
+		else:
+			_expect(piece.sprite.material is ShaderMaterial, "%s receives the fallback White palette" % model.type)
 		piece.queue_free()
 	var black_piece := PIECE_SCENE.instantiate() as PieceView
 	add_child(black_piece)
@@ -123,6 +129,18 @@ func _test_piece_ground_anchors() -> void:
 	_expect(black_piece.sprite.texture.resource_path == "res://assets/pieces/standard/black_queen.png", "Black Queen uses its standardized authored texture")
 	_expect(black_piece.sprite.material == null, "Black authored art is not palette transformed")
 	black_piece.queue_free()
+	var black_minotaur := PIECE_SCENE.instantiate() as PieceView
+	add_child(black_minotaur)
+	black_minotaur.set_model(MinotaurKing.new("black", Vector2i.ZERO))
+	_expect(black_minotaur.sprite.texture.resource_path == "res://assets/pieces/kings/black_minotaur.png", "Black Minotaur King resolves its authored Black art")
+	_expect(black_minotaur.sprite.material == null, "authored Black Minotaur art is not palette transformed")
+	black_minotaur.queue_free()
+	var profile := PieceArtProfile.new()
+	profile.display_height = 64.0
+	profile.reference_texture = ImageTexture.create_from_image(Image.create_empty(8, 128, false, Image.FORMAT_RGBA8))
+	profile.white_texture = ImageTexture.create_from_image(Image.create_empty(8, 256, false, Image.FORMAT_RGBA8))
+	_expect(is_equal_approx(profile.texture_scale(profile.texture_for_color("black")), 0.5), "Black art scales from its selected texture height")
+	_expect(is_equal_approx(profile.texture_scale(profile.texture_for_color("white")), 0.25), "authored White art independently scales from its selected texture height")
 
 func _test_fixed_battle_layout() -> void:
 	var cases := {

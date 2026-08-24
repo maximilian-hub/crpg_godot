@@ -5,15 +5,15 @@
 extends Area2D
 class_name PieceView
 
-const STANDARD_PIECE_DIRECTORY := "res://assets/pieces/standard/"
-const WHITE_PALETTE_SHADER := preload("res://assets/pieces/white_piece_palette.gdshader")
+const WHITE_PALETTE_SHADER := preload("res://assets/pieces/profiles/white_piece_palette.gdshader")
 const PIECE_ART_PROFILES := {
-	"pawn": preload("res://assets/pieces/profiles/pawn.tres"),
-	"rook": preload("res://assets/pieces/profiles/rook.tres"),
-	"knight": preload("res://assets/pieces/profiles/knight.tres"),
-	"bishop": preload("res://assets/pieces/profiles/bishop.tres"),
-	"queen": preload("res://assets/pieces/profiles/queen.tres"),
-	"king": preload("res://assets/pieces/profiles/king.tres"),
+	&"pawn": preload("res://assets/pieces/profiles/pawn.tres"),
+	&"rook": preload("res://assets/pieces/profiles/rook.tres"),
+	&"knight": preload("res://assets/pieces/profiles/knight.tres"),
+	&"bishop": preload("res://assets/pieces/profiles/bishop.tres"),
+	&"queen": preload("res://assets/pieces/profiles/queen.tres"),
+	&"king": preload("res://assets/pieces/profiles/king.tres"),
+	&"minotaur_king": preload("res://assets/pieces/profiles/minotaur_king.tres"),
 }
 
 var coordinate: Vector2i
@@ -45,29 +45,24 @@ func update_sprite() -> void:
 	_apply_piece_art(model.color, model.type)
 
 func _apply_piece_art(color: String, requested_type: String) -> void:
-	var standard_type := _get_standard_type(requested_type)
-	art_profile = PIECE_ART_PROFILES.get(standard_type)
-	var authored_path := STANDARD_PIECE_DIRECTORY + color + "_" + standard_type + ".png"
-	var uses_authored_color := ResourceLoader.exists(authored_path)
-	var texture_path := authored_path if uses_authored_color else STANDARD_PIECE_DIRECTORY + "black_" + standard_type + ".png"
-	sprite.texture = load(texture_path)
-	sprite.scale = Vector2.ONE
+	var art_id := _get_art_id(requested_type)
+	art_profile = PIECE_ART_PROFILES.get(art_id, PIECE_ART_PROFILES[&"pawn"])
+	var selected_texture: Texture2D = art_profile.texture_for_color(color)
+	sprite.texture = selected_texture
+	sprite.scale = Vector2.ONE * art_profile.texture_scale(selected_texture)
 	sprite.material = null
-	if color == "white" and not uses_authored_color:
+	if color == "white" and art_profile.white_texture == null:
 		var white_material := ShaderMaterial.new()
 		white_material.shader = WHITE_PALETTE_SHADER
 		sprite.material = white_material
 	align_sprite_to_ground()
 
-func _get_standard_type(requested_type: String) -> String:
-	if requested_type == "bone_pawn":
-		return "pawn"
-	if requested_type == "king" or requested_type == "classic_king" or requested_type.ends_with("_king"):
-		return "king"
-	if requested_type in ["pawn", "rook", "knight", "bishop", "queen"]:
-		return requested_type
+func _get_art_id(requested_type: String) -> StringName:
+	var definition := ChessPieceCatalog.get_definition(StringName(requested_type))
+	if not definition.is_empty():
+		return definition.get("art", &"pawn")
 	push_warning("Unknown piece art type '%s'; using pawn art." % requested_type)
-	return "pawn"
+	return &"pawn"
 
 func align_sprite_to_ground() -> void:
 	if sprite == null or sprite.texture == null:

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d1alvnbmvltkh"
-path="res://.godot/imported/black_knight.png-5f1d7b2f751e7191824425bd081bbb9f.ctex"
+uid="uid://dag2dtjm8euja"
+path="res://.godot/imported/black_queen.png-9fbc4b544ddf1b1a2ab4657efdaa9d14.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/pieces/standard/black_knight.png"
-dest_files=["res://.godot/imported/black_knight.png-5f1d7b2f751e7191824425bd081bbb9f.ctex"]
+source_file="res://assets/pieces/deprecated/01 first update 64/black_queen.png"
+dest_files=["res://.godot/imported/black_queen.png-9fbc4b544ddf1b1a2ab4657efdaa9d14.ctex"]
 
 [params]
 

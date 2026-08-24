@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://i4t615bxf4uu"
-path="res://.godot/imported/black_bone_pawn.png-b3d8202b2a22e895965602b1f6fdba13.ctex"
+uid="uid://buijd7eqxys5x"
+path="res://.godot/imported/white_minotaur_king.png-ca2a8600395c7590789b956943fa1291.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/pieces/black_bone_pawn.png"
-dest_files=["res://.godot/imported/black_bone_pawn.png-b3d8202b2a22e895965602b1f6fdba13.ctex"]
+source_file="res://assets/pieces/deprecated/00 original prototype visuals/white_minotaur_king.png"
+dest_files=["res://.godot/imported/white_minotaur_king.png-ca2a8600395c7590789b956943fa1291.ctex"]
 
 [params]
 

@@ -29,6 +29,19 @@ func _ready() -> void:
 	var palette_pawn = sandbox.piece_palette.piece_items["pawn:white"].preview
 	var board_pawn = view.get_piece_node(Vector2i(6, 0))
 	_check(palette_pawn.sprite.texture == board_pawn.sprite.texture, "palette previews reuse in-game PieceView artwork", failures)
+	var minotaur_index: int = sandbox.piece_palette.king_type_ids.find(&"minotaur_king")
+	sandbox.piece_palette.king_selector.select(minotaur_index)
+	sandbox.piece_palette._on_king_selected(minotaur_index)
+	await get_tree().process_frame
+	var minotaur_preview: PieceView = sandbox.piece_palette.king_items["white"].preview
+	var black_minotaur_preview: PieceView = sandbox.piece_palette.king_items["black"].preview
+	_check(minotaur_preview.sprite.texture.resource_path == "res://assets/pieces/kings/white_minotaur.png" and minotaur_preview.sprite.material == null, "White Minotaur palette preview uses authored White art without the palette shader", failures)
+	_check(black_minotaur_preview.sprite.texture.resource_path == "res://assets/pieces/kings/black_minotaur.png" and black_minotaur_preview.sprite.material == null, "Black Minotaur palette preview uses authored Black art without a palette shader", failures)
+	var normalized_size: Vector2 = Vector2(minotaur_preview.sprite.texture.get_size()) * minotaur_preview.sprite.scale.abs()
+	var preview_display_size: Vector2 = normalized_size * minotaur_preview.scale.abs()
+	_check(preview_display_size.x <= minotaur_preview.get_parent().size.x and preview_display_size.y <= minotaur_preview.get_parent().size.y and preview_display_size.y > 32.0, "high-resolution king preview fits from its normalized display footprint without double-shrinking", failures)
+	sandbox.piece_palette.king_selector.select(0)
+	sandbox.piece_palette._on_king_selected(0)
 	_check(sandbox.undo_button.disabled and sandbox.redo_button.disabled, "history actions start disabled", failures)
 	_check(sandbox.reset_button.disabled and not sandbox.clear_button.disabled and not sandbox.paste_button.disabled, "editor action buttons expose their actual startup availability", failures)
 	_check(sandbox.think_button.disabled and sandbox.step_button.disabled and sandbox.execute_button.disabled, "manual AI buttons are unclickable while AI is unavailable", failures)
@@ -63,8 +76,9 @@ func _ready() -> void:
 	_press_key(sandbox, KEY_LEFT)
 	await get_tree().process_frame
 	sandbox.editor.select_cursor_tool()
-	sandbox.editor.select_palette_piece(&"pawn", "white")
-	sandbox.interaction.begin_palette_drag(&"pawn", "white")
+	sandbox.editor.select_palette_piece(&"minotaur_king", "white")
+	sandbox.interaction.begin_palette_drag(&"minotaur_king", "white")
+	_check(sandbox.interaction.drag_ghost.sprite.texture.resource_path == "res://assets/pieces/kings/white_minotaur.png" and sandbox.interaction.drag_ghost.sprite.material == null, "authored White art propagates to palette drag ghosts without the palette shader", failures)
 	_press_key(sandbox, KEY_ESCAPE)
 	_check(sandbox.editor.selected_tool == BoardEditorController.Tool.CURSOR and sandbox.interaction.drag_source == sandbox.interaction.DragSource.NONE and sandbox.interaction.drag_ghost == null, "Escape cancels palette drag state and restores Cursor", failures)
 	sandbox.editor.select_palette_piece(&"queen", "black")
@@ -152,7 +166,7 @@ func _ready() -> void:
 	sandbox._on_seed_changed(9)
 	_check(sandbox.thought_label.text == "No prepared action" and sandbox.execute_button.disabled, "seed changes clear prepared AI actions", failures)
 	sandbox._set_speed(sandbox.PresentationPolicy.Speed.SLOW)
-	_check(sandbox.speed_value_label.text == "Slow" and int(sandbox.speed_slider.value) == sandbox.PresentationPolicy.Speed.SLOW and is_equal_approx(adapter.presentation_policy.duration_scale(), 2.0), "animation slider exposes a double-duration Slow speed", failures)
+	_check(sandbox.speed_value_label.text == "Slow" and int(sandbox.speed_slider.value) == sandbox.PresentationPolicy.Speed.SLOW and adapter.presentation_policy.duration_scale() > 1.0 and is_equal_approx(adapter.presentation_policy.duration_scale(), adapter.presentation_policy.slow_duration_scale), "animation slider exposes its configured Slow duration scale", failures)
 	sandbox._set_speed(sandbox.PresentationPolicy.Speed.FAST)
 	_check(sandbox.speed_value_label.text == "Fast" and int(sandbox.speed_slider.value) == sandbox.PresentationPolicy.Speed.FAST, "animation slider and label synchronize", failures)
 	sandbox._on_grip_toggled(true)

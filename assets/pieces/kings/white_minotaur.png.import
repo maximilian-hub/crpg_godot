@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://buijd7eqxys5x"
-path="res://.godot/imported/white_minotaur_king.png-5316bb09e3615a3f36b584a1708b8b97.ctex"
+uid="uid://pfjsrveas3so"
+path="res://.godot/imported/white_minotaur.png-bd548120bfef3748c4a946e0d18fe611.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/pieces/white_minotaur_king.png"
-dest_files=["res://.godot/imported/white_minotaur_king.png-5316bb09e3615a3f36b584a1708b8b97.ctex"]
+source_file="res://assets/pieces/kings/white_minotaur.png"
+dest_files=["res://.godot/imported/white_minotaur.png-bd548120bfef3748c4a946e0d18fe611.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b2upiblle4yti"
-path="res://.godot/imported/black_necromancer_king.png-923a8b32392435f688d5eb15bde36971.ctex"
+uid="uid://bytmvrjto0f82"
+path="res://.godot/imported/black_minotaur.png-4374acb0cf4dafae35f6b65f269ffa94.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/pieces/black_necromancer_king.png"
-dest_files=["res://.godot/imported/black_necromancer_king.png-923a8b32392435f688d5eb15bde36971.ctex"]
+source_file="res://assets/pieces/kings/black_minotaur.png"
+dest_files=["res://.godot/imported/black_minotaur.png-4374acb0cf4dafae35f6b65f269ffa94.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bsfulp07n4i2h"
-path="res://.godot/imported/white_bone_pawn.png-792d3995ea6d4efc1b8f945306e4e591.ctex"
+uid="uid://b4flognfg6q5k"
+path="res://.godot/imported/black_pawn.png-e2d59436b8fd0b47ccbbefad0f4d8b98.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/pieces/white_bone_pawn.png"
-dest_files=["res://.godot/imported/white_bone_pawn.png-792d3995ea6d4efc1b8f945306e4e591.ctex"]
+source_file="res://assets/pieces/deprecated/00 original prototype visuals/black_pawn.png"
+dest_files=["res://.godot/imported/black_pawn.png-e2d59436b8fd0b47ccbbefad0f4d8b98.ctex"]
 
 [params]
 

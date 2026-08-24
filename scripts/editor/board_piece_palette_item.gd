@@ -89,7 +89,10 @@ func _layout_content() -> void:
 	if not is_node_ready():
 		return
 	if preview != null and preview.sprite.texture != null:
-		var texture_size := preview.sprite.texture.get_size()
+		# Fit the profile-normalized footprint, not the raw source resolution.
+		# The sprite may already scale a high-resolution texture down to its
+		# intended physical board size.
+		var texture_size := Vector2(preview.sprite.texture.get_size()) * preview.sprite.scale.abs()
 		var available := Vector2(maxf(size.x - 14.0, 1.0), maxf(size.y - 8.0, 1.0))
 		var fit_scale := minf(available.x / texture_size.x, available.y / texture_size.y)
 		preview.scale = Vector2.ONE * fit_scale
