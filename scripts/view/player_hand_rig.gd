@@ -23,7 +23,8 @@ const SOUND_RELEASE := &"release"
 ## Offset from the piece's configured GripAnchor, measured in local piece pixels.
 @export var piece_grip_offset := Vector2(0.0, 6.0)
 @export_range(0.25, 4.0, 0.05) var art_scale_multiplier := 3.5
-@export_range(0.01, 2.0, 0.01) var approach_duration := 0.24
+@export_range(0.01, 2.0, 0.01) var approach_duration := 0.24 # Time taken to travel from the lower-right rest point to the first piece.
+@export_range(0.0, 256.0, 1.0) var approach_arc_height := 64.0 # Peak upward bend of the first reach; 0 makes the approach linear.
 @export_range(0.0, 1.0, 0.01) var grasp_hold_duration := 0.18
 @export_range(0.01, 2.0, 0.01) var carry_duration := .24
 @export_range(0.0, 128.0, 1.0) var jump_arc_height := 32.0
@@ -104,11 +105,14 @@ func play_piece_move(
 	var contact_position := _piece_grip_position(piece_node)
 	var destination_contact := contact_position + destination - origin
 
-	# Raise the open hand from below the screen to the piece's grip point.
+	# Arc the open hand from its lower-right rest point to the piece's grip point.
 	if enter_from_offscreen:
 		position = _offscreen_rest_position(effective_hand_scale)
 	visible = true
-	await _tween_position(contact_position, approach_duration)
+	if enter_from_offscreen:
+		await _tween_jump_position(contact_position, approach_duration, approach_arc_height * world_scale)
+	else:
+		await _tween_position(contact_position, approach_duration)
 
 	# Place the piece between the rear fingers and front thumb, then close the hand.
 	piece_node.reparent(piece_slot, true)
@@ -177,7 +181,7 @@ func play_piece_capture(
 
 	position = _offscreen_rest_position(effective_hand_scale)
 	visible = true
-	await _tween_position(attacker_contact, approach_duration)
+	await _tween_jump_position(attacker_contact, approach_duration, approach_arc_height * world_scale)
 	attacker_node.reparent(piece_slot, true)
 	attacker_node.z_index = 0
 	piece_grabbed.emit(attacker_node)
@@ -256,7 +260,7 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 
 	position = _offscreen_rest_position(effective_hand_scale)
 	visible = true
-	await _tween_position(contact_position, approach_duration)
+	await _tween_jump_position(contact_position, approach_duration, approach_arc_height * world_scale)
 	piece_node.reparent(piece_slot, true)
 	piece_node.z_index = 0
 	piece_grabbed.emit(piece_node)

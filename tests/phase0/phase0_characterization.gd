@@ -102,6 +102,7 @@ func _test_player_hand_move_presentation() -> void:
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.0, 32.0) == Vector2.ZERO, "jump arc begins at the exact grip position")
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.5, 32.0) == Vector2(50, -12), "jump arc reaches its configured height above the straight midpoint")
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 1.0, 32.0) == Vector2(100, 40), "jump arc ends at the exact destination")
+	_expect(rig.approach_arc_height > 0.0, "off-board hand approach uses an adjustable non-linear arc by default")
 	_expect(back.z_index < piece_slot.z_index and piece_slot.z_index < front.z_index, "carried piece renders between the rear hand and front thumb")
 	_expect(back.texture.resource_path.ends_with("skeleton_open.png"), "released hand displays the open rear artwork")
 	_expect(front.texture.resource_path.ends_with("skeleton_open_thumb.png"), "released hand displays the open thumb artwork")
