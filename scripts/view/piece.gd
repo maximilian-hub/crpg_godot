@@ -8,6 +8,7 @@ class_name PieceView
 const WHITE_PALETTE_SHADER := preload("res://assets/pieces/profiles/white_piece_palette.gdshader")
 const PIECE_ART_PROFILES := {
 	&"pawn": preload("res://assets/pieces/profiles/pawn.tres"),
+	&"bone_pawn": preload("res://assets/pieces/profiles/bone_pawn.tres"),
 	&"rook": preload("res://assets/pieces/profiles/rook.tres"),
 	&"knight": preload("res://assets/pieces/profiles/knight.tres"),
 	&"bishop": preload("res://assets/pieces/profiles/bishop.tres"),

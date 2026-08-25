@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bksgvdyt43ga7"
-path="res://.godot/imported/skeleton_closed.png-61a43fec70402f3ca93595ab2e0e734d.ctex"
+uid="uid://d1ui77yoony7x"
+path="res://.godot/imported/skeleton_closed_rear_fingers.png-397857de723d1a42c08709b8e225cfcc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/arms/player/skeleton_closed.png"
-dest_files=["res://.godot/imported/skeleton_closed.png-61a43fec70402f3ca93595ab2e0e734d.ctex"]
+source_file="res://assets/arms/player/skeleton_closed_rear_fingers.png"
+dest_files=["res://.godot/imported/skeleton_closed_rear_fingers.png-397857de723d1a42c08709b8e225cfcc.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://2j43yos4x8ad"
-path="res://.godot/imported/skeleton_open.png-83cd14028fbcd29c73936233f3e37790.ctex"
+uid="uid://c4kepro7uqc3k"
+path="res://.godot/imported/white_bone_pawn.png-ae0ab9db1dc216fcb05bdfae209f6795.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/arms/player/skeleton_open.png"
-dest_files=["res://.godot/imported/skeleton_open.png-83cd14028fbcd29c73936233f3e37790.ctex"]
+source_file="res://assets/pieces/special/white_bone_pawn.png"
+dest_files=["res://.godot/imported/white_bone_pawn.png-ae0ab9db1dc216fcb05bdfae209f6795.ctex"]
 
 [params]
 

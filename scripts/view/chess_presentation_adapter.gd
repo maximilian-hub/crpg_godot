@@ -169,7 +169,7 @@ func _on_ordinary_move_submission_finished(_piece: ModelPiece, _target: Vector2i
 	player_move_submission_active = false
 
 
-func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, _from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
+func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		printerr("Presentation has no visual node for attacking ", piece.type)
@@ -181,7 +181,7 @@ func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, _from: 
 	pending_attack_damage_visuals[defender] = []
 	var contact_callback := func(): _flush_pending_attack_damage(defender)
 	if player_move_submission_active and piece.color == view.viewing_color and controller.is_player_controlled(piece.color):
-		await view.attack_piece_node_with_player_hand(piece_node, to, contact_callback)
+		await view.attack_piece_node_with_player_hand(piece_node, from, to, contact_callback)
 	else:
 		await view.attack_piece_node(piece_node, to, contact_callback)
 	# Never strand an HP display if an animation implementation exits without

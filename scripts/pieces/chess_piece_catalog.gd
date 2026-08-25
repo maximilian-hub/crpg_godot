@@ -11,7 +11,7 @@ const DEFINITIONS := {
 	&"arakne_king": {"name": "Arakne King", "script": preload("res://scripts/pieces/arakne_king.gd"), "art": &"arakne_king", "palette": true, "palette_group": &"king", "palette_order": 1},
 	&"minotaur_king": {"name": "Minotaur King", "script": preload("res://scripts/pieces/minotaur_king.gd"), "art": &"minotaur_king", "palette": true, "palette_group": &"king", "palette_order": 2},
 	&"necromancer_king": {"name": "Necromancer King", "script": preload("res://scripts/pieces/necromancer_king.gd"), "art": &"necromancer_king", "palette": true, "palette_group": &"king", "palette_order": 3},
-	&"bone_pawn": {"name": "Bone Pawn", "script": preload("res://scripts/pieces/bone_pawn.gd"), "art": &"pawn", "palette": false, "palette_group": &"hidden", "palette_order": 0},
+	&"bone_pawn": {"name": "Bone Pawn", "script": preload("res://scripts/pieces/bone_pawn.gd"), "art": &"bone_pawn", "palette": false, "palette_group": &"hidden", "palette_order": 0},
 }
 
 static func normalize_type_id(type_id: StringName) -> StringName:

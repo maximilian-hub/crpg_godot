@@ -53,8 +53,9 @@ func _test_player_hand_move_presentation() -> void:
 	var view: ChessBoardView = context.view
 	var rig: Node2D = view.get_node("PlayerHandRig")
 	var piece_slot: Node2D = rig.get_node("PieceSlot")
-	var back: Sprite2D = rig.get_node("Back")
-	var front: Sprite2D = rig.get_node("Front")
+	var rear_fingers: Sprite2D = rig.get_node("RearFingers")
+	var thumb: Sprite2D = rig.get_node("Thumb")
+	var arm: Sprite2D = rig.get_node("Arm")
 	var sound_set := _make_test_hand_sound_set()
 	var board_sound_set := _make_test_board_sound_set()
 	var test_hand_style: ChessHandStyle = rig.hand_style.duplicate()
@@ -69,11 +70,31 @@ func _test_player_hand_move_presentation() -> void:
 
 	var pawn: ModelPiece = model.board[6][0]
 	var pawn_view: Node2D = context.adapter.get_piece_view(pawn)
+	var nearer_rook_view: Node2D = context.adapter.get_piece_view(model.board[7][0])
+	var unrelated_nearer_piece: Node2D = context.adapter.get_piece_view(model.board[7][1])
+	_expect(view.get_piece_directly_toward_viewer(Vector2i(6, 0)) == nearer_rook_view, "White perspective identifies only the same-file piece one displayed row nearer")
+	_expect(view.get_hand_interaction_occluders(Vector2i(6, 0), Vector2i(6, 0)) == [nearer_rook_view], "matching origin and destination occluders are deduplicated")
+	var nearer_rook_original_z := nearer_rook_view.z_index
+	var test_occluders: Array[Node2D] = [nearer_rook_view]
+	rig._promote_interaction_occluders(test_occluders)
+	_expect(unrelated_nearer_piece.z_index < thumb.z_index and thumb.z_index < nearer_rook_view.z_index and nearer_rook_view.z_index < arm.z_index, "only the direct approach occluder is layered between the foreground thumb and arm")
+	rig._restore_interaction_occluders()
+	_expect(nearer_rook_view.z_index == nearer_rook_original_z, "temporary approach occluder restores its board depth")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][1]), Vector2i(7, 1), Vector2i(5, 2)) == &"jump", "knights always use the jump carry path")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][0]), Vector2i(7, 0), Vector2i(5, 0)) == &"slide", "two-square rook movement retains the slide carry path")
-	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][0]), Vector2i(7, 0), Vector2i(4, 0)) == &"jump", "long rook movement uses the jump carry path")
-	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][2]), Vector2i(7, 2), Vector2i(4, 5)) == &"jump", "long bishop movement uses the jump carry path")
-	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(7, 3), Vector2i(4, 6)) == &"jump", "long queen movement uses the jump carry path")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][0]), Vector2i(7, 0), Vector2i(4, 0)) == &"slide", "straight sliders can slide at any distance")
+	var bishop_view: Node2D = context.adapter.get_piece_view(model.board[7][2])
+	var bishop_clearance_blockers := view.get_player_hand_clearance_blockers(bishop_view, Vector2i(7, 2), Vector2i(6, 3))
+	_expect(view.get_player_hand_carry_path(bishop_view, Vector2i(7, 2), Vector2i(6, 3)) == &"jump", "a one-square bishop move jumps when its two corner-adjacent squares form a squeezed passage")
+	_expect(context.adapter.get_piece_view(model.board[7][3]) in bishop_clearance_blockers and context.adapter.get_piece_view(model.board[6][2]) in bishop_clearance_blockers, "diagonal clearance identifies both the adjacent queen and pawn as jump obstacles")
+	_expect(view.get_hand_interaction_occluders(Vector2i(7, 2), Vector2i(6, 3), bishop_clearance_blockers).is_empty(), "outbound bishop jump obstacles cannot be promoted over the thumb as destination occluders")
+	_expect(view.get_hand_placement_occluders(Vector2i(6, 3), bishop_clearance_blockers) == [context.adapter.get_piece_view(model.board[7][3])], "the queen below the bishop destination becomes a placement-only occluder")
+	_expect(view.get_hand_interaction_occluders(Vector2i(6, 3), Vector2i(7, 2), bishop_clearance_blockers).is_empty(), "returning bishop jump obstacles cannot be promoted over the thumb as origin occluders")
+	_expect(view.get_hand_pickup_occluders(Vector2i(6, 3), bishop_clearance_blockers) == [context.adapter.get_piece_view(model.board[7][3])], "the queen below the returning bishop becomes a pickup-only occluder")
+	_expect(view.get_hand_placement_occluders(Vector2i(7, 2), bishop_clearance_blockers).is_empty(), "the returning bishop does not retain an unrelated destination placement occluder")
+	_expect(view.get_player_hand_carry_path(bishop_view, Vector2i(4, 3), Vector2i(2, 5)) == &"slide", "a bishop can slide diagonally at any distance when every crossed corner is clear")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(7, 3), Vector2i(4, 6)) == &"jump", "a diagonally moving queen uses the same squeezed-corner rule as a bishop")
+	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(4, 3), Vector2i(2, 5)) == &"slide", "a diagonally moving queen slides through a clear corridor")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][4]), Vector2i(7, 4), Vector2i(4, 4)) == &"slide", "kings retain the slide carry path")
 	var expected_grip_position := view.to_local(pawn_view.get_grip_anchor().to_global(rig.piece_grip_offset))
 	var observations: Array[String] = []
@@ -84,12 +105,16 @@ func _test_player_hand_move_presentation() -> void:
 		func(piece: Node2D):
 			observations.append("grabbed")
 			_expect(piece == pawn_view and piece.get_parent() == piece_slot, "player hand sandwiches the grabbed piece in its carry slot")
+			_expect(not rear_fingers.z_as_relative and not piece_slot.z_as_relative and not thumb.z_as_relative, "rear fingers, carried piece, and thumb use one absolute interaction stack")
 			_expect(rig.position.is_equal_approx(expected_grip_position), "player hand aligns its grip to the piece head anchor plus the configured offset")
+			_expect(nearer_rook_view.z_index > thumb.z_index, "the direct lower piece continues to occlude the closed thumb after the grab clicks into place")
+			_expect(not arm.z_as_relative and arm.z_index > nearer_rook_view.z_index, "the foreground arm remains above the promoted lower piece")
 	)
 	rig.piece_released.connect(
 		func(piece: Node2D):
 			observations.append("released")
 			_expect(piece.get_parent() == view.get_node("Pieces"), "player hand restores the released piece to the board piece layer")
+			_expect(piece.z_index == view.get_piece_depth(Vector2i(4, 0)) and nearer_rook_view.z_index == PlayerHandRig.INTERACTION_OCCLUDER_Z, "placed piece assumes destination depth while the lower occluder remains promoted for retreat")
 			_expect(rig.get_node("PlaceSound").stream == board_sound_set.default_place and rig.get_node("ReleaseSound").stream == null, "placement sounds at board contact before the hand releases")
 	)
 	rig.move_animation_finished.connect(func(): observations.append("finished"))
@@ -98,14 +123,23 @@ func _test_player_hand_move_presentation() -> void:
 	await controller._on_square_clicked(Vector2i(4, 0))
 
 	_expect(observations == ["open", "grabbed", "closed", "open", "released", "finished"], "player hand uses the open-grab-close-carry-open-release sequence")
+	_expect(nearer_rook_view.z_index == nearer_rook_original_z, "lower-piece occlusion restores only after the hand completes its off-board retreat")
 	_expect(carry_paths == [&"slide"], "two-square pawn movement retains the sliding carry path")
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.0, 32.0) == Vector2.ZERO, "jump arc begins at the exact grip position")
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.5, 32.0) == Vector2(50, -12), "jump arc reaches its configured height above the straight midpoint")
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 1.0, 32.0) == Vector2(100, 40), "jump arc ends at the exact destination")
-	_expect(rig.approach_arc_height > 0.0, "off-board hand approach uses an adjustable non-linear arc by default")
-	_expect(back.z_index < piece_slot.z_index and piece_slot.z_index < front.z_index, "carried piece renders between the rear hand and front thumb")
-	_expect(back.texture.resource_path.ends_with("skeleton_open.png"), "released hand displays the open rear artwork")
-	_expect(front.texture.resource_path.ends_with("skeleton_open_thumb.png"), "released hand displays the open thumb artwork")
+	var approach_start := Vector2(200, 200)
+	var approach_destination := Vector2(50, 50)
+	var departure_control: Vector2 = approach_start.lerp(approach_destination, rig.approach_departure_progress) + Vector2.UP * rig.approach_departure_lift
+	var arrival_control: Vector2 = approach_destination + rig.approach_arrival_handle
+	_expect(rig.calculate_bezier_position(approach_start, departure_control, arrival_control, approach_destination, 0.0) == approach_start, "approach Bezier begins at the exact off-board rest point")
+	_expect(rig.calculate_bezier_position(approach_start, departure_control, arrival_control, approach_destination, 1.0) == approach_destination, "approach Bezier ends at the exact grip position")
+	_expect(rig.approach_arrival_handle.y < 0.0 and rig.calculate_bezier_position(approach_start, departure_control, arrival_control, approach_destination, 0.9).y < approach_destination.y, "approach Bezier reaches the piece from above by default")
+	_expect(rig.approach_path_debug.get_parent() == view and not rig.show_approach_path_debug, "approach path preview is reparented into board space and disabled by default")
+	_expect(rear_fingers.z_index < piece_slot.z_index and piece_slot.z_index < rig.get_node("CapturedPiecePivot").z_index and rig.get_node("CapturedPiecePivot").z_index < thumb.z_index, "active interaction stack orders rear fingers, attacker, captured defender, and thumb")
+	_expect(rear_fingers.texture.resource_path.ends_with("skeleton_open_rear_fingers.png"), "released hand displays the open rear-finger artwork")
+	_expect(thumb.texture.resource_path.ends_with("skeleton_open_thumb.png"), "released hand displays the open thumb artwork")
+	_expect(arm.texture.resource_path.ends_with("skeleton_open_arm.png"), "released hand displays the open foreground-arm artwork")
 	_expect(rig.get_node("GrabSound").stream == sound_set.grab, "ordinary movement plays its grab sound")
 	_expect(rig.get_node("PlaceSound").stream == board_sound_set.default_place, "ordinary movement plays the board's default placement sound")
 	_expect(rig.get_node("ReleaseSound").stream == sound_set.release, "ordinary movement plays its release sound")
@@ -176,11 +210,11 @@ func _test_player_hand_capture_presentation() -> void:
 	for property_name in ["approach_duration", "grasp_hold_duration", "capture_approach_duration", "capture_swipe_duration", "capture_placement_duration", "release_hold_duration", "retreat_duration"]:
 		rig.set(property_name, 0.01)
 
-	var rook := Rook.new("white", Vector2i(7, 0))
-	var bishop := Bishop.new("black", Vector2i(3, 0))
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var bishop := Bishop.new("black", Vector2i(5, 0))
 	_reset_battle(model, controller, [rook, bishop])
 	var bishop_view: Node2D = context.adapter.get_piece_view(bishop)
-	var observation := {"hand_completions": 0, "grips_aligned": false}
+	var observation := {"hand_completions": 0, "grips_aligned": false, "defender_occluded": false}
 	var capture_stages: Array[StringName] = []
 	var capture_poses: Array[StringName] = []
 	var removal_timeline: Array[String] = []
@@ -195,14 +229,24 @@ func _test_player_hand_capture_presentation() -> void:
 			if piece == bishop:
 				removal_timeline.append("defender_destroyed")
 	)
+	rig.piece_grabbed.connect(
+		func(piece: Node2D):
+			if piece.model == rook:
+				observation["defender_occluded"] = bishop_view.z_index == PlayerHandRig.INTERACTION_OCCLUDER_Z
+	)
 	rig.capture_stage_changed.connect(
 		func(stage: StringName):
 			capture_stages.append(stage)
 			if stage == &"exit":
 				_expect(bishop_view.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece remains attached while the hand exits")
-				_expect(rig.get_node("Back").texture == test_hand_style.closed_back and rig.get_node("Front").texture == test_hand_style.closed_front, "capture withdrawal keeps both hand layers in the closed pose")
+				_expect(
+					rig.get_node("Arm").texture == test_hand_style.closed_arm
+					and rig.get_node("RearFingers").texture == test_hand_style.closed_rear_fingers
+					and rig.get_node("Thumb").texture == test_hand_style.closed_thumb,
+					"capture withdrawal keeps all three hand layers in the closed pose"
+				)
 				var moving_view: Node2D = context.adapter.get_piece_view(rook)
-				_expect(moving_view.get_parent() == context.view.get_node("Pieces") and moving_view.position == context.view.grid_to_screen(3, 0), "attacker is released onto the board before the closed hand withdraws")
+				_expect(moving_view.get_parent() == context.view.get_node("Pieces") and moving_view.position == context.view.grid_to_screen(5, 0), "attacker is released onto the board before the closed hand withdraws")
 	)
 	rig.captured_piece_grabbed.connect(
 		func(piece: Node2D):
@@ -211,6 +255,7 @@ func _test_player_hand_capture_presentation() -> void:
 			_expect(rig.get_node("CapturePickupSound").stream == board_sound_set.default_capture_pickup, "the board's default capture pickup sounds at the instant the defender attaches")
 			_expect(piece.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece is attached to its hand-rig pivot")
 			_expect(rig.get_node("CapturedPiecePivot").z_index > rig.get_node("PieceSlot").z_index, "captured piece renders in front of the attacking piece")
+			_expect(not rig.interaction_occluder_depths.has(piece), "captured defender leaves the board-occluder restoration set when it enters the captured layer")
 	)
 
 	controller.select_piece(rook)
@@ -224,9 +269,10 @@ func _test_player_hand_capture_presentation() -> void:
 	_expect(rig.get_node("SlideSound").stream == null, "jumping capture movement does not play a slide sound")
 	_expect(capture_stages == [&"initiation", &"swipe", &"placement", &"exit"], "player capture runs initiation, swipe, placement, and exit in order")
 	_expect(capture_poses == [&"open", &"closed"], "player capture opens for approach, closes on pickup, and stays closed through withdrawal")
+	_expect(observation["defender_occluded"], "a defender directly below the attacker occludes the thumb until the capture swipe collects it")
 	_expect(observation["grips_aligned"], "capture swipe stacks attacker and defender grip anchors at pickup")
 	_expect(is_equal_approx(rad_to_deg(rig.get_node("CapturedPiecePivot").rotation), rig.captured_piece_rotation_degrees), "captured piece finishes at its configured carry angle")
-	_expect(model.board[3][0] == rook and rook_view.position == context.view.grid_to_screen(3, 0), "hand-carried attacker occupies the captured piece's square")
+	_expect(model.board[5][0] == rook and rook_view.position == context.view.grid_to_screen(5, 0), "hand-carried attacker occupies the captured piece's square")
 	_expect(removal_timeline == ["hand_finished", "defender_destroyed"], "captured defender is destroyed only after the hand retreats offscreen")
 	_expect(context.adapter.get_piece_view(bishop) == null and not is_instance_valid(bishop_view), "captured defender is silently removed after leaving the viewport")
 	_expect(_count_children_named(context.view, &"Explosion") == 0, "hand-carried defender does not spawn a capture explosion")
@@ -274,7 +320,9 @@ func _test_active_bone_pawn_summon_presentation() -> void:
 	var piece_node: Node2D = context.adapter.get_piece_view(summoned_piece)
 	_expect(summoned_piece is BonePawn and observation["summoned_count"] == 1, "active ability emits one Bone Pawn summon presentation event")
 	_expect(piece_node.position == context.view.grid_to_screen(target.x, target.y), "summoned Bone Pawn settles exactly on its square")
-	_expect((piece_node.get_node("Sprite2D") as Sprite2D).material is ShaderMaterial, "summoned White Bone Pawn restores its palette material")
+	var summoned_sprite := piece_node.get_node("Sprite2D") as Sprite2D
+	_expect(summoned_sprite.texture.resource_path == "res://assets/pieces/special/white_bone_pawn.png", "summoned White Bone Pawn resolves its authored special-piece art")
+	_expect(summoned_sprite.material == null, "summoned White Bone Pawn remains exempt from the standard palette shader")
 	_expect(_count_summon_portals(context.view) == 0, "active summon portal cleans itself up")
 	_expect(not model.action_in_progress, "active summon animation completes before action resolution ends")
 
@@ -382,13 +430,22 @@ func _test_black_view_hand_presentation() -> void:
 	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
 		rig.set(property_name, 0.01)
 	var grabbed_colors: Array[String] = []
-	rig.piece_grabbed.connect(func(piece: Node2D): grabbed_colors.append(piece.model.color))
+	rig.piece_grabbed.connect(
+		func(piece: Node2D):
+			grabbed_colors.append(piece.model.color)
+			if piece.model.color == "black":
+				var nearer_black_rook: Node2D = context.adapter.get_piece_view(model.board[0][0])
+				_expect(context.view.get_piece_directly_toward_viewer(Vector2i(1, 0)) == nearer_black_rook, "Black perspective identifies the rotated same-file piece one displayed row nearer")
+				_expect(nearer_black_rook.z_index > rig.thumb_sprite.z_index, "Black perspective keeps the direct lower piece over the closed thumb throughout the hand visit")
+				_expect(rig.arm_sprite.z_index > nearer_black_rook.z_index, "the foreground arm remains above the promoted Black lower piece")
+	)
 	await controller._on_square_clicked(Vector2i(6, 0))
 	await controller._on_square_clicked(Vector2i(5, 0))
 	_expect(grabbed_colors.is_empty(), "White opponent movement remains rig-less from Black perspective")
 	await controller._on_square_clicked(Vector2i(1, 0))
 	await controller._on_square_clicked(Vector2i(2, 0))
 	_expect(grabbed_colors == ["black"], "Black player movement uses the existing below-screen hand from Black perspective")
+	_expect(context.adapter.get_piece_view(model.board[0][0]).z_index == context.view.get_piece_depth(Vector2i(0, 0)), "Black lower-piece depth restores after the hand retreats")
 	await _destroy_game(context.game)
 
 

@@ -1,16 +1,20 @@
-[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=7 format=3 uid="uid://b702w2llvnxct"]
+[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=9 format=3 uid="uid://b702w2llvnxct"]
 
 [ext_resource type="Script" uid="uid://behhgroodpugy" path="res://scripts/view/chess_hand_style.gd" id="1_style"]
-[ext_resource type="Texture2D" uid="uid://2j43yos4x8ad" path="res://assets/arms/player/skeleton_open.png" id="2_open_back"]
-[ext_resource type="Texture2D" uid="uid://cpsbjkiunw636" path="res://assets/arms/player/skeleton_open_thumb.png" id="3_open_front"]
-[ext_resource type="Texture2D" uid="uid://bksgvdyt43ga7" path="res://assets/arms/player/skeleton_closed.png" id="4_closed_back"]
-[ext_resource type="Texture2D" uid="uid://clua4t4nexvp0" path="res://assets/arms/player/skeleton_closed_thumb.png" id="5_closed_front"]
-[ext_resource type="Resource" path="res://assets/arms/player/skeleton_hand_sounds.tres" id="6_sounds"]
+[ext_resource type="Texture2D" uid="uid://c88rw62x8i2j5" path="res://assets/arms/player/skeleton_open_arm.png" id="2_open_arm"]
+[ext_resource type="Texture2D" uid="uid://b7h2aqpoltf2n" path="res://assets/arms/player/skeleton_open_rear_fingers.png" id="3_open_rear"]
+[ext_resource type="Texture2D" uid="uid://cpsbjkiunw636" path="res://assets/arms/player/skeleton_open_thumb.png" id="4_open_thumb"]
+[ext_resource type="Texture2D" uid="uid://cklan06bfuv2f" path="res://assets/arms/player/skeleton_closed_arm.png" id="5_closed_arm"]
+[ext_resource type="Texture2D" uid="uid://d1ui77yoony7x" path="res://assets/arms/player/skeleton_closed_rear_fingers.png" id="6_closed_rear"]
+[ext_resource type="Texture2D" uid="uid://clua4t4nexvp0" path="res://assets/arms/player/skeleton_closed_thumb.png" id="7_closed_thumb"]
+[ext_resource type="Resource" uid="uid://30iibv8qpkev" path="res://assets/arms/player/skeleton_hand_sounds.tres" id="8_sounds"]
 
 [resource]
 script = ExtResource("1_style")
-open_back = ExtResource("2_open_back")
-open_front = ExtResource("3_open_front")
-closed_back = ExtResource("4_closed_back")
-closed_front = ExtResource("5_closed_front")
-sounds = ExtResource("6_sounds")
+open_arm = ExtResource("2_open_arm")
+open_rear_fingers = ExtResource("3_open_rear")
+open_thumb = ExtResource("4_open_thumb")
+closed_arm = ExtResource("5_closed_arm")
+closed_rear_fingers = ExtResource("6_closed_rear")
+closed_thumb = ExtResource("7_closed_thumb")
+sounds = ExtResource("8_sounds")

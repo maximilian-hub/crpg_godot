@@ -55,6 +55,16 @@ func _test_player_relative_orientation() -> void:
 	_expect(white_view.get_cell_anchor(Vector2i(7, 0)).y > white_view.get_cell_anchor(Vector2i(0, 0)).y, "White back rank is nearest from White's seat")
 	_expect(black_view.get_cell_anchor(Vector2i(0, 0)).y > black_view.get_cell_anchor(Vector2i(7, 0)).y, "Black back rank is nearest from Black's seat")
 	_expect(black_view.get_cell_anchor(Vector2i(0, 0)).x > black_view.get_cell_anchor(Vector2i(0, 7)).x, "Black viewpoint reverses files")
+	var board_view := ChessBoardView.new()
+	board_view.projection = white_view
+	_expect(board_view.get_piece_depth(Vector2i(7, 0)) - board_view.get_piece_depth(Vector2i(6, 0)) == ChessBoardView.BOARD_DEPTH_STRIDE, "adjacent displayed rows reserve one complete hand-layer depth band")
+	board_view.projection = black_view
+	_expect(board_view.get_piece_depth(Vector2i(0, 0)) - board_view.get_piece_depth(Vector2i(1, 0)) == ChessBoardView.BOARD_DEPTH_STRIDE, "Black perspective reverses row depth while preserving the hand-layer band")
+	_expect(PlayerHandRig.THUMB_FOREGROUND_Z > 7 * ChessBoardView.BOARD_DEPTH_STRIDE, "foreground thumb remains above ordinary board pieces")
+	_expect(PlayerHandRig.REAR_FINGERS_Z < PlayerHandRig.ACTIVE_PIECE_Z and PlayerHandRig.ACTIVE_PIECE_Z < PlayerHandRig.CAPTURED_PIECE_Z and PlayerHandRig.CAPTURED_PIECE_Z < PlayerHandRig.PLACEMENT_OCCLUDER_Z and PlayerHandRig.PLACEMENT_OCCLUDER_Z < PlayerHandRig.THUMB_FOREGROUND_Z, "absolute grip stack supports a placement occluder between carried pieces and the thumb")
+	_expect(PlayerHandRig.THUMB_FOREGROUND_Z < PlayerHandRig.INTERACTION_OCCLUDER_Z and PlayerHandRig.INTERACTION_OCCLUDER_Z < PlayerHandRig.ARM_FOREGROUND_Z, "temporary interaction occluders fit between the thumb and arm")
+	_expect(ChessBoardView.BOARD_EFFECT_Z > PlayerHandRig.ARM_FOREGROUND_Z, "board effects remain above the foreground arm")
+	board_view.free()
 
 
 func _test_adjustable_layout() -> void:
@@ -130,6 +140,11 @@ func _test_piece_ground_anchors() -> void:
 			_expect(piece.sprite.material == null, "authored White Arakne art bypasses the White palette shader")
 			var displayed_height := float(piece.sprite.texture.get_height()) * absf(piece.sprite.scale.y)
 			_expect(is_equal_approx(displayed_height, piece.art_profile.display_height), "Arakne King source resolution normalizes to its configured board height")
+		elif model is BonePawn:
+			_expect(piece.sprite.texture.resource_path == "res://assets/pieces/special/white_bone_pawn.png", "White Bone Pawn resolves its authored White art")
+			_expect(piece.sprite.material == null, "authored White Bone Pawn art bypasses the White palette shader")
+			var displayed_height := float(piece.sprite.texture.get_height()) * absf(piece.sprite.scale.y)
+			_expect(is_equal_approx(displayed_height, piece.art_profile.display_height), "Bone Pawn source resolution normalizes to its configured pawn board height")
 		else:
 			_expect(piece.sprite.material is ShaderMaterial, "%s receives the fallback White palette" % model.type)
 		piece.queue_free()
@@ -157,6 +172,12 @@ func _test_piece_ground_anchors() -> void:
 	_expect(black_arakne.sprite.texture.resource_path == "res://assets/pieces/kings/black_arakne.png", "Black Arakne King resolves its authored Black art")
 	_expect(black_arakne.sprite.material == null, "authored Black Arakne art is not palette transformed")
 	black_arakne.queue_free()
+	var black_bone_pawn := PIECE_SCENE.instantiate() as PieceView
+	add_child(black_bone_pawn)
+	black_bone_pawn.set_model(BonePawn.new("black", Vector2i.ZERO))
+	_expect(black_bone_pawn.sprite.texture.resource_path == "res://assets/pieces/special/black_bone_pawn.png", "Black Bone Pawn resolves its authored Black art")
+	_expect(black_bone_pawn.sprite.material == null, "authored Black Bone Pawn art is not palette transformed")
+	black_bone_pawn.queue_free()
 	var profile := PieceArtProfile.new()
 	profile.display_height = 64.0
 	profile.reference_texture = ImageTexture.create_from_image(Image.create_empty(8, 128, false, Image.FORMAT_RGBA8))

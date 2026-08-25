@@ -69,6 +69,11 @@ func get_display_coordinate(model_coordinate: Vector2i) -> Vector2i:
 	return model_coordinate
 
 
+func get_model_coordinate(display_coordinate: Vector2i) -> Vector2i:
+	# The current White identity / Black 180-degree transform is its own inverse.
+	return get_display_coordinate(display_coordinate)
+
+
 func get_cell_polygon(model_coordinate: Vector2i) -> PackedVector2Array:
 	var display_coordinate := get_display_coordinate(model_coordinate)
 	var row := display_coordinate.x

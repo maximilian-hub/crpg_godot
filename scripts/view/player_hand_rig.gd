@@ -16,6 +16,14 @@ const SOUND_GRAB := &"grab"
 const SOUND_CAPTURE_PICKUP := &"capture_pickup"
 const SOUND_PLACE := &"place"
 const SOUND_RELEASE := &"release"
+## Absolute board-canvas interaction stack above ordinary pieces (0-70).
+const REAR_FINGERS_Z := 72
+const ACTIVE_PIECE_Z := 73
+const CAPTURED_PIECE_Z := 74
+const PLACEMENT_OCCLUDER_Z := 75
+const THUMB_FOREGROUND_Z := 76
+const INTERACTION_OCCLUDER_Z := 77
+const ARM_FOREGROUND_Z := 80
 
 @export var hand_style: Resource
 ## Grip location measured from the top-left of the 96 x 160 source artwork.
@@ -23,8 +31,25 @@ const SOUND_RELEASE := &"release"
 ## Offset from the piece's configured GripAnchor, measured in local piece pixels.
 @export var piece_grip_offset := Vector2(0.0, 6.0)
 @export_range(0.25, 4.0, 0.05) var art_scale_multiplier := 3.5
+@export_group("Approach Curve")
 @export_range(0.01, 2.0, 0.01) var approach_duration := 0.24 # Time taken to travel from the lower-right rest point to the first piece.
-@export_range(0.0, 256.0, 1.0) var approach_arc_height := 64.0 # Peak upward bend of the first reach; 0 makes the approach linear.
+@export_range(0.0, 1.0, 0.01) var approach_departure_progress := 0.45: # Places the first Bezier handle this far along the start-to-piece line.
+	set(value):
+		approach_departure_progress = value
+		_refresh_live_approach()
+@export_range(0.0, 256.0, 1.0) var approach_departure_lift := 96.0: # Pulls the first handle upward, controlling how early the hand rises.
+	set(value):
+		approach_departure_lift = value
+		_refresh_live_approach()
+@export var approach_arrival_handle := Vector2(32.0, -96.0): # Offset from the grip to the second handle; negative Y makes the hand arrive from above.
+	set(value):
+		approach_arrival_handle = value
+		_refresh_live_approach()
+@export var show_approach_path_debug := false: # Draws the computed Bezier in-game; toggle this and edit the handles in Godot's Remote inspector.
+	set(value):
+		show_approach_path_debug = value
+		_refresh_live_approach()
+@export_group("")
 @export_range(0.0, 1.0, 0.01) var grasp_hold_duration := 0.18
 @export_range(0.01, 2.0, 0.01) var carry_duration := .24
 @export_range(0.0, 128.0, 1.0) var jump_arc_height := 32.0
@@ -44,10 +69,12 @@ const SOUND_RELEASE := &"release"
 @export_range(0.01, 2.0, 0.01) var retreat_duration := 0.24
 @export_range(0.0, 128.0, 1.0) var offscreen_margin := 8.0
 
-@onready var back_sprite: Sprite2D = $Back
+@onready var rear_fingers_sprite: Sprite2D = $RearFingers
 @onready var captured_piece_pivot: Node2D = $CapturedPiecePivot
 @onready var piece_slot: Node2D = $PieceSlot
-@onready var front_sprite: Sprite2D = $Front
+@onready var thumb_sprite: Sprite2D = $Thumb
+@onready var arm_sprite: Sprite2D = $Arm
+@onready var approach_path_debug: Line2D = $ApproachPathDebug
 @onready var grab_sound: AudioStreamPlayer = $GrabSound
 @onready var capture_pickup_sound: AudioStreamPlayer = $CapturePickupSound
 @onready var place_sound: AudioStreamPlayer = $PlaceSound
@@ -58,11 +85,30 @@ var is_animating := false
 var board_sound_set: ChessBoardSoundSet
 var slide_fade_tween: Tween
 var animation_duration_scale := 1.0
+var has_approach_preview := false
+var approach_preview_start := Vector2.ZERO
+var approach_preview_target := Vector2.ZERO
+var approach_preview_world_scale := 1.0
+var approach_preview_progress := 0.0
+var interaction_occluder_depths: Dictionary = {}
 
 
 func _ready() -> void:
+	# Keep the tuning overlay in board space so hiding the hand does not also hide
+	# the last computed curve.
+	_detach_approach_path_debug.call_deferred()
 	visible = false
+	rear_fingers_sprite.z_index = REAR_FINGERS_Z
+	piece_slot.z_index = ACTIVE_PIECE_Z
+	captured_piece_pivot.z_index = CAPTURED_PIECE_Z
+	thumb_sprite.z_index = THUMB_FOREGROUND_Z
+	arm_sprite.z_index = ARM_FOREGROUND_Z
 	_apply_pose(false)
+
+
+func _detach_approach_path_debug() -> void:
+	if is_instance_valid(approach_path_debug) and approach_path_debug.get_parent() == self:
+		approach_path_debug.reparent(get_parent(), false)
 
 
 func set_hand_style(style: Resource) -> void:
@@ -85,7 +131,11 @@ func play_piece_move(
 	world_scale: float,
 	carry_path: StringName = CARRY_PATH_SLIDE,
 	enter_from_offscreen := true,
-	retreat_offscreen := true
+	retreat_offscreen := true,
+	interaction_occluders: Array[Node2D] = [],
+	pickup_occluders: Array[Node2D] = [],
+	placement_occluders: Array[Node2D] = [],
+	final_piece_z_index := -1
 ) -> void:
 	if not can_animate() or not is_instance_valid(piece_node):
 		return
@@ -101,16 +151,21 @@ func play_piece_move(
 	var original_parent := piece_node.get_parent()
 	var original_scale := piece_node.scale
 	var original_z_index := piece_node.z_index
+	var release_z_index := final_piece_z_index if final_piece_z_index >= 0 else original_z_index
 	var origin := piece_node.position
 	var contact_position := _piece_grip_position(piece_node)
 	var destination_contact := contact_position + destination - origin
 
 	# Arc the open hand from its lower-right rest point to the piece's grip point.
 	if enter_from_offscreen:
+		_restore_interaction_occluders()
 		position = _offscreen_rest_position(effective_hand_scale)
+	_promote_interaction_occluders(interaction_occluders, piece_node)
+	_promote_interaction_occluders(pickup_occluders, piece_node, PLACEMENT_OCCLUDER_Z)
+	piece_node.z_index = ACTIVE_PIECE_Z
 	visible = true
 	if enter_from_offscreen:
-		await _tween_jump_position(contact_position, approach_duration, approach_arc_height * world_scale)
+		await _tween_approach_position(contact_position, approach_duration, world_scale)
 	else:
 		await _tween_position(contact_position, approach_duration)
 
@@ -124,6 +179,7 @@ func play_piece_move(
 	await _wait(grasp_hold_duration)
 
 	# Carry the closed hand and grabbed piece to the destination together.
+	_promote_interaction_occluders(placement_occluders, piece_node, PLACEMENT_OCCLUDER_Z)
 	carry_path_started.emit(carry_path)
 	if carry_path == CARRY_PATH_JUMP:
 		await _tween_jump_position(destination_contact, jump_carry_duration, jump_arc_height * world_scale)
@@ -139,7 +195,7 @@ func play_piece_move(
 	pose_changed.emit(&"open")
 	piece_node.reparent(original_parent, true)
 	piece_node.scale = original_scale
-	piece_node.z_index = original_z_index
+	piece_node.z_index = release_z_index
 	piece_node.position = destination
 	piece_released.emit(piece_node)
 	_play_hand_sound(SOUND_RELEASE)
@@ -149,6 +205,7 @@ func play_piece_move(
 	if retreat_offscreen:
 		await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 		visible = false
+		_restore_interaction_occluders()
 		is_animating = false
 		move_animation_finished.emit()
 
@@ -157,13 +214,18 @@ func play_piece_capture(
 	attacker_node: Node2D,
 	defender_node: Node2D,
 	destination: Vector2,
-	world_scale: float
+	world_scale: float,
+	interaction_occluders: Array[Node2D] = [],
+	pickup_occluders: Array[Node2D] = [],
+	placement_occluders: Array[Node2D] = [],
+	final_piece_z_index := -1
 ) -> bool:
 	if not can_animate() or not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
 		return false
 
 	# Raise the open hand to the attacker and close around it just like a normal move.
 	is_animating = true
+	_restore_interaction_occluders()
 	captured_piece_pivot.position = Vector2.ZERO
 	captured_piece_pivot.rotation = 0.0
 	var effective_hand_scale := world_scale * art_scale_multiplier
@@ -174,14 +236,18 @@ func play_piece_capture(
 	var attacker_parent := attacker_node.get_parent()
 	var attacker_scale := attacker_node.scale
 	var attacker_z_index := attacker_node.z_index
+	var release_z_index := final_piece_z_index if final_piece_z_index >= 0 else attacker_z_index
 	var attacker_origin := attacker_node.position
 	var attacker_contact := _piece_grip_position(attacker_node)
 	var destination_contact := attacker_contact + destination - attacker_origin
 	var defender_contact := _piece_grip_position(defender_node)
 
 	position = _offscreen_rest_position(effective_hand_scale)
+	_promote_interaction_occluders(interaction_occluders, attacker_node)
+	_promote_interaction_occluders(pickup_occluders, attacker_node, PLACEMENT_OCCLUDER_Z)
+	attacker_node.z_index = ACTIVE_PIECE_Z
 	visible = true
-	await _tween_jump_position(attacker_contact, approach_duration, approach_arc_height * world_scale)
+	await _tween_approach_position(attacker_contact, approach_duration, world_scale)
 	attacker_node.reparent(piece_slot, true)
 	attacker_node.z_index = 0
 	piece_grabbed.emit(attacker_node)
@@ -222,12 +288,13 @@ func play_piece_capture(
 	# Jump to the destination and leave the attacker on its exact square. Keep the
 	# hand closed around the captured defender while carrying it offscreen.
 	capture_stage_changed.emit(&"placement")
+	_promote_interaction_occluders(placement_occluders, attacker_node, PLACEMENT_OCCLUDER_Z)
 	await _tween_jump_position(destination_contact, capture_placement_duration, capture_placement_arc_height * world_scale)
 	_play_board_sound(SOUND_PLACE)
 	await _wait(release_hold_duration)
 	attacker_node.reparent(attacker_parent, true)
 	attacker_node.scale = attacker_scale
-	attacker_node.z_index = attacker_z_index
+	attacker_node.z_index = release_z_index
 	attacker_node.position = destination
 	piece_released.emit(attacker_node)
 	_play_hand_sound(SOUND_RELEASE)
@@ -236,16 +303,18 @@ func play_piece_capture(
 	capture_stage_changed.emit(&"exit")
 	await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 	visible = false
+	_restore_interaction_occluders()
 	is_animating = false
 	move_animation_finished.emit()
 	return true
 
 
-func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, contact_callback: Callable = Callable()) -> void:
+func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, contact_callback: Callable = Callable(), interaction_occluders: Array[Node2D] = [], pickup_occluders: Array[Node2D] = [], final_piece_z_index := -1) -> void:
 	if not can_animate() or not is_instance_valid(piece_node):
 		return
 
 	is_animating = true
+	_restore_interaction_occluders()
 	var effective_hand_scale := world_scale * art_scale_multiplier
 	scale = Vector2.ONE * effective_hand_scale
 	_apply_pose(false)
@@ -254,13 +323,17 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 	var original_parent := piece_node.get_parent()
 	var original_scale := piece_node.scale
 	var original_z_index := piece_node.z_index
+	var release_z_index := final_piece_z_index if final_piece_z_index >= 0 else original_z_index
 	var origin := piece_node.position
 	var contact_position := _piece_grip_position(piece_node)
 	var target_contact := contact_position + target - origin
 
 	position = _offscreen_rest_position(effective_hand_scale)
+	_promote_interaction_occluders(interaction_occluders, piece_node)
+	_promote_interaction_occluders(pickup_occluders, piece_node, PLACEMENT_OCCLUDER_Z)
+	piece_node.z_index = ACTIVE_PIECE_Z
 	visible = true
-	await _tween_jump_position(contact_position, approach_duration, approach_arc_height * world_scale)
+	await _tween_approach_position(contact_position, approach_duration, world_scale)
 	piece_node.reparent(piece_slot, true)
 	piece_node.z_index = 0
 	piece_grabbed.emit(piece_node)
@@ -280,19 +353,21 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 	pose_changed.emit(&"open")
 	piece_node.reparent(original_parent, true)
 	piece_node.scale = original_scale
-	piece_node.z_index = original_z_index
+	piece_node.z_index = release_z_index
 	piece_node.position = origin
 	piece_released.emit(piece_node)
 	_play_hand_sound(SOUND_RELEASE)
 
 	await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 	visible = false
+	_restore_interaction_occluders()
 	is_animating = false
 	move_animation_finished.emit()
 
 
 func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_scale: float) -> void:
 	# Pin the defender's grip to the pivot, so tilting it cannot lift the entire piece.
+	_release_interaction_occluder(defender_node)
 	defender_node.reparent(captured_piece_pivot, true)
 	defender_node.z_index = 0
 	var attacker_anchor := _get_grip_anchor(attacker_node)
@@ -304,6 +379,30 @@ func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_
 		defender_node.global_position += captured_piece_pivot.global_position - defender_anchor.global_position
 	_play_board_sound(SOUND_CAPTURE_PICKUP)
 	captured_piece_grabbed.emit(defender_node)
+
+
+func _promote_interaction_occluders(occluders: Array[Node2D], active_piece: Node2D = null, target_z_index := INTERACTION_OCCLUDER_Z) -> void:
+	for occluder in occluders:
+		if not is_instance_valid(occluder) or occluder == active_piece:
+			continue
+		if not interaction_occluder_depths.has(occluder):
+			interaction_occluder_depths[occluder] = occluder.z_index
+		occluder.z_index = maxi(occluder.z_index, target_z_index)
+
+
+func _release_interaction_occluder(occluder: Node2D) -> void:
+	if not interaction_occluder_depths.has(occluder):
+		return
+	if is_instance_valid(occluder):
+		occluder.z_index = int(interaction_occluder_depths[occluder])
+	interaction_occluder_depths.erase(occluder)
+
+
+func _restore_interaction_occluders() -> void:
+	for occluder in interaction_occluder_depths.keys():
+		if is_instance_valid(occluder):
+			occluder.z_index = int(interaction_occluder_depths[occluder])
+	interaction_occluder_depths.clear()
 
 
 func _play_hand_sound(cue: StringName) -> void:
@@ -393,14 +492,16 @@ func _offscreen_rest_position(world_scale: float) -> Vector2:
 
 func _apply_pose(closed: bool) -> void:
 	if hand_style == null:
-		back_sprite.texture = null
-		front_sprite.texture = null
+		arm_sprite.texture = null
+		rear_fingers_sprite.texture = null
+		thumb_sprite.texture = null
 		return
-	back_sprite.texture = hand_style.closed_back if closed else hand_style.open_back
-	front_sprite.texture = hand_style.closed_front if closed else hand_style.open_front
-	_position_sprite_from_grip(back_sprite)
-	_position_sprite_from_grip(front_sprite)
-	front_sprite.visible = front_sprite.texture != null
+	arm_sprite.texture = hand_style.closed_arm if closed else hand_style.open_arm
+	rear_fingers_sprite.texture = hand_style.closed_rear_fingers if closed else hand_style.open_rear_fingers
+	thumb_sprite.texture = hand_style.closed_thumb if closed else hand_style.open_thumb
+	for sprite in [arm_sprite, rear_fingers_sprite, thumb_sprite]:
+		_position_sprite_from_grip(sprite)
+		sprite.visible = sprite.texture != null
 
 
 func _position_sprite_from_grip(sprite: Sprite2D) -> void:
@@ -419,6 +520,48 @@ func _tween_attack_position(target: Vector2, duration: float, easing: Tween.Ease
 	var tween := create_tween()
 	tween.tween_property(self, "position", target, duration * animation_duration_scale).set_trans(Tween.TRANS_QUAD).set_ease(easing)
 	await tween.finished
+
+
+func _tween_approach_position(target: Vector2, duration: float, world_scale: float) -> void:
+	has_approach_preview = true
+	approach_preview_start = position
+	approach_preview_target = target
+	approach_preview_world_scale = world_scale
+	approach_preview_progress = 0.0
+	_refresh_live_approach()
+	var tween := create_tween()
+	tween.tween_method(
+		func(progress: float):
+			approach_preview_progress = progress
+			_refresh_live_approach(),
+		0.0,
+		1.0,
+		duration * animation_duration_scale
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
+
+
+func _refresh_live_approach() -> void:
+	if not is_node_ready() or not has_approach_preview:
+		return
+	var departure_control := approach_preview_start.lerp(approach_preview_target, approach_departure_progress) + Vector2.UP * approach_departure_lift * approach_preview_world_scale
+	var arrival_control := approach_preview_target + approach_arrival_handle * approach_preview_world_scale
+	position = calculate_bezier_position(approach_preview_start, departure_control, arrival_control, approach_preview_target, approach_preview_progress)
+	_update_approach_path_debug(approach_preview_start, departure_control, arrival_control, approach_preview_target)
+
+
+func _update_approach_path_debug(start: Vector2, departure_control: Vector2, arrival_control: Vector2, target: Vector2) -> void:
+	approach_path_debug.visible = show_approach_path_debug
+	if not show_approach_path_debug:
+		return
+	var points := PackedVector2Array()
+	for index in range(33):
+		points.append(calculate_bezier_position(start, departure_control, arrival_control, target, index / 32.0))
+	approach_path_debug.points = points
+
+
+static func calculate_bezier_position(start: Vector2, departure_control: Vector2, arrival_control: Vector2, destination: Vector2, progress: float) -> Vector2:
+	return start.bezier_interpolate(departure_control, arrival_control, destination, clampf(progress, 0.0, 1.0))
 
 
 func _tween_jump_position(target: Vector2, duration: float, arc_height: float) -> void:

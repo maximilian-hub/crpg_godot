@@ -13,6 +13,7 @@ const COLOR_AUTO := Color("2d9b59")
 const COLOR_MANUAL := Color("c58a24")
 const COLOR_GOLD := Color("d1a43a")
 const COLOR_CYAN := Color("28b8c7")
+const COLOR_ULTRA_SLOW := Color("7659b8")
 const COLOR_SLOW := Color("668dcc")
 const COLOR_INSTANT := Color("b34fb5")
 const COLOR_WHITE_SIDE := Color("e8e2d2")
@@ -114,7 +115,7 @@ func _build_panel() -> void:
 	var speed_row := HBoxContainer.new()
 	panel.add_child(speed_row)
 	speed_slider = HSlider.new()
-	speed_slider.min_value = PresentationPolicy.Speed.SLOW
+	speed_slider.min_value = PresentationPolicy.Speed.ULTRA_SLOW
 	speed_slider.max_value = PresentationPolicy.Speed.INSTANT
 	speed_slider.step = 1.0
 	speed_slider.value = PresentationPolicy.Speed.NORMAL
@@ -122,7 +123,7 @@ func _build_panel() -> void:
 	speed_slider.value_changed.connect(func(value: float): _set_speed(int(value)))
 	speed_row.add_child(speed_slider)
 	speed_value_label = Label.new()
-	speed_value_label.custom_minimum_size.x = 58.0
+	speed_value_label.custom_minimum_size.x = 72.0
 	speed_row.add_child(speed_value_label)
 
 	grip_check = CheckButton.new()
@@ -452,8 +453,8 @@ func _refresh_control_states() -> void:
 	var adapter: ChessPresentationAdapter = $ChessGame/ChessPresentationAdapter
 	var speed: int = adapter.presentation_policy.speed
 	speed_slider.set_value_no_signal(speed)
-	var speed_names := ["Slow", "Normal", "Fast", "Instant"]
-	var speed_colors := [COLOR_SLOW, COLOR_EDIT, COLOR_MANUAL, COLOR_INSTANT]
+	var speed_names := ["Ultra Slow", "Slow", "Normal", "Fast", "Instant"]
+	var speed_colors := [COLOR_ULTRA_SLOW, COLOR_SLOW, COLOR_EDIT, COLOR_MANUAL, COLOR_INSTANT]
 	speed_value_label.text = speed_names[speed]
 	speed_value_label.add_theme_color_override("font_color", speed_colors[speed])
 	grip_check.set_pressed_no_signal(board.show_piece_grip_anchors)

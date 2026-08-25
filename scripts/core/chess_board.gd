@@ -83,6 +83,11 @@ const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
 const PIECE_MOVE_DURATION = 0.12
 const PIECE_REFERENCE_NEAR_EDGE_WIDTH := 486.0
+## Each displayed row owns enough z-space for the layered hand rig to sit inside
+## it without overtaking any piece in the next row toward the camera.
+const BOARD_DEPTH_STRIDE := 10
+const BOARD_EFFECT_Z := 90
+const DRAG_GHOST_Z := 95
 
 const BONE_PAWN_SUMMON_RISE_DURATION := 1
 const BONE_PAWN_SUMMON_RISE_DISTANCE := 28.0
@@ -290,7 +295,7 @@ func create_piece_drag_ghost(piece_data: ModelPiece) -> PieceView:
 	ghost.set_model(piece_data)
 	ghost.scale = Vector2.ONE * get_world_scale()
 	ghost.modulate.a = 0.55
-	ghost.z_index = 100
+	ghost.z_index = DRAG_GHOST_Z
 	$Pieces.add_child(ghost)
 	return ghost
 
@@ -309,6 +314,35 @@ func get_piece_node(coord: Vector2i) -> Node:
 	
 	return desired_piece
 
+func get_piece_directly_toward_viewer(coord: Vector2i) -> Node:
+	var display_coordinate := projection.get_display_coordinate(coord)
+	display_coordinate.x += 1
+	if display_coordinate.x >= projection.rows:
+		return null
+	return get_piece_node(projection.get_model_coordinate(display_coordinate))
+
+func get_hand_interaction_occluders(from: Vector2i, to: Vector2i, excluded: Array[Node2D] = []) -> Array[Node2D]:
+	var occluders: Array[Node2D] = []
+	for coordinate in [from, to]:
+		var candidate := get_piece_directly_toward_viewer(coordinate) as Node2D
+		if is_instance_valid(candidate) and candidate not in excluded and candidate not in occluders:
+			occluders.append(candidate)
+	return occluders
+
+func get_hand_placement_occluders(to: Vector2i, clearance_blockers: Array[Node2D]) -> Array[Node2D]:
+	var placement_occluders: Array[Node2D] = []
+	var candidate := get_piece_directly_toward_viewer(to) as Node2D
+	if is_instance_valid(candidate) and candidate in clearance_blockers:
+		placement_occluders.append(candidate)
+	return placement_occluders
+
+func get_hand_pickup_occluders(from: Vector2i, clearance_blockers: Array[Node2D]) -> Array[Node2D]:
+	var pickup_occluders: Array[Node2D] = []
+	var candidate := get_piece_directly_toward_viewer(from) as Node2D
+	if is_instance_valid(candidate) and candidate in clearance_blockers:
+		pickup_occluders.append(candidate)
+	return pickup_occluders
+
 ## Compatibility wrapper for presentation code that targets a physical piece.
 func grid_to_screen(row: int, col: int) -> Vector2:
 	return projection.get_piece_ground_anchor(Vector2i(row, col), piece_forward_bias)
@@ -325,7 +359,10 @@ static func calculate_world_scale(near_edge_width: float) -> float:
 	return maxf(near_edge_width / PIECE_REFERENCE_NEAR_EDGE_WIDTH, 0.01)
 
 func _update_piece_depth(piece_node: Node2D) -> void:
-	piece_node.z_index = projection.get_display_coordinate(piece_node.coordinate).x
+	piece_node.z_index = get_piece_depth(piece_node.coordinate)
+
+func get_piece_depth(coordinate: Vector2i) -> int:
+	return projection.get_display_coordinate(coordinate).x * BOARD_DEPTH_STRIDE
 			
 func get_square_color(row: int, col: int):
 	if visual_style == null:
@@ -379,22 +416,32 @@ func move_piece_node_with_player_hand(
 		await move_piece_node(piece_node, to)
 		return
 
+	var clearance_blockers := get_player_hand_clearance_blockers(piece_node, from, to)
+	var interaction_occluders := get_hand_interaction_occluders(from, to, clearance_blockers)
+	var pickup_occluders := get_hand_pickup_occluders(from, clearance_blockers)
+	var placement_occluders := get_hand_placement_occluders(to, clearance_blockers)
 	piece_node.coordinate = to
 	var destination := grid_to_screen(to.x, to.y)
+	var destination_z_index := get_piece_depth(to)
 	var carry_path := carry_path_override if not carry_path_override.is_empty() else get_player_hand_carry_path(piece_node, from, to)
-	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path, enter_from_offscreen, retreat_offscreen)
+	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path, enter_from_offscreen, retreat_offscreen, interaction_occluders, pickup_occluders, placement_occluders, destination_z_index)
 	_update_piece_depth(piece_node)
 
-func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Node, _from: Vector2i, to: Vector2i) -> bool:
+func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i) -> bool:
 	if not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
 		return false
 	if not is_instance_valid(player_hand_rig) or not player_hand_rig.can_animate():
 		await move_piece_node(attacker_node, to)
 		return false
 
+	var clearance_blockers := get_player_hand_clearance_blockers(attacker_node, from, to)
+	var interaction_occluders := get_hand_interaction_occluders(from, to, clearance_blockers)
+	var pickup_occluders := get_hand_pickup_occluders(from, clearance_blockers)
+	var placement_occluders := get_hand_placement_occluders(to, clearance_blockers)
 	attacker_node.coordinate = to
 	var destination := grid_to_screen(to.x, to.y)
-	var carried_offscreen: bool = await player_hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale())
+	var destination_z_index := get_piece_depth(to)
+	var carried_offscreen: bool = await player_hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale(), interaction_occluders, pickup_occluders, placement_occluders, destination_z_index)
 	_update_piece_depth(attacker_node)
 	return carried_offscreen
 
@@ -403,10 +450,30 @@ func get_player_hand_carry_path(piece_node: Node, from: Vector2i, to: Vector2i) 
 	var piece_type: String = piece_model.type if piece_model != null else ""
 	if piece_type == "knight":
 		return &"jump"
-	var distance := maxi(absi(to.x - from.x), absi(to.y - from.y))
-	if piece_type in ["rook", "bishop", "queen"] and distance > 2:
+	if piece_type in ["bishop", "queen"] and not get_player_hand_clearance_blockers(piece_node, from, to).is_empty():
 		return &"jump"
 	return &"slide"
+
+func get_player_hand_clearance_blockers(piece_node: Node, from: Vector2i, to: Vector2i) -> Array[Node2D]:
+	var blockers: Array[Node2D] = []
+	var piece_model: ModelPiece = piece_node.get("model") if piece_node != null else null
+	var piece_type: String = piece_model.type if piece_model != null else ""
+	if piece_type not in ["bishop", "queen"]:
+		return blockers
+	var delta := to - from
+	if delta.x == 0 or absi(delta.x) != absi(delta.y):
+		return blockers
+	var step := Vector2i(signi(delta.x), signi(delta.y))
+	var current := from
+	for _step_index in range(absi(delta.x)):
+		# Each diagonal step crosses the corner between these two orthogonally
+		# adjacent squares. Either occupied flank makes a slide look squeezed.
+		for flank in [current + Vector2i(step.x, 0), current + Vector2i(0, step.y)]:
+			var blocking_piece := get_piece_node(flank) as Node2D
+			if is_instance_valid(blocking_piece) and blocking_piece != piece_node and blocking_piece not in blockers:
+				blockers.append(blocking_piece)
+		current += step
+	return blockers
 
 func attack_piece_node(piece_node: Node, to: Vector2i, contact_callback: Callable = Callable()) -> void:
 	if not is_instance_valid(piece_node):
@@ -419,7 +486,7 @@ func attack_piece_node(piece_node: Node, to: Vector2i, contact_callback: Callabl
 		contact_callback.call()
 	await _tween_piece_to(piece_node, original_position)
 
-func attack_piece_node_with_player_hand(piece_node: Node, to: Vector2i, contact_callback: Callable = Callable()) -> void:
+func attack_piece_node_with_player_hand(piece_node: Node, from: Vector2i, to: Vector2i, contact_callback: Callable = Callable()) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("attack_piece_node_with_player_hand: Invalid piece node.")
 		return
@@ -427,7 +494,10 @@ func attack_piece_node_with_player_hand(piece_node: Node, to: Vector2i, contact_
 		await attack_piece_node(piece_node, to, contact_callback)
 		return
 
-	await player_hand_rig.play_piece_attack(piece_node, grid_to_screen(to.x, to.y), get_world_scale(), contact_callback)
+	var clearance_blockers := get_player_hand_clearance_blockers(piece_node, from, to)
+	var interaction_occluders := get_hand_interaction_occluders(from, to, clearance_blockers)
+	var pickup_occluders := get_hand_pickup_occluders(from, clearance_blockers)
+	await player_hand_rig.play_piece_attack(piece_node, grid_to_screen(to.x, to.y), get_world_scale(), contact_callback, interaction_occluders, pickup_occluders, get_piece_depth(from))
 	_update_piece_depth(piece_node)
 
 func _tween_piece_to(piece_node: Node, target_position: Vector2) -> void:
@@ -474,7 +544,7 @@ func spawn_explosion(pos: Vector2):
 	var explosion = explosion_scene.instantiate()
 	explosion.position = pos
 	explosion.scale *= get_world_scale()
-	explosion.z_index = 20
+	explosion.z_index = BOARD_EFFECT_Z
 	add_child(explosion)
 	
 func spawn_splatter(piece_node: Node2D):
@@ -486,7 +556,7 @@ func spawn_splatter(piece_node: Node2D):
 		splatter.position = piece_node.get_anchor_position_in(self, piece_node.get_body_anchor())
 	else:
 		splatter.position = piece_node.position
-	splatter.z_index = 20
+	splatter.z_index = BOARD_EFFECT_Z
 	add_child(splatter)
 	
 func spawn_stun_stars(stunned_piece: Node):
