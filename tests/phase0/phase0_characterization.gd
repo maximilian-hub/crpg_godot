@@ -112,7 +112,9 @@ func _test_player_hand_move_presentation() -> void:
 	_expect(rig.get_node("SlideSound").stream == board_sound_set.default_slide, "sliding movement uses the board's default slide sound")
 	_expect(rig.get_node("GrabSound").bus == &"SFX" and is_equal_approx(rig.get_node("GrabSound").volume_db, sound_set.volume_db), "hand sounds use the SFX bus and configured volume")
 	_expect(rig.get_node("GrabSound").pitch_scale >= 0.92 and rig.get_node("GrabSound").pitch_scale <= 1.08, "hand sound pitch stays inside its configured variation")
-	_expect(not rig.visible and not rig.is_animating and rig.position.y > rig.get_viewport_rect().size.y, "player hand retreats fully below the viewport")
+	var expected_rest_position: Vector2 = rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)
+	_expect(not rig.visible and not rig.is_animating and rig.position.is_equal_approx(expected_rest_position), "player hand retreats to its durable lower-right rest position")
+	_expect(rig.position.x > rig.get_viewport_rect().size.x and rig.position.y > rig.get_viewport_rect().size.y, "player hand rests fully beyond the viewport's right and bottom edges")
 	_expect(pawn_view.position == view.grid_to_screen(4, 0) and pawn_view.coordinate == Vector2i(4, 0), "hand-carried piece lands exactly on its projected destination")
 	_expect(model.current_turn == "black" and not model.action_in_progress, "hand animation completes before the player move changes turns")
 
@@ -153,6 +155,7 @@ func _test_player_hand_castling_presentation() -> void:
 	_expect(moved_types == ["king", "rook"], "castling presents the king before the rook")
 	_expect(carry_paths == [&"slide", &"jump"], "castling slides the king and jumps the rook")
 	_expect(observation["visible_after_king_release"] and observation["completion_count"] == 1, "castling keeps one continuous hand visit between pieces")
+	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)), "castling makes one final retreat to the shared lower-right hand rest position")
 	_expect(model.board[7][6] == king and model.board[7][5] == rook, "continuous hand castling lands both pieces on their final squares")
 
 	await _destroy_game(context.game)
@@ -215,6 +218,7 @@ func _test_player_hand_capture_presentation() -> void:
 
 	var rook_view: Node2D = context.adapter.get_piece_view(rook)
 	_expect(observation["hand_completions"] == 1, "player lethal capture reuses one ordinary hand-carry sequence")
+	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(context.view.get_world_scale() * rig.art_scale_multiplier)), "capture retreats to the shared lower-right hand rest position")
 	_expect(rig.get_node("GrabSound").stream == sound_set.grab and rig.get_node("PlaceSound").stream == board_sound_set.default_place and rig.get_node("ReleaseSound").stream == sound_set.release, "captures combine race-specific hand sounds with the board's default placement sound")
 	_expect(rig.get_node("SlideSound").stream == null, "jumping capture movement does not play a slide sound")
 	_expect(capture_stages == [&"initiation", &"swipe", &"placement", &"exit"], "player capture runs initiation, swipe, placement, and exit in order")
@@ -437,6 +441,7 @@ func _test_nonlethal_attack_presentation() -> void:
 	_expect(model.board[4][0] == rook and rook.coordinate == Vector2i(4, 0), "animated attacker remains on its Model square")
 	_expect(rook_view.coordinate == Vector2i(4, 0), "attack animation does not change the PieceView coordinate")
 	_expect(rook_view.position.is_equal_approx(original_position), "attack animation returns the PieceView to its original position")
+	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(context.view.get_world_scale() * rig.art_scale_multiplier)), "ranged attack retreats to the shared lower-right hand rest position")
 	_expect(model.current_turn == "black" and not model.action_in_progress, "turn completes after the attack returns")
 	await _destroy_game(context.game)
 

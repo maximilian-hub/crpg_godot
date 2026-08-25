@@ -106,7 +106,7 @@ func play_piece_move(
 
 	# Raise the open hand from below the screen to the piece's grip point.
 	if enter_from_offscreen:
-		position = _offscreen_position(contact_position.x, effective_hand_scale)
+		position = _offscreen_rest_position(effective_hand_scale)
 	visible = true
 	await _tween_position(contact_position, approach_duration)
 
@@ -143,7 +143,7 @@ func play_piece_move(
 	# A compound move such as castling can keep the open hand on the board and
 	# continue directly to its next piece.
 	if retreat_offscreen:
-		await _tween_position(_offscreen_position(destination_contact.x, effective_hand_scale), retreat_duration)
+		await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 		visible = false
 		is_animating = false
 		move_animation_finished.emit()
@@ -175,7 +175,7 @@ func play_piece_capture(
 	var destination_contact := attacker_contact + destination - attacker_origin
 	var defender_contact := _piece_grip_position(defender_node)
 
-	position = _offscreen_position(attacker_contact.x, effective_hand_scale)
+	position = _offscreen_rest_position(effective_hand_scale)
 	visible = true
 	await _tween_position(attacker_contact, approach_duration)
 	attacker_node.reparent(piece_slot, true)
@@ -230,7 +230,7 @@ func play_piece_capture(
 
 	# Retreat below the screen with the captured piece; its normal removal can now be silent.
 	capture_stage_changed.emit(&"exit")
-	await _tween_position(_offscreen_position(destination_contact.x, effective_hand_scale), retreat_duration)
+	await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 	visible = false
 	is_animating = false
 	move_animation_finished.emit()
@@ -254,7 +254,7 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 	var contact_position := _piece_grip_position(piece_node)
 	var target_contact := contact_position + target - origin
 
-	position = _offscreen_position(contact_position.x, effective_hand_scale)
+	position = _offscreen_rest_position(effective_hand_scale)
 	visible = true
 	await _tween_position(contact_position, approach_duration)
 	piece_node.reparent(piece_slot, true)
@@ -281,7 +281,7 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 	piece_released.emit(piece_node)
 	_play_hand_sound(SOUND_RELEASE)
 
-	await _tween_position(_offscreen_position(contact_position.x, effective_hand_scale), retreat_duration)
+	await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 	visible = false
 	is_animating = false
 	move_animation_finished.emit()
@@ -379,11 +379,11 @@ func _get_grip_anchor(piece_node: Node2D) -> Node2D:
 	return null
 
 
-func _offscreen_position(horizontal_position: float, world_scale: float) -> Vector2:
-	var viewport_bottom := get_viewport_rect().size.y
+func _offscreen_rest_position(world_scale: float) -> Vector2:
+	var viewport_size := get_viewport_rect().size
 	return Vector2(
-		horizontal_position,
-		viewport_bottom + (grip_anchor_pixels.y + offscreen_margin) * world_scale
+		viewport_size.x + (grip_anchor_pixels.x + offscreen_margin) * world_scale,
+		viewport_size.y + (grip_anchor_pixels.y + offscreen_margin) * world_scale
 	)
 
 
