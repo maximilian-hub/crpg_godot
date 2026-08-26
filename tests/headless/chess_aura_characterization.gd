@@ -3,6 +3,8 @@ extends Node
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const PIECE_SCENE := preload("res://scenes/piece.tscn")
+const LAB_SCENE := preload("res://tools/dev_chess_aura/chess_aura_lab.tscn")
+const LabPreset := preload("res://tools/dev_chess_aura/chess_aura_lab_preset.gd")
 
 var failures := 0
 
@@ -60,6 +62,8 @@ func _ready() -> void:
 	_check(aura.active_particle_count() == 0, "reset clears residual motes")
 	_check(source.material == original_material and source.texture != null, "power cycling leaves source presentation unchanged")
 
+	await _test_lab_presets_and_selectors()
+
 	if failures == 0:
 		print("CHESS AURA CHARACTERIZATION: PASS")
 	else:
@@ -72,3 +76,47 @@ func _check(condition: bool, description: String) -> void:
 		return
 	failures += 1
 	printerr("FAIL: ", description)
+
+
+func _test_lab_presets_and_selectors() -> void:
+	_check(LabPreset.safe_file_stem("  My Soulfire!  ") == "my_soulfire", "preset names become stable filesystem-safe stems")
+	_check(LabPreset.safe_file_stem("../../") == "", "path traversal cannot produce a writable preset stem")
+	var preset: Resource = LabPreset.new()
+	preset.display_name = "Round Trip"
+	preset.aura_profile = AuraProfile.new()
+	preset.aura_profile.rise_speed = 77.0
+	preset.aura_profile.horizontal_spread = 31.0
+	preset.aura_mode = Aura.AuraMode.SQUARE_FLAME
+	preset.target_mode = 1
+	preset.king_power = 0.25
+	preset.hand_power = 0.75
+	preset.hand_grip_y_offset = 123.0
+	preset.king_type_id = &"necromancer_king"
+	preset.army_color = "black"
+	var round_trip_path := "user://chess_aura_preset_characterization.tres"
+	_check(ResourceSaver.save(preset, round_trip_path) == OK, "aura lab presets serialize as Godot resources")
+	var loaded: Resource = ResourceLoader.load(round_trip_path, "ChessAuraLabPreset", ResourceLoader.CACHE_MODE_IGNORE)
+	_check(
+		loaded != null
+		and loaded.get_script() == LabPreset
+		and loaded.is_supported()
+		and loaded.display_name == "Round Trip"
+		and is_equal_approx(loaded.aura_profile.rise_speed, 77.0)
+		and is_equal_approx(loaded.aura_profile.horizontal_spread, 31.0)
+		and loaded.king_type_id == &"necromancer_king"
+		and loaded.army_color == "black",
+		"named presets round-trip aura tuning and complete lab preview state"
+	)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(round_trip_path))
+
+	var lab = LAB_SCENE.instantiate()
+	add_child(lab)
+	await get_tree().process_frame
+	_check(lab.king_selector.item_count == ChessPieceCatalog.get_palette_type_ids(&"king").size(), "King selector is populated from the catalog's king group")
+	lab._apply_preset(loaded)
+	await get_tree().process_frame
+	_check(lab.preview_king.model.type == "necromancer_king" and lab.preview_king.model.color == "black", "loading selects the saved king and army variant")
+	_check(lab.mode_selector.selected == Aura.AuraMode.SQUARE_FLAME and lab.target_selector.selected == 1, "loading restores treatment and target modes")
+	_check(is_equal_approx(lab.king_aura.power, 0.25) and is_equal_approx(lab.hand_aura.power, 0.75), "loading restores independent king and hand power")
+	_check(is_equal_approx(lab.preview_hand.position.y, lab.HAND_PREVIEW_GRIP_POSITION.y + 123.0), "loading restores the vertical hand-grip offset")
+	lab.queue_free()
