@@ -29,7 +29,19 @@ func _ready() -> void:
 	lab._load_selected_aura(aura_index)
 	_check(is_equal_approx(lab.aura_profile.rise_speed, 73.0) and lab.king_aura.mode == ChessAura2D.AuraMode.SQUARE_FLAME, "Activation Lab applies the saved aura look and treatment")
 
-	for property_name in ["invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "resolve_duration"]:
+	lab.sequence.restart(false)
+	var hover_position: Vector2 = lab.sequence.base_hand_position
+	lab.sequence._fire_crackle(99)
+	var crackle_position: Vector2 = lab.preview_hand.position
+	_check(crackle_position != hover_position, "A crackle blinks the hand toward the King Piece")
+	_check(crackle_position == crackle_position.round(), "Lightning hand motion remains pixel-aligned")
+	lab.sequence._enter_phase(lab.sequence.Phase.CLIMAX)
+	var first_beam_position: Vector2 = lab.preview_hand.position
+	lab.sequence._show_climax_beam(1)
+	_check(first_beam_position != hover_position and lab.preview_hand.position == first_beam_position, "Only the first climax beam shifts the hand; later beam shapes retain it")
+	lab.sequence.restart(false)
+
+	for property_name in ["invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "aura_release_duration", "resolve_duration"]:
 		lab.activation_profile.set(property_name, 0.06)
 	lab.activation_profile.secondary_crackle_count = 2
 	lab.activation_profile.crackle_duration = 0.02
@@ -49,7 +61,7 @@ func _ready() -> void:
 		_check(expected_phase in phases, "Activation ritual enters phase %s" % lab.sequence.Phase.keys()[expected_phase])
 	_check(&"hand_hum" in cues and &"king_hum" in cues and &"crackle" in cues and &"beam" in cues and &"resolve" in cues, "Activation ritual exposes every planned audio hook")
 	_check(is_equal_approx(lab.preview_king.sprite.self_modulate.a, 1.0) and not lab.stone_sprite.visible, "Completion leaves the authored army-colored king revealed")
-	_check(is_zero_approx(lab.king_aura.power) and is_zero_approx(lab.hand_aura.power) and lab.lightning.points.is_empty(), "Completion clears continuous aura emission and lightning")
+	_check(is_equal_approx(lab.king_aura.silhouette_power, lab.activation_profile.resting_aura_power) and is_equal_approx(lab.king_aura.particle_power, lab.activation_profile.resting_particle_power) and is_zero_approx(lab.hand_aura.power) and lab.lightning.points.is_empty(), "Completion retains the King's independently configured resting aura channels")
 	_check(lab.preview_hand.position == lab.sequence.base_hand_position, "Completion clears integer-pixel hand tremor")
 
 	lab.sequence.restart(false)
@@ -96,4 +108,3 @@ func _check(condition: bool, description: String) -> void:
 	if condition: return
 	failures += 1
 	printerr("FAIL: ", description)
-

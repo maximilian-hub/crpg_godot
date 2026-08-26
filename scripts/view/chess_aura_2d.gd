@@ -10,6 +10,8 @@ const SquareEmitter := preload("res://scripts/view/chess_square_emitter_2d.gd")
 @export var mode := AuraMode.HYBRID
 
 var power := 0.0
+var silhouette_power := 0.0
+var particle_power := 0.0
 var elapsed := 0.0
 var bindings: Array[Dictionary] = []
 var power_tween: Tween
@@ -55,7 +57,8 @@ func bind_targets(targets: Array[Sprite2D]) -> void:
 		bindings.append({"source": source, "overlay": overlay, "material": material, "emitter": emitter})
 	_sync_bindings()
 	_apply_mode()
-	set_power(power)
+	set_silhouette_power(silhouette_power)
+	set_particle_power(particle_power)
 
 
 func clear_targets() -> void:
@@ -75,12 +78,29 @@ func set_mode(value: int) -> void:
 
 
 func set_power(value: float) -> void:
-	power = clampf(value, 0.0, 1.0)
+	var resolved_power := clampf(value, 0.0, 1.0)
+	set_silhouette_power(resolved_power)
+	set_particle_power(resolved_power)
+
+
+func set_silhouette_power(value: float) -> void:
+	silhouette_power = clampf(value, 0.0, 1.0)
 	for binding in bindings:
 		var material: ShaderMaterial = binding["material"]
+		material.set_shader_parameter("power", silhouette_power)
+	_sync_combined_power()
+
+
+func set_particle_power(value: float) -> void:
+	particle_power = clampf(value, 0.0, 1.0)
+	for binding in bindings:
 		var emitter: ChessSquareEmitter2D = binding["emitter"]
-		material.set_shader_parameter("power", power)
-		emitter.set_emission_power(power)
+		emitter.set_emission_power(particle_power)
+	_sync_combined_power()
+
+
+func _sync_combined_power() -> void:
+	power = (silhouette_power + particle_power) * 0.5
 
 
 func set_silhouette_fill(value: float, color := Color.WHITE) -> void:

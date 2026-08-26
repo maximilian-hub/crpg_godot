@@ -22,6 +22,8 @@ var hand_aura: ChessAura2D
 var target_selector: OptionButton
 var mode_selector: OptionButton
 var power_slider: HSlider
+var silhouette_power_slider: HSlider
+var particle_power_slider: HSlider
 var hand_grip_slider: HSlider
 var king_selector: OptionButton
 var army_selector: OptionButton
@@ -159,6 +161,16 @@ func _build_controls() -> void:
 
 	power_slider = _add_slider(controls, "Power", 0.0, 1.0, 0.01, aura_profile.idle_power, func(value: float):
 		for aura in _selected_auras(): aura.set_power(value)
+		silhouette_power_slider.set_value_no_signal(value)
+		particle_power_slider.set_value_no_signal(value)
+	)
+	silhouette_power_slider = _add_slider(controls, "Silhouette", 0.0, 1.0, 0.01, aura_profile.idle_power, func(value: float):
+		for aura in _selected_auras(): aura.set_silhouette_power(value)
+		_sync_master_power_control()
+	)
+	particle_power_slider = _add_slider(controls, "Particles", 0.0, 1.0, 0.01, aura_profile.idle_power, func(value: float):
+		for aura in _selected_auras(): aura.set_particle_power(value)
+		_sync_master_power_control()
 	)
 	hand_grip_slider = _add_editable_slider(
 		controls,
@@ -319,24 +331,32 @@ func _power_up() -> void:
 	for aura in _selected_auras():
 		aura.power_up()
 	power_slider.set_value_no_signal(1.0)
+	silhouette_power_slider.set_value_no_signal(1.0)
+	particle_power_slider.set_value_no_signal(1.0)
 
 
 func _sustain() -> void:
 	for aura in _selected_auras():
 		aura.set_power(1.0)
 	power_slider.set_value_no_signal(1.0)
+	silhouette_power_slider.set_value_no_signal(1.0)
+	particle_power_slider.set_value_no_signal(1.0)
 
 
 func _power_down() -> void:
 	for aura in _selected_auras():
 		aura.power_down()
 	power_slider.set_value_no_signal(0.0)
+	silhouette_power_slider.set_value_no_signal(0.0)
+	particle_power_slider.set_value_no_signal(0.0)
 
 
 func _reset() -> void:
 	for aura in [king_aura, hand_aura]:
 		aura.reset_effect()
 	power_slider.set_value_no_signal(aura_profile.idle_power)
+	silhouette_power_slider.set_value_no_signal(aura_profile.idle_power)
+	particle_power_slider.set_value_no_signal(aura_profile.idle_power)
 
 
 func _update_preview_king() -> void:
@@ -378,6 +398,11 @@ func _capture_preset(display_name: String) -> Resource:
 	preset.target_mode = target_selector.selected
 	preset.king_power = king_aura.power
 	preset.hand_power = hand_aura.power
+	preset.component_powers_saved = true
+	preset.king_silhouette_power = king_aura.silhouette_power
+	preset.king_particle_power = king_aura.particle_power
+	preset.hand_silhouette_power = hand_aura.silhouette_power
+	preset.hand_particle_power = hand_aura.particle_power
 	preset.hand_grip_y_offset = hand_grip_slider.value
 	preset.king_type_id = king_selector.get_item_metadata(king_selector.selected)
 	preset.army_color = "black" if army_selector.selected == 1 else "white"
@@ -450,8 +475,16 @@ func _apply_preset(preset: Resource) -> void:
 	_update_preview_king()
 	king_aura.set_mode(mode_selector.selected)
 	hand_aura.set_mode(mode_selector.selected)
-	king_aura.set_power(preset.king_power)
-	hand_aura.set_power(preset.hand_power)
+	if preset.component_powers_saved:
+		king_aura.set_silhouette_power(preset.king_silhouette_power)
+		king_aura.set_particle_power(preset.king_particle_power)
+		hand_aura.set_silhouette_power(preset.hand_silhouette_power)
+		hand_aura.set_particle_power(preset.hand_particle_power)
+	else:
+		# Profiles saved before component powers existed retain their original
+		# shared-power behavior.
+		king_aura.set_power(preset.king_power)
+		hand_aura.set_power(preset.hand_power)
 	hand_grip_slider.set_value_no_signal(clampf(preset.hand_grip_y_offset, hand_grip_slider.min_value, hand_grip_slider.max_value))
 	preview_hand.position.y = HAND_PREVIEW_GRIP_POSITION.y + hand_grip_slider.value
 	_sync_profile_controls()
@@ -476,11 +509,29 @@ func _sync_power_control() -> void:
 	if not is_instance_valid(power_slider):
 		return
 	var displayed_power := king_aura.power
+	var displayed_silhouette := king_aura.silhouette_power
+	var displayed_particles := king_aura.particle_power
 	if target_selector.selected == 2:
 		displayed_power = hand_aura.power
+		displayed_silhouette = hand_aura.silhouette_power
+		displayed_particles = hand_aura.particle_power
 	elif target_selector.selected == 0:
 		displayed_power = (king_aura.power + hand_aura.power) * 0.5
+		displayed_silhouette = (king_aura.silhouette_power + hand_aura.silhouette_power) * 0.5
+		displayed_particles = (king_aura.particle_power + hand_aura.particle_power) * 0.5
 	power_slider.set_value_no_signal(displayed_power)
+	silhouette_power_slider.set_value_no_signal(displayed_silhouette)
+	particle_power_slider.set_value_no_signal(displayed_particles)
+
+
+func _sync_master_power_control() -> void:
+	var selected := _selected_auras()
+	if selected.is_empty():
+		return
+	var total := 0.0
+	for aura in selected:
+		total += aura.power
+	power_slider.set_value_no_signal(total / selected.size())
 
 
 func _select_king_type(type_id: StringName) -> void:

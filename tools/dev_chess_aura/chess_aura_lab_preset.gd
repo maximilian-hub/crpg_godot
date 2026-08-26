@@ -10,6 +10,11 @@ const CURRENT_SCHEMA_VERSION := 1
 @export var target_mode := 0
 @export_range(0.0, 1.0, 0.01) var king_power := 0.0
 @export_range(0.0, 1.0, 0.01) var hand_power := 0.0
+@export var component_powers_saved := false
+@export_range(0.0, 1.0, 0.01) var king_silhouette_power := 0.0
+@export_range(0.0, 1.0, 0.01) var king_particle_power := 0.0
+@export_range(0.0, 1.0, 0.01) var hand_silhouette_power := 0.0
+@export_range(0.0, 1.0, 0.01) var hand_particle_power := 0.0
 @export var hand_grip_y_offset := 0.0
 @export var king_type_id: StringName = &"minotaur_king"
 @export_enum("white", "black") var army_color := "white"
@@ -32,4 +37,3 @@ static func safe_file_stem(value: String) -> String:
 			result += "_"
 			last_was_separator = true
 	return result.trim_suffix("_")
-

@@ -56,6 +56,9 @@ func _ready() -> void:
 	aura.set_power(1.0)
 	await get_tree().create_timer(0.05).timeout
 	_check(is_equal_approx(aura.power, 1.0) and aura.active_particle_count() > 0, "full power drives the shader and emits square motes")
+	aura.set_silhouette_power(0.25)
+	aura.set_particle_power(0.75)
+	_check(is_equal_approx(aura.silhouette_power, 0.25) and is_equal_approx(aura.particle_power, 0.75), "silhouette and particle power can be controlled independently")
 	aura.power_down(0.0)
 	_check(is_zero_approx(aura.power), "zero-duration power-down reaches its exact terminal value")
 	aura.reset_effect()
@@ -90,6 +93,11 @@ func _test_lab_presets_and_selectors() -> void:
 	preset.target_mode = 1
 	preset.king_power = 0.25
 	preset.hand_power = 0.75
+	preset.component_powers_saved = true
+	preset.king_silhouette_power = 0.2
+	preset.king_particle_power = 0.4
+	preset.hand_silhouette_power = 0.6
+	preset.hand_particle_power = 0.8
 	preset.hand_grip_y_offset = 123.0
 	preset.king_type_id = &"necromancer_king"
 	preset.army_color = "black"
@@ -117,6 +125,6 @@ func _test_lab_presets_and_selectors() -> void:
 	await get_tree().process_frame
 	_check(lab.preview_king.model.type == "necromancer_king" and lab.preview_king.model.color == "black", "loading selects the saved king and army variant")
 	_check(lab.mode_selector.selected == Aura.AuraMode.SQUARE_FLAME and lab.target_selector.selected == 1, "loading restores treatment and target modes")
-	_check(is_equal_approx(lab.king_aura.power, 0.25) and is_equal_approx(lab.hand_aura.power, 0.75), "loading restores independent king and hand power")
+	_check(is_equal_approx(lab.king_aura.silhouette_power, 0.2) and is_equal_approx(lab.king_aura.particle_power, 0.4) and is_equal_approx(lab.hand_aura.silhouette_power, 0.6) and is_equal_approx(lab.hand_aura.particle_power, 0.8), "loading restores independent silhouette and particle power for both targets")
 	_check(is_equal_approx(lab.preview_hand.position.y, lab.HAND_PREVIEW_GRIP_POSITION.y + 123.0), "loading restores the vertical hand-grip offset")
 	lab.queue_free()
