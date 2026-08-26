@@ -14,6 +14,10 @@ var spawn_budget := 0.0
 var elapsed := 0.0
 var rng := RandomNumberGenerator.new()
 var cached_texture: Texture2D
+var density_multiplier := 1.0
+var speed_multiplier := 1.0
+var simulation_speed := 1.0
+var continuous_emission_enabled := true
 
 
 func configure(source: Sprite2D, aura_profile: ChessAuraProfile, seed_offset := 0) -> void:
@@ -28,6 +32,30 @@ func set_emission_power(value: float) -> void:
 	power = clampf(value, 0.0, 1.0)
 
 
+func set_runtime_multipliers(density: float, speed: float) -> void:
+	density_multiplier = maxf(density, 0.0)
+	speed_multiplier = maxf(speed, 0.0)
+
+
+func emit_burst(count: int, burst_power := 1.0) -> void:
+	if opaque_points.is_empty():
+		return
+	var previous_power := power
+	power = clampf(burst_power, 0.0, 1.0)
+	for _index in range(maxi(count, 0)):
+		_spawn_square()
+	power = previous_power
+	queue_redraw()
+
+
+func set_simulation_speed(value: float) -> void:
+	simulation_speed = maxf(value, 0.0)
+
+
+func set_continuous_emission_enabled(value: bool) -> void:
+	continuous_emission_enabled = value
+
+
 func clear_particles() -> void:
 	particles.clear()
 	spawn_budget = 0.0
@@ -39,13 +67,16 @@ func active_particle_count() -> int:
 
 
 func _process(delta: float) -> void:
+	delta *= simulation_speed
+	if delta <= 0.0:
+		return
 	if profile == null or not is_instance_valid(source_sprite):
 		return
 	if source_sprite.texture != cached_texture:
 		_rebuild_opaque_points()
 	elapsed += delta
-	if enabled and power > 0.0 and not opaque_points.is_empty():
-		spawn_budget += profile.square_density * power * delta
+	if enabled and continuous_emission_enabled and power > 0.0 and not opaque_points.is_empty():
+		spawn_budget += profile.square_density * density_multiplier * power * delta
 		while spawn_budget >= 1.0:
 			_spawn_square()
 			spawn_budget -= 1.0
@@ -71,7 +102,7 @@ func _spawn_square() -> void:
 		"position": point,
 		"velocity": Vector2(
 			rng.randf_range(-profile.horizontal_spread, profile.horizontal_spread) * power,
-			-profile.rise_speed * power_speed * rng.randf_range(0.75, 1.25)
+			-profile.rise_speed * speed_multiplier * power_speed * rng.randf_range(0.75, 1.25)
 		),
 		"age": 0.0,
 		"lifetime": profile.square_lifetime * rng.randf_range(0.75, 1.2),
@@ -111,4 +142,3 @@ func _draw() -> void:
 		var size := float(particle["size"])
 		var position := Vector2(particle["position"]).round()
 		draw_rect(Rect2(position - Vector2.ONE * size * 0.5, Vector2.ONE * size), color)
-

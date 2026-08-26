@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dxt1aqg14xl7p"]
+
+[ext_resource type="Script" uid="uid://cnin6aithrpm8" path="res://tools/dev_chess_activation/king_activation_lab.gd" id="1_lab"]
+
+[node name="KingActivationLab" type="Node2D"]
+script = ExtResource("1_lab")

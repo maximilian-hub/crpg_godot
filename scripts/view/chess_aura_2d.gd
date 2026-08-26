@@ -13,6 +13,12 @@ var power := 0.0
 var elapsed := 0.0
 var bindings: Array[Dictionary] = []
 var power_tween: Tween
+var silhouette_fill := 0.0
+var silhouette_fill_color := Color.WHITE
+var density_multiplier := 1.0
+var speed_multiplier := 1.0
+var simulation_speed := 1.0
+var continuous_emission_enabled := true
 
 
 func _ready() -> void:
@@ -77,6 +83,46 @@ func set_power(value: float) -> void:
 		emitter.set_emission_power(power)
 
 
+func set_silhouette_fill(value: float, color := Color.WHITE) -> void:
+	silhouette_fill = clampf(value, 0.0, 1.0)
+	silhouette_fill_color = color
+	for binding in bindings:
+		var material: ShaderMaterial = binding["material"]
+		material.set_shader_parameter("silhouette_fill", silhouette_fill)
+		material.set_shader_parameter("silhouette_fill_color", silhouette_fill_color)
+
+
+func set_runtime_multipliers(density: float, speed: float) -> void:
+	density_multiplier = maxf(density, 0.0)
+	speed_multiplier = maxf(speed, 0.0)
+	for binding in bindings:
+		(binding["emitter"] as ChessSquareEmitter2D).set_runtime_multipliers(density_multiplier, speed_multiplier)
+
+
+func emit_burst(multiplier := 1.0) -> void:
+	var count := maxi(int(round(profile.square_density * maxf(multiplier, 0.0))), 1)
+	for binding in bindings:
+		(binding["emitter"] as ChessSquareEmitter2D).emit_burst(count, 1.0)
+
+
+func set_simulation_speed(value: float) -> void:
+	simulation_speed = maxf(value, 0.0)
+	for binding in bindings:
+		(binding["emitter"] as ChessSquareEmitter2D).set_simulation_speed(simulation_speed)
+
+
+func set_continuous_emission_enabled(value: bool) -> void:
+	continuous_emission_enabled = value
+	for binding in bindings:
+		(binding["emitter"] as ChessSquareEmitter2D).set_continuous_emission_enabled(value)
+
+
+func set_simulation_paused(paused: bool) -> void:
+	set_process(not paused)
+	for binding in bindings:
+		(binding["emitter"] as ChessSquareEmitter2D).set_process(not paused)
+
+
 func power_up(duration_override := -1.0) -> void:
 	_tween_power(1.0, profile.power_up_duration if duration_override < 0.0 else duration_override)
 
@@ -96,6 +142,9 @@ func reset_effect() -> void:
 	if power_tween != null and power_tween.is_valid():
 		power_tween.kill()
 	set_power(profile.idle_power)
+	set_silhouette_fill(0.0)
+	set_runtime_multipliers(1.0, 1.0)
+	set_continuous_emission_enabled(true)
 	for binding in bindings:
 		(binding["emitter"] as ChessSquareEmitter2D).clear_particles()
 
@@ -111,7 +160,7 @@ func _tween_power(target: float, duration: float) -> void:
 
 
 func _process(delta: float) -> void:
-	elapsed += delta
+	elapsed += delta * simulation_speed
 	_sync_bindings()
 	for binding in bindings:
 		(binding["material"] as ShaderMaterial).set_shader_parameter("elapsed", elapsed)
@@ -140,6 +189,8 @@ func _sync_bindings() -> void:
 		material.set_shader_parameter("outline_intensity", profile.outline_intensity)
 		material.set_shader_parameter("interior_intensity", profile.interior_intensity)
 		material.set_shader_parameter("motion_speed", profile.rise_speed / 14.0)
+		material.set_shader_parameter("silhouette_fill", silhouette_fill)
+		material.set_shader_parameter("silhouette_fill_color", silhouette_fill_color)
 
 
 func _apply_mode() -> void:
