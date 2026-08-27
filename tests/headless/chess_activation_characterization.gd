@@ -73,17 +73,52 @@ func _ready() -> void:
 
 	lab.sequence.restart(false)
 	var hover_position: Vector2 = lab.sequence.base_hand_position
+	lab.sequence._fire_crackle(0)
+	var fixed_king_target: Vector2 = lab.lightning.to_local(lab.preview_king.sprite.global_position)
+	_check(lab.lightning.points[lab.lightning.points.size() - 1] == fixed_king_target, "Response-opening crackle uses the original fixed King target")
 	lab.sequence._fire_crackle(99)
 	var crackle_position: Vector2 = lab.preview_hand.position
 	_check(crackle_position != hover_position, "A crackle blinks the hand toward the King Piece")
 	_check(crackle_position == crackle_position.round(), "Lightning hand motion remains pixel-aligned")
+	var sampled_target_a: Vector2 = lab.sequence._king_target_for_seed(1234)
+	var sampled_target_b: Vector2 = lab.sequence._king_target_for_seed(1235)
+	_check(not lab.sequence.king_target_points.is_empty() and sampled_target_a == lab.sequence._king_target_for_seed(1234), "King impact targets sample opaque pixels deterministically")
+	_check(sampled_target_a != sampled_target_b, "Independent crackle seeds can target different parts of the King Piece")
 	_check(not lab.lightning.main_rift_segments.is_empty() and lab.lightning.main_rift_segments[0].size() == 4, "Lightning builds triangulation-safe jagged rift strips")
 	_check(lab.lightning.rift_material.shader.resource_path == "res://effects/chess_lightning_rift.gdshader", "Lightning rifts use the stationary checkerboard shader")
+	_check(lab.lightning.impact_paths.size() == lab.activation_profile.impact_bolt_count, "Every strike creates the configured number of radial hit bolts")
+	var impact_origin: Vector2 = lab.lightning.points[lab.lightning.points.size() - 1]
+	var impact_radii_valid := true
+	var impact_tapers_valid := true
+	for impact_index in range(lab.lightning.impact_paths.size()):
+		var impact_path: PackedVector2Array = lab.lightning.impact_paths[impact_index]
+		var radius := impact_path[impact_path.size() - 1].distance_to(impact_origin)
+		impact_radii_valid = impact_radii_valid and impact_path[0] == impact_origin and radius >= lab.activation_profile.impact_radius_min and radius <= lab.activation_profile.impact_radius_max
+		var impact_segments: Array = lab.lightning.impact_rift_segments[impact_index]
+		var final_strip: PackedVector2Array = impact_segments[impact_segments.size() - 1]
+		impact_tapers_valid = impact_tapers_valid and final_strip[1].distance_to(final_strip[2]) <= 2.5
+	_check(impact_radii_valid, "Radial hit bolts originate at impact and respect configured minimum/maximum radii")
+	_check(impact_tapers_valid, "Radial hit bolts taper to pixel-sized outer points")
 	lab.sequence._enter_phase(lab.sequence.Phase.CLIMAX)
 	var first_beam_position: Vector2 = lab.preview_hand.position
+	var first_beam_target: Vector2 = lab.lightning.points[lab.lightning.points.size() - 1]
 	lab.sequence._show_climax_beam(1)
 	_check(first_beam_position != hover_position and lab.preview_hand.position == first_beam_position, "Only the first climax beam shifts the hand; later beam shapes retain it")
+	_check(first_beam_target == fixed_king_target and lab.lightning.points[lab.lightning.points.size() - 1] == fixed_king_target, "All climax redraws use the original fixed King target")
 	_check(lab.lightning.branch_rift_segments.size() == lab.activation_profile.beam_branch_count, "Climax branches use the same checker-filled rift geometry")
+	var tremor_boundaries: PackedFloat32Array = lab.sequence._phase_boundaries()
+	lab.sequence.elapsed = tremor_boundaries[3]
+	lab.sequence.tremor_offset = Vector2(2.0, 1.0)
+	lab.sequence.last_tremor_tick = int(floor((lab.sequence.elapsed - tremor_boundaries[2]) / lab.activation_profile.tremor_interval))
+	lab.sequence._update_tremor()
+	lab.sequence._update_hand_motion()
+	var trembling_climax_position: Vector2 = lab.preview_hand.position
+	lab.sequence._show_climax_beam(2)
+	lab.sequence._update_hand_motion()
+	_check(lab.sequence.tremor_offset == Vector2(2.0, 1.0) and lab.preview_hand.position == trembling_climax_position, "Climax sustains additive tremor across successive beam redraws")
+	lab.sequence.current_phase = lab.sequence.Phase.AFTERIMAGE
+	lab.sequence._update_tremor()
+	_check(lab.sequence.tremor_offset == Vector2.ZERO, "Afterimage entry clears climax tremor before the slower hand return")
 	lab.sequence.restart(false)
 
 	for property_name in ["invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "aura_release_duration", "resolve_duration"]:

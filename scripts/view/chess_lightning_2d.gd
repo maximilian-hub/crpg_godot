@@ -7,11 +7,17 @@ var points := PackedVector2Array()
 var branches: Array[PackedVector2Array] = []
 var main_rift_segments: Array[PackedVector2Array] = []
 var branch_rift_segments: Array[Array] = []
+var impact_paths: Array[PackedVector2Array] = []
+var impact_rift_segments: Array[Array] = []
 var width := 4.0
 var visible_strength := 0.0
 var checker_size := 8.0
 var edge_roughness := 3.0
 var curve_max := 36.0
+var impact_bolt_count := 5
+var impact_radius_min := 18.0
+var impact_radius_max := 52.0
+var impact_bolt_width := 3.0
 var rift_material: ShaderMaterial
 
 
@@ -33,6 +39,8 @@ func configure_path(start: Vector2, finish: Vector2, segment_length: float, disp
 	main_rift_segments = _make_rift_segments(points, width, edge_roughness, rng)
 	branches.clear()
 	branch_rift_segments.clear()
+	impact_paths.clear()
+	impact_rift_segments.clear()
 	if beam and points.size() > 3:
 		for branch_index in range(branch_count):
 			var origin_index := rng.randi_range(1, points.size() - 2)
@@ -42,6 +50,17 @@ func configure_path(start: Vector2, finish: Vector2, segment_length: float, disp
 			var branch := _make_path(origin, branch_end, segment_length, displacement * 0.65, rng)
 			branches.append(branch)
 			branch_rift_segments.append(_make_rift_segments(branch, maxf(width * 0.45, 1.0), edge_roughness * 0.65, rng))
+	var minimum_radius := minf(impact_radius_min, impact_radius_max)
+	var maximum_radius := maxf(impact_radius_min, impact_radius_max)
+	for impact_index in range(maxi(impact_bolt_count, 0)):
+		var direction := Vector2.RIGHT.rotated(rng.randf_range(0.0, TAU))
+		var radius := rng.randf_range(maxf(minimum_radius, 0.0), maxf(maximum_radius, 0.0))
+		var impact_end := finish + direction * radius
+		var impact_path := _make_path(finish, impact_end, segment_length, displacement * 0.45, rng)
+		impact_paths.append(impact_path)
+		# Impact bolts begin with body at the strike and taper to a one-pixel
+		# outer point, making the contact read as an outward discharge.
+		impact_rift_segments.append(_make_rift_segments(impact_path, impact_bolt_width, edge_roughness * 0.5, rng, false, true))
 	rift_material.set_shader_parameter("checker_size", checker_size)
 	queue_redraw()
 
@@ -58,6 +77,8 @@ func clear() -> void:
 	branches.clear()
 	main_rift_segments.clear()
 	branch_rift_segments.clear()
+	impact_paths.clear()
+	impact_rift_segments.clear()
 	show_strength(0.0)
 
 
@@ -81,15 +102,23 @@ func _make_path(start: Vector2, finish: Vector2, segment_length: float, displace
 	return path
 
 
-func _make_rift_segments(path: PackedVector2Array, path_width: float, roughness: float, rng: RandomNumberGenerator) -> Array[PackedVector2Array]:
+func _make_rift_segments(path: PackedVector2Array, path_width: float, roughness: float, rng: RandomNumberGenerator, taper_start := true, taper_end := true) -> Array[PackedVector2Array]:
 	var result: Array[PackedVector2Array] = []
 	if path.size() < 2:
 		return result
 	var left_widths := PackedFloat32Array()
 	var right_widths := PackedFloat32Array()
 	for index in range(path.size()):
-		var envelope := sin(float(index) / float(path.size() - 1) * PI)
-		var taper := maxf(envelope, 0.12)
+		var progress := float(index) / float(path.size() - 1)
+		var envelope := sin(progress * PI)
+		var taper := 1.0
+		if taper_start and taper_end:
+			taper = envelope
+		elif taper_start:
+			taper = progress
+		elif taper_end:
+			taper = 1.0 - progress
+		taper = maxf(taper, 0.12)
 		var half_width := maxf(path_width * 0.5 * taper, 0.5)
 		left_widths.append(maxf(half_width + rng.randf_range(-roughness, roughness) * envelope, 0.5))
 		right_widths.append(maxf(half_width + rng.randf_range(-roughness, roughness) * envelope, 0.5))
@@ -119,3 +148,6 @@ func _draw() -> void:
 	for branch_segments in branch_rift_segments:
 		for segment in branch_segments:
 			draw_colored_polygon(segment, Color(1.0, 1.0, 1.0, 0.85))
+	for impact_segments in impact_rift_segments:
+		for segment in impact_segments:
+			draw_colored_polygon(segment, Color.WHITE)

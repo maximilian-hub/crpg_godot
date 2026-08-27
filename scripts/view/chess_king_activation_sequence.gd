@@ -33,6 +33,8 @@ var lightning_hand_offset := Vector2.ZERO
 var crackle_hand_target := Vector2.ZERO
 var crackle_hand_started_at := -1.0
 var climax_hand_target := Vector2.ZERO
+var king_target_points := PackedVector2Array()
+var cached_king_target_texture: Texture2D
 
 
 func configure(
@@ -322,10 +324,12 @@ func _apply_visual_state() -> void:
 
 func _update_tremor() -> void:
 	var boundaries := _phase_boundaries()
-	if current_phase != Phase.BUILDUP:
+	if current_phase not in [Phase.BUILDUP, Phase.CLIMAX]:
 		tremor_offset = Vector2.ZERO
 		return
-	var progress := _range_progress(elapsed, boundaries[2], boundaries[3])
+	# BUILDUP ramps toward maximum; CLIMAX sustains that maximum without
+	# restarting the tick cadence established at buildup entry.
+	var progress := 1.0 if current_phase == Phase.CLIMAX else _range_progress(elapsed, boundaries[2], boundaries[3])
 	var tick := int(floor((elapsed - boundaries[2]) / maxf(profile.tremor_interval, 0.01)))
 	if tick == last_tremor_tick:
 		return
@@ -422,9 +426,9 @@ func _fire_crossed_buildup_crackles(buildup_elapsed: float) -> void:
 
 func _show_climax_beam(index: int) -> void:
 	active_climax_beam_index = index
-	# Each successive seed redraws the same connection with a new jagged path,
-	# reading as one energetic beam writhing between the hand and King Piece.
-	_configure_lightning(true, profile.beam_branch_count, profile.beam_width, profile.random_seed + 900 + index * 113)
+	# Each successive seed redraws the same connection with a new jagged path.
+	# The climax uses the canonical fixed target so it reads as one focused beam.
+	_configure_lightning(true, profile.beam_branch_count, profile.beam_width, profile.random_seed + 900 + index * 113, -1, true)
 	lightning.show_strength(1.0)
 
 
@@ -433,20 +437,67 @@ func _fire_crackle(index: int) -> void:
 	crackle_hand_started_at = elapsed
 	lightning_hand_offset = crackle_hand_target
 	_apply_hand_position()
-	_configure_lightning(false, 0, profile.crackle_width, profile.random_seed + index * 71)
+	var path_seed: int = profile.random_seed + index * 71
+	# Index zero is the RESPONSE-opening connection crackle. Only subsequent
+	# authored BUILDUP crackles roam across the King's opaque sprite pixels.
+	_configure_lightning(false, 0, profile.crackle_width, path_seed, path_seed + 10000, index == 0)
 	lightning.show_strength(1.0)
 	active_crackle_until = elapsed + profile.crackle_duration
 	_play_one_shot(&"crackle")
 
 
-func _configure_lightning(beam: bool, branch_count: int, line_width: float, seed: int) -> void:
+func _configure_lightning(beam: bool, branch_count: int, line_width: float, seed: int, target_seed := -1, use_fixed_target := false) -> void:
 	var start := lightning.to_local(hand_connection_anchor.global_position)
-	var finish := lightning.to_local(king_sprite.global_position)
+	var finish := lightning.to_local(king_sprite.global_position) if use_fixed_target else _king_target_for_seed(seed + 10000 if target_seed < 0 else target_seed)
 	lightning.width = line_width
 	lightning.checker_size = profile.lightning_checker_size
 	lightning.edge_roughness = profile.rift_edge_roughness
 	lightning.curve_max = profile.lightning_curve_max
+	lightning.impact_bolt_count = profile.impact_bolt_count
+	lightning.impact_radius_min = profile.impact_radius_min
+	lightning.impact_radius_max = profile.impact_radius_max
+	lightning.impact_bolt_width = profile.impact_bolt_width
 	lightning.configure_path(start, finish, profile.lightning_segment_length, profile.lightning_displacement, seed, beam, branch_count)
+
+
+func _king_target_for_seed(seed: int) -> Vector2:
+	_rebuild_king_target_points_if_needed()
+	if king_target_points.is_empty():
+		return lightning.to_local(king_sprite.global_position)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var sprite_point := king_target_points[rng.randi_range(0, king_target_points.size() - 1)]
+	return lightning.to_local(king_sprite.to_global(sprite_point))
+
+
+func _rebuild_king_target_points_if_needed() -> void:
+	if king_sprite.texture == cached_king_target_texture and not king_target_points.is_empty():
+		return
+	king_target_points.clear()
+	cached_king_target_texture = king_sprite.texture
+	if cached_king_target_texture == null:
+		return
+	var image := cached_king_target_texture.get_image()
+	if image == null or image.is_empty():
+		return
+	var size := image.get_size()
+	var origin := Vector2.ZERO if not king_sprite.centered else -Vector2(size) * 0.5
+	origin += king_sprite.offset
+	# Prefer the central 80% of the canvas so bolts vary across the body without
+	# disproportionately choosing isolated horn tips or extreme edge pixels.
+	var minimum_x := int(floor(size.x * 0.10))
+	var maximum_x := int(ceil(size.x * 0.90))
+	_collect_opaque_king_points(image, origin, minimum_x, maximum_x)
+	if king_target_points.is_empty():
+		_collect_opaque_king_points(image, origin, 0, size.x)
+
+
+func _collect_opaque_king_points(image: Image, origin: Vector2, minimum_x: int, maximum_x: int) -> void:
+	var size := image.get_size()
+	for y in range(size.y):
+		for x in range(clampi(minimum_x, 0, size.x), clampi(maximum_x, 0, size.x)):
+			if image.get_pixel(x, y).a > 0.2:
+				king_target_points.append(origin + Vector2(x + 0.5, y + 0.5))
 
 
 func _range_progress(value: float, start: float, finish: float) -> float:

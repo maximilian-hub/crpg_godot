@@ -35,6 +35,10 @@ class_name ChessKingActivationProfile
 @export_range(1.0, 32.0, 1.0) var lightning_checker_size := 8.0
 @export_range(0.0, 24.0, 0.5) var rift_edge_roughness := 3.0
 @export_range(0, 8, 1) var beam_branch_count := 3
+@export_range(0, 24, 1) var impact_bolt_count := 5
+@export_range(0.0, 160.0, 1.0) var impact_radius_min := 18.0
+@export_range(0.0, 240.0, 1.0) var impact_radius_max := 52.0
+@export_range(1.0, 16.0, 0.5) var impact_bolt_width := 3.0
 @export_range(0.02, 0.5, 0.01) var tremor_interval := 0.07
 @export_range(0, 8, 1) var tremor_max_pixels := 2
 ## Deprecated: tremor now always begins with BUILDUP.
