@@ -23,6 +23,41 @@ func _ready() -> void:
 	var lab = LAB_SCENE.instantiate()
 	add_child(lab)
 	await get_tree().process_frame
+	_check(not lab.sequence.running and lab.sequence.current_phase == lab.sequence.Phase.RESET and is_zero_approx(lab.sequence.elapsed), "Activation Lab opens paused on the inert reset frame")
+	_check(lab.activation_selector.selected == 0 and lab.activation_selector.get_item_text(0) == "Unsaved defaults", "Ritual selector explicitly distinguishes defaults from saved profiles")
+	_check(lab.activation_profile.climax_hand_return_duration > lab.activation_profile.crackle_hand_return_duration, "Post-climax hand return defaults slower than ordinary crackle recovery")
+	var curve_rng := RandomNumberGenerator.new()
+	curve_rng.seed = 123
+	var curved_path: PackedVector2Array = lab.lightning._make_path(Vector2.ZERO, Vector2(100.0, 0.0), 10.0, 0.0, curve_rng, 30.0)
+	var curve_midpoint := int(curved_path.size() / 2.0)
+	_check(curved_path[0] == Vector2.ZERO and curved_path[curved_path.size() - 1] == Vector2(100.0, 0.0) and is_equal_approx(curved_path[curve_midpoint].y, 30.0), "Smooth lightning curve preserves endpoints and peaks at the path midpoint")
+	curve_rng.seed = 123
+	var straight_path: PackedVector2Array = lab.lightning._make_path(Vector2.ZERO, Vector2(100.0, 0.0), 10.0, 0.0, curve_rng, 0.0)
+	_check(is_zero_approx(straight_path[int(straight_path.size() / 2.0)].y), "Zero base curve restores a straight pre-jagged baseline")
+	_check(_times_equal(lab.activation_profile.buildup_crackle_times, PackedFloat32Array([0.30, 0.78, 0.90])), "Buildup crackles default to an authored ending double-strike rhythm")
+	var original_seed: int = lab.activation_profile.random_seed
+	lab.sequence.restart(false)
+	var schedule_before_seed_change: PackedFloat32Array = lab.sequence.crackle_schedule.duplicate()
+	lab.activation_profile.random_seed += 99
+	lab.sequence.restart(false)
+	_check(_times_equal(lab.sequence.crackle_schedule, schedule_before_seed_change), "Random seed no longer changes authored buildup timing")
+	lab.activation_profile.random_seed = original_seed
+	lab.activation_profile.buildup_crackle_times = PackedFloat32Array()
+	lab._refresh_crackle_editor(0)
+	lab._add_buildup_crackle()
+	lab._add_buildup_crackle()
+	_check(_times_equal(lab.activation_profile.buildup_crackle_times, PackedFloat32Array([0.30, 0.42])), "Timeline editor adds an arbitrary sequence using the documented spacing")
+	lab.crackle_time.value = 0.10
+	_check(_times_equal(lab.activation_profile.buildup_crackle_times, PackedFloat32Array([0.10, 0.30])), "Editing a crackle time resorts the authored timeline")
+	lab._remove_selected_crackle()
+	_check(lab.activation_profile.buildup_crackle_times.size() == 1, "Timeline editor removes only the selected crackle")
+	lab._remove_selected_crackle()
+	_check(lab.activation_profile.buildup_crackle_times.is_empty() and lab.crackle_selector.disabled, "Removing the final crackle leaves a valid empty timeline")
+	lab.activation_profile.buildup_crackle_times = PackedFloat32Array([0.30, 1.40])
+	lab._refresh_crackle_editor(1)
+	_check("outside buildup" in lab.crackle_selector.get_item_text(1) and "remain saved" in lab.crackle_warning.text, "Out-of-range crackles remain authored and are clearly warned about")
+	lab.activation_profile.buildup_crackle_times = PackedFloat32Array([0.30, 0.78, 0.90])
+	lab._refresh_crackle_editor(0)
 	var aura_index := _find_metadata(lab.aura_selector, aura_path)
 	_check(aura_index > 0, "Activation Lab discovers saved Aura Lab profiles")
 	lab.aura_selector.select(aura_index)
@@ -53,7 +88,7 @@ func _ready() -> void:
 
 	for property_name in ["invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "aura_release_duration", "resolve_duration"]:
 		lab.activation_profile.set(property_name, 0.06)
-	lab.activation_profile.secondary_crackle_count = 2
+	lab.activation_profile.buildup_crackle_times = PackedFloat32Array([0.02, 0.04, 0.20])
 	lab.activation_profile.crackle_duration = 0.02
 	var phases: Array[int] = []
 	var cues: Array[StringName] = []
@@ -70,6 +105,7 @@ func _ready() -> void:
 	for expected_phase in [lab.sequence.Phase.INVOCATION, lab.sequence.Phase.RESPONSE, lab.sequence.Phase.BUILDUP, lab.sequence.Phase.CLIMAX, lab.sequence.Phase.AFTERIMAGE, lab.sequence.Phase.COMPLETE]:
 		_check(expected_phase in phases, "Activation ritual enters phase %s" % lab.sequence.Phase.keys()[expected_phase])
 	_check(&"hand_hum" in cues and &"king_hum" in cues and &"crackle" in cues and &"beam" in cues and &"resolve" in cues, "Activation ritual exposes every planned audio hook")
+	_check(cues.count(&"crackle") == 3, "Response crackle and in-range authored buildup crackles fire while overflow timing remains stored and silent")
 	_check(is_equal_approx(lab.preview_king.sprite.self_modulate.a, 1.0) and not lab.stone_sprite.visible, "Completion leaves the authored army-colored king revealed")
 	_check(is_equal_approx(lab.king_aura.silhouette_power, lab.activation_profile.resting_aura_power) and is_equal_approx(lab.king_aura.particle_power, lab.activation_profile.resting_particle_power) and is_zero_approx(lab.hand_aura.power) and lab.lightning.points.is_empty(), "Completion retains the King's independently configured resting aura channels")
 	_check(lab.preview_hand.position == lab.sequence.base_hand_position, "Completion clears integer-pixel hand tremor")
@@ -97,7 +133,7 @@ func _ready() -> void:
 	var activation_path := "user://chess_activation_characterization.tres"
 	_check(ResourceSaver.save(activation_resource, activation_path) == OK, "Activation profile serializes with an embedded Aura fallback")
 	var loaded: Resource = ResourceLoader.load(activation_path, "ChessActivationLabPreset", ResourceLoader.CACHE_MODE_IGNORE)
-	_check(loaded != null and loaded.get_script() == ActivationPreset and loaded.is_supported() and loaded.aura_snapshot != null and loaded.king_type_id == &"necromancer_king" and is_equal_approx(loaded.hand_grip_x_offset, -64.0), "Activation profile round-trips ritual, preview offsets, Aura reference, and fallback state")
+	_check(loaded != null and loaded.get_script() == ActivationPreset and loaded.is_supported() and loaded.aura_snapshot != null and loaded.king_type_id == &"necromancer_king" and is_equal_approx(loaded.hand_grip_x_offset, -64.0) and _times_equal(loaded.activation_profile.buildup_crackle_times, PackedFloat32Array([0.02, 0.04, 0.20])), "Activation profile round-trips authored crackle timing, preview offsets, Aura reference, and fallback state")
 
 	lab.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(aura_path))
@@ -113,6 +149,15 @@ func _find_metadata(option: OptionButton, value: Variant) -> int:
 	for index in range(option.item_count):
 		if option.get_item_metadata(index) == value: return index
 	return -1
+
+
+func _times_equal(left: PackedFloat32Array, right: PackedFloat32Array) -> bool:
+	if left.size() != right.size():
+		return false
+	for index in range(left.size()):
+		if not is_equal_approx(left[index], right[index]):
+			return false
+	return true
 
 
 func _check(condition: bool, description: String) -> void:

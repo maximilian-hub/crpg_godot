@@ -15,7 +15,11 @@ class_name ChessKingActivationProfile
 @export_range(0.0, 4.0, 0.05) var final_density_multiplier := 2.0
 @export_range(0.0, 4.0, 0.05) var final_speed_multiplier := 2.25
 @export_range(0.0, 8.0, 0.1) var burst_multiplier := 2.5
-@export_range(0, 8, 1) var secondary_crackle_count := 3
+## Authored seconds from the beginning of BUILDUP. The opening RESPONSE
+## crackle is intentionally separate from this list.
+@export var buildup_crackle_times := PackedFloat32Array([0.30, 0.78, 0.90])
+## Deprecated serialized field retained so older ritual resources still load.
+@export_storage var secondary_crackle_count := 3
 @export_range(0.02, 0.5, 0.01) var crackle_duration := 0.09
 @export_range(1.0, 20.0, 0.5) var crackle_width := 4.0
 @export_range(0.0, 240.0, 1.0) var crackle_hand_shift_distance := 48.0
@@ -24,14 +28,19 @@ class_name ChessKingActivationProfile
 @export_range(1.0, 40.0, 0.5) var beam_width := 13.0
 @export_range(1, 12, 1) var climax_beam_count := 4
 @export_range(0.0, 240.0, 1.0) var climax_hand_shift_distance := 64.0
+@export_range(0.01, 2.0, 0.01) var climax_hand_return_duration := 0.45
 @export_range(2.0, 32.0, 1.0) var lightning_segment_length := 10.0
 @export_range(0.0, 80.0, 1.0) var lightning_displacement := 18.0
+@export_range(0.0, 160.0, 1.0) var lightning_curve_max := 36.0
 @export_range(1.0, 32.0, 1.0) var lightning_checker_size := 8.0
 @export_range(0.0, 24.0, 0.5) var rift_edge_roughness := 3.0
 @export_range(0, 8, 1) var beam_branch_count := 3
 @export_range(0.02, 0.5, 0.01) var tremor_interval := 0.07
 @export_range(0, 8, 1) var tremor_max_pixels := 2
-@export_range(0.0, 1.0, 0.01) var tremor_start_fraction := 0.12
+## Deprecated: tremor now always begins with BUILDUP.
+@export_storage var tremor_start_fraction := 0.0
+## Below 1.0 front-loads the tremor ramp; 1.0 is linear.
+@export_range(0.2, 3.0, 0.05) var tremor_ramp_exponent := 0.75
 @export_range(0.0, 2.0, 0.01) var hand_fade_duration := 0.22
 @export_range(0.0, 1.0, 0.01) var resting_aura_power := 0.08
 @export_range(0.0, 1.0, 0.01) var resting_particle_power := 0.08

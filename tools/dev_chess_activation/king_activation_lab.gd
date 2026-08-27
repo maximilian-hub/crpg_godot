@@ -42,6 +42,11 @@ var time_label: Label
 var pause_button: Button
 var hand_offset: SpinBox
 var hand_offset_x: SpinBox
+var crackle_selector: OptionButton
+var crackle_time: SpinBox
+var crackle_remove: Button
+var crackle_warning: Label
+var syncing_crackle_editor := false
 var preset_name: LineEdit
 var status_label: Label
 var overwrite_confirmation: ConfirmationDialog
@@ -62,7 +67,6 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout_scale)
 	_layout_scale()
 	_refresh_playback_labels()
-	sequence.play()
 	queue_redraw()
 
 
@@ -148,7 +152,10 @@ func _build_sequence() -> void:
 	sequence.configure(activation_profile, preview_hand, hand_connection_anchor, preview_king.sprite, stone_sprite, hand_aura, king_aura, lightning, players)
 	sequence.phase_changed.connect(func(_phase: int): _refresh_playback_labels())
 	sequence.elapsed_changed.connect(func(_seconds: float): _refresh_playback_labels())
-	sequence.activation_completed.connect(func(): pause_button.text = "Pause")
+	sequence.activation_completed.connect(func():
+		pause_button.text = "Pause"
+		pause_button.disabled = true
+	)
 
 
 func _build_controls() -> void:
@@ -195,8 +202,8 @@ func _build_controls() -> void:
 	var playback := HBoxContainer.new()
 	controls.add_child(playback)
 	for entry in [
-		{"name": "Play", "call": func(): sequence.play()},
-		{"name": "Restart", "call": func(): sequence.restart(true)},
+		{"name": "Play", "call": _play_sequence},
+		{"name": "Restart", "call": _restart_sequence},
 		{"name": "Next Phase", "call": func(): sequence.advance_to_next_phase()},
 	]:
 		var button := Button.new()
@@ -206,6 +213,7 @@ func _build_controls() -> void:
 		playback.add_child(button)
 	pause_button = Button.new()
 	pause_button.text = "Pause"
+	pause_button.disabled = true
 	pause_button.focus_mode = Control.FOCUS_NONE
 	pause_button.pressed.connect(_toggle_pause)
 	playback.add_child(pause_button)
@@ -227,7 +235,7 @@ func _build_controls() -> void:
 	_add_profile_spin(controls, &"climax_duration", "Climax", 0.05, 2.0, 0.01)
 	_add_profile_spin(controls, &"afterimage_duration", "Afterimage", 0.05, 4.0, 0.01)
 	_add_profile_spin(controls, &"aura_release_duration", "Aura release", 0.05, 8.0, 0.01)
-	_add_profile_spin(controls, &"secondary_crackle_count", "Crackles", 0, 8, 1)
+	_build_crackle_timeline_controls(controls)
 	_add_profile_spin(controls, &"crackle_width", "Crackle width", 1, 20, 0.5)
 	_add_profile_spin(controls, &"crackle_hand_shift_distance", "Crackle hand shift", 0, 240, 1)
 	_add_profile_spin(controls, &"crackle_hand_hold_duration", "Crackle hand hold", 0, 0.5, 0.01)
@@ -235,12 +243,15 @@ func _build_controls() -> void:
 	_add_profile_spin(controls, &"beam_width", "Beam width", 1, 40, 0.5)
 	_add_profile_spin(controls, &"climax_beam_count", "Climax beams", 1, 12, 1)
 	_add_profile_spin(controls, &"climax_hand_shift_distance", "Climax hand shift", 0, 240, 1)
+	_add_profile_spin(controls, &"climax_hand_return_duration", "Climax hand return", 0.01, 2, 0.01)
 	_add_profile_spin(controls, &"lightning_displacement", "Lightning bend", 0, 80, 1)
+	_add_profile_spin(controls, &"lightning_curve_max", "Base curve", 0, 160, 1)
 	_add_profile_spin(controls, &"lightning_checker_size", "Checker size", 1, 32, 1)
 	_add_profile_spin(controls, &"rift_edge_roughness", "Rift edge roughness", 0, 24, 0.5)
 	_add_profile_spin(controls, &"beam_branch_count", "Beam branches", 0, 8, 1)
 	_add_profile_spin(controls, &"tremor_interval", "Tremor rate", 0.02, 0.5, 0.01)
 	_add_profile_spin(controls, &"tremor_max_pixels", "Tremor pixels", 0, 8, 1)
+	_add_profile_spin(controls, &"tremor_ramp_exponent", "Tremor ramp curve", 0.2, 3, 0.05)
 	_add_profile_spin(controls, &"final_density_multiplier", "Density ramp", 0, 4, 0.05)
 	_add_profile_spin(controls, &"final_speed_multiplier", "Speed ramp", 0, 4, 0.05)
 	_add_profile_spin(controls, &"burst_multiplier", "Final burst", 0, 8, 0.1)
@@ -302,8 +313,145 @@ func _add_spin(parent: Control, label_text: String, minimum: float, maximum: flo
 func _add_profile_spin(parent: Control, property_name: StringName, label: String, minimum: float, maximum: float, step: float) -> void:
 	profile_controls[property_name] = _add_spin(parent, label, minimum, maximum, step, float(activation_profile.get(property_name)), func(value: float):
 		activation_profile.set(property_name, int(value) if step >= 1.0 else value)
+		if property_name == &"buildup_duration" and is_instance_valid(crackle_selector):
+			_refresh_crackle_editor(crackle_selector.selected)
 		sequence.restart(false)
 	)
+
+
+func _build_crackle_timeline_controls(parent: Control) -> void:
+	crackle_selector = _add_option(parent, "Buildup Crackle")
+	crackle_selector.item_selected.connect(func(index: int): _select_crackle(index))
+	crackle_time = _add_spin(parent, "Time from buildup", 0.0, 30.0, 0.01, 0.0, func(value: float): _edit_crackle_time(value))
+	crackle_time.allow_greater = true
+	var buttons := HBoxContainer.new()
+	parent.add_child(buttons)
+	var add_button := Button.new()
+	add_button.text = "Add Crackle"
+	add_button.focus_mode = Control.FOCUS_NONE
+	add_button.pressed.connect(_add_buildup_crackle)
+	buttons.add_child(add_button)
+	crackle_remove = Button.new()
+	crackle_remove.text = "Remove Selected"
+	crackle_remove.focus_mode = Control.FOCUS_NONE
+	crackle_remove.pressed.connect(_remove_selected_crackle)
+	buttons.add_child(crackle_remove)
+	crackle_warning = Label.new()
+	crackle_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	parent.add_child(crackle_warning)
+	_refresh_crackle_editor(0)
+
+
+func _refresh_crackle_editor(preferred_index := 0) -> void:
+	if not is_instance_valid(crackle_selector):
+		return
+	syncing_crackle_editor = true
+	var times := _sorted_crackle_times()
+	activation_profile.buildup_crackle_times = times
+	crackle_selector.clear()
+	if times.is_empty():
+		crackle_selector.add_item("No buildup crackles")
+		crackle_selector.set_item_disabled(0, true)
+		crackle_selector.disabled = true
+		crackle_time.editable = false
+		crackle_time.set_value_no_signal(0.0)
+		crackle_remove.disabled = true
+	else:
+		crackle_selector.disabled = false
+		crackle_time.editable = true
+		crackle_remove.disabled = false
+		for index in range(times.size()):
+			var suffix := " [outside buildup]" if times[index] >= activation_profile.buildup_duration else ""
+			crackle_selector.add_item("Crackle %d — %.2fs%s" % [index + 1, times[index], suffix])
+		var selected_index := clampi(preferred_index, 0, times.size() - 1)
+		crackle_selector.select(selected_index)
+		crackle_time.set_value_no_signal(times[selected_index])
+	_update_crackle_warning(times)
+	syncing_crackle_editor = false
+
+
+func _select_crackle(index: int) -> void:
+	if syncing_crackle_editor:
+		return
+	var times: PackedFloat32Array = activation_profile.buildup_crackle_times
+	if index >= 0 and index < times.size():
+		crackle_time.set_value_no_signal(times[index])
+	_update_crackle_warning(times)
+
+
+func _edit_crackle_time(value: float) -> void:
+	if syncing_crackle_editor or crackle_selector.disabled:
+		return
+	var times: PackedFloat32Array = activation_profile.buildup_crackle_times.duplicate()
+	var index := crackle_selector.selected
+	if index < 0 or index >= times.size():
+		return
+	var edited_time := maxf(value, 0.0)
+	times[index] = edited_time
+	times.sort()
+	activation_profile.buildup_crackle_times = times
+	var new_index := 0
+	for candidate in range(times.size()):
+		if is_equal_approx(times[candidate], edited_time):
+			new_index = candidate
+			break
+	_refresh_crackle_editor(new_index)
+	sequence.restart(false)
+
+
+func _add_buildup_crackle() -> void:
+	var times := _sorted_crackle_times()
+	var new_time := 0.30 if times.is_empty() else times[times.size() - 1] + 0.12
+	times.append(new_time)
+	times.sort()
+	activation_profile.buildup_crackle_times = times
+	_refresh_crackle_editor(times.size() - 1)
+	sequence.restart(false)
+
+
+func _remove_selected_crackle() -> void:
+	var times: PackedFloat32Array = activation_profile.buildup_crackle_times.duplicate()
+	var index := crackle_selector.selected
+	if index < 0 or index >= times.size():
+		return
+	times.remove_at(index)
+	activation_profile.buildup_crackle_times = times
+	_refresh_crackle_editor(mini(index, times.size() - 1))
+	sequence.restart(false)
+
+
+func _sorted_crackle_times() -> PackedFloat32Array:
+	var result := PackedFloat32Array()
+	for authored_time in activation_profile.buildup_crackle_times:
+		if authored_time >= 0.0:
+			result.append(authored_time)
+	result.sort()
+	return result
+
+
+func _update_crackle_warning(times: PackedFloat32Array) -> void:
+	var overflow_count := 0
+	for authored_time in times:
+		if authored_time >= activation_profile.buildup_duration:
+			overflow_count += 1
+	if overflow_count > 0:
+		crackle_warning.text = "%d crackle(s) fall outside the %.2fs buildup. They remain saved but will not fire." % [overflow_count, activation_profile.buildup_duration]
+		crackle_warning.add_theme_color_override("font_color", Color("ffb36b"))
+	else:
+		crackle_warning.text = "Times are measured from the beginning of buildup."
+		crackle_warning.add_theme_color_override("font_color", Color("aeb8d0"))
+
+
+func _play_sequence() -> void:
+	sequence.play()
+	pause_button.disabled = false
+	pause_button.text = "Pause"
+
+
+func _restart_sequence() -> void:
+	sequence.restart(true)
+	pause_button.disabled = false
+	pause_button.text = "Pause"
 
 
 func _toggle_pause() -> void:
@@ -414,13 +562,16 @@ func _write_pending_activation() -> void:
 
 func _refresh_activation_presets(selected_path := "") -> void:
 	activation_selector.clear()
-	activation_selector.add_item("Choose ritual profile...")
-	activation_selector.set_item_disabled(0, true)
+	activation_selector.add_item("Unsaved defaults")
+	activation_selector.set_item_metadata(0, "")
+	var selected_index := 0
 	for entry in _discover_presets(ACTIVATION_PRESET_DIRECTORY, ActivationPreset):
 		activation_selector.add_item(entry["name"])
 		var index := activation_selector.item_count - 1
 		activation_selector.set_item_metadata(index, entry["path"])
-		if entry["path"] == selected_path: activation_selector.select(index)
+		if entry["path"] == selected_path:
+			selected_index = index
+	activation_selector.select(selected_index)
 
 
 func _load_selected_activation(index: int) -> void:
@@ -481,6 +632,7 @@ func _copy_properties(source: Resource, destination: Resource) -> void:
 func _sync_profile_controls() -> void:
 	for property_name in profile_controls:
 		(profile_controls[property_name] as SpinBox).set_value_no_signal(float(activation_profile.get(property_name)))
+	_refresh_crackle_editor(0)
 
 
 func _select_king(type_id: StringName) -> void:

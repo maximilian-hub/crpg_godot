@@ -11,6 +11,7 @@ var width := 4.0
 var visible_strength := 0.0
 var checker_size := 8.0
 var edge_roughness := 3.0
+var curve_max := 36.0
 var rift_material: ShaderMaterial
 
 
@@ -25,7 +26,10 @@ func _init() -> void:
 func configure_path(start: Vector2, finish: Vector2, segment_length: float, displacement: float, seed: int, beam := false, branch_count := 0) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
-	points = _make_path(start, finish, segment_length, displacement, rng)
+	# Avoid consuming an RNG value at zero so disabling the curve reproduces
+	# the previous seeded jagged path exactly.
+	var main_curve := rng.randf_range(-curve_max, curve_max) if curve_max > 0.0 else 0.0
+	points = _make_path(start, finish, segment_length, displacement, rng, main_curve)
 	main_rift_segments = _make_rift_segments(points, width, edge_roughness, rng)
 	branches.clear()
 	branch_rift_segments.clear()
@@ -57,16 +61,22 @@ func clear() -> void:
 	show_strength(0.0)
 
 
-func _make_path(start: Vector2, finish: Vector2, segment_length: float, displacement: float, rng: RandomNumberGenerator) -> PackedVector2Array:
+func _make_path(start: Vector2, finish: Vector2, segment_length: float, displacement: float, rng: RandomNumberGenerator, curve_offset := 0.0) -> PackedVector2Array:
 	var path := PackedVector2Array([start])
 	var delta := finish - start
 	var distance := delta.length()
 	var segment_count := maxi(int(ceil(distance / maxf(segment_length, 2.0))), 2)
-	var normal := Vector2(-delta.y, delta.x).normalized()
+	var baseline_normal := Vector2(-delta.y, delta.x).normalized()
 	for index in range(1, segment_count):
 		var progress := float(index) / float(segment_count)
 		var envelope := sin(progress * PI)
-		path.append(start.lerp(finish, progress) + normal * rng.randf_range(-displacement, displacement) * envelope)
+		var curve_envelope := 4.0 * progress * (1.0 - progress)
+		var curved_baseline := start.lerp(finish, progress) + baseline_normal * curve_offset * curve_envelope
+		# Differentiate the quadratic baseline so the jagged displacement is
+		# perpendicular to the local curve rather than the original straight ray.
+		var curve_tangent := (delta + baseline_normal * curve_offset * 4.0 * (1.0 - 2.0 * progress)).normalized()
+		var curve_normal := Vector2(-curve_tangent.y, curve_tangent.x)
+		path.append(curved_baseline + curve_normal * rng.randf_range(-displacement, displacement) * envelope)
 	path.append(finish)
 	return path
 

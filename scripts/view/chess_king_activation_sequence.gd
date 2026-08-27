@@ -188,6 +188,11 @@ func _update_phase(force_enter: bool) -> void:
 
 
 func _enter_phase(next_phase: int) -> void:
+	if next_phase == Phase.CLIMAX and current_phase <= Phase.BUILDUP:
+		# A fast playback step or frame hitch may cross the entire buildup
+		# before its normal per-frame poll. Preserve every authored event that
+		# belongs inside the phase before entering CLIMAX.
+		_fire_crossed_buildup_crackles(profile.buildup_duration)
 	current_phase = next_phase
 	phase_changed.emit(current_phase)
 	match current_phase:
@@ -321,14 +326,12 @@ func _update_tremor() -> void:
 		tremor_offset = Vector2.ZERO
 		return
 	var progress := _range_progress(elapsed, boundaries[2], boundaries[3])
-	if progress < profile.tremor_start_fraction:
-		tremor_offset = Vector2.ZERO
-		return
 	var tick := int(floor((elapsed - boundaries[2]) / maxf(profile.tremor_interval, 0.01)))
 	if tick == last_tremor_tick:
 		return
 	last_tremor_tick = tick
-	var amplitude := maxi(int(round(profile.tremor_max_pixels * progress)), 1)
+	var ramped_progress := pow(progress, profile.tremor_ramp_exponent)
+	var amplitude := maxi(int(round(profile.tremor_max_pixels * ramped_progress)), 1)
 	tremor_offset = Vector2(
 		tremor_rng.randi_range(-amplitude, amplitude),
 		tremor_rng.randi_range(-amplitude, amplitude)
@@ -340,7 +343,7 @@ func _update_hand_motion() -> void:
 	if current_phase == Phase.CLIMAX:
 		lightning_hand_offset = climax_hand_target
 	elif current_phase == Phase.AFTERIMAGE and not climax_hand_target.is_zero_approx():
-		var return_progress := clampf((elapsed - boundaries[4]) / maxf(profile.crackle_hand_return_duration, 0.01), 0.0, 1.0)
+		var return_progress := clampf((elapsed - boundaries[4]) / maxf(profile.climax_hand_return_duration, 0.01), 0.0, 1.0)
 		lightning_hand_offset = climax_hand_target * (1.0 - _ease_out_cubic(return_progress))
 	elif crackle_hand_started_at >= 0.0:
 		var impulse_age := elapsed - crackle_hand_started_at
@@ -382,14 +385,11 @@ func _ease_out_cubic(value: float) -> float:
 
 func _build_crackle_schedule() -> void:
 	crackle_schedule.clear()
-	if profile == null or profile.secondary_crackle_count <= 0:
+	if profile == null:
 		return
-	var rng := RandomNumberGenerator.new()
-	rng.seed = profile.random_seed + 500
-	for index in range(profile.secondary_crackle_count):
-		var base_fraction := float(index + 1) / float(profile.secondary_crackle_count + 1)
-		var jitter := rng.randf_range(-0.08, 0.08)
-		crackle_schedule.append(clampf(base_fraction + jitter, 0.08, 0.92))
+	for authored_time in profile.buildup_crackle_times:
+		if authored_time >= 0.0:
+			crackle_schedule.append(authored_time)
 	crackle_schedule.sort()
 
 
@@ -399,11 +399,8 @@ func _update_lightning() -> void:
 		if elapsed > active_crackle_until:
 			lightning.clear()
 	elif current_phase == Phase.BUILDUP:
-		var progress := _range_progress(elapsed, boundaries[2], boundaries[3])
-		for index in range(crackle_schedule.size()):
-			if progress >= crackle_schedule[index] and not fired_crackles.has(index):
-				fired_crackles[index] = true
-				_fire_crackle(index + 1)
+		var buildup_elapsed := elapsed - boundaries[2]
+		_fire_crossed_buildup_crackles(buildup_elapsed)
 		if elapsed > active_crackle_until:
 			lightning.clear()
 	elif current_phase == Phase.CLIMAX:
@@ -413,6 +410,14 @@ func _update_lightning() -> void:
 		if beam_index != active_climax_beam_index:
 			_show_climax_beam(beam_index)
 		lightning.show_strength(sin(progress * PI) * 0.35 + 0.65)
+
+
+func _fire_crossed_buildup_crackles(buildup_elapsed: float) -> void:
+	for index in range(crackle_schedule.size()):
+		var authored_time := crackle_schedule[index]
+		if authored_time < profile.buildup_duration and buildup_elapsed >= authored_time and not fired_crackles.has(index):
+			fired_crackles[index] = true
+			_fire_crackle(index + 1)
 
 
 func _show_climax_beam(index: int) -> void:
@@ -440,6 +445,7 @@ func _configure_lightning(beam: bool, branch_count: int, line_width: float, seed
 	lightning.width = line_width
 	lightning.checker_size = profile.lightning_checker_size
 	lightning.edge_roughness = profile.rift_edge_roughness
+	lightning.curve_max = profile.lightning_curve_max
 	lightning.configure_path(start, finish, profile.lightning_segment_length, profile.lightning_displacement, seed, beam, branch_count)
 
 
