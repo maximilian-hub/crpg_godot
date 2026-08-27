@@ -13,6 +13,7 @@ const CURRENT_SCHEMA_VERSION := 1
 @export var king_type_id: StringName = &"minotaur_king"
 @export_enum("white", "black") var army_color := "white"
 @export var hand_grip_y_offset := 0.0
+@export var hand_grip_x_offset := 0.0
 
 
 func is_supported() -> bool:

@@ -29,16 +29,26 @@ func _ready() -> void:
 	lab._load_selected_aura(aura_index)
 	_check(is_equal_approx(lab.aura_profile.rise_speed, 73.0) and lab.king_aura.mode == ChessAura2D.AuraMode.SQUARE_FLAME, "Activation Lab applies the saved aura look and treatment")
 
+	lab.sequence.elapsed = lab.activation_profile.invocation_duration * 0.5
+	lab.sequence._apply_visual_state()
+	_check(lab.hand_aura.silhouette_power > 0.0 and is_zero_approx(lab.hand_aura.particle_power), "Initial hand hover activates only the silhouette channel")
+	lab.sequence.elapsed = lab.activation_profile.invocation_duration + lab.activation_profile.response_duration * 0.5
+	lab.sequence._apply_visual_state()
+	_check(lab.hand_aura.particle_power > 0.0, "Hand particles begin ramping after the initial crackle")
+
 	lab.sequence.restart(false)
 	var hover_position: Vector2 = lab.sequence.base_hand_position
 	lab.sequence._fire_crackle(99)
 	var crackle_position: Vector2 = lab.preview_hand.position
 	_check(crackle_position != hover_position, "A crackle blinks the hand toward the King Piece")
 	_check(crackle_position == crackle_position.round(), "Lightning hand motion remains pixel-aligned")
+	_check(not lab.lightning.main_rift_segments.is_empty() and lab.lightning.main_rift_segments[0].size() == 4, "Lightning builds triangulation-safe jagged rift strips")
+	_check(lab.lightning.rift_material.shader.resource_path == "res://effects/chess_lightning_rift.gdshader", "Lightning rifts use the stationary checkerboard shader")
 	lab.sequence._enter_phase(lab.sequence.Phase.CLIMAX)
 	var first_beam_position: Vector2 = lab.preview_hand.position
 	lab.sequence._show_climax_beam(1)
 	_check(first_beam_position != hover_position and lab.preview_hand.position == first_beam_position, "Only the first climax beam shifts the hand; later beam shapes retain it")
+	_check(lab.lightning.branch_rift_segments.size() == lab.activation_profile.beam_branch_count, "Climax branches use the same checker-filled rift geometry")
 	lab.sequence.restart(false)
 
 	for property_name in ["invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "aura_release_duration", "resolve_duration"]:
@@ -83,10 +93,11 @@ func _ready() -> void:
 	activation_resource.aura_snapshot = lab.aura_profile.duplicate(true)
 	activation_resource.king_type_id = &"necromancer_king"
 	activation_resource.army_color = "black"
+	activation_resource.hand_grip_x_offset = -64.0
 	var activation_path := "user://chess_activation_characterization.tres"
 	_check(ResourceSaver.save(activation_resource, activation_path) == OK, "Activation profile serializes with an embedded Aura fallback")
 	var loaded: Resource = ResourceLoader.load(activation_path, "ChessActivationLabPreset", ResourceLoader.CACHE_MODE_IGNORE)
-	_check(loaded != null and loaded.get_script() == ActivationPreset and loaded.is_supported() and loaded.aura_snapshot != null and loaded.king_type_id == &"necromancer_king", "Activation profile round-trips ritual, preview, Aura reference, and fallback state")
+	_check(loaded != null and loaded.get_script() == ActivationPreset and loaded.is_supported() and loaded.aura_snapshot != null and loaded.king_type_id == &"necromancer_king" and is_equal_approx(loaded.hand_grip_x_offset, -64.0), "Activation profile round-trips ritual, preview offsets, Aura reference, and fallback state")
 
 	lab.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(aura_path))

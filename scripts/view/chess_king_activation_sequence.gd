@@ -236,7 +236,8 @@ func _apply_visual_state() -> void:
 	if profile == null or not is_instance_valid(king_sprite):
 		return
 	var boundaries := _phase_boundaries()
-	var hand_power := 0.0
+	var hand_silhouette_power := 0.0
+	var hand_particle_power := 0.0
 	var king_silhouette_power := 0.0
 	var king_particle_power := 0.0
 	var fill := 0.0
@@ -247,16 +248,22 @@ func _apply_visual_state() -> void:
 	match _phase_for_time(elapsed):
 		Phase.INVOCATION:
 			var progress := _range_progress(elapsed, boundaries[0], boundaries[1])
-			hand_power = lerpf(0.0, profile.invocation_hand_power, progress)
+			hand_silhouette_power = lerpf(0.0, profile.invocation_hand_power, progress)
+			# The initial hover establishes only the hand's luminous outline.
+			hand_particle_power = 0.0
 		Phase.RESPONSE:
 			var progress := _range_progress(elapsed, boundaries[1], boundaries[2])
-			hand_power = profile.invocation_hand_power
+			hand_silhouette_power = profile.invocation_hand_power
+			# RESPONSE begins with the first crackle; particles enter after that
+			# punctuation instead of accompanying the initial hover.
+			hand_particle_power = lerpf(0.0, profile.invocation_hand_power, progress)
 			king_silhouette_power = lerpf(0.0, profile.response_king_power, progress)
 			king_particle_power = king_silhouette_power
 			fill = progress * 0.12
 		Phase.BUILDUP:
 			var progress := _range_progress(elapsed, boundaries[2], boundaries[3])
-			hand_power = lerpf(profile.invocation_hand_power, 1.0, progress)
+			hand_silhouette_power = lerpf(profile.invocation_hand_power, 1.0, progress)
+			hand_particle_power = hand_silhouette_power
 			king_silhouette_power = lerpf(profile.response_king_power, 1.0, progress)
 			king_particle_power = king_silhouette_power
 			fill = lerpf(0.12, 1.0, progress * progress)
@@ -264,7 +271,8 @@ func _apply_visual_state() -> void:
 			speed = lerpf(1.0, profile.final_speed_multiplier, progress)
 		Phase.CLIMAX:
 			var progress := _range_progress(elapsed, boundaries[3], boundaries[4])
-			hand_power = 1.0
+			hand_silhouette_power = 1.0
+			hand_particle_power = 1.0
 			king_silhouette_power = 1.0
 			king_particle_power = 1.0
 			fill = 1.0
@@ -278,7 +286,8 @@ func _apply_visual_state() -> void:
 			var white_progress := _range_progress(elapsed, boundaries[4], white_fade_end)
 			var aura_progress := _range_progress(elapsed, boundaries[4], aura_release_end)
 			var hand_fade_progress := clampf((elapsed - boundaries[4]) / maxf(profile.hand_fade_duration, 0.001), 0.0, 1.0)
-			hand_power = 1.0 - hand_fade_progress
+			hand_silhouette_power = 1.0 - hand_fade_progress
+			hand_particle_power = hand_silhouette_power
 			king_silhouette_power = lerpf(1.0, profile.resting_aura_power, aura_progress)
 			king_particle_power = lerpf(1.0, profile.resting_particle_power, aura_progress)
 			fill = 1.0 - white_progress
@@ -293,7 +302,8 @@ func _apply_visual_state() -> void:
 			speed = profile.resting_speed_multiplier
 			stone_opacity = 0.0
 			color_opacity = 1.0
-	hand_aura.set_power(hand_power)
+	hand_aura.set_silhouette_power(hand_silhouette_power)
+	hand_aura.set_particle_power(hand_particle_power)
 	king_aura.set_silhouette_power(king_silhouette_power)
 	king_aura.set_particle_power(king_particle_power)
 	hand_aura.set_runtime_multipliers(density, speed)
@@ -428,6 +438,8 @@ func _configure_lightning(beam: bool, branch_count: int, line_width: float, seed
 	var start := lightning.to_local(hand_connection_anchor.global_position)
 	var finish := lightning.to_local(king_sprite.global_position)
 	lightning.width = line_width
+	lightning.checker_size = profile.lightning_checker_size
+	lightning.edge_roughness = profile.rift_edge_roughness
 	lightning.configure_path(start, finish, profile.lightning_segment_length, profile.lightning_displacement, seed, beam, branch_count)
 
 

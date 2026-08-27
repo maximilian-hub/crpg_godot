@@ -25,6 +25,7 @@ var power_slider: HSlider
 var silhouette_power_slider: HSlider
 var particle_power_slider: HSlider
 var hand_grip_slider: HSlider
+var hand_grip_x_slider: HSlider
 var king_selector: OptionButton
 var army_selector: OptionButton
 var preset_selector: OptionButton
@@ -171,6 +172,15 @@ func _build_controls() -> void:
 	particle_power_slider = _add_slider(controls, "Particles", 0.0, 1.0, 0.01, aura_profile.idle_power, func(value: float):
 		for aura in _selected_auras(): aura.set_particle_power(value)
 		_sync_master_power_control()
+	)
+	hand_grip_x_slider = _add_editable_slider(
+		controls,
+		"Hand grip X",
+		HAND_GRIP_OFFSET_MIN,
+		HAND_GRIP_OFFSET_MAX,
+		1.0,
+		0.0,
+		func(value: float): preview_hand.position.x = HAND_PREVIEW_GRIP_POSITION.x + value
 	)
 	hand_grip_slider = _add_editable_slider(
 		controls,
@@ -404,6 +414,7 @@ func _capture_preset(display_name: String) -> Resource:
 	preset.hand_silhouette_power = hand_aura.silhouette_power
 	preset.hand_particle_power = hand_aura.particle_power
 	preset.hand_grip_y_offset = hand_grip_slider.value
+	preset.hand_grip_x_offset = hand_grip_x_slider.value
 	preset.king_type_id = king_selector.get_item_metadata(king_selector.selected)
 	preset.army_color = "black" if army_selector.selected == 1 else "white"
 	return preset
@@ -486,6 +497,8 @@ func _apply_preset(preset: Resource) -> void:
 		king_aura.set_power(preset.king_power)
 		hand_aura.set_power(preset.hand_power)
 	hand_grip_slider.set_value_no_signal(clampf(preset.hand_grip_y_offset, hand_grip_slider.min_value, hand_grip_slider.max_value))
+	hand_grip_x_slider.set_value_no_signal(clampf(preset.hand_grip_x_offset, hand_grip_x_slider.min_value, hand_grip_x_slider.max_value))
+	preview_hand.position.x = HAND_PREVIEW_GRIP_POSITION.x + hand_grip_x_slider.value
 	preview_hand.position.y = HAND_PREVIEW_GRIP_POSITION.y + hand_grip_slider.value
 	_sync_profile_controls()
 	_sync_power_control()

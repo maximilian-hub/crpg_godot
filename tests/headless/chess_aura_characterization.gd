@@ -99,6 +99,7 @@ func _test_lab_presets_and_selectors() -> void:
 	preset.hand_silhouette_power = 0.6
 	preset.hand_particle_power = 0.8
 	preset.hand_grip_y_offset = 123.0
+	preset.hand_grip_x_offset = -87.0
 	preset.king_type_id = &"necromancer_king"
 	preset.army_color = "black"
 	var round_trip_path := "user://chess_aura_preset_characterization.tres"
@@ -127,4 +128,5 @@ func _test_lab_presets_and_selectors() -> void:
 	_check(lab.mode_selector.selected == Aura.AuraMode.SQUARE_FLAME and lab.target_selector.selected == 1, "loading restores treatment and target modes")
 	_check(is_equal_approx(lab.king_aura.silhouette_power, 0.2) and is_equal_approx(lab.king_aura.particle_power, 0.4) and is_equal_approx(lab.hand_aura.silhouette_power, 0.6) and is_equal_approx(lab.hand_aura.particle_power, 0.8), "loading restores independent silhouette and particle power for both targets")
 	_check(is_equal_approx(lab.preview_hand.position.y, lab.HAND_PREVIEW_GRIP_POSITION.y + 123.0), "loading restores the vertical hand-grip offset")
+	_check(is_equal_approx(lab.preview_hand.position.x, lab.HAND_PREVIEW_GRIP_POSITION.x - 87.0), "loading restores the horizontal hand-grip offset")
 	lab.queue_free()

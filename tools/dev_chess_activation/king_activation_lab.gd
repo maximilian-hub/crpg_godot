@@ -41,6 +41,7 @@ var phase_label: Label
 var time_label: Label
 var pause_button: Button
 var hand_offset: SpinBox
+var hand_offset_x: SpinBox
 var preset_name: LineEdit
 var status_label: Label
 var overwrite_confirmation: ConfirmationDialog
@@ -180,6 +181,11 @@ func _build_controls() -> void:
 	army_selector = _add_option(controls, "Army")
 	for name in ["White", "Black"]: army_selector.add_item(name)
 	army_selector.item_selected.connect(func(_index: int): _update_king())
+	hand_offset_x = _add_spin(controls, "Hand grip X", -900.0, 900.0, 1.0, 0.0, func(value: float):
+		preview_hand.position.x = HAND_BASE_POSITION.x + value
+		if sequence != null:
+			sequence.base_hand_position = preview_hand.position
+	)
 	hand_offset = _add_spin(controls, "Hand grip Y", -900.0, 900.0, 1.0, 0.0, func(value: float):
 		preview_hand.position.y = HAND_BASE_POSITION.y + value
 		if sequence != null:
@@ -230,6 +236,8 @@ func _build_controls() -> void:
 	_add_profile_spin(controls, &"climax_beam_count", "Climax beams", 1, 12, 1)
 	_add_profile_spin(controls, &"climax_hand_shift_distance", "Climax hand shift", 0, 240, 1)
 	_add_profile_spin(controls, &"lightning_displacement", "Lightning bend", 0, 80, 1)
+	_add_profile_spin(controls, &"lightning_checker_size", "Checker size", 1, 32, 1)
+	_add_profile_spin(controls, &"rift_edge_roughness", "Rift edge roughness", 0, 24, 0.5)
 	_add_profile_spin(controls, &"beam_branch_count", "Beam branches", 0, 8, 1)
 	_add_profile_spin(controls, &"tremor_interval", "Tremor rate", 0.02, 0.5, 0.01)
 	_add_profile_spin(controls, &"tremor_max_pixels", "Tremor pixels", 0, 8, 1)
@@ -387,6 +395,7 @@ func _capture_activation(display_name: String) -> Resource:
 	result.king_type_id = king_selector.get_item_metadata(king_selector.selected)
 	result.army_color = "black" if army_selector.selected == 1 else "white"
 	result.hand_grip_y_offset = hand_offset.value
+	result.hand_grip_x_offset = hand_offset_x.value
 	return result
 
 
@@ -438,6 +447,7 @@ func _load_selected_activation(index: int) -> void:
 	_select_king(resource.king_type_id)
 	army_selector.select(1 if resource.army_color == "black" else 0)
 	hand_offset.value = resource.hand_grip_y_offset
+	hand_offset_x.value = resource.hand_grip_x_offset
 	_update_king()
 	_sync_profile_controls()
 	preset_name.text = resource.display_name

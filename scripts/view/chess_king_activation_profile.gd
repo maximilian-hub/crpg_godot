@@ -26,6 +26,8 @@ class_name ChessKingActivationProfile
 @export_range(0.0, 240.0, 1.0) var climax_hand_shift_distance := 64.0
 @export_range(2.0, 32.0, 1.0) var lightning_segment_length := 10.0
 @export_range(0.0, 80.0, 1.0) var lightning_displacement := 18.0
+@export_range(1.0, 32.0, 1.0) var lightning_checker_size := 8.0
+@export_range(0.0, 24.0, 0.5) var rift_edge_roughness := 3.0
 @export_range(0, 8, 1) var beam_branch_count := 3
 @export_range(0.02, 0.5, 0.01) var tremor_interval := 0.07
 @export_range(0, 8, 1) var tremor_max_pixels := 2

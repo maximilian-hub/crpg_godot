@@ -16,6 +16,7 @@ const CURRENT_SCHEMA_VERSION := 1
 @export_range(0.0, 1.0, 0.01) var hand_silhouette_power := 0.0
 @export_range(0.0, 1.0, 0.01) var hand_particle_power := 0.0
 @export var hand_grip_y_offset := 0.0
+@export var hand_grip_x_offset := 0.0
 @export var king_type_id: StringName = &"minotaur_king"
 @export_enum("white", "black") var army_color := "white"
 
