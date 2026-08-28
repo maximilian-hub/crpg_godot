@@ -9,6 +9,7 @@ signal capture_stage_changed(stage: StringName)
 signal captured_piece_grabbed(piece: Node2D)
 signal attack_contact(piece: Node2D)
 signal move_animation_finished()
+signal setup_piece_placed(piece: Node2D)
 
 const CARRY_PATH_SLIDE := &"slide"
 const CARRY_PATH_JUMP := &"jump"
@@ -24,6 +25,10 @@ const PLACEMENT_OCCLUDER_Z := 75
 const THUMB_FOREGROUND_Z := 76
 const INTERACTION_OCCLUDER_Z := 77
 const ARM_FOREGROUND_Z := 80
+## Palm point in the 96 x 160 source artwork where activation energy originates.
+## Keeping this in source-pixel space makes it independent of the rig's grip
+## origin and of whatever scale the board applies to the hand.
+const CONNECTION_ANCHOR_PIXELS := Vector2(23.0, 24.0)
 
 @export var hand_style: Resource
 ## Grip location measured from the top-left of the 96 x 160 source artwork.
@@ -91,6 +96,13 @@ var approach_preview_target := Vector2.ZERO
 var approach_preview_world_scale := 1.0
 var approach_preview_progress := 0.0
 var interaction_occluder_depths: Dictionary = {}
+var visual_mirrored := false
+var setup_paused := false
+var setup_generation := 0
+var setup_piece: Node2D
+var setup_piece_parent: Node
+var setup_piece_scale := Vector2.ONE
+var setup_piece_z := 0
 
 
 func _ready() -> void:
@@ -121,8 +133,134 @@ func set_board_sound_set(sound_set: ChessBoardSoundSet) -> void:
 	board_sound_set = sound_set
 
 
+## Mirrors the hand around its grip without mirroring a carried chess piece.
+func set_visual_mirrored(mirrored: bool) -> void:
+	visual_mirrored = mirrored
+	if is_node_ready():
+		_apply_pose(false)
+
+
+func get_aura_sprites() -> Array[Sprite2D]:
+	return [rear_fingers_sprite, thumb_sprite, arm_sprite]
+
+
+func get_connection_anchor_position() -> Vector2:
+	var anchor := CONNECTION_ANCHOR_PIXELS - grip_anchor_pixels
+	return Vector2(-anchor.x, anchor.y) if visual_mirrored else anchor
+
+
 func can_animate() -> bool:
 	return hand_style != null and hand_style.has_method("is_complete") and hand_style.is_complete()
+
+
+## Places a piece from an unseen off-board supply. This is intentionally
+## separate from play_piece_move: the piece begins in the hand, not on a square.
+func play_setup_placement(
+	piece_node: Node2D,
+	destination: Vector2,
+	world_scale: float,
+	motion: ChessSetupMotionProfile,
+	final_piece_z_index: int
+) -> void:
+	if not can_animate() or not is_instance_valid(piece_node) or motion == null:
+		return
+	cancel_setup_placement()
+	var setup_token := setup_generation
+	is_animating = true
+	setup_piece = piece_node
+	setup_piece_parent = piece_node.get_parent()
+	setup_piece_scale = piece_node.scale
+	setup_piece_z = piece_node.z_index
+	var effective_hand_scale := world_scale * art_scale_multiplier
+	scale = Vector2.ONE * effective_hand_scale
+	var contact_position := _piece_grip_position(piece_node)
+	position = contact_position
+	piece_node.visible = true
+	piece_node.z_index = ACTIVE_PIECE_Z
+	piece_node.reparent(piece_slot, true)
+	piece_node.z_index = 0
+	_apply_pose(true)
+	visible = false
+	_play_hand_sound(SOUND_GRAB)
+	if not await _setup_wait(motion.pickup_delay, setup_token):
+		return
+	position = _setup_rest_position(effective_hand_scale)
+	visible = true
+	if not await _setup_curve(position, contact_position, motion.entry_departure_handle, motion.entry_arrival_handle, motion.entry_duration, world_scale, setup_token):
+		return
+	_play_board_sound(SOUND_PLACE)
+	if not await _setup_wait(motion.placement_hold, setup_token):
+		return
+	_apply_pose(false)
+	piece_node.reparent(setup_piece_parent, true)
+	piece_node.scale = setup_piece_scale
+	piece_node.position = destination
+	piece_node.z_index = final_piece_z_index
+	piece_node.visible = true
+	setup_piece_placed.emit(piece_node)
+	_play_hand_sound(SOUND_RELEASE)
+	setup_piece = null
+	if not await _setup_wait(motion.release_hold, setup_token):
+		return
+	var rest := _setup_rest_position(effective_hand_scale)
+	if not await _setup_curve(position, rest, motion.retreat_departure_handle, motion.retreat_arrival_handle, motion.retreat_duration, world_scale, setup_token):
+		return
+	visible = false
+	is_animating = false
+
+
+func set_setup_paused(value: bool) -> void:
+	setup_paused = value
+
+
+func cancel_setup_placement() -> void:
+	setup_generation += 1
+	if is_instance_valid(setup_piece) and is_instance_valid(setup_piece_parent):
+		setup_piece.reparent(setup_piece_parent, true)
+		setup_piece.scale = setup_piece_scale
+		setup_piece.z_index = setup_piece_z
+		setup_piece.visible = false
+	setup_piece = null
+	visible = false
+	is_animating = false
+	setup_paused = false
+
+
+func _setup_rest_position(world_scale: float) -> Vector2:
+	var viewport_size := get_viewport_rect().size
+	var x := -(grip_anchor_pixels.x + offscreen_margin) * world_scale if visual_mirrored else viewport_size.x + (grip_anchor_pixels.x + offscreen_margin) * world_scale
+	return Vector2(x, viewport_size.y + (grip_anchor_pixels.y + offscreen_margin) * world_scale)
+
+
+func _setup_curve(start: Vector2, finish: Vector2, departure: Vector2, arrival: Vector2, duration: float, world_scale: float, token: int) -> bool:
+	var mirror := -1.0 if visual_mirrored else 1.0
+	var control_a := start + Vector2(departure.x * mirror, departure.y) * world_scale
+	var control_b := finish + Vector2(arrival.x * mirror, arrival.y) * world_scale
+	var elapsed := 0.0
+	var resolved_duration := maxf(duration * animation_duration_scale, 0.001)
+	while elapsed < resolved_duration:
+		await get_tree().process_frame
+		if token != setup_generation:
+			return false
+		if setup_paused:
+			continue
+		elapsed += get_process_delta_time()
+		var progress := clampf(elapsed / resolved_duration, 0.0, 1.0)
+		var eased_progress := -(cos(PI * progress) - 1.0) * 0.5
+		position = calculate_bezier_position(start, control_a, control_b, finish, eased_progress)
+	position = finish
+	return token == setup_generation
+
+
+func _setup_wait(duration: float, token: int) -> bool:
+	var remaining := duration * animation_duration_scale
+	while remaining > 0.0:
+		await get_tree().process_frame
+		if token != setup_generation:
+			return false
+		if not setup_paused:
+			remaining -= get_process_delta_time()
+	return token == setup_generation
 
 
 func play_piece_move(
@@ -507,7 +645,9 @@ func _apply_pose(closed: bool) -> void:
 func _position_sprite_from_grip(sprite: Sprite2D) -> void:
 	if sprite.texture == null:
 		return
-	sprite.position = Vector2(sprite.texture.get_size()) * 0.5 - grip_anchor_pixels
+	var unmirrored_position := Vector2(sprite.texture.get_size()) * 0.5 - grip_anchor_pixels
+	sprite.flip_h = visual_mirrored
+	sprite.position = Vector2(-unmirrored_position.x, unmirrored_position.y) if visual_mirrored else unmirrored_position
 
 
 func _tween_position(target: Vector2, duration: float) -> void:

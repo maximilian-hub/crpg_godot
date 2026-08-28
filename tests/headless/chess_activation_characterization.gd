@@ -24,6 +24,9 @@ func _ready() -> void:
 	add_child(lab)
 	await get_tree().process_frame
 	_check(not lab.sequence.running and lab.sequence.current_phase == lab.sequence.Phase.RESET and is_zero_approx(lab.sequence.elapsed), "Activation Lab opens paused on the inert reset frame")
+	_check(not lab.preview_hand.visible and lab.preview_hand.position == lab.sequence.hand_rest_position, "Activation reset hides the hand at its off-board rest position")
+	_check(lab.preview_hand is PlayerHandRig and lab.hand_connection_anchor.position == lab.preview_hand.get_connection_anchor_position(), "Activation Lab uses the real hand rig and its shared source-art palm anchor")
+	_check(lab.preview_hand.arm_sprite.position == Vector2(lab.preview_hand.arm_sprite.texture.get_size()) * 0.5 - lab.preview_hand.grip_anchor_pixels, "Activation Lab hand artwork uses the live rig's canonical grip origin")
 	_check(lab.activation_selector.selected == 0 and lab.activation_selector.get_item_text(0) == "Unsaved defaults", "Ritual selector explicitly distinguishes defaults from saved profiles")
 	_check(lab.activation_profile.climax_hand_return_duration > lab.activation_profile.crackle_hand_return_duration, "Post-climax hand return defaults slower than ordinary crackle recovery")
 	var curve_rng := RandomNumberGenerator.new()
@@ -64,15 +67,26 @@ func _ready() -> void:
 	lab._load_selected_aura(aura_index)
 	_check(is_equal_approx(lab.aura_profile.rise_speed, 73.0) and lab.king_aura.mode == ChessAura2D.AuraMode.SQUARE_FLAME, "Activation Lab applies the saved aura look and treatment")
 
-	lab.sequence.elapsed = lab.activation_profile.invocation_duration * 0.5
+	var ritual_boundaries: PackedFloat32Array = lab.sequence._phase_boundaries()
+	lab.sequence.current_phase = lab.sequence.Phase.APPROACH
+	lab.sequence.elapsed = lab.activation_profile.approach_duration * 0.5
+	lab.sequence._update_hand_motion()
+	lab.sequence._apply_visual_state()
+	_check(lab.preview_hand.position != lab.sequence.hand_rest_position and lab.preview_hand.position != lab.sequence.base_hand_position and is_zero_approx(lab.hand_aura.power), "Approach moves between rest and hover without activating the Aura")
+	lab.sequence.elapsed = ritual_boundaries[1] - lab.activation_profile.approach_settle_duration * 0.5
+	lab.sequence._update_hand_motion()
+	_check(lab.preview_hand.position == lab.sequence.base_hand_position, "Approach settle holds the exact authored hover position")
+	lab.sequence.elapsed = ritual_boundaries[1] + lab.activation_profile.invocation_duration * 0.5
 	lab.sequence._apply_visual_state()
 	_check(lab.hand_aura.silhouette_power > 0.0 and is_zero_approx(lab.hand_aura.particle_power), "Initial hand hover activates only the silhouette channel")
-	lab.sequence.elapsed = lab.activation_profile.invocation_duration + lab.activation_profile.response_duration * 0.5
+	lab.sequence.elapsed = ritual_boundaries[2] + lab.activation_profile.response_duration * 0.5
 	lab.sequence._apply_visual_state()
 	_check(lab.hand_aura.particle_power > 0.0, "Hand particles begin ramping after the initial crackle")
 
 	lab.sequence.restart(false)
 	var hover_position: Vector2 = lab.sequence.base_hand_position
+	lab.preview_hand.position = hover_position
+	lab.preview_hand.visible = true
 	lab.sequence._fire_crackle(0)
 	var fixed_king_target: Vector2 = lab.lightning.to_local(lab.preview_king.sprite.global_position)
 	_check(lab.lightning.points[lab.lightning.points.size() - 1] == fixed_king_target, "Response-opening crackle uses the original fixed King target")
@@ -107,9 +121,9 @@ func _ready() -> void:
 	_check(first_beam_target == fixed_king_target and lab.lightning.points[lab.lightning.points.size() - 1] == fixed_king_target, "All climax redraws use the original fixed King target")
 	_check(lab.lightning.branch_rift_segments.size() == lab.activation_profile.beam_branch_count, "Climax branches use the same checker-filled rift geometry")
 	var tremor_boundaries: PackedFloat32Array = lab.sequence._phase_boundaries()
-	lab.sequence.elapsed = tremor_boundaries[3]
+	lab.sequence.elapsed = tremor_boundaries[4]
 	lab.sequence.tremor_offset = Vector2(2.0, 1.0)
-	lab.sequence.last_tremor_tick = int(floor((lab.sequence.elapsed - tremor_boundaries[2]) / lab.activation_profile.tremor_interval))
+	lab.sequence.last_tremor_tick = int(floor((lab.sequence.elapsed - tremor_boundaries[3]) / lab.activation_profile.tremor_interval))
 	lab.sequence._update_tremor()
 	lab.sequence._update_hand_motion()
 	var trembling_climax_position: Vector2 = lab.preview_hand.position
@@ -119,9 +133,21 @@ func _ready() -> void:
 	lab.sequence.current_phase = lab.sequence.Phase.AFTERIMAGE
 	lab.sequence._update_tremor()
 	_check(lab.sequence.tremor_offset == Vector2.ZERO, "Afterimage entry clears climax tremor before the slower hand return")
+	lab.sequence.elapsed = tremor_boundaries[5] + lab.activation_profile.climax_hand_return_duration
+	lab.sequence._update_hand_motion()
+	_check(lab.preview_hand.position == hover_position, "Existing climax recovery returns fully to hover before retreat timing begins")
+	lab.sequence.elapsed += lab.activation_profile.post_climax_retreat_delay * 0.5
+	lab.sequence._update_hand_motion()
+	_check(lab.preview_hand.position == hover_position, "Post-climax retreat delay holds the hand at hover")
+	lab.sequence.elapsed = tremor_boundaries[5] + lab.activation_profile.climax_hand_return_duration + lab.activation_profile.post_climax_retreat_delay + lab.activation_profile.retreat_duration * 0.5
+	lab.sequence._update_hand_motion()
+	_check(lab.preview_hand.position != hover_position and lab.preview_hand.position != lab.sequence.hand_rest_position, "Retreat follows its authored curve only after recovery and delay")
+	lab.sequence.elapsed += lab.activation_profile.retreat_duration * 0.5
+	lab.sequence._update_hand_motion()
+	_check(lab.preview_hand.position == lab.sequence.hand_rest_position and not lab.preview_hand.visible, "Hand hides as soon as its retreat reaches the off-board rest point")
 	lab.sequence.restart(false)
 
-	for property_name in ["invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "aura_release_duration", "resolve_duration"]:
+	for property_name in ["approach_duration", "approach_settle_duration", "invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "aura_release_duration", "climax_hand_return_duration", "post_climax_retreat_delay", "retreat_duration", "resolve_duration"]:
 		lab.activation_profile.set(property_name, 0.06)
 	lab.activation_profile.buildup_crackle_times = PackedFloat32Array([0.02, 0.04, 0.20])
 	lab.activation_profile.crackle_duration = 0.02
@@ -137,16 +163,16 @@ func _ready() -> void:
 		await get_tree().process_frame
 		timeout -= get_process_delta_time()
 	_check(timeout > 0.0, "Activation ritual reaches completion")
-	for expected_phase in [lab.sequence.Phase.INVOCATION, lab.sequence.Phase.RESPONSE, lab.sequence.Phase.BUILDUP, lab.sequence.Phase.CLIMAX, lab.sequence.Phase.AFTERIMAGE, lab.sequence.Phase.COMPLETE]:
+	for expected_phase in [lab.sequence.Phase.APPROACH, lab.sequence.Phase.INVOCATION, lab.sequence.Phase.RESPONSE, lab.sequence.Phase.BUILDUP, lab.sequence.Phase.CLIMAX, lab.sequence.Phase.AFTERIMAGE, lab.sequence.Phase.COMPLETE]:
 		_check(expected_phase in phases, "Activation ritual enters phase %s" % lab.sequence.Phase.keys()[expected_phase])
 	_check(&"hand_hum" in cues and &"king_hum" in cues and &"crackle" in cues and &"beam" in cues and &"resolve" in cues, "Activation ritual exposes every planned audio hook")
 	_check(cues.count(&"crackle") == 3, "Response crackle and in-range authored buildup crackles fire while overflow timing remains stored and silent")
 	_check(is_equal_approx(lab.preview_king.sprite.self_modulate.a, 1.0) and not lab.stone_sprite.visible, "Completion leaves the authored army-colored king revealed")
 	_check(is_equal_approx(lab.king_aura.silhouette_power, lab.activation_profile.resting_aura_power) and is_equal_approx(lab.king_aura.particle_power, lab.activation_profile.resting_particle_power) and is_zero_approx(lab.hand_aura.power) and lab.lightning.points.is_empty(), "Completion retains the King's independently configured resting aura channels")
-	_check(lab.preview_hand.position == lab.sequence.base_hand_position, "Completion clears integer-pixel hand tremor")
+	_check(lab.preview_hand.position == lab.sequence.hand_rest_position and not lab.preview_hand.visible, "Completion clears tremor and hides the hand at its off-board rest position")
 
 	lab.sequence.restart(false)
-	_check(is_zero_approx(lab.preview_king.sprite.self_modulate.a) and lab.stone_sprite.visible, "Restart returns exactly to inert stone")
+	_check(is_zero_approx(lab.preview_king.sprite.self_modulate.a) and lab.stone_sprite.visible and not lab.preview_hand.visible, "Restart returns exactly to inert stone with its hand off-board")
 	lab.sequence.play()
 	await get_tree().create_timer(0.03).timeout
 	lab.sequence.pause()
@@ -164,11 +190,15 @@ func _ready() -> void:
 	activation_resource.aura_snapshot = lab.aura_profile.duplicate(true)
 	activation_resource.king_type_id = &"necromancer_king"
 	activation_resource.army_color = "black"
-	activation_resource.hand_grip_x_offset = -64.0
+	activation_resource.activation_profile.hand_hover_offset = Vector2(-64.0, 210.0)
+	activation_resource.activation_profile.approach_duration = 0.37
+	activation_resource.activation_profile.post_climax_retreat_delay = 0.29
 	var activation_path := "user://chess_activation_characterization.tres"
 	_check(ResourceSaver.save(activation_resource, activation_path) == OK, "Activation profile serializes with an embedded Aura fallback")
 	var loaded: Resource = ResourceLoader.load(activation_path, "ChessActivationLabPreset", ResourceLoader.CACHE_MODE_IGNORE)
-	_check(loaded != null and loaded.get_script() == ActivationPreset and loaded.is_supported() and loaded.aura_snapshot != null and loaded.king_type_id == &"necromancer_king" and is_equal_approx(loaded.hand_grip_x_offset, -64.0) and _times_equal(loaded.activation_profile.buildup_crackle_times, PackedFloat32Array([0.02, 0.04, 0.20])), "Activation profile round-trips authored crackle timing, preview offsets, Aura reference, and fallback state")
+	_check(loaded != null and loaded.get_script() == ActivationPreset and loaded.is_supported() and loaded.aura_snapshot != null and loaded.king_type_id == &"necromancer_king" and loaded.activation_profile.hand_hover_offset == Vector2(-64.0, 210.0) and is_equal_approx(loaded.activation_profile.approach_duration, 0.37) and is_equal_approx(loaded.activation_profile.post_climax_retreat_delay, 0.29) and _times_equal(loaded.activation_profile.buildup_crackle_times, PackedFloat32Array([0.02, 0.04, 0.20])), "Activation profile round-trips hand paths, authored crackle timing, king-relative hover, Aura reference, and fallback state")
+	loaded.schema_version = 1
+	_check(loaded.is_supported(), "Version-one activation presets remain supported after the hand-path schema addition")
 
 	lab.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(aura_path))

@@ -1,0 +1,31 @@
+[gd_scene load_steps=7 format=3 uid="uid://uyuf6rjtqw5s"]
+
+[ext_resource type="Script" uid="uid://nutyedlsinlq" path="res://tools/dev_chess_setup/chess_setup_lab.gd" id="1_lab"]
+[ext_resource type="Script" uid="uid://dm2av1txkn6la" path="res://scripts/core/chess_board.gd" id="2_board"]
+[ext_resource type="PackedScene" uid="uid://bsvn40v11grhl" path="res://scenes/board_body.tscn" id="3_body"]
+[ext_resource type="Script" uid="uid://bbmxbql4ytvg7" path="res://scripts/view/squares.gd" id="4_squares"]
+[ext_resource type="PackedScene" path="res://scenes/player_hand_rig.tscn" id="5_hand"]
+[ext_resource type="Resource" uid="uid://hyuqx5axgyc" path="res://assets/chess_board_default_style.tres" id="6_style"]
+
+[node name="ChessSetupLab" type="Node2D"]
+process_mode = 3
+script = ExtResource("1_lab")
+
+[node name="ChessBoard" type="Node2D" parent="."]
+texture_filter = 1
+script = ExtResource("2_board")
+visual_style = ExtResource("6_style")
+viewport_height_width_ratio = 1.0
+viewport_width_cap_ratio = 0.72
+scale_world_with_projection = true
+
+[node name="BoardBody" parent="ChessBoard" instance=ExtResource("3_body")]
+
+[node name="Squares" type="Node2D" parent="ChessBoard"]
+script = ExtResource("4_squares")
+
+[node name="Pieces" type="Node2D" parent="ChessBoard"]
+
+[node name="PlayerHandRig" parent="ChessBoard" instance=ExtResource("5_hand")]
+
+[node name="LeftHandRig" parent="ChessBoard" instance=ExtResource("5_hand")]

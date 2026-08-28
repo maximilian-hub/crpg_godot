@@ -4,6 +4,7 @@
 extends Node2D
 
 const PIECE_SCENE := preload("res://scenes/piece.tscn")
+const HAND_RIG_SCENE := preload("res://scenes/player_hand_rig.tscn")
 const HAND_STYLE := preload("res://assets/arms/player/skeleton_hand_style.tres")
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
@@ -15,14 +16,13 @@ const ActivationPreset := preload("res://tools/dev_chess_activation/chess_activa
 const STONE_SHADER := preload("res://effects/chess_stone_piece.gdshader")
 const AURA_PRESET_DIRECTORY := "res://.cache/chess_aura_presets"
 const ACTIVATION_PRESET_DIRECTORY := "res://.cache/chess_activation_presets"
-const HAND_BASE_POSITION := Vector2(1250, 1350)
 
 @export var activation_sounds: Resource
 
 var aura_profile: ChessAuraProfile
 var activation_profile: Resource
 var preview_king: PieceView
-var preview_hand: Node2D
+var preview_hand: PlayerHandRig
 var hand_sprites: Array[Sprite2D] = []
 var hand_connection_anchor: Marker2D
 var stone_sprite: Sprite2D
@@ -53,6 +53,9 @@ var overwrite_confirmation: ConfirmationDialog
 var pending_preset: Resource
 var pending_path := ""
 var profile_controls: Dictionary = {}
+var motion_vector_controls: Dictionary = {}
+var approach_path_debug: Line2D
+var retreat_path_debug: Line2D
 
 
 func _ready() -> void:
@@ -62,11 +65,13 @@ func _ready() -> void:
 	_build_stage()
 	_build_controls()
 	_build_sequence()
+	_sync_profile_controls()
 	_refresh_aura_presets()
 	_refresh_activation_presets()
 	get_viewport().size_changed.connect(_layout_scale)
 	_layout_scale()
 	_refresh_playback_labels()
+	_refresh_hand_paths()
 	queue_redraw()
 
 
@@ -83,23 +88,15 @@ func _build_stage() -> void:
 	preview_king.position = Vector2(670, 700)
 	preview_king.set_model(MinotaurKing.new("white", Vector2i.ZERO))
 	add_child(preview_king)
-	preview_hand = Node2D.new()
-	preview_hand.position = HAND_BASE_POSITION
+	preview_hand = HAND_RIG_SCENE.instantiate() as PlayerHandRig
+	preview_hand.hand_style = HAND_STYLE
+	preview_hand.position = preview_king.position + activation_profile.hand_hover_offset
 	add_child(preview_hand)
-	for entry in [
-		{"texture": HAND_STYLE.open_rear_fingers, "z": 1},
-		{"texture": HAND_STYLE.open_thumb, "z": 3},
-		{"texture": HAND_STYLE.open_arm, "z": 4},
-	]:
-		var sprite := Sprite2D.new()
-		sprite.texture = entry["texture"]
-		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		sprite.position = Vector2(sprite.texture.get_size()) * 0.5 - Vector2(48, 118)
-		sprite.z_index = entry["z"]
-		preview_hand.add_child(sprite)
-		hand_sprites.append(sprite)
+	preview_hand.set_visual_mirrored(false)
+	preview_hand._apply_pose(false)
+	hand_sprites.assign(preview_hand.get_aura_sprites())
 	hand_connection_anchor = Marker2D.new()
-	hand_connection_anchor.position = Vector2(-25, -94)
+	hand_connection_anchor.position = preview_hand.get_connection_anchor_position()
 	preview_hand.add_child(hand_connection_anchor)
 
 	stone_sprite = Sprite2D.new()
@@ -120,10 +117,12 @@ func _build_stage() -> void:
 	add_child(hand_aura)
 	hand_aura.bind_targets(hand_sprites)
 	lightning = Lightning.new()
-	# Rear fingers (1) < lightning (2) < thumb (3) < arm/palm (4), so the
+	# Rear fingers < lightning < thumb < arm/palm, so the
 	# energy appears to emerge from inside the hand instead of sitting atop it.
-	lightning.z_index = 2
+	lightning.z_index = PlayerHandRig.PLACEMENT_OCCLUDER_Z
 	add_child(lightning)
+	approach_path_debug = _make_hand_path_line(Color("3ac8d5"))
+	retreat_path_debug = _make_hand_path_line(Color("d58f3a"))
 
 
 func _layout_scale() -> void:
@@ -131,9 +130,8 @@ func _layout_scale() -> void:
 	var near_edge := minf(viewport_size.y, viewport_size.x * 0.72)
 	var board_scale := ChessBoardView.calculate_world_scale(near_edge)
 	preview_king.scale = Vector2.ONE * board_scale
-	var defaults := PlayerHandRig.new()
-	preview_hand.scale = Vector2.ONE * board_scale * defaults.art_scale_multiplier
-	defaults.free()
+	preview_hand.scale = Vector2.ONE * board_scale * preview_hand.art_scale_multiplier
+	_refresh_hand_paths()
 
 
 func _build_sequence() -> void:
@@ -149,13 +147,27 @@ func _build_sequence() -> void:
 		players[cue] = player
 	sequence = ActivationSequence.new()
 	add_child(sequence)
-	sequence.configure(activation_profile, preview_hand, hand_connection_anchor, preview_king.sprite, stone_sprite, hand_aura, king_aura, lightning, players)
+	sequence.configure(
+		activation_profile,
+		preview_hand,
+		hand_connection_anchor,
+		preview_king.sprite,
+		stone_sprite,
+		hand_aura,
+		king_aura,
+		lightning,
+		players,
+		_activation_rest_position(),
+		1.0,
+		false
+	)
 	sequence.phase_changed.connect(func(_phase: int): _refresh_playback_labels())
 	sequence.elapsed_changed.connect(func(_seconds: float): _refresh_playback_labels())
 	sequence.activation_completed.connect(func():
 		pause_button.text = "Pause"
 		pause_button.disabled = true
 	)
+	_refresh_hand_paths()
 
 
 func _build_controls() -> void:
@@ -188,15 +200,19 @@ func _build_controls() -> void:
 	army_selector = _add_option(controls, "Army")
 	for name in ["White", "Black"]: army_selector.add_item(name)
 	army_selector.item_selected.connect(func(_index: int): _update_king())
-	hand_offset_x = _add_spin(controls, "Hand grip X", -900.0, 900.0, 1.0, 0.0, func(value: float):
-		preview_hand.position.x = HAND_BASE_POSITION.x + value
+	hand_offset_x = _add_spin(controls, "Hand hover X", -900.0, 900.0, 1.0, activation_profile.hand_hover_offset.x, func(value: float):
+		activation_profile.hand_hover_offset.x = value
 		if sequence != null:
-			sequence.base_hand_position = preview_hand.position
+			sequence.base_hand_position = preview_king.position + activation_profile.hand_hover_offset
+			sequence.restart(false)
+		_refresh_hand_paths()
 	)
-	hand_offset = _add_spin(controls, "Hand grip Y", -900.0, 900.0, 1.0, 0.0, func(value: float):
-		preview_hand.position.y = HAND_BASE_POSITION.y + value
+	hand_offset = _add_spin(controls, "Hand hover Y", -900.0, 900.0, 1.0, activation_profile.hand_hover_offset.y, func(value: float):
+		activation_profile.hand_hover_offset.y = value
 		if sequence != null:
-			sequence.base_hand_position = preview_hand.position
+			sequence.base_hand_position = preview_king.position + activation_profile.hand_hover_offset
+			sequence.restart(false)
+		_refresh_hand_paths()
 	)
 
 	var playback := HBoxContainer.new()
@@ -228,6 +244,18 @@ func _build_controls() -> void:
 	controls.add_child(phase_label)
 	controls.add_child(time_label)
 	controls.add_child(HSeparator.new())
+	_add_profile_spin(controls, &"approach_duration", "Approach time", 0.01, 4.0, 0.01)
+	_add_profile_spin(controls, &"approach_settle_duration", "Approach settle", 0.0, 2.0, 0.01)
+	_add_profile_vector(controls, &"approach_departure_handle", "Approach departure")
+	_add_profile_vector(controls, &"approach_arrival_handle", "Approach arrival")
+	var path_toggle := CheckButton.new()
+	path_toggle.text = "Show hand entrance/exit paths"
+	path_toggle.toggled.connect(func(value: bool):
+		approach_path_debug.visible = value
+		retreat_path_debug.visible = value
+		_refresh_hand_paths()
+	)
+	controls.add_child(path_toggle)
 
 	_add_profile_spin(controls, &"invocation_duration", "Invocation", 0.05, 3.0, 0.01)
 	_add_profile_spin(controls, &"response_duration", "Response", 0.05, 2.0, 0.01)
@@ -244,6 +272,10 @@ func _build_controls() -> void:
 	_add_profile_spin(controls, &"climax_beam_count", "Climax beams", 1, 12, 1)
 	_add_profile_spin(controls, &"climax_hand_shift_distance", "Climax hand shift", 0, 240, 1)
 	_add_profile_spin(controls, &"climax_hand_return_duration", "Climax hand return", 0.01, 2, 0.01)
+	_add_profile_spin(controls, &"post_climax_retreat_delay", "Retreat delay", 0.0, 4.0, 0.01)
+	_add_profile_spin(controls, &"retreat_duration", "Retreat time", 0.01, 4.0, 0.01)
+	_add_profile_vector(controls, &"retreat_departure_handle", "Retreat departure")
+	_add_profile_vector(controls, &"retreat_arrival_handle", "Retreat arrival")
 	_add_profile_spin(controls, &"lightning_displacement", "Lightning bend", 0, 80, 1)
 	_add_profile_spin(controls, &"lightning_curve_max", "Base curve", 0, 160, 1)
 	_add_profile_spin(controls, &"lightning_checker_size", "Checker size", 1, 32, 1)
@@ -319,8 +351,22 @@ func _add_profile_spin(parent: Control, property_name: StringName, label: String
 		activation_profile.set(property_name, int(value) if step >= 1.0 else value)
 		if property_name == &"buildup_duration" and is_instance_valid(crackle_selector):
 			_refresh_crackle_editor(crackle_selector.selected)
-		sequence.restart(false)
+		if sequence != null: sequence.restart(false)
+		_refresh_hand_paths()
 	)
+
+
+func _add_profile_vector(parent: Control, property_name: StringName, label: String) -> void:
+	for component in ["x", "y"]:
+		var key := StringName("%s:%s" % [property_name, component])
+		motion_vector_controls[key] = _add_spin(parent, "%s %s" % [label, component.to_upper()], -800.0, 800.0, 1.0, 0.0, func(value: float):
+			var vector: Vector2 = activation_profile.get(property_name)
+			if component == "x": vector.x = value
+			else: vector.y = value
+			activation_profile.set(property_name, vector)
+			if sequence != null: sequence.restart(false)
+			_refresh_hand_paths()
+		)
 
 
 func _build_crackle_timeline_controls(parent: Control) -> void:
@@ -546,8 +592,6 @@ func _capture_activation(display_name: String) -> Resource:
 	result.aura_mode = selected_aura_mode
 	result.king_type_id = king_selector.get_item_metadata(king_selector.selected)
 	result.army_color = "black" if army_selector.selected == 1 else "white"
-	result.hand_grip_y_offset = hand_offset.value
-	result.hand_grip_x_offset = hand_offset_x.value
 	return result
 
 
@@ -601,8 +645,6 @@ func _load_selected_activation(index: int) -> void:
 	_select_aura_preset(selected_aura_path)
 	_select_king(resource.king_type_id)
 	army_selector.select(1 if resource.army_color == "black" else 0)
-	hand_offset.value = resource.hand_grip_y_offset
-	hand_offset_x.value = resource.hand_grip_x_offset
 	_update_king()
 	_sync_profile_controls()
 	preset_name.text = resource.display_name
@@ -636,7 +678,53 @@ func _copy_properties(source: Resource, destination: Resource) -> void:
 func _sync_profile_controls() -> void:
 	for property_name in profile_controls:
 		(profile_controls[property_name] as SpinBox).set_value_no_signal(float(activation_profile.get(property_name)))
+	for key in motion_vector_controls:
+		var component := String(key).get_slice(":", 1)
+		var property_name := StringName(String(key).get_slice(":", 0))
+		var vector: Vector2 = activation_profile.get(property_name)
+		(motion_vector_controls[key] as SpinBox).set_value_no_signal(vector.x if component == "x" else vector.y)
+	hand_offset_x.set_value_no_signal(activation_profile.hand_hover_offset.x)
+	hand_offset.set_value_no_signal(activation_profile.hand_hover_offset.y)
+	if sequence != null:
+		sequence.base_hand_position = preview_king.position + activation_profile.hand_hover_offset
 	_refresh_crackle_editor(0)
+	_refresh_hand_paths()
+
+
+func _activation_rest_position() -> Vector2:
+	var viewport := get_viewport_rect().size
+	return Vector2(viewport.x + 96.0, viewport.y + 160.0)
+
+
+func _make_hand_path_line(color: Color) -> Line2D:
+	var line := Line2D.new()
+	line.visible = false
+	line.width = 2.0
+	line.default_color = color
+	line.z_index = 20
+	add_child(line)
+	return line
+
+
+func _refresh_hand_paths() -> void:
+	if not is_instance_valid(approach_path_debug) or not is_instance_valid(retreat_path_debug): return
+	if sequence != null:
+		sequence.hand_rest_position = _activation_rest_position()
+	var rest := _activation_rest_position()
+	var hover: Vector2 = preview_king.position + activation_profile.hand_hover_offset
+	if sequence != null:
+		sequence.base_hand_position = hover
+	approach_path_debug.points = _sample_hand_path(rest, hover, activation_profile.approach_departure_handle, activation_profile.approach_arrival_handle)
+	retreat_path_debug.points = _sample_hand_path(hover, rest, activation_profile.retreat_departure_handle, activation_profile.retreat_arrival_handle)
+
+
+func _sample_hand_path(start: Vector2, finish: Vector2, departure: Vector2, arrival: Vector2) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var control_a := start + departure
+	var control_b := finish + arrival
+	for index in range(33):
+		points.append(start.bezier_interpolate(control_a, control_b, finish, index / 32.0))
+	return points
 
 
 func _select_king(type_id: StringName) -> void:

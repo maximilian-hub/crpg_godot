@@ -6,7 +6,7 @@ signal elapsed_changed(seconds: float)
 signal activation_completed()
 signal audio_cue(cue: StringName)
 
-enum Phase { RESET, INVOCATION, RESPONSE, BUILDUP, CLIMAX, AFTERIMAGE, COMPLETE }
+enum Phase { RESET, APPROACH, INVOCATION, RESPONSE, BUILDUP, CLIMAX, AFTERIMAGE, COMPLETE }
 
 var profile: Resource
 var hand_root: Node2D
@@ -21,7 +21,11 @@ var elapsed := 0.0
 var playback_speed := 1.0
 var running := false
 var current_phase := Phase.RESET
+## Activation hover point. Retained under its existing name for compatibility.
 var base_hand_position := Vector2.ZERO
+var hand_rest_position := Vector2.ZERO
+var hand_motion_scale := 1.0
+var mirror_hand_motion := false
 var tremor_rng := RandomNumberGenerator.new()
 var last_tremor_tick := -1
 var crackle_schedule := PackedFloat32Array()
@@ -46,7 +50,10 @@ func configure(
 	hand_energy: ChessAura2D,
 	king_energy: ChessAura2D,
 	lightning_effect: Node2D,
-	players := {}
+	players := {},
+	rest_position := Vector2(INF, INF),
+	motion_scale := 1.0,
+	mirrored_motion := false
 ) -> void:
 	profile = activation_profile
 	hand_root = hand
@@ -58,12 +65,17 @@ func configure(
 	lightning = lightning_effect
 	audio_players = players
 	base_hand_position = hand_root.position
+	hand_rest_position = rest_position if is_finite(rest_position.x) and is_finite(rest_position.y) else base_hand_position
+	hand_motion_scale = maxf(motion_scale, 0.01)
+	mirror_hand_motion = mirrored_motion
 	restart(false)
 
 
 func play() -> void:
 	if current_phase == Phase.COMPLETE:
 		restart(false)
+	if is_instance_valid(hand_root):
+		hand_root.visible = true
 	hand_aura.set_simulation_paused(false)
 	king_aura.set_simulation_paused(false)
 	running = true
@@ -100,7 +112,8 @@ func restart(autoplay := true) -> void:
 	_build_crackle_schedule()
 	_stop_all_audio()
 	if is_instance_valid(hand_root):
-		hand_root.position = base_hand_position
+		hand_root.position = hand_rest_position
+		hand_root.visible = false
 	if is_instance_valid(hand_aura):
 		hand_aura.set_simulation_paused(false)
 		hand_aura.reset_effect()
@@ -117,8 +130,9 @@ func restart(autoplay := true) -> void:
 
 func advance_to_next_phase() -> void:
 	if current_phase == Phase.RESET:
-		_enter_phase(Phase.INVOCATION)
+		_enter_phase(Phase.APPROACH)
 		_apply_visual_state()
+		_update_hand_motion()
 		return
 	var boundaries := _phase_boundaries()
 	for boundary in boundaries:
@@ -161,22 +175,25 @@ func _process(delta: float) -> void:
 func _phase_boundaries() -> PackedFloat32Array:
 	if profile == null:
 		return PackedFloat32Array([0.0])
-	var invocation_end: float = profile.invocation_duration
+	var approach_end: float = profile.approach_duration + profile.approach_settle_duration
+	var invocation_end: float = approach_end + profile.invocation_duration
 	var response_end: float = invocation_end + profile.response_duration
 	var buildup_end: float = response_end + profile.buildup_duration
 	var climax_end: float = buildup_end + profile.climax_duration
-	var afterimage_end: float = climax_end + maxf(profile.afterimage_duration, profile.aura_release_duration)
-	return PackedFloat32Array([0.0, invocation_end, response_end, buildup_end, climax_end, afterimage_end, profile.total_duration()])
+	var hand_exit: float = profile.climax_hand_return_duration + profile.post_climax_retreat_delay + profile.retreat_duration
+	var afterimage_end: float = climax_end + maxf(maxf(profile.afterimage_duration, profile.aura_release_duration), hand_exit)
+	return PackedFloat32Array([0.0, approach_end, invocation_end, response_end, buildup_end, climax_end, afterimage_end, profile.total_duration()])
 
 
 func _phase_for_time(time: float) -> int:
 	var boundaries := _phase_boundaries()
-	if time < boundaries[1]: return Phase.INVOCATION
-	if time < boundaries[2]: return Phase.RESPONSE
-	if time < boundaries[3]: return Phase.BUILDUP
-	if time < boundaries[4]: return Phase.CLIMAX
-	if time < boundaries[5]: return Phase.AFTERIMAGE
+	if time < boundaries[1]: return Phase.APPROACH
+	if time < boundaries[2]: return Phase.INVOCATION
+	if time < boundaries[3]: return Phase.RESPONSE
+	if time < boundaries[4]: return Phase.BUILDUP
+	if time < boundaries[5]: return Phase.CLIMAX
 	if time < boundaries[6]: return Phase.AFTERIMAGE
+	if time < boundaries[7]: return Phase.AFTERIMAGE
 	return Phase.COMPLETE
 
 
@@ -198,6 +215,8 @@ func _enter_phase(next_phase: int) -> void:
 	current_phase = next_phase
 	phase_changed.emit(current_phase)
 	match current_phase:
+		Phase.APPROACH:
+			if is_instance_valid(hand_root): hand_root.visible = true
 		Phase.INVOCATION:
 			_play_loop(&"hand_hum")
 		Phase.RESPONSE:
@@ -227,7 +246,9 @@ func _enter_phase(next_phase: int) -> void:
 			running = false
 			tremor_offset = Vector2.ZERO
 			lightning_hand_offset = Vector2.ZERO
-			_apply_hand_position()
+			if is_instance_valid(hand_root):
+				hand_root.position = hand_rest_position
+				hand_root.visible = false
 			hand_aura.set_power(0.0)
 			king_aura.set_silhouette_power(profile.resting_aura_power)
 			king_aura.set_particle_power(profile.resting_particle_power)
@@ -253,13 +274,15 @@ func _apply_visual_state() -> void:
 	var density := 1.0
 	var speed := 1.0
 	match _phase_for_time(elapsed):
+		Phase.APPROACH:
+			pass
 		Phase.INVOCATION:
-			var progress := _range_progress(elapsed, boundaries[0], boundaries[1])
+			var progress := _range_progress(elapsed, boundaries[1], boundaries[2])
 			hand_silhouette_power = lerpf(0.0, profile.invocation_hand_power, progress)
 			# The initial hover establishes only the hand's luminous outline.
 			hand_particle_power = 0.0
 		Phase.RESPONSE:
-			var progress := _range_progress(elapsed, boundaries[1], boundaries[2])
+			var progress := _range_progress(elapsed, boundaries[2], boundaries[3])
 			hand_silhouette_power = profile.invocation_hand_power
 			# RESPONSE begins with the first crackle; particles enter after that
 			# punctuation instead of accompanying the initial hover.
@@ -268,7 +291,7 @@ func _apply_visual_state() -> void:
 			king_particle_power = king_silhouette_power
 			fill = progress * 0.12
 		Phase.BUILDUP:
-			var progress := _range_progress(elapsed, boundaries[2], boundaries[3])
+			var progress := _range_progress(elapsed, boundaries[3], boundaries[4])
 			hand_silhouette_power = lerpf(profile.invocation_hand_power, 1.0, progress)
 			hand_particle_power = hand_silhouette_power
 			king_silhouette_power = lerpf(profile.response_king_power, 1.0, progress)
@@ -277,7 +300,7 @@ func _apply_visual_state() -> void:
 			density = lerpf(1.0, profile.final_density_multiplier, progress)
 			speed = lerpf(1.0, profile.final_speed_multiplier, progress)
 		Phase.CLIMAX:
-			var progress := _range_progress(elapsed, boundaries[3], boundaries[4])
+			var progress := _range_progress(elapsed, boundaries[4], boundaries[5])
 			hand_silhouette_power = 1.0
 			hand_particle_power = 1.0
 			king_silhouette_power = 1.0
@@ -288,11 +311,11 @@ func _apply_visual_state() -> void:
 			density = profile.final_density_multiplier
 			speed = profile.final_speed_multiplier
 		Phase.AFTERIMAGE:
-			var white_fade_end: float = boundaries[4] + profile.afterimage_duration
-			var aura_release_end: float = boundaries[4] + profile.aura_release_duration
-			var white_progress := _range_progress(elapsed, boundaries[4], white_fade_end)
-			var aura_progress := _range_progress(elapsed, boundaries[4], aura_release_end)
-			var hand_fade_progress := clampf((elapsed - boundaries[4]) / maxf(profile.hand_fade_duration, 0.001), 0.0, 1.0)
+			var white_fade_end: float = boundaries[5] + profile.afterimage_duration
+			var aura_release_end: float = boundaries[5] + profile.aura_release_duration
+			var white_progress := _range_progress(elapsed, boundaries[5], white_fade_end)
+			var aura_progress := _range_progress(elapsed, boundaries[5], aura_release_end)
+			var hand_fade_progress := clampf((elapsed - boundaries[5]) / maxf(profile.hand_fade_duration, 0.001), 0.0, 1.0)
 			hand_silhouette_power = 1.0 - hand_fade_progress
 			hand_particle_power = hand_silhouette_power
 			king_silhouette_power = lerpf(1.0, profile.resting_aura_power, aura_progress)
@@ -329,8 +352,8 @@ func _update_tremor() -> void:
 		return
 	# BUILDUP ramps toward maximum; CLIMAX sustains that maximum without
 	# restarting the tick cadence established at buildup entry.
-	var progress := 1.0 if current_phase == Phase.CLIMAX else _range_progress(elapsed, boundaries[2], boundaries[3])
-	var tick := int(floor((elapsed - boundaries[2]) / maxf(profile.tremor_interval, 0.01)))
+	var progress := 1.0 if current_phase == Phase.CLIMAX else _range_progress(elapsed, boundaries[3], boundaries[4])
+	var tick := int(floor((elapsed - boundaries[3]) / maxf(profile.tremor_interval, 0.01)))
 	if tick == last_tremor_tick:
 		return
 	last_tremor_tick = tick
@@ -344,10 +367,21 @@ func _update_tremor() -> void:
 
 func _update_hand_motion() -> void:
 	var boundaries := _phase_boundaries()
+	if current_phase == Phase.APPROACH:
+		var approach_progress := clampf(elapsed / maxf(profile.approach_duration, 0.001), 0.0, 1.0)
+		hand_root.position = _hand_curve_position(
+			hand_rest_position,
+			base_hand_position,
+			profile.approach_departure_handle,
+			profile.approach_arrival_handle,
+			_ease_in_out_sine(approach_progress)
+		)
+		return
 	if current_phase == Phase.CLIMAX:
 		lightning_hand_offset = climax_hand_target
 	elif current_phase == Phase.AFTERIMAGE and not climax_hand_target.is_zero_approx():
-		var return_progress := clampf((elapsed - boundaries[4]) / maxf(profile.climax_hand_return_duration, 0.01), 0.0, 1.0)
+		var afterimage_elapsed := elapsed - boundaries[5]
+		var return_progress := clampf(afterimage_elapsed / maxf(profile.climax_hand_return_duration, 0.01), 0.0, 1.0)
 		lightning_hand_offset = climax_hand_target * (1.0 - _ease_out_cubic(return_progress))
 	elif crackle_hand_started_at >= 0.0:
 		var impulse_age := elapsed - crackle_hand_started_at
@@ -365,6 +399,20 @@ func _update_hand_motion() -> void:
 	else:
 		lightning_hand_offset = Vector2.ZERO
 	_apply_hand_position()
+	if current_phase == Phase.AFTERIMAGE:
+		var afterimage_elapsed := elapsed - boundaries[5]
+		var retreat_start: float = profile.climax_hand_return_duration + profile.post_climax_retreat_delay
+		if afterimage_elapsed >= retreat_start:
+			var retreat_progress := clampf((afterimage_elapsed - retreat_start) / maxf(profile.retreat_duration, 0.001), 0.0, 1.0)
+			hand_root.position = _hand_curve_position(
+				base_hand_position,
+				hand_rest_position,
+				profile.retreat_departure_handle,
+				profile.retreat_arrival_handle,
+				_ease_in_out_sine(retreat_progress)
+			)
+			if retreat_progress >= 1.0:
+				hand_root.visible = false
 
 
 func _apply_hand_position() -> void:
@@ -387,6 +435,17 @@ func _ease_out_cubic(value: float) -> float:
 	return 1.0 - pow(1.0 - clampf(value, 0.0, 1.0), 3.0)
 
 
+func _ease_in_out_sine(value: float) -> float:
+	return -(cos(PI * clampf(value, 0.0, 1.0)) - 1.0) * 0.5
+
+
+func _hand_curve_position(start: Vector2, finish: Vector2, departure: Vector2, arrival: Vector2, progress: float) -> Vector2:
+	var mirror := -1.0 if mirror_hand_motion else 1.0
+	var control_a := start + Vector2(departure.x * mirror, departure.y) * hand_motion_scale
+	var control_b := finish + Vector2(arrival.x * mirror, arrival.y) * hand_motion_scale
+	return start.bezier_interpolate(control_a, control_b, finish, clampf(progress, 0.0, 1.0))
+
+
 func _build_crackle_schedule() -> void:
 	crackle_schedule.clear()
 	if profile == null:
@@ -403,12 +462,12 @@ func _update_lightning() -> void:
 		if elapsed > active_crackle_until:
 			lightning.clear()
 	elif current_phase == Phase.BUILDUP:
-		var buildup_elapsed := elapsed - boundaries[2]
+		var buildup_elapsed := elapsed - boundaries[3]
 		_fire_crossed_buildup_crackles(buildup_elapsed)
 		if elapsed > active_crackle_until:
 			lightning.clear()
 	elif current_phase == Phase.CLIMAX:
-		var progress := _range_progress(elapsed, boundaries[3], boundaries[4])
+		var progress := _range_progress(elapsed, boundaries[4], boundaries[5])
 		var beam_count: int = maxi(profile.climax_beam_count, 1)
 		var beam_index := mini(int(floor(progress * beam_count)), beam_count - 1)
 		if beam_index != active_climax_beam_index:
