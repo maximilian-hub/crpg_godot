@@ -37,7 +37,8 @@ var setup_selector: OptionButton
 var activation_selector: OptionButton
 var activating_hand_selector: OptionButton
 var playback_mode_selector: OptionButton
-var cue_selector: OptionButton
+var left_cue_list: ItemList
+var right_cue_list: ItemList
 var cue_hand_selector: OptionButton
 var cue_gap: SpinBox
 var cue_override: CheckButton
@@ -126,8 +127,19 @@ func _build_controls() -> void:
 	controls.add_child(phase_label)
 	controls.add_child(HSeparator.new())
 
-	cue_selector = _add_option(controls, "Placement Cue")
-	cue_selector.item_selected.connect(_select_cue)
+	var lane_title := Label.new()
+	lane_title.text = "Piece Order"
+	controls.add_child(lane_title)
+	var lanes := HBoxContainer.new()
+	lanes.add_theme_constant_override("separation", 8)
+	controls.add_child(lanes)
+	left_cue_list = _add_cue_lane(lanes, "Left hand", ChessSetupCue.HandSide.LEFT)
+	right_cue_list = _add_cue_lane(lanes, "Right hand", ChessSetupCue.HandSide.RIGHT)
+	var order_row := HBoxContainer.new()
+	controls.add_child(order_row)
+	_add_button(order_row, "Move Up", func(): _move_cue(-1))
+	_add_button(order_row, "Move Down", func(): _move_cue(1))
+	_add_button(order_row, "Other Hand", _move_cue_to_other_hand)
 	cue_hand_selector = _add_option(controls, "Cue Hand")
 	cue_hand_selector.add_item("Left")
 	cue_hand_selector.add_item("Right")
@@ -138,16 +150,15 @@ func _build_controls() -> void:
 	cue_override.text = "Override this cue's motion"
 	cue_override.toggled.connect(_toggle_cue_override)
 	controls.add_child(cue_override)
-	var order_row := HBoxContainer.new()
-	controls.add_child(order_row)
-	_add_button(order_row, "Earlier", func(): _move_cue(-1))
-	_add_button(order_row, "Later", func(): _move_cue(1))
 	controls.add_child(HSeparator.new())
 
 	motion_side_selector = _add_option(controls, "Edit Defaults")
 	motion_side_selector.add_item("Left hand")
 	motion_side_selector.add_item("Right hand")
-	motion_side_selector.item_selected.connect(func(_index: int): _sync_motion_controls())
+	motion_side_selector.add_item("Both hands")
+	# A dropdown click can steal focus from a SpinBox before that SpinBox commits
+	# its LineEdit. Refresh on the next turn so the just-authored value wins.
+	motion_side_selector.item_selected.connect(func(_index: int): _sync_motion_controls.call_deferred())
 	for property in [
 		[&"pickup_delay", "Pickup delay", 0.0, 2.0],
 		[&"entry_duration", "Entry duration", 0.01, 4.0],
@@ -157,7 +168,7 @@ func _build_controls() -> void:
 	]:
 		var property_name: StringName = property[0]
 		motion_controls[property_name] = _add_spin(controls, property[1], property[2], property[3], 0.01, func(value: float):
-			if not syncing_controls: _edited_motion().set(property_name, value))
+			if not syncing_controls: _set_motion_property(property_name, value))
 	for vector_property in [
 		[&"entry_departure_handle", "Entry departure"],
 		[&"entry_arrival_handle", "Entry arrival"],
@@ -505,19 +516,42 @@ func _select_cue(index: int) -> void:
 	_refresh_debug_path()
 
 
+func _select_lane_cue(item_index: int, side: int) -> void:
+	if syncing_controls:
+		return
+	var lane := left_cue_list if side == ChessSetupCue.HandSide.LEFT else right_cue_list
+	if item_index < 0 or item_index >= lane.item_count:
+		return
+	var other_lane := right_cue_list if side == ChessSetupCue.HandSide.LEFT else left_cue_list
+	other_lane.deselect_all()
+	_select_cue(int(lane.get_item_metadata(item_index)))
+
+
 func _refresh_cue_controls() -> void:
-	if cue_selector == null: return
+	if left_cue_list == null or right_cue_list == null: return
 	syncing_controls = true
-	cue_selector.clear()
-	for cue in setup_profile.cues:
+	left_cue_list.clear()
+	right_cue_list.clear()
+	var lane_positions := [0, 0]
+	for cue_index in range(setup_profile.cues.size()):
+		var cue := setup_profile.cues[cue_index]
 		var model_coordinate := board.projection.get_model_coordinate(cue.display_coordinate) if board != null and not board.board.is_empty() else cue.display_coordinate
 		var piece: PieceView = piece_views.get(model_coordinate)
 		var piece_name := _setup_piece_name(piece) if is_instance_valid(piece) else str(cue.display_coordinate)
-		cue_selector.add_item("%s — %s" % ["L" if cue.hand_side == 0 else "R", piece_name])
+		var lane: ItemList = left_cue_list if cue.hand_side == ChessSetupCue.HandSide.LEFT else right_cue_list
+		var lane_position: int = lane_positions[cue.hand_side]
+		lane.add_item("%02d  %s" % [lane_position + 1, piece_name])
+		lane.set_item_metadata(lane.item_count - 1, cue_index)
+		lane_positions[cue.hand_side] = lane_position + 1
 	if not setup_profile.cues.is_empty():
 		selected_cue = clampi(selected_cue, 0, setup_profile.cues.size() - 1)
-		cue_selector.select(selected_cue)
 		var cue := setup_profile.cues[selected_cue]
+		var selected_lane := left_cue_list if cue.hand_side == ChessSetupCue.HandSide.LEFT else right_cue_list
+		for item_index in range(selected_lane.item_count):
+			if int(selected_lane.get_item_metadata(item_index)) == selected_cue:
+				selected_lane.select(item_index)
+				selected_lane.ensure_current_is_visible()
+				break
 		cue_hand_selector.select(cue.hand_side)
 		cue_gap.set_value_no_signal(cue.gap_before)
 		cue_override.set_pressed_no_signal(cue.motion_override != null)
@@ -525,16 +559,13 @@ func _refresh_cue_controls() -> void:
 
 
 func _setup_piece_name(piece: PieceView) -> String:
-	if piece.model.type != "pawn":
-		return piece.model.type
 	var file_index := clampi(piece.model.coordinate.y, 0, 7)
-	return "%s_pawn" % String.chr("a".unicode_at(0) + file_index)
+	return "%s_%s" % [String.chr("a".unicode_at(0) + file_index), piece.model.type]
 
 
 func _edit_cue_hand(index: int) -> void:
 	if syncing_controls: return
-	setup_profile.cues[selected_cue].hand_side = index
-	_refresh_cue_controls()
+	_move_selected_cue_to_hand(index)
 
 
 func _toggle_cue_override(enabled: bool) -> void:
@@ -563,10 +594,50 @@ func _move_cue(direction: int) -> void:
 	_refresh_cue_controls()
 
 
+func _move_cue_to_other_hand() -> void:
+	var cue := setup_profile.cues[selected_cue]
+	_move_selected_cue_to_hand(ChessSetupCue.HandSide.RIGHT if cue.hand_side == ChessSetupCue.HandSide.LEFT else ChessSetupCue.HandSide.LEFT)
+
+
+func _move_selected_cue_to_hand(side: int) -> void:
+	var cue := setup_profile.cues[selected_cue]
+	if cue.hand_side == side:
+		return
+	setup_profile.cues.remove_at(selected_cue)
+	cue.hand_side = side
+	setup_profile.cues.append(cue)
+	selected_cue = setup_profile.cues.size() - 1
+	_refresh_cue_controls()
+	_refresh_debug_path()
+
+
 func _edited_motion() -> ChessSetupMotionProfile:
 	var cue := setup_profile.cues[selected_cue]
 	if cue.motion_override != null: return cue.motion_override
 	return setup_profile.left_motion if motion_side_selector.selected == 0 else setup_profile.right_motion
+
+
+func _motion_targets() -> Array[ChessSetupMotionProfile]:
+	if motion_side_selector.selected == 2:
+		return [setup_profile.left_motion, setup_profile.right_motion]
+	return [_edited_motion()]
+
+
+func _set_motion_property(property_name: StringName, value: Variant) -> void:
+	for motion in _motion_targets():
+		motion.set(property_name, value)
+
+
+func _motions_disagree(property_name: StringName, component := "") -> bool:
+	if motion_side_selector.selected != 2:
+		return false
+	var left_value: Variant = setup_profile.left_motion.get(property_name)
+	var right_value: Variant = setup_profile.right_motion.get(property_name)
+	if component == "x":
+		return not is_equal_approx(left_value.x, right_value.x)
+	if component == "y":
+		return not is_equal_approx(left_value.y, right_value.y)
+	return not is_equal_approx(float(left_value), float(right_value))
 
 
 func _sync_motion_controls() -> void:
@@ -579,10 +650,22 @@ func _sync_motion_controls() -> void:
 		var base_name := StringName(String(property_name).get_slice(":", 0))
 		if component == "x" or component == "y":
 			var vector: Vector2 = motion.get(base_name)
-			control.set_value_no_signal(vector.x if component == "x" else vector.y)
+			_set_motion_control_display(control, vector.x if component == "x" else vector.y, _motions_disagree(base_name, component))
 		else:
-			control.set_value_no_signal(motion.get(property_name))
+			_set_motion_control_display(control, motion.get(property_name), _motions_disagree(property_name))
 	syncing_controls = false
+
+
+func _set_motion_control_display(control: SpinBox, value: float, mixed: bool) -> void:
+	control.set_value_no_signal(value)
+	# SpinBox skips its text refresh when the numeric value has not changed. That
+	# would leave a previous mixed-state question mark visible in single-hand mode.
+	var decimals := 0
+	var step := control.step
+	while step < 1.0 and decimals < 6:
+		step *= 10.0
+		decimals += 1
+	control.get_line_edit().text = "?" if mixed else String.num(control.value, decimals)
 
 
 func _add_vector_controls(parent: Control, property_name: StringName, label: String) -> void:
@@ -590,11 +673,11 @@ func _add_vector_controls(parent: Control, property_name: StringName, label: Str
 		var key := StringName("%s:%s" % [property_name, component])
 		motion_controls[key] = _add_spin(parent, "%s %s" % [label, component.to_upper()], -600.0, 600.0, 1.0, func(value: float):
 			if syncing_controls: return
-			var motion := _edited_motion()
-			var vector: Vector2 = motion.get(property_name)
-			if component == "x": vector.x = value
-			else: vector.y = value
-			motion.set(property_name, vector)
+			for motion in _motion_targets():
+				var vector: Vector2 = motion.get(property_name)
+				if component == "x": vector.x = value
+				else: vector.y = value
+				motion.set(property_name, vector)
 			_refresh_debug_path())
 
 
@@ -622,6 +705,23 @@ func _add_option(parent: Control, label_text: String) -> OptionButton:
 	var label := Label.new(); label.text = label_text; label.custom_minimum_size.x = 130; row.add_child(label)
 	var option := OptionButton.new(); option.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(option)
 	return option
+
+
+func _add_cue_lane(parent: Control, title: String, side: int) -> ItemList:
+	var column := VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(column)
+	var label := Label.new()
+	label.text = title
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(label)
+	var lane := ItemList.new()
+	lane.custom_minimum_size = Vector2(0, 180)
+	lane.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lane.select_mode = ItemList.SELECT_SINGLE
+	lane.item_selected.connect(func(index: int): _select_lane_cue(index, side))
+	column.add_child(lane)
+	return lane
 
 
 func _add_spin(parent: Control, label_text: String, minimum: float, maximum: float, step: float, callback: Callable) -> SpinBox:

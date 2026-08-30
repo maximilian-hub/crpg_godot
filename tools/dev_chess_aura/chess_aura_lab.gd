@@ -75,9 +75,9 @@ func _build_stage() -> void:
 	add_child(preview_hand)
 	var hand_sprites: Array[Sprite2D] = []
 	for entry in [
-		{"name": "RearFingers", "texture": HAND_STYLE.open_rear_fingers, "z": 1},
-		{"name": "Thumb", "texture": HAND_STYLE.open_thumb, "z": 3},
-		{"name": "Arm", "texture": HAND_STYLE.open_arm, "z": 4},
+		{"name": "GripBack", "texture": HAND_STYLE.open_grip_back, "z": 1},
+		{"name": "GripFront", "texture": HAND_STYLE.open_grip_front, "z": 3},
+		{"name": "ArmForeground", "texture": HAND_STYLE.open_arm_foreground, "z": 4},
 	]:
 		var sprite := Sprite2D.new()
 		sprite.name = entry["name"]

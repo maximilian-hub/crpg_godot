@@ -117,7 +117,7 @@ func _build_stage() -> void:
 	add_child(hand_aura)
 	hand_aura.bind_targets(hand_sprites)
 	lightning = Lightning.new()
-	# Rear fingers < lightning < thumb < arm/palm, so the
+	# Back grip < lightning < front grip < arm/palm, so the
 	# energy appears to emerge from inside the hand instead of sitting atop it.
 	lightning.z_index = PlayerHandRig.PLACEMENT_OCCLUDER_Z
 	add_child(lightning)

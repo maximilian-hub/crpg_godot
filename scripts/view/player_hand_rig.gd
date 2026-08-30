@@ -18,11 +18,11 @@ const SOUND_CAPTURE_PICKUP := &"capture_pickup"
 const SOUND_PLACE := &"place"
 const SOUND_RELEASE := &"release"
 ## Absolute board-canvas interaction stack above ordinary pieces (0-70).
-const REAR_FINGERS_Z := 72
+const GRIP_BACK_Z := 72
 const ACTIVE_PIECE_Z := 73
 const CAPTURED_PIECE_Z := 74
 const PLACEMENT_OCCLUDER_Z := 75
-const THUMB_FOREGROUND_Z := 76
+const GRIP_FRONT_Z := 76
 const INTERACTION_OCCLUDER_Z := 77
 const ARM_FOREGROUND_Z := 80
 ## Palm point in the 96 x 160 source artwork where activation energy originates.
@@ -74,11 +74,11 @@ const CONNECTION_ANCHOR_PIXELS := Vector2(23.0, 24.0)
 @export_range(0.01, 2.0, 0.01) var retreat_duration := 0.24
 @export_range(0.0, 128.0, 1.0) var offscreen_margin := 8.0
 
-@onready var rear_fingers_sprite: Sprite2D = $RearFingers
+@onready var grip_back_sprite: Sprite2D = $GripBack
 @onready var captured_piece_pivot: Node2D = $CapturedPiecePivot
 @onready var piece_slot: Node2D = $PieceSlot
-@onready var thumb_sprite: Sprite2D = $Thumb
-@onready var arm_sprite: Sprite2D = $Arm
+@onready var grip_front_sprite: Sprite2D = $GripFront
+@onready var arm_foreground_sprite: Sprite2D = $ArmForeground
 @onready var approach_path_debug: Line2D = $ApproachPathDebug
 @onready var grab_sound: AudioStreamPlayer = $GrabSound
 @onready var capture_pickup_sound: AudioStreamPlayer = $CapturePickupSound
@@ -110,11 +110,11 @@ func _ready() -> void:
 	# the last computed curve.
 	_detach_approach_path_debug.call_deferred()
 	visible = false
-	rear_fingers_sprite.z_index = REAR_FINGERS_Z
+	grip_back_sprite.z_index = GRIP_BACK_Z
 	piece_slot.z_index = ACTIVE_PIECE_Z
 	captured_piece_pivot.z_index = CAPTURED_PIECE_Z
-	thumb_sprite.z_index = THUMB_FOREGROUND_Z
-	arm_sprite.z_index = ARM_FOREGROUND_Z
+	grip_front_sprite.z_index = GRIP_FRONT_Z
+	arm_foreground_sprite.z_index = ARM_FOREGROUND_Z
 	_apply_pose(false)
 
 
@@ -141,7 +141,7 @@ func set_visual_mirrored(mirrored: bool) -> void:
 
 
 func get_aura_sprites() -> Array[Sprite2D]:
-	return [rear_fingers_sprite, thumb_sprite, arm_sprite]
+	return [grip_back_sprite, grip_front_sprite, arm_foreground_sprite]
 
 
 func get_connection_anchor_position() -> Vector2:
@@ -307,7 +307,7 @@ func play_piece_move(
 	else:
 		await _tween_position(contact_position, approach_duration)
 
-	# Place the piece between the rear fingers and front thumb, then close the hand.
+	# Place the piece between the back and front grip layers, then close the hand.
 	piece_node.reparent(piece_slot, true)
 	piece_node.z_index = 0
 	piece_grabbed.emit(piece_node)
@@ -630,14 +630,14 @@ func _offscreen_rest_position(world_scale: float) -> Vector2:
 
 func _apply_pose(closed: bool) -> void:
 	if hand_style == null:
-		arm_sprite.texture = null
-		rear_fingers_sprite.texture = null
-		thumb_sprite.texture = null
+		arm_foreground_sprite.texture = null
+		grip_back_sprite.texture = null
+		grip_front_sprite.texture = null
 		return
-	arm_sprite.texture = hand_style.closed_arm if closed else hand_style.open_arm
-	rear_fingers_sprite.texture = hand_style.closed_rear_fingers if closed else hand_style.open_rear_fingers
-	thumb_sprite.texture = hand_style.closed_thumb if closed else hand_style.open_thumb
-	for sprite in [arm_sprite, rear_fingers_sprite, thumb_sprite]:
+	arm_foreground_sprite.texture = hand_style.closed_arm_foreground if closed else hand_style.open_arm_foreground
+	grip_back_sprite.texture = hand_style.closed_grip_back if closed else hand_style.open_grip_back
+	grip_front_sprite.texture = hand_style.closed_grip_front if closed else hand_style.open_grip_front
+	for sprite in [arm_foreground_sprite, grip_back_sprite, grip_front_sprite]:
 		_position_sprite_from_grip(sprite)
 		sprite.visible = sprite.texture != null
 

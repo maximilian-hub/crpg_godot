@@ -26,7 +26,7 @@ func _ready() -> void:
 	_check(not lab.sequence.running and lab.sequence.current_phase == lab.sequence.Phase.RESET and is_zero_approx(lab.sequence.elapsed), "Activation Lab opens paused on the inert reset frame")
 	_check(not lab.preview_hand.visible and lab.preview_hand.position == lab.sequence.hand_rest_position, "Activation reset hides the hand at its off-board rest position")
 	_check(lab.preview_hand is PlayerHandRig and lab.hand_connection_anchor.position == lab.preview_hand.get_connection_anchor_position(), "Activation Lab uses the real hand rig and its shared source-art palm anchor")
-	_check(lab.preview_hand.arm_sprite.position == Vector2(lab.preview_hand.arm_sprite.texture.get_size()) * 0.5 - lab.preview_hand.grip_anchor_pixels, "Activation Lab hand artwork uses the live rig's canonical grip origin")
+	_check(lab.preview_hand.arm_foreground_sprite.position == Vector2(lab.preview_hand.arm_foreground_sprite.texture.get_size()) * 0.5 - lab.preview_hand.grip_anchor_pixels, "Activation Lab hand artwork uses the live rig's canonical grip origin")
 	_check(lab.activation_selector.selected == 0 and lab.activation_selector.get_item_text(0) == "Unsaved defaults", "Ritual selector explicitly distinguishes defaults from saved profiles")
 	_check(lab.activation_profile.climax_hand_return_duration > lab.activation_profile.crackle_hand_return_duration, "Post-climax hand return defaults slower than ordinary crackle recovery")
 	var curve_rng := RandomNumberGenerator.new()

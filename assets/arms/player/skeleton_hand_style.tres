@@ -11,10 +11,10 @@
 
 [resource]
 script = ExtResource("1_style")
-open_arm = ExtResource("2_open_arm")
-open_rear_fingers = ExtResource("3_open_rear")
-open_thumb = ExtResource("4_open_thumb")
-closed_arm = ExtResource("5_closed_arm")
-closed_rear_fingers = ExtResource("6_closed_rear")
-closed_thumb = ExtResource("7_closed_thumb")
+open_grip_back = ExtResource("3_open_rear")
+open_grip_front = ExtResource("4_open_thumb")
+open_arm_foreground = ExtResource("2_open_arm")
+closed_grip_back = ExtResource("6_closed_rear")
+closed_grip_front = ExtResource("7_closed_thumb")
+closed_arm_foreground = ExtResource("5_closed_arm")
 sounds = ExtResource("8_sounds")

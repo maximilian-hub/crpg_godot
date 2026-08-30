@@ -11,10 +11,13 @@ func _ready() -> void:
 	add_child(lab)
 	await get_tree().process_frame
 	_check(lab.setup_profile.cues.size() == 16, "default setup authors all sixteen army placements")
+	_check(lab.left_cue_list.item_count == 8 and lab.right_cue_list.item_count == 8, "Setup Lab presents the two independent hand orders as visible eight-piece lanes")
+	_check(int(lab.left_cue_list.get_item_metadata(0)) == 0 and int(lab.right_cue_list.get_item_metadata(0)) == 8, "Cue lane rows retain stable mappings to the compatible flat cue resource")
+	_check(lab.left_cue_list.get_item_text(0).ends_with("a_rook") and lab.right_cue_list.get_item_text(0).ends_with("h_rook"), "Every setup cue label begins with its chess file, not only pawns")
 	_check(not lab.setup_sequence.running and lab.piece_views.values().all(func(piece): return not piece.visible), "Setup Lab opens paused on an empty player side")
 	_check(lab.left_hand.visual_mirrored and not lab.right_hand.visual_mirrored, "setup hands use mirrored left and original right artwork")
 	lab.left_hand._apply_pose(true)
-	_check(lab.left_hand.arm_sprite.flip_h and lab.left_hand.thumb_sprite.flip_h and lab.left_hand.rear_fingers_sprite.flip_h, "every left-hand art layer mirrors around its grip")
+	_check(lab.left_hand.arm_foreground_sprite.flip_h and lab.left_hand.grip_front_sprite.flip_h and lab.left_hand.grip_back_sprite.flip_h, "every left-hand art layer mirrors around its grip")
 	var activation_hand: PlayerHandRig = lab.activation_sequence.hand_root
 	_check(lab.activation_sequence.hand_connection_anchor.position == PlayerHandRig.CONNECTION_ANCHOR_PIXELS - activation_hand.grip_anchor_pixels, "Setup activation lightning anchor resolves the shared palm pixel against the live rig origin")
 	var king_coordinate: Vector2i = lab.board.projection.get_model_coordinate(Vector2i(7, 4))
@@ -27,6 +30,30 @@ func _ready() -> void:
 	expected_offset.x *= activation_direction
 	var expected_rest := activation_hand._setup_rest_position(lab.board.get_world_scale() * activation_hand.art_scale_multiplier)
 	_check(lab.activation_sequence.base_hand_position == king_view.position + expected_offset and lab.activation_sequence.hand_rest_position == expected_rest and activation_hand.position == expected_rest, "Setup Lab refreshes activation hover/rest endpoints from the final board layout")
+
+	lab.setup_profile.left_motion.pickup_delay = 0.21
+	lab.setup_profile.right_motion.pickup_delay = 0.47
+	lab.motion_side_selector.select(2)
+	lab._sync_motion_controls()
+	var shared_pickup_control: SpinBox = lab.motion_controls[&"pickup_delay"]
+	_check(shared_pickup_control.get_line_edit().text == "?", "Both-hands mode displays a question mark when scalar defaults disagree")
+	shared_pickup_control.value = 0.33
+	_check(is_equal_approx(lab.setup_profile.left_motion.pickup_delay, 0.33) and is_equal_approx(lab.setup_profile.right_motion.pickup_delay, 0.33), "Editing a scalar in both-hands mode updates both default motion profiles")
+	lab.setup_profile.left_motion.entry_arrival_handle.x = 12.0
+	lab.setup_profile.right_motion.entry_arrival_handle.x = 34.0
+	lab._sync_motion_controls()
+	var shared_vector_control: SpinBox = lab.motion_controls[&"entry_arrival_handle:x"]
+	_check(shared_vector_control.get_line_edit().text == "?", "Both-hands mode displays a question mark when vector components disagree")
+	shared_vector_control.value = 56.0
+	_check(is_equal_approx(lab.setup_profile.left_motion.entry_arrival_handle.x, 56.0) and is_equal_approx(lab.setup_profile.right_motion.entry_arrival_handle.x, 56.0), "Editing a vector component in both-hands mode updates both default motion profiles")
+	lab.setup_profile.left_motion.pickup_delay = 0.06
+	lab.setup_profile.right_motion.pickup_delay = 0.12
+	lab.motion_side_selector.select(2)
+	lab._sync_motion_controls()
+	_check(shared_pickup_control.get_line_edit().text == "?", "Returning to both-hands mode immediately restores the mixed-value display")
+	lab.motion_side_selector.select(1)
+	lab._sync_motion_controls()
+	_check(shared_pickup_control.get_line_edit().text == "0.12", "Leaving both-hands mode always replaces a stale question mark with the selected hand's numeric value")
 
 	for motion in [lab.setup_profile.left_motion, lab.setup_profile.right_motion]:
 		motion.pickup_delay = 0.001
