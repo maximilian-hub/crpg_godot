@@ -753,8 +753,11 @@ func _tween_approach_position(target: Vector2, duration: float, world_scale: flo
 func _refresh_live_approach() -> void:
 	if not is_node_ready() or not has_approach_preview:
 		return
-	var role_basis := Vector2(-1.0, -1.0) if seat == Seat.FAR else Vector2.ONE
-	var departure_control := approach_preview_start.lerp(approach_preview_target, approach_departure_progress) + Vector2.UP * role_basis.y * approach_departure_lift * approach_preview_world_scale
+	# Seat changes which side the hand enters from, but lift is board-relative:
+	# both hands must rise toward screen-up rather than rotating the choreography
+	# 180 degrees. Only mirror the horizontal arrival-handle component.
+	var role_basis := Vector2(-1.0, 1.0) if seat == Seat.FAR else Vector2.ONE
+	var departure_control := approach_preview_start.lerp(approach_preview_target, approach_departure_progress) + Vector2.UP * approach_departure_lift * approach_preview_world_scale
 	var arrival_control := approach_preview_target + approach_arrival_handle * role_basis * approach_preview_world_scale
 	position = calculate_bezier_position(approach_preview_start, departure_control, arrival_control, approach_preview_target, approach_preview_progress)
 	_update_approach_path_debug(approach_preview_start, departure_control, arrival_control, approach_preview_target)
@@ -778,7 +781,9 @@ func _tween_jump_position(target: Vector2, duration: float, arc_height: float) -
 	var start := position
 	var tween := create_tween()
 	tween.tween_method(
-		func(progress: float): position = calculate_jump_position(start, target, progress, -arc_height if seat == Seat.FAR else arc_height),
+		# A jump represents lifting away from the board, so its screen-space arc
+		# remains upward for near and far hands alike.
+		func(progress: float): position = calculate_jump_position(start, target, progress, arc_height),
 		0.0,
 		1.0,
 			duration * animation_duration_scale

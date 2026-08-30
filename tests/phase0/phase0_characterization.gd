@@ -429,6 +429,22 @@ func _test_black_view_hand_presentation() -> void:
 	var controller: ChessBoardController = context.controller
 	var rig: ChessHandRig = context.view.near_hand_rig
 	var far_rig: ChessHandRig = context.view.far_hand_rig
+	far_rig.has_approach_preview = true
+	far_rig.approach_preview_start = Vector2.ZERO
+	far_rig.approach_preview_target = Vector2(100.0, 100.0)
+	far_rig.approach_preview_world_scale = 1.0
+	far_rig.approach_preview_progress = 0.5
+	far_rig._refresh_live_approach()
+	var expected_far_approach := ChessHandRig.calculate_bezier_position(
+		Vector2.ZERO,
+		Vector2.ZERO.lerp(Vector2(100.0, 100.0), far_rig.approach_departure_progress) + Vector2.UP * far_rig.approach_departure_lift,
+		Vector2(100.0, 100.0) + Vector2(-far_rig.approach_arrival_handle.x, far_rig.approach_arrival_handle.y),
+		Vector2(100.0, 100.0),
+		0.5
+	)
+	_expect(far_rig.position.is_equal_approx(expected_far_approach), "Far approach mirrors its horizontal handle while preserving upward lift")
+	var jump_midpoint := ChessHandRig.calculate_jump_position(Vector2.ZERO, Vector2(100.0, 100.0), 0.5, 32.0)
+	_expect(jump_midpoint.y < 50.0, "shared jump and capture arcs bow upward away from the board")
 	for hand_rig in [rig, far_rig]:
 		for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
 			hand_rig.set(property_name, 0.01)
