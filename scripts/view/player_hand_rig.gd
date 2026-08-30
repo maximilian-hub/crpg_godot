@@ -10,6 +10,7 @@ signal captured_piece_grabbed(piece: Node2D)
 signal attack_contact(piece: Node2D)
 signal move_animation_finished()
 signal setup_piece_placed(piece: Node2D)
+signal depth_state_changed(state: DepthState, base_depth: int)
 
 const CARRY_PATH_SLIDE := &"slide"
 const CARRY_PATH_JUMP := &"jump"
@@ -18,14 +19,20 @@ const SOUND_CAPTURE_PICKUP := &"capture_pickup"
 const SOUND_PLACE := &"place"
 const SOUND_RELEASE := &"release"
 enum Seat { NEAR, FAR }
+enum DepthState { GROUNDED, ELEVATED }
 ## Absolute board-canvas interaction stack above ordinary pieces (0-70).
 const GRIP_BACK_Z := 72
 const ACTIVE_PIECE_Z := 73
 const CAPTURED_PIECE_Z := 74
-const PLACEMENT_OCCLUDER_Z := 75
+const HAND_OVERLAY_Z := 75
 const GRIP_FRONT_Z := 76
-const INTERACTION_OCCLUDER_Z := 77
 const ARM_FOREGROUND_Z := 80
+## Grounded slots live inside one board row's ten-level depth band.
+const GROUNDED_GRIP_BACK_OFFSET := 2
+const GROUNDED_ACTIVE_PIECE_OFFSET := 3
+const GROUNDED_CAPTURED_PIECE_OFFSET := 4
+const GROUNDED_GRIP_FRONT_OFFSET := 6
+const DEPTH_BAND_STRIDE := 10
 @export var hand_style: ChessHandStyle
 @export var seat := Seat.NEAR
 @export_group("Debug")
@@ -83,7 +90,8 @@ var approach_preview_start := Vector2.ZERO
 var approach_preview_target := Vector2.ZERO
 var approach_preview_world_scale := 1.0
 var approach_preview_progress := 0.0
-var interaction_occluder_depths: Dictionary = {}
+var depth_state := DepthState.ELEVATED
+var grounded_base_depth := 0
 var visual_mirrored := false
 var setup_paused := false
 var setup_generation := 0
@@ -167,7 +175,37 @@ func _ready() -> void:
 	captured_piece_pivot.z_index = CAPTURED_PIECE_Z
 	grip_front_sprite.z_index = GRIP_FRONT_Z
 	arm_foreground_sprite.z_index = ARM_FOREGROUND_Z
+	_set_elevated_depth()
 	_apply_pose(false)
+
+
+func _set_grounded_depth(base_depth: int) -> void:
+	var state_changed := depth_state != DepthState.GROUNDED or grounded_base_depth != base_depth
+	depth_state = DepthState.GROUNDED
+	grounded_base_depth = base_depth
+	grip_back_sprite.z_index = base_depth + GROUNDED_GRIP_BACK_OFFSET
+	piece_slot.z_index = base_depth + GROUNDED_ACTIVE_PIECE_OFFSET
+	captured_piece_pivot.z_index = base_depth + GROUNDED_CAPTURED_PIECE_OFFSET
+	grip_front_sprite.z_index = (
+		base_depth + GROUNDED_GRIP_FRONT_OFFSET
+		if hand_style == null or hand_style.grip_front_follows_board_depth
+		else GRIP_FRONT_Z
+	)
+	arm_foreground_sprite.z_index = ARM_FOREGROUND_Z
+	if state_changed:
+		depth_state_changed.emit(depth_state, grounded_base_depth)
+
+
+func _set_elevated_depth() -> void:
+	var state_changed := depth_state != DepthState.ELEVATED
+	depth_state = DepthState.ELEVATED
+	grip_back_sprite.z_index = GRIP_BACK_Z
+	piece_slot.z_index = ACTIVE_PIECE_Z
+	captured_piece_pivot.z_index = CAPTURED_PIECE_Z
+	grip_front_sprite.z_index = GRIP_FRONT_Z
+	arm_foreground_sprite.z_index = ARM_FOREGROUND_Z
+	if state_changed:
+		depth_state_changed.emit(depth_state, grounded_base_depth)
 
 
 func _detach_approach_path_debug() -> void:
@@ -180,6 +218,10 @@ func set_hand_style(style: Resource) -> void:
 	motion_override = null
 	if is_node_ready():
 		_apply_pose(false)
+		if depth_state == DepthState.GROUNDED:
+			_set_grounded_depth(grounded_base_depth)
+		else:
+			_set_elevated_depth()
 
 
 func set_board_sound_set(sound_set: ChessBoardSoundSet) -> void:
@@ -227,10 +269,10 @@ func play_setup_placement(
 	setup_piece_z = piece_node.z_index
 	var effective_hand_scale := world_scale * art_scale_multiplier
 	scale = Vector2.ONE * effective_hand_scale
+	_set_elevated_depth()
 	var contact_position := _piece_grip_position(piece_node)
 	position = contact_position
 	piece_node.visible = true
-	piece_node.z_index = ACTIVE_PIECE_Z
 	piece_node.reparent(piece_slot, true)
 	piece_node.z_index = 0
 	_apply_pose(true)
@@ -242,6 +284,7 @@ func play_setup_placement(
 	visible = true
 	if not await _setup_curve(position, contact_position, motion.entry_departure_handle, motion.entry_arrival_handle, motion.entry_duration, world_scale, setup_token):
 		return
+	_set_grounded_depth(final_piece_z_index)
 	_play_board_sound(SOUND_PLACE)
 	if not await _setup_wait(motion.placement_hold, setup_token):
 		return
@@ -256,6 +299,7 @@ func play_setup_placement(
 	setup_piece = null
 	if not await _setup_wait(motion.release_hold, setup_token):
 		return
+	_set_elevated_depth()
 	var rest := _setup_rest_position(effective_hand_scale)
 	if not await _setup_curve(position, rest, motion.retreat_departure_handle, motion.retreat_arrival_handle, motion.retreat_duration, world_scale, setup_token):
 		return
@@ -275,6 +319,8 @@ func cancel_setup_placement() -> void:
 		setup_piece.z_index = setup_piece_z
 		setup_piece.visible = false
 	setup_piece = null
+	if is_node_ready():
+		_set_elevated_depth()
 	visible = false
 	is_animating = false
 	setup_paused = false
@@ -322,9 +368,6 @@ func play_piece_move(
 	carry_path: StringName = CARRY_PATH_SLIDE,
 	enter_from_offscreen := true,
 	retreat_offscreen := true,
-	interaction_occluders: Array[Node2D] = [],
-	pickup_occluders: Array[Node2D] = [],
-	placement_occluders: Array[Node2D] = [],
 	final_piece_z_index := -1
 ) -> void:
 	if not can_animate() or not is_instance_valid(piece_node):
@@ -348,16 +391,15 @@ func play_piece_move(
 
 	# Arc the open hand from its lower-right rest point to the piece's grip point.
 	if enter_from_offscreen:
-		_restore_interaction_occluders()
 		position = _offscreen_rest_position(effective_hand_scale)
-	_promote_interaction_occluders(interaction_occluders, piece_node)
-	_promote_interaction_occluders(pickup_occluders, piece_node, PLACEMENT_OCCLUDER_Z)
-	piece_node.z_index = ACTIVE_PIECE_Z
 	visible = true
 	if enter_from_offscreen:
+		_set_grounded_depth(original_z_index)
 		await _tween_approach_position(contact_position, approach_duration, world_scale)
 	else:
+		_set_elevated_depth()
 		await _tween_position(contact_position, approach_duration)
+		_set_grounded_depth(original_z_index)
 
 	# Place the piece between the back and front grip layers, then close the hand.
 	piece_node.reparent(piece_slot, true)
@@ -369,13 +411,14 @@ func play_piece_move(
 	await _wait(grasp_hold_duration)
 
 	# Carry the closed hand and grabbed piece to the destination together.
-	_promote_interaction_occluders(placement_occluders, piece_node, PLACEMENT_OCCLUDER_Z)
 	carry_path_started.emit(carry_path)
 	if carry_path == CARRY_PATH_JUMP:
+		_set_elevated_depth()
 		await _tween_jump_position(destination_contact, jump_carry_duration, jump_arc_height * world_scale)
+		_set_grounded_depth(release_z_index)
 	else:
 		_start_slide_sound()
-		await _tween_position(destination_contact, carry_duration)
+		await _tween_grounded_position(destination_contact, carry_duration, original_z_index, release_z_index)
 		_stop_slide_sound()
 	_play_board_sound(SOUND_PLACE)
 	await _wait(release_hold_duration)
@@ -392,10 +435,10 @@ func play_piece_move(
 
 	# A compound move such as castling can keep the open hand on the board and
 	# continue directly to its next piece.
+	_set_elevated_depth()
 	if retreat_offscreen:
 		await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 		visible = false
-		_restore_interaction_occluders()
 		is_animating = false
 		move_animation_finished.emit()
 
@@ -405,9 +448,6 @@ func play_piece_capture(
 	defender_node: Node2D,
 	destination: Vector2,
 	world_scale: float,
-	interaction_occluders: Array[Node2D] = [],
-	pickup_occluders: Array[Node2D] = [],
-	placement_occluders: Array[Node2D] = [],
 	final_piece_z_index := -1
 ) -> bool:
 	if not can_animate() or not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
@@ -415,7 +455,6 @@ func play_piece_capture(
 
 	# Raise the open hand to the attacker and close around it just like a normal move.
 	is_animating = true
-	_restore_interaction_occluders()
 	captured_piece_pivot.position = Vector2.ZERO
 	captured_piece_pivot.rotation = 0.0
 	var effective_hand_scale := world_scale * art_scale_multiplier
@@ -431,11 +470,11 @@ func play_piece_capture(
 	var attacker_contact := _piece_grip_position(attacker_node)
 	var destination_contact := attacker_contact + destination - attacker_origin
 	var defender_contact := _piece_grip_position(defender_node)
+	var defender_z_index := defender_node.z_index
+	var capture_swipe_base_depth := mini(attacker_z_index, defender_z_index - DEPTH_BAND_STRIDE)
 
 	position = _offscreen_rest_position(effective_hand_scale)
-	_promote_interaction_occluders(interaction_occluders, attacker_node)
-	_promote_interaction_occluders(pickup_occluders, attacker_node, PLACEMENT_OCCLUDER_Z)
-	attacker_node.z_index = ACTIVE_PIECE_Z
+	_set_grounded_depth(attacker_z_index)
 	visible = true
 	await _tween_approach_position(attacker_contact, approach_duration, world_scale)
 	attacker_node.reparent(piece_slot, true)
@@ -454,7 +493,11 @@ func play_piece_capture(
 	carry_path_started.emit(CARRY_PATH_JUMP)
 	var role_x := -1.0 if seat == Seat.FAR else 1.0
 	var swipe_start := defender_contact + Vector2.LEFT * role_x * capture_approach_offset * world_scale
+	_set_elevated_depth()
 	await _tween_jump_position(swipe_start, capture_approach_duration, capture_approach_arc_height * world_scale)
+	# Until contact, treat the defender as the naturally nearer object so it can
+	# remain in front of board-occludable grip artwork without changing its z.
+	_set_grounded_depth(capture_swipe_base_depth)
 	var swipe_end := swipe_start + Vector2.RIGHT * role_x * capture_swipe_distance * world_scale
 	capture_stage_changed.emit(&"swipe")
 	var pickup_progress := 0.0
@@ -467,6 +510,7 @@ func play_piece_capture(
 			position = swipe_start.lerp(swipe_end, progress)
 			if not pickup_state["attached"] and progress >= pickup_progress:
 				pickup_state["attached"] = true
+				_set_grounded_depth(defender_z_index)
 				_attach_captured_piece(attacker_node, defender_node, world_scale),
 		0.0,
 		1.0,
@@ -474,13 +518,15 @@ func play_piece_capture(
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await swipe_tween.finished
 	if not pickup_state["attached"]:
+		_set_grounded_depth(defender_z_index)
 		_attach_captured_piece(attacker_node, defender_node, world_scale)
 
 	# Jump to the destination and leave the attacker on its exact square. Keep the
 	# hand closed around the captured defender while carrying it offscreen.
 	capture_stage_changed.emit(&"placement")
-	_promote_interaction_occluders(placement_occluders, attacker_node, PLACEMENT_OCCLUDER_Z)
+	_set_elevated_depth()
 	await _tween_jump_position(destination_contact, capture_placement_duration, capture_placement_arc_height * world_scale)
+	_set_grounded_depth(release_z_index)
 	_play_board_sound(SOUND_PLACE)
 	await _wait(release_hold_duration)
 	attacker_node.reparent(attacker_parent, true)
@@ -492,20 +538,19 @@ func play_piece_capture(
 
 	# Retreat below the screen with the captured piece; its normal removal can now be silent.
 	capture_stage_changed.emit(&"exit")
+	_set_elevated_depth()
 	await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 	visible = false
-	_restore_interaction_occluders()
 	is_animating = false
 	move_animation_finished.emit()
 	return true
 
 
-func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, contact_callback: Callable = Callable(), interaction_occluders: Array[Node2D] = [], pickup_occluders: Array[Node2D] = [], final_piece_z_index := -1) -> void:
+func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, contact_callback: Callable = Callable(), final_piece_z_index := -1) -> void:
 	if not can_animate() or not is_instance_valid(piece_node):
 		return
 
 	is_animating = true
-	_restore_interaction_occluders()
 	var effective_hand_scale := world_scale * art_scale_multiplier
 	scale = Vector2.ONE * effective_hand_scale
 	_apply_pose(false)
@@ -520,9 +565,7 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 	var target_contact := contact_position + target - origin
 
 	position = _offscreen_rest_position(effective_hand_scale)
-	_promote_interaction_occluders(interaction_occluders, piece_node)
-	_promote_interaction_occluders(pickup_occluders, piece_node, PLACEMENT_OCCLUDER_Z)
-	piece_node.z_index = ACTIVE_PIECE_Z
+	_set_grounded_depth(original_z_index)
 	visible = true
 	await _tween_approach_position(contact_position, approach_duration, world_scale)
 	piece_node.reparent(piece_slot, true)
@@ -534,11 +577,13 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 	await _wait(grasp_hold_duration)
 
 	carry_path_started.emit(&"slam")
+	_set_elevated_depth()
 	await _tween_attack_position(target_contact, attack_slam_duration, Tween.EASE_IN)
 	if contact_callback.is_valid():
 		contact_callback.call()
 	attack_contact.emit(piece_node)
 	await _tween_attack_position(contact_position, attack_rebound_duration, Tween.EASE_OUT)
+	_set_grounded_depth(original_z_index)
 
 	_apply_pose(false)
 	pose_changed.emit(&"open")
@@ -549,16 +594,15 @@ func play_piece_attack(piece_node: Node2D, target: Vector2, world_scale: float, 
 	piece_released.emit(piece_node)
 	_play_hand_sound(SOUND_RELEASE)
 
+	_set_elevated_depth()
 	await _tween_position(_offscreen_rest_position(effective_hand_scale), retreat_duration)
 	visible = false
-	_restore_interaction_occluders()
 	is_animating = false
 	move_animation_finished.emit()
 
 
 func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_scale: float) -> void:
 	# Pin the defender's grip to the pivot, so tilting it cannot lift the entire piece.
-	_release_interaction_occluder(defender_node)
 	defender_node.reparent(captured_piece_pivot, true)
 	defender_node.z_index = 0
 	var attacker_anchor := _get_grip_anchor(attacker_node)
@@ -570,30 +614,6 @@ func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_
 		defender_node.global_position += captured_piece_pivot.global_position - defender_anchor.global_position
 	_play_board_sound(SOUND_CAPTURE_PICKUP)
 	captured_piece_grabbed.emit(defender_node)
-
-
-func _promote_interaction_occluders(occluders: Array[Node2D], active_piece: Node2D = null, target_z_index := INTERACTION_OCCLUDER_Z) -> void:
-	for occluder in occluders:
-		if not is_instance_valid(occluder) or occluder == active_piece:
-			continue
-		if not interaction_occluder_depths.has(occluder):
-			interaction_occluder_depths[occluder] = occluder.z_index
-		occluder.z_index = maxi(occluder.z_index, target_z_index)
-
-
-func _release_interaction_occluder(occluder: Node2D) -> void:
-	if not interaction_occluder_depths.has(occluder):
-		return
-	if is_instance_valid(occluder):
-		occluder.z_index = int(interaction_occluder_depths[occluder])
-	interaction_occluder_depths.erase(occluder)
-
-
-func _restore_interaction_occluders() -> void:
-	for occluder in interaction_occluder_depths.keys():
-		if is_instance_valid(occluder):
-			occluder.z_index = int(interaction_occluder_depths[occluder])
-	interaction_occluder_depths.clear()
 
 
 func _play_hand_sound(cue: StringName) -> void:
@@ -723,6 +743,29 @@ func _tween_position(target: Vector2, duration: float) -> void:
 	var tween := create_tween()
 	tween.tween_property(self, "position", target, duration * animation_duration_scale).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
+
+
+func _tween_grounded_position(target: Vector2, duration: float, start_depth: int, destination_depth: int) -> void:
+	var start := position
+	var tween := create_tween()
+	tween.tween_method(
+		func(progress: float):
+			position = start.lerp(target, progress)
+			# Depth bands are discrete ten-slot rows. Snap to the nearest band so
+			# local offsets never spill into the next row's ordinary piece slot.
+			var interpolated_band := calculate_grounded_base_depth(start_depth, destination_depth, progress)
+			_set_grounded_depth(interpolated_band),
+		0.0,
+		1.0,
+		duration * animation_duration_scale
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
+	position = target
+	_set_grounded_depth(destination_depth)
+
+
+static func calculate_grounded_base_depth(start_depth: int, destination_depth: int, progress: float) -> int:
+	return roundi(lerpf(float(start_depth), float(destination_depth), clampf(progress, 0.0, 1.0)) / float(DEPTH_BAND_STRIDE)) * DEPTH_BAND_STRIDE
 
 
 func _tween_attack_position(target: Vector2, duration: float, easing: Tween.EaseType) -> void:

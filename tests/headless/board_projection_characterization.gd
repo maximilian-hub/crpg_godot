@@ -61,8 +61,9 @@ func _test_player_relative_orientation() -> void:
 	board_view.projection = black_view
 	_expect(board_view.get_piece_depth(Vector2i(0, 0)) - board_view.get_piece_depth(Vector2i(1, 0)) == ChessBoardView.BOARD_DEPTH_STRIDE, "Black perspective reverses row depth while preserving the hand-layer band")
 	_expect(ChessHandRig.GRIP_FRONT_Z > 7 * ChessBoardView.BOARD_DEPTH_STRIDE, "front grip remains above ordinary board pieces")
-	_expect(ChessHandRig.GRIP_BACK_Z < ChessHandRig.ACTIVE_PIECE_Z and ChessHandRig.ACTIVE_PIECE_Z < ChessHandRig.CAPTURED_PIECE_Z and ChessHandRig.CAPTURED_PIECE_Z < ChessHandRig.PLACEMENT_OCCLUDER_Z and ChessHandRig.PLACEMENT_OCCLUDER_Z < ChessHandRig.GRIP_FRONT_Z, "absolute grip stack supports a placement occluder between carried pieces and the front grip")
-	_expect(ChessHandRig.GRIP_FRONT_Z < ChessHandRig.INTERACTION_OCCLUDER_Z and ChessHandRig.INTERACTION_OCCLUDER_Z < ChessHandRig.ARM_FOREGROUND_Z, "temporary interaction occluders fit between the front grip and foreground arm")
+	_expect(ChessHandRig.GRIP_BACK_Z < ChessHandRig.ACTIVE_PIECE_Z and ChessHandRig.ACTIVE_PIECE_Z < ChessHandRig.CAPTURED_PIECE_Z and ChessHandRig.CAPTURED_PIECE_Z < ChessHandRig.GRIP_FRONT_Z, "elevated grip stack sandwiches both carried pieces")
+	_expect(ChessHandRig.GROUNDED_GRIP_BACK_OFFSET < ChessHandRig.GROUNDED_ACTIVE_PIECE_OFFSET and ChessHandRig.GROUNDED_ACTIVE_PIECE_OFFSET < ChessHandRig.GROUNDED_CAPTURED_PIECE_OFFSET and ChessHandRig.GROUNDED_CAPTURED_PIECE_OFFSET < ChessHandRig.GROUNDED_GRIP_FRONT_OFFSET and ChessHandRig.GROUNDED_GRIP_FRONT_OFFSET < ChessBoardView.BOARD_DEPTH_STRIDE, "grounded interaction layers fit inside one board-row depth band")
+	_expect(ChessHandRig.DEPTH_BAND_STRIDE == ChessBoardView.BOARD_DEPTH_STRIDE and ChessHandRig.calculate_grounded_base_depth(60, 40, 0.5) == 50, "grounded slides cross discrete board-row depth bands without spilling local offsets into neighboring rows")
 	_expect(ChessBoardView.BOARD_EFFECT_Z > ChessHandRig.ARM_FOREGROUND_Z, "board effects remain above the foreground arm")
 	board_view.free()
 

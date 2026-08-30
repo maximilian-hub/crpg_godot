@@ -119,7 +119,7 @@ func _build_stage() -> void:
 	lightning = Lightning.new()
 	# Back grip < lightning < front grip < arm/palm, so the
 	# energy appears to emerge from inside the hand instead of sitting atop it.
-	lightning.z_index = ChessHandRig.PLACEMENT_OCCLUDER_Z
+	lightning.z_index = ChessHandRig.HAND_OVERLAY_Z
 	add_child(lightning)
 	approach_path_debug = _make_hand_path_line(Color("3ac8d5"))
 	retreat_path_debug = _make_hand_path_line(Color("d58f3a"))

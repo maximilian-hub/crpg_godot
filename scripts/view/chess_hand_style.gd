@@ -17,6 +17,10 @@ class_name ChessHandStyle
 @export var connection_anchor_pixels := Vector2(23.0, 24.0)
 @export var piece_grip_offset := Vector2(0.0, 6.0)
 @export_range(0.25, 8.0, 0.05) var art_scale_multiplier := 3.5
+## When true, GripFront shares the active board row's depth band and can pass
+## behind pieces in rows toward the viewer. Disable for foreground fingers that
+## should remain above ordinary board pieces, as on the far Hood hand.
+@export var grip_front_follows_board_depth := true
 @export_group("Choreography")
 @export var motion_profile: ChessHandMotionProfile = ChessHandMotionProfile.new()
 @export_group("")

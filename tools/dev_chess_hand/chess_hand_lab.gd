@@ -22,6 +22,7 @@ var connection_y: SpinBox
 var art_scale: SpinBox
 var motion_fields: Dictionary = {}
 var status: Label
+var depth_status: Label
 var grip_marker: Node2D
 var connection_marker: Node2D
 var stage_center := Vector2(780, 450)
@@ -44,10 +45,13 @@ func _build_stage() -> void:
 	add_child(backdrop)
 	hand = HAND_SCENE.instantiate() as ChessHandRig
 	add_child(hand)
+	hand.depth_state_changed.connect(_on_depth_state_changed)
 	hand.position = stage_center
 	hand.visible = true
 	sample_piece = _make_piece(Pawn.new("white", Vector2i.ZERO), stage_center + Vector2(-90, 100))
 	target_piece = _make_piece(Queen.new("black", Vector2i.ZERO), stage_center + Vector2(150, 100))
+	sample_piece.z_index = 40
+	target_piece.z_index = 50
 	grip_marker = _make_cross(Color.CYAN)
 	connection_marker = _make_cross(Color.MAGENTA)
 	add_child(grip_marker)
@@ -103,6 +107,9 @@ func _build_ui() -> void:
 	preview.text = "Play Preview"
 	preview.pressed.connect(_play_preview)
 	rows.add_child(preview)
+	depth_status = Label.new()
+	depth_status.text = "Depth: Elevated"
+	rows.add_child(depth_status)
 	grip_x = _number_row(rows, "Grip X", -512, 512, 1)
 	grip_y = _number_row(rows, "Grip Y", -512, 512, 1)
 	connection_x = _number_row(rows, "Connection X", -512, 512, 1)
@@ -223,6 +230,12 @@ func _on_motion_changed(value: float, property_name: String) -> void:
 		hand.motion_override = null
 
 
+func _on_depth_state_changed(state: ChessHandRig.DepthState, base_depth: int) -> void:
+	if depth_status == null:
+		return
+	depth_status.text = "Depth: Elevated" if state == ChessHandRig.DepthState.ELEVATED else "Depth: Grounded (row %d)" % base_depth
+
+
 func _update_markers() -> void:
 	grip_marker.position = hand.position
 	connection_marker.position = hand.position + hand.get_connection_anchor_position() * hand.scale
@@ -234,6 +247,8 @@ func _reset_samples() -> void:
 			piece.reparent(self, true)
 	sample_piece.position = stage_center + Vector2(-90, 100)
 	target_piece.position = stage_center + Vector2(150, 100)
+	sample_piece.z_index = 40
+	target_piece.z_index = 50
 	sample_piece.visible = true
 	target_piece.visible = true
 	hand.visible = false

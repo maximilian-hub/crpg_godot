@@ -33,6 +33,7 @@ func _run_suite() -> void:
 	await _test_player_hand_move_presentation()
 	await _test_player_hand_castling_presentation()
 	await _test_player_hand_capture_presentation()
+	await _test_surrounded_knight_depth_presentation()
 	await _test_ai_configuration_and_turns()
 	await _test_black_view_hand_presentation()
 	await _test_nonlethal_attack_presentation()
@@ -74,13 +75,12 @@ func _test_player_hand_move_presentation() -> void:
 	var nearer_rook_view: Node2D = context.adapter.get_piece_view(model.board[7][0])
 	var unrelated_nearer_piece: Node2D = context.adapter.get_piece_view(model.board[7][1])
 	_expect(view.get_piece_directly_toward_viewer(Vector2i(6, 0)) == nearer_rook_view, "White perspective identifies only the same-file piece one displayed row nearer")
-	_expect(view.get_hand_interaction_occluders(Vector2i(6, 0), Vector2i(6, 0)) == [nearer_rook_view], "matching origin and destination occluders are deduplicated")
 	var nearer_rook_original_z := nearer_rook_view.z_index
-	var test_occluders: Array[Node2D] = [nearer_rook_view]
-	rig._promote_interaction_occluders(test_occluders)
-	_expect(unrelated_nearer_piece.z_index < grip_front.z_index and grip_front.z_index < nearer_rook_view.z_index and nearer_rook_view.z_index < arm_foreground.z_index, "only the direct approach occluder is layered between the front grip and foreground arm")
-	rig._restore_interaction_occluders()
-	_expect(nearer_rook_view.z_index == nearer_rook_original_z, "temporary approach occluder restores its board depth")
+	var unrelated_nearer_original_z := unrelated_nearer_piece.z_index
+	rig._set_grounded_depth(pawn_view.z_index)
+	_expect(grip_front.z_index < nearer_rook_view.z_index and nearer_rook_view.z_index < arm_foreground.z_index, "grounded Skeleton thumb sits below the naturally nearer piece while its foreground arm remains above")
+	_expect(nearer_rook_view.z_index == nearer_rook_original_z and unrelated_nearer_piece.z_index == unrelated_nearer_original_z, "grounding the hand never changes stationary board-piece depths")
+	rig._set_elevated_depth()
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][1]), Vector2i(7, 1), Vector2i(5, 2)) == &"jump", "knights always use the jump carry path")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][0]), Vector2i(7, 0), Vector2i(5, 0)) == &"slide", "two-square rook movement retains the slide carry path")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][0]), Vector2i(7, 0), Vector2i(4, 0)) == &"slide", "straight sliders can slide at any distance")
@@ -88,11 +88,7 @@ func _test_player_hand_move_presentation() -> void:
 	var bishop_clearance_blockers := view.get_player_hand_clearance_blockers(bishop_view, Vector2i(7, 2), Vector2i(6, 3))
 	_expect(view.get_player_hand_carry_path(bishop_view, Vector2i(7, 2), Vector2i(6, 3)) == &"jump", "a one-square bishop move jumps when its two corner-adjacent squares form a squeezed passage")
 	_expect(context.adapter.get_piece_view(model.board[7][3]) in bishop_clearance_blockers and context.adapter.get_piece_view(model.board[6][2]) in bishop_clearance_blockers, "diagonal clearance identifies both the adjacent queen and pawn as jump obstacles")
-	_expect(view.get_hand_interaction_occluders(Vector2i(7, 2), Vector2i(6, 3), bishop_clearance_blockers).is_empty(), "outbound bishop jump obstacles cannot be promoted over the front grip as destination occluders")
-	_expect(view.get_hand_placement_occluders(Vector2i(6, 3), bishop_clearance_blockers) == [context.adapter.get_piece_view(model.board[7][3])], "the queen below the bishop destination becomes a placement-only occluder")
-	_expect(view.get_hand_interaction_occluders(Vector2i(6, 3), Vector2i(7, 2), bishop_clearance_blockers).is_empty(), "returning bishop jump obstacles cannot be promoted over the front grip as origin occluders")
-	_expect(view.get_hand_pickup_occluders(Vector2i(6, 3), bishop_clearance_blockers) == [context.adapter.get_piece_view(model.board[7][3])], "the queen below the returning bishop becomes a pickup-only occluder")
-	_expect(view.get_hand_placement_occluders(Vector2i(7, 2), bishop_clearance_blockers).is_empty(), "the returning bishop does not retain an unrelated destination placement occluder")
+	_expect(context.adapter.get_piece_view(model.board[7][3]).z_index == view.get_piece_depth(Vector2i(7, 3)), "bishop jump selection does not alter the adjacent queen's board depth")
 	_expect(view.get_player_hand_carry_path(bishop_view, Vector2i(4, 3), Vector2i(2, 5)) == &"slide", "a bishop can slide diagonally at any distance when every crossed corner is clear")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(7, 3), Vector2i(4, 6)) == &"jump", "a diagonally moving queen uses the same squeezed-corner rule as a bishop")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(4, 3), Vector2i(2, 5)) == &"slide", "a diagonally moving queen slides through a clear corridor")
@@ -106,16 +102,16 @@ func _test_player_hand_move_presentation() -> void:
 		func(piece: Node2D):
 			observations.append("grabbed")
 			_expect(piece == pawn_view and piece.get_parent() == piece_slot, "player hand sandwiches the grabbed piece in its carry slot")
-			_expect(not grip_back.z_as_relative and not piece_slot.z_as_relative and not grip_front.z_as_relative, "back grip, carried piece, and front grip use one absolute interaction stack")
+			_expect(not grip_back.z_as_relative and not piece_slot.z_as_relative and not grip_front.z_as_relative, "grounded hand layers use explicit row-band depths")
 			_expect(rig.position.is_equal_approx(expected_grip_position), "player hand aligns its grip to the piece head anchor plus the configured offset")
 			_expect(nearer_rook_view.z_index > grip_front.z_index, "the direct lower piece continues to occlude the closed front grip after the grab clicks into place")
-			_expect(not arm_foreground.z_as_relative and arm_foreground.z_index > nearer_rook_view.z_index, "the foreground arm remains above the promoted lower piece")
+			_expect(not arm_foreground.z_as_relative and arm_foreground.z_index > nearer_rook_view.z_index, "the foreground arm remains above the naturally nearer piece")
 	)
 	rig.piece_released.connect(
 		func(piece: Node2D):
 			observations.append("released")
 			_expect(piece.get_parent() == view.get_node("Pieces"), "player hand restores the released piece to the board piece layer")
-			_expect(piece.z_index == view.get_piece_depth(Vector2i(4, 0)) and nearer_rook_view.z_index == ChessHandRig.INTERACTION_OCCLUDER_Z, "placed piece assumes destination depth while the lower occluder remains promoted for retreat")
+			_expect(piece.z_index == view.get_piece_depth(Vector2i(4, 0)) and nearer_rook_view.z_index == nearer_rook_original_z, "placed piece assumes destination depth while every stationary piece retains natural depth")
 			_expect(rig.get_node("PlaceSound").stream == board_sound_set.default_place and rig.get_node("ReleaseSound").stream == null, "placement sounds at board contact before the hand releases")
 	)
 	rig.move_animation_finished.connect(func(): observations.append("finished"))
@@ -124,7 +120,7 @@ func _test_player_hand_move_presentation() -> void:
 	await controller._on_square_clicked(Vector2i(4, 0))
 
 	_expect(observations == ["open", "grabbed", "closed", "open", "released", "finished"], "player hand uses the open-grab-close-carry-open-release sequence")
-	_expect(nearer_rook_view.z_index == nearer_rook_original_z, "lower-piece occlusion restores only after the hand completes its off-board retreat")
+	_expect(nearer_rook_view.z_index == nearer_rook_original_z and unrelated_nearer_piece.z_index == unrelated_nearer_original_z, "stationary depths remain unchanged through the complete hand visit")
 	_expect(carry_paths == [&"slide"], "two-square pawn movement retains the sliding carry path")
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.0, 32.0) == Vector2.ZERO, "jump arc begins at the exact grip position")
 	_expect(rig.calculate_jump_position(Vector2.ZERO, Vector2(100, 40), 0.5, 32.0) == Vector2(50, -12), "jump arc reaches its configured height above the straight midpoint")
@@ -233,7 +229,7 @@ func _test_player_hand_capture_presentation() -> void:
 	rig.piece_grabbed.connect(
 		func(piece: Node2D):
 			if piece.model == rook:
-				observation["defender_occluded"] = bishop_view.z_index == ChessHandRig.INTERACTION_OCCLUDER_Z
+				observation["defender_occluded"] = bishop_view.z_index > rig.get_node("GripFront").z_index and bishop_view.z_index < rig.get_node("ArmForeground").z_index
 	)
 	rig.capture_stage_changed.connect(
 		func(stage: StringName):
@@ -256,7 +252,7 @@ func _test_player_hand_capture_presentation() -> void:
 			_expect(rig.get_node("CapturePickupSound").stream == board_sound_set.default_capture_pickup, "the board's default capture pickup sounds at the instant the defender attaches")
 			_expect(piece.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece is attached to its hand-rig pivot")
 			_expect(rig.get_node("CapturedPiecePivot").z_index > rig.get_node("PieceSlot").z_index, "captured piece renders in front of the attacking piece")
-			_expect(not rig.interaction_occluder_depths.has(piece), "captured defender leaves the board-occluder restoration set when it enters the captured layer")
+			_expect(rig.depth_state == ChessHandRig.DepthState.GROUNDED, "capture swipe holds the layered rig in the defender's grounded row band")
 	)
 
 	controller.select_piece(rook)
@@ -278,6 +274,58 @@ func _test_player_hand_capture_presentation() -> void:
 	_expect(context.adapter.get_piece_view(bishop) == null and not is_instance_valid(bishop_view), "captured defender is silently removed after leaving the viewport")
 	_expect(_count_children_named(context.view, &"Explosion") == 0, "hand-carried defender does not spawn a capture explosion")
 
+	await _destroy_game(context.game)
+
+
+func _test_surrounded_knight_depth_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var view: ChessBoardView = context.view
+	var rig: ChessHandRig = view.near_hand_rig
+	for property_name in ["approach_duration", "grasp_hold_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
+		rig.set(property_name, 0.01)
+	var knight := Knight.new("white", Vector2i(4, 3))
+	var origin_nearer_queen := Queen.new("black", Vector2i(5, 3))
+	var destination_nearer_queen := Queen.new("black", Vector2i(3, 4))
+	var closer_rook := Rook.new("black", Vector2i(6, 3))
+	_reset_battle(model, controller, [knight, origin_nearer_queen, destination_nearer_queen, closer_rook])
+	var stationary_views: Array[Node2D] = [
+		context.adapter.get_piece_view(origin_nearer_queen),
+		context.adapter.get_piece_view(destination_nearer_queen),
+		context.adapter.get_piece_view(closer_rook),
+	]
+	var natural_depths: Array[int] = []
+	for piece_view in stationary_views:
+		natural_depths.append(piece_view.z_index)
+	var observed := {"origin_grounded": false, "destination_grounded": false, "elevated": false}
+	rig.piece_grabbed.connect(
+		func(_piece: Node2D):
+			observed["origin_grounded"] = (
+				rig.depth_state == ChessHandRig.DepthState.GROUNDED
+				and rig.grip_front_sprite.z_index < stationary_views[0].z_index
+				and stationary_views[0].z_index < rig.arm_foreground_sprite.z_index
+			)
+	)
+	rig.depth_state_changed.connect(
+		func(state: ChessHandRig.DepthState, _base_depth: int):
+			if state == ChessHandRig.DepthState.ELEVATED:
+				observed["elevated"] = rig.piece_slot.z_index > 7 * ChessBoardView.BOARD_DEPTH_STRIDE
+	)
+	rig.piece_released.connect(
+		func(_piece: Node2D):
+			observed["destination_grounded"] = (
+				rig.depth_state == ChessHandRig.DepthState.GROUNDED
+				and rig.grip_front_sprite.z_index < stationary_views[1].z_index
+				and stationary_views[1].z_index < rig.arm_foreground_sprite.z_index
+			)
+	)
+	controller.select_piece(knight)
+	await controller._on_square_clicked(Vector2i(2, 4))
+	_expect(observed["origin_grounded"] and observed["destination_grounded"], "surrounded knight grounds its thumb beneath the naturally nearer tall piece at pickup and landing")
+	_expect(observed["elevated"], "jumping knight and grip enter the foreground band during the arc")
+	for index in range(stationary_views.size()):
+		_expect(stationary_views[index].z_index == natural_depths[index], "surrounding tall piece %d keeps its natural board depth through the knight jump" % index)
 	await _destroy_game(context.game)
 
 
@@ -429,6 +477,14 @@ func _test_black_view_hand_presentation() -> void:
 	var controller: ChessBoardController = context.controller
 	var rig: ChessHandRig = context.view.near_hand_rig
 	var far_rig: ChessHandRig = context.view.far_hand_rig
+	far_rig._set_grounded_depth(40)
+	_expect(
+		far_rig.grip_back_sprite.z_index < 50
+		and 50 < far_rig.grip_front_sprite.z_index
+		and far_rig.grip_front_sprite.z_index < far_rig.arm_foreground_sprite.z_index,
+		"Hood grounds its back/thumb layer while keeping foreground fingers and arm above nearer board pieces"
+	)
+	far_rig._set_elevated_depth()
 	far_rig.has_approach_preview = true
 	far_rig.approach_preview_start = Vector2.ZERO
 	far_rig.approach_preview_target = Vector2(100.0, 100.0)
