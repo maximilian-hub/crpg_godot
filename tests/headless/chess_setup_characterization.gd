@@ -18,8 +18,8 @@ func _ready() -> void:
 	_check(lab.left_hand.visual_mirrored and not lab.right_hand.visual_mirrored, "setup hands use mirrored left and original right artwork")
 	lab.left_hand._apply_pose(true)
 	_check(lab.left_hand.arm_foreground_sprite.flip_h and lab.left_hand.grip_front_sprite.flip_h and lab.left_hand.grip_back_sprite.flip_h, "every left-hand art layer mirrors around its grip")
-	var activation_hand: PlayerHandRig = lab.activation_sequence.hand_root
-	_check(lab.activation_sequence.hand_connection_anchor.position == PlayerHandRig.CONNECTION_ANCHOR_PIXELS - activation_hand.grip_anchor_pixels, "Setup activation lightning anchor resolves the shared palm pixel against the live rig origin")
+	var activation_hand: ChessHandRig = lab.activation_sequence.hand_root
+	_check(lab.activation_sequence.hand_connection_anchor.position == activation_hand.get_connection_anchor_position(), "Setup activation lightning anchor resolves the style-owned palm pixel against the live rig origin")
 	var king_coordinate: Vector2i = lab.board.projection.get_model_coordinate(Vector2i(7, 4))
 	var king_view: PieceView = lab.piece_views.get(king_coordinate)
 	lab.activation_sequence.base_hand_position = Vector2(-999.0, -999.0)
@@ -89,7 +89,7 @@ func _ready() -> void:
 		var piece: PieceView = lab.piece_views.get(coordinate)
 		correctly_placed = correctly_placed and piece.visible and piece.position == lab.board.grid_to_screen(coordinate.x, coordinate.y) and piece.z_index == lab.board.get_piece_depth(coordinate)
 	_check(correctly_placed, "released pieces finish at exact board anchors and board depth")
-	var selected_hand: PlayerHandRig = lab.left_hand if lab.setup_profile.activating_hand == ChessArmySetupProfile.ActivatingHand.LEFT else lab.right_hand
+	var selected_hand: ChessHandRig = lab.left_hand if lab.setup_profile.activating_hand == ChessArmySetupProfile.ActivatingHand.LEFT else lab.right_hand
 	_check(lab.activation_sequence.hand_root == selected_hand, "explicit activating-hand selection wires the requested rig")
 	_check(not lab.stone_sprite.visible and is_equal_approx(lab.activation_sequence.king_sprite.self_modulate.a, 1.0), "activation resolves the placed stone king into authored army art")
 	_check(not selected_hand.visible and selected_hand.position == lab.activation_sequence.hand_rest_position, "combined preview completes with the activation hand hidden at its mirrored rest position")

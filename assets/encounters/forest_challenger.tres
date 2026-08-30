@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="ChessEncounterProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/encounters/chess_encounter_profile.gd" id="1_profile"]
+[ext_resource type="Resource" path="res://assets/arms/opponent/hood_hand_style.tres" id="2_hood"]
+
+[resource]
+script = ExtResource("1_profile")
+encounter_id = &"forest_challenger"
+opponent_hand_style = ExtResource("2_hood")

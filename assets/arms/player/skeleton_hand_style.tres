@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=9 format=3 uid="uid://b702w2llvnxct"]
+[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=10 format=3 uid="uid://b702w2llvnxct"]
 
 [ext_resource type="Script" uid="uid://behhgroodpugy" path="res://scripts/view/chess_hand_style.gd" id="1_style"]
 [ext_resource type="Texture2D" uid="uid://c88rw62x8i2j5" path="res://assets/arms/player/skeleton_open_arm.png" id="2_open_arm"]
@@ -8,6 +8,7 @@
 [ext_resource type="Texture2D" uid="uid://d1ui77yoony7x" path="res://assets/arms/player/skeleton_closed_rear_fingers.png" id="6_closed_rear"]
 [ext_resource type="Texture2D" uid="uid://clua4t4nexvp0" path="res://assets/arms/player/skeleton_closed_thumb.png" id="7_closed_thumb"]
 [ext_resource type="Resource" uid="uid://30iibv8qpkev" path="res://assets/arms/player/skeleton_hand_sounds.tres" id="8_sounds"]
+[ext_resource type="Resource" path="res://assets/arms/player/skeleton_hand_motion.tres" id="9_motion"]
 
 [resource]
 script = ExtResource("1_style")
@@ -18,3 +19,8 @@ closed_grip_back = ExtResource("6_closed_rear")
 closed_grip_front = ExtResource("7_closed_thumb")
 closed_arm_foreground = ExtResource("5_closed_arm")
 sounds = ExtResource("8_sounds")
+grip_anchor_pixels = Vector2(11, 29)
+connection_anchor_pixels = Vector2(23, 24)
+piece_grip_offset = Vector2(0, 6)
+art_scale_multiplier = 3.5
+motion_profile = ExtResource("9_motion")

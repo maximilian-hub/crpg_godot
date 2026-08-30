@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/view/chess_hand_style.gd" id="1_style"]
+[ext_resource type="Texture2D" path="res://assets/arms/opponent/hood_open_grip_back.png" id="2_open_back"]
+[ext_resource type="Texture2D" path="res://assets/arms/opponent/hood_open_grip_front.png" id="3_open_front"]
+[ext_resource type="Texture2D" path="res://assets/arms/opponent/hood_open_arm_foreground.png" id="4_open_arm"]
+[ext_resource type="Texture2D" path="res://assets/arms/opponent/hood_closed_grip_back.png" id="5_closed_back"]
+[ext_resource type="Texture2D" path="res://assets/arms/opponent/hood_closed_grip_front.png" id="6_closed_front"]
+[ext_resource type="Texture2D" path="res://assets/arms/opponent/hood_closed_arm_foreground.png" id="7_closed_arm"]
+[ext_resource type="Resource" path="res://assets/arms/opponent/hood_hand_motion.tres" id="8_motion"]
+
+[resource]
+script = ExtResource("1_style")
+open_grip_back = ExtResource("2_open_back")
+open_grip_front = ExtResource("3_open_front")
+open_arm_foreground = ExtResource("4_open_arm")
+closed_grip_back = ExtResource("5_closed_back")
+closed_grip_front = ExtResource("6_closed_front")
+closed_arm_foreground = ExtResource("7_closed_arm")
+grip_anchor_pixels = Vector2(78, 140)
+connection_anchor_pixels = Vector2(66, 112)
+piece_grip_offset = Vector2(0, 6)
+art_scale_multiplier = 3.5
+motion_profile = ExtResource("8_motion")

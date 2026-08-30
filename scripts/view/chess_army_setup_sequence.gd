@@ -8,8 +8,8 @@ signal elapsed_changed(seconds: float)
 
 var profile: ChessArmySetupProfile
 var board_view: ChessBoardView
-var left_hand: PlayerHandRig
-var right_hand: PlayerHandRig
+var left_hand: ChessHandRig
+var right_hand: ChessHandRig
 var piece_views: Dictionary = {}
 var running := false
 var paused := false
@@ -19,7 +19,7 @@ var _generation := 0
 var _finished_tracks := 0
 
 
-func configure(setup_profile: ChessArmySetupProfile, view: ChessBoardView, left: PlayerHandRig, right: PlayerHandRig, views: Dictionary) -> void:
+func configure(setup_profile: ChessArmySetupProfile, view: ChessBoardView, left: ChessHandRig, right: ChessHandRig, views: Dictionary) -> void:
 	profile = setup_profile
 	board_view = view
 	left_hand = left
@@ -124,4 +124,3 @@ func _wait_interruptible(seconds: float, token: int) -> bool:
 		if not paused:
 			remaining -= get_process_delta_time() * playback_speed
 	return token == _generation
-

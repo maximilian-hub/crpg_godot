@@ -8,6 +8,7 @@ extends Node
 ## without constructing ChessBoardView or ChessBoardController.
 
 const CHESS_GAME_SCENE := preload("res://scenes/chess_game.tscn")
+const HOOD_HAND_STYLE := preload("res://assets/arms/opponent/hood_hand_style.tres")
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -51,7 +52,7 @@ func _test_player_hand_move_presentation() -> void:
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
 	var view: ChessBoardView = context.view
-	var rig: Node2D = view.get_node("PlayerHandRig")
+	var rig: Node2D = view.get_node("NearHandRig")
 	var piece_slot: Node2D = rig.get_node("PieceSlot")
 	var grip_back: Sprite2D = rig.get_node("GripBack")
 	var grip_front: Sprite2D = rig.get_node("GripFront")
@@ -114,7 +115,7 @@ func _test_player_hand_move_presentation() -> void:
 		func(piece: Node2D):
 			observations.append("released")
 			_expect(piece.get_parent() == view.get_node("Pieces"), "player hand restores the released piece to the board piece layer")
-			_expect(piece.z_index == view.get_piece_depth(Vector2i(4, 0)) and nearer_rook_view.z_index == PlayerHandRig.INTERACTION_OCCLUDER_Z, "placed piece assumes destination depth while the lower occluder remains promoted for retreat")
+			_expect(piece.z_index == view.get_piece_depth(Vector2i(4, 0)) and nearer_rook_view.z_index == ChessHandRig.INTERACTION_OCCLUDER_Z, "placed piece assumes destination depth while the lower occluder remains promoted for retreat")
 			_expect(rig.get_node("PlaceSound").stream == board_sound_set.default_place and rig.get_node("ReleaseSound").stream == null, "placement sounds at board contact before the hand releases")
 	)
 	rig.move_animation_finished.connect(func(): observations.append("finished"))
@@ -161,7 +162,7 @@ func _test_player_hand_castling_presentation() -> void:
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
 	var view: ChessBoardView = context.view
-	var rig: PlayerHandRig = view.player_hand_rig
+	var rig: ChessHandRig = view.player_hand_rig
 	var king := ClassicKing.new("white", Vector2i(7, 4))
 	var rook := Rook.new("white", Vector2i(7, 7))
 	_reset_battle(model, controller, [king, rook])
@@ -200,7 +201,7 @@ func _test_player_hand_capture_presentation() -> void:
 	var context := await _create_game()
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
-	var rig: Node2D = context.view.get_node("PlayerHandRig")
+	var rig: Node2D = context.view.get_node("NearHandRig")
 	var sound_set := _make_test_hand_sound_set()
 	var board_sound_set := _make_test_board_sound_set()
 	var test_hand_style: ChessHandStyle = rig.hand_style.duplicate()
@@ -232,7 +233,7 @@ func _test_player_hand_capture_presentation() -> void:
 	rig.piece_grabbed.connect(
 		func(piece: Node2D):
 			if piece.model == rook:
-				observation["defender_occluded"] = bishop_view.z_index == PlayerHandRig.INTERACTION_OCCLUDER_Z
+				observation["defender_occluded"] = bishop_view.z_index == ChessHandRig.INTERACTION_OCCLUDER_Z
 	)
 	rig.capture_stage_changed.connect(
 		func(stage: StringName):
@@ -426,10 +427,14 @@ func _test_black_view_hand_presentation() -> void:
 	var context := await _create_game(ChessGame.ControlMode.PLAYER_VS_PLAYER, "black")
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
-	var rig: PlayerHandRig = context.view.player_hand_rig
-	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
-		rig.set(property_name, 0.01)
+	var rig: ChessHandRig = context.view.near_hand_rig
+	var far_rig: ChessHandRig = context.view.far_hand_rig
+	for hand_rig in [rig, far_rig]:
+		for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
+			hand_rig.set(property_name, 0.01)
 	var grabbed_colors: Array[String] = []
+	var far_grabbed_colors: Array[String] = []
+	far_rig.piece_grabbed.connect(func(piece: Node2D): far_grabbed_colors.append(piece.model.color))
 	rig.piece_grabbed.connect(
 		func(piece: Node2D):
 			grabbed_colors.append(piece.model.color)
@@ -441,10 +446,11 @@ func _test_black_view_hand_presentation() -> void:
 	)
 	await controller._on_square_clicked(Vector2i(6, 0))
 	await controller._on_square_clicked(Vector2i(5, 0))
-	_expect(grabbed_colors.is_empty(), "White opponent movement remains rig-less from Black perspective")
+	_expect(grabbed_colors.is_empty() and far_grabbed_colors == ["white"], "White movement uses the far Hood seat from Black perspective")
+	_expect(far_rig.seat == ChessHandRig.Seat.FAR and far_rig.hand_style.open_arm_foreground.resource_path.ends_with("hood_open_arm_foreground.png"), "Far seat owns the Hood hand style independently of army color")
 	await controller._on_square_clicked(Vector2i(1, 0))
 	await controller._on_square_clicked(Vector2i(2, 0))
-	_expect(grabbed_colors == ["black"], "Black player movement uses the existing below-screen hand from Black perspective")
+	_expect(grabbed_colors == ["black"], "Black movement uses the near Skeleton seat from Black perspective")
 	_expect(context.adapter.get_piece_view(model.board[0][0]).z_index == context.view.get_piece_depth(Vector2i(0, 0)), "Black lower-piece depth restores after the hand retreats")
 	await _destroy_game(context.game)
 
@@ -453,7 +459,7 @@ func _test_nonlethal_attack_presentation() -> void:
 	var context := await _create_game()
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
-	var rig: PlayerHandRig = context.view.player_hand_rig
+	var rig: ChessHandRig = context.view.player_hand_rig
 	var rook := Rook.new("white", Vector2i(4, 0))
 	var minotaur := MinotaurKing.new("black", Vector2i(4, 4))
 	_reset_battle(model, controller, [rook, minotaur])
@@ -719,6 +725,7 @@ func _create_game(control_mode: ChessGame.ControlMode = ChessGame.ControlMode.PL
 	var game := CHESS_GAME_SCENE.instantiate()
 	game.control_mode = control_mode
 	game.player_color = player_color
+	game.opponent_hand_style = HOOD_HAND_STYLE
 	viewport.add_child(game)
 	await get_tree().process_frame
 	return {
@@ -740,7 +747,7 @@ func _destroy_game(game: Node) -> void:
 	await get_tree().process_frame
 
 
-func _wait_for_idle_turn(model: ChessBoardModel, color: String, max_frames: int = 180) -> void:
+func _wait_for_idle_turn(model: ChessBoardModel, color: String, max_frames: int = 600) -> void:
 	for frame in range(max_frames):
 		if model.current_turn == color and not model.action_in_progress:
 			return

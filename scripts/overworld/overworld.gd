@@ -1,7 +1,7 @@
 extends Node2D
 class_name Overworld
 
-signal challenge_requested(encounter_id: String)
+signal challenge_requested(encounter_profile: ChessEncounterProfile)
 
 enum DialogueMode { CLOSED, PAGES, CHOICE }
 
@@ -123,7 +123,7 @@ func _advance_page() -> void:
 
 func _accept_challenge() -> void:
 	_close_dialogue(false)
-	challenge_requested.emit(npc.encounter_id)
+	challenge_requested.emit(npc.encounter_profile)
 
 func _decline_challenge() -> void:
 	_show_pages(decline_pages, false)

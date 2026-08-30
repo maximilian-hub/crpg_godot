@@ -3,7 +3,7 @@ class_name OverworldNpc
 
 const CELL_SIZE := 16
 
-@export var encounter_id: String = "forest_challenger"
+@export var encounter_profile: ChessEncounterProfile
 @export var down_texture: Texture2D
 @export var up_texture: Texture2D
 @export var right_texture: Texture2D

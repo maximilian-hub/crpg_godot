@@ -10,6 +10,7 @@ func _ready() -> void:
 	var view: ChessBoardView = sandbox.get_node("ChessGame/CanvasLayer/ChessBoard")
 	var adapter: ChessPresentationAdapter = sandbox.get_node("ChessGame/ChessPresentationAdapter")
 	var failures: Array[String] = []
+	_check(view.far_hand_rig.seat == ChessHandRig.Seat.FAR and view.far_hand_rig.hand_style.resource_path.ends_with("hood_hand_style.tres"), "sandbox explicitly previews Hood in the far seat", failures)
 	_check(model != null and sandbox.editor.editor_enabled, "sandbox starts in Edit Mode", failures)
 	_check(model.capture_position().pieces.size() == 32, "sandbox starts at normal position", failures)
 	_check(view.scale_world_with_projection, "sandbox inherits projection-scaled piece presentation", failures)
@@ -155,7 +156,7 @@ func _ready() -> void:
 	sandbox.interaction._on_square_pressed(Vector2i(6, 0))
 	_check(sandbox.interaction.requested_cursor_shape == Input.CURSOR_DRAG, "picking up a piece displays the drag cursor", failures)
 	_check(is_instance_valid(sandbox.interaction.drag_ghost) and is_equal_approx(sandbox.interaction.drag_ghost.modulate.a, 0.55), "dragging displays a translucent piece ghost", failures)
-	_check(sandbox.interaction.drag_ghost.z_index == ChessBoardView.DRAG_GHOST_Z and sandbox.interaction.drag_ghost.z_index > PlayerHandRig.ARM_FOREGROUND_Z, "drag ghost remains above the foreground arm and every row-relative grip layer", failures)
+	_check(sandbox.interaction.drag_ghost.z_index == ChessBoardView.DRAG_GHOST_Z and sandbox.interaction.drag_ghost.z_index > ChessHandRig.ARM_FOREGROUND_Z, "drag ghost remains above the foreground arm and every row-relative grip layer", failures)
 	sandbox.interaction._on_square_exited(Vector2i(6, 0))
 	_check(sandbox.interaction.requested_cursor_shape == Input.CURSOR_FORBIDDEN, "dragging off-board displays the forbidden cursor", failures)
 	sandbox.interaction._on_square_entered(Vector2i(4, 4))

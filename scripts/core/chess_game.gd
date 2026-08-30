@@ -21,13 +21,14 @@ enum ControlMode {
 @export_enum("white", "black") var player_color: String = "white"
 @export var control_mode: ControlMode = ControlMode.CPU_VS_CPU
 @export var player_hand_style: Resource
+@export var opponent_hand_style: Resource
 var completed_player_result: String = ""
 
 func _ready() -> void:
 	player_color = _normalize_color(player_color)
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
 	if board_view != null:
-		board_view.set_player_hand_style(player_hand_style)
+		board_view.set_hand_styles(player_hand_style, opponent_hand_style)
 	set_viewing_color(player_color)
 	if model == null:
 		printerr("ChessGame has no ChessBoardModel assigned.")

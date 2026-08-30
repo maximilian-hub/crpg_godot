@@ -110,9 +110,9 @@ func _layout_preview_scale() -> void:
 	)
 	var board_world_scale := ChessBoardView.calculate_world_scale(near_edge_width)
 	preview_king.scale = Vector2.ONE * board_world_scale
-	# PlayerHandRig applies this additional art multiplier to the same board
+	# ChessHandRig applies this additional art multiplier to the same board
 	# world scale for every real move animation.
-	var hand_defaults := PlayerHandRig.new()
+	var hand_defaults := ChessHandRig.new()
 	preview_hand.scale = Vector2.ONE * board_world_scale * hand_defaults.art_scale_multiplier
 	hand_defaults.free()
 

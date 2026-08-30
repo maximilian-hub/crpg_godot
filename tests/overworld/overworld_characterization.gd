@@ -48,6 +48,13 @@ func _test_overworld_scene() -> void:
 	_check(npc_body.position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
 	_check(overworld.npc.get_node("CollisionShape2D").position == Vector2.ZERO, "NPC collision remains rooted at the gameplay position")
 	_check(npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "NPC starts in its authored down-facing pose")
+	_check(overworld.npc.encounter_profile != null and overworld.npc.encounter_profile.encounter_id == &"forest_challenger", "forest NPC owns its encounter profile")
+	_check(overworld.npc.encounter_profile.opponent_hand_style.resource_path.ends_with("hood_hand_style.tres"), "forest encounter owns the Hood hand style")
+	var requested_profiles: Array[ChessEncounterProfile] = []
+	overworld.challenge_requested.connect(func(profile: ChessEncounterProfile): requested_profiles.append(profile))
+	overworld._accept_challenge()
+	_check(requested_profiles == [overworld.npc.encounter_profile], "challenge passes the NPC encounter profile without reducing it to a global ID")
+	overworld.player.set_input_enabled(true)
 	var npc_cell := overworld.npc.grid_cell
 	overworld.npc.face_toward(npc_cell + Vector2i.UP)
 	_check(overworld.npc.facing == Vector2i.UP and npc_body.texture.resource_path.ends_with("hood_up_0001.png") and not npc_body.flip_h, "NPC uses its up-facing sprite")
@@ -193,7 +200,8 @@ func _test_main_starts_in_overworld() -> void:
 
 	main.player_cell = Vector2i(5, 7)
 	main.player_facing = Vector2i.LEFT
-	await main._transition_to_battle()
+	var forest_profile := main.active_overworld.npc.encounter_profile
+	await main._transition_to_battle(forest_profile)
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as TextureRect
@@ -211,6 +219,9 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_battle.control_mode == ChessGame.ControlMode.PLAYER_VS_CPU, "NPC battle uses player-vs-CPU mode")
 	_check(main.active_battle.player_color == "white", "current NPC battle assigns the player to White")
 	_check(not main.active_battle.white_cpu_player.is_enabled and main.active_battle.black_cpu_player.is_enabled, "current NPC battle assigns the CPU to Black")
+	_check(main.active_battle.opponent_hand_style == forest_profile.opponent_hand_style, "NPC encounter applies its opponent hand before battle startup")
+	_check(battle_board.far_hand_rig.seat == ChessHandRig.Seat.FAR and battle_board.far_hand_rig.hand_style == forest_profile.opponent_hand_style, "forest challenger uses the animated Hood rig in the far seat")
+	_check(battle_board.far_hand_rig.can_animate(), "forest challenger does not fall back to piece-only sliding")
 	var controller := main.active_battle.get_node("ChessController") as ChessBoardController
 	var model := main.active_battle.get_node("ChessModel") as ChessBoardModel
 	var click_position := battle_board.grid_to_screen(6, 0)
@@ -249,9 +260,11 @@ func _test_main_starts_in_overworld() -> void:
 	await fixed_main._transition_to_battle()
 	var fixed_frame := fixed_main.active_content.get_node("BattleFrame") as SubViewportContainer
 	var fixed_viewport := fixed_frame.get_node("BattleViewport") as SubViewport
+	var fixed_board := fixed_main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	_check(fixed_main.active_battle.get_parent() == fixed_viewport, "fixed comparison mode retains the logical battle viewport")
 	_check(fixed_viewport.physics_object_picking, "fixed comparison viewport retains square picking")
-	_check(not (fixed_main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView).scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
+	_check(not fixed_board.scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
+	_check(fixed_main.active_battle.opponent_hand_style == null and not fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile safely retains piece-only opponent presentation")
 	fixed_main.queue_free()
 	await get_tree().process_frame
 

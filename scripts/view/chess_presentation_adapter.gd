@@ -29,7 +29,7 @@ var necromancer_auras: Dictionary = {}
 var selection_effect_piece: ModelPiece = null
 var player_move_submission_active := false
 var silently_removed_piece_views: Dictionary = {}
-var player_castling_hand_continuation := false
+var castling_hand_continuations: Dictionary = {}
 var pending_attack_damage_visuals: Dictionary = {}
 
 
@@ -84,6 +84,7 @@ func _on_board_rebuilt(board: Array) -> void:
 	pending_attack_damage_visuals.clear()
 	selection_effect_piece = null
 	player_move_submission_active = false
+	castling_hand_continuations.clear()
 	piece_views = view.rebuild_board(board)
 	for row in board:
 		for piece in row:
@@ -125,19 +126,16 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		return
 
 	gate.hold()
-	if player_move_submission_active and piece.color == view.viewing_color and controller.is_player_controlled(piece.color):
-		var starts_castling := piece.type.ends_with("king") and from.x == to.x and absi(to.y - from.y) == 2
-		var continues_castling := player_castling_hand_continuation and piece.type == "rook"
-		if starts_castling:
-			await view.move_piece_node_with_player_hand(piece_node, from, to, true, false)
-			player_castling_hand_continuation = true
-		elif continues_castling:
-			await view.move_piece_node_with_player_hand(piece_node, from, to, false, true, &"jump")
-			player_castling_hand_continuation = false
-		else:
-			await view.move_piece_node_with_player_hand(piece_node, from, to)
+	var starts_castling := piece.type.ends_with("king") and from.x == to.x and absi(to.y - from.y) == 2
+	var continues_castling := bool(castling_hand_continuations.get(piece.color, false)) and piece.type == "rook"
+	if starts_castling:
+		await view.move_piece_node_with_hand(piece_node, from, to, true, false)
+		castling_hand_continuations[piece.color] = true
+	elif continues_castling:
+		await view.move_piece_node_with_hand(piece_node, from, to, false, true, &"jump")
+		castling_hand_continuations.erase(piece.color)
 	else:
-		await view.move_piece_node(piece_node, to)
+		await view.move_piece_node_with_hand(piece_node, from, to)
 	gate.release()
 
 
@@ -152,8 +150,8 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 
 	gate.hold()
 	var carried_offscreen := false
-	if player_move_submission_active and attacker.color == view.viewing_color and controller.is_player_controlled(attacker.color) and is_instance_valid(defender_node):
-		carried_offscreen = await view.capture_piece_node_with_player_hand(attacker_node, defender_node, from, to)
+	if is_instance_valid(defender_node):
+		carried_offscreen = await view.capture_piece_node_with_hand(attacker_node, defender_node, from, to)
 	else:
 		await view.move_piece_node(attacker_node, to)
 	if carried_offscreen:
@@ -180,10 +178,7 @@ func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, from: V
 	gate.hold()
 	pending_attack_damage_visuals[defender] = []
 	var contact_callback := func(): _flush_pending_attack_damage(defender)
-	if player_move_submission_active and piece.color == view.viewing_color and controller.is_player_controlled(piece.color):
-		await view.attack_piece_node_with_player_hand(piece_node, from, to, contact_callback)
-	else:
-		await view.attack_piece_node(piece_node, to, contact_callback)
+	await view.attack_piece_node_with_hand(piece_node, from, to, contact_callback)
 	# Never strand an HP display if an animation implementation exits without
 	# invoking its contact callback.
 	_flush_pending_attack_damage(defender)
@@ -361,5 +356,6 @@ func _apply_presentation_policy() -> void:
 	if view == null:
 		return
 	view.animation_duration_scale = presentation_policy.duration_scale()
-	if is_instance_valid(view.player_hand_rig):
-		view.player_hand_rig.animation_duration_scale = presentation_policy.duration_scale()
+	for hand_rig in [view.near_hand_rig, view.far_hand_rig]:
+		if is_instance_valid(hand_rig):
+			hand_rig.animation_duration_scale = presentation_policy.duration_scale()

@@ -67,7 +67,9 @@ script = ExtResource("5_s46tk")
 
 [node name="Pieces" type="Node2D" parent="CanvasLayer/ChessBoard"]
 
-[node name="PlayerHandRig" parent="CanvasLayer/ChessBoard" instance=ExtResource("13_hand_rig")]
+[node name="NearHandRig" parent="CanvasLayer/ChessBoard" instance=ExtResource("13_hand_rig")]
+
+[node name="FarHandRig" parent="CanvasLayer/ChessBoard" instance=ExtResource("13_hand_rig")]
 
 [node name="FlashOverlay" type="ColorRect" parent="CanvasLayer"]
 visible = false

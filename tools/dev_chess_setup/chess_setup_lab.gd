@@ -18,8 +18,8 @@ const ACTIVATION_PRESET_DIRECTORY := "res://.cache/chess_activation_presets"
 enum PlaybackMode { SETUP_THEN_ACTIVATION, SETUP_ONLY, ACTIVATION_ONLY }
 
 @onready var board: ChessBoardView = $ChessBoard
-@onready var right_hand: PlayerHandRig = $ChessBoard/PlayerHandRig
-@onready var left_hand: PlayerHandRig = $ChessBoard/LeftHandRig
+@onready var right_hand: ChessHandRig = $ChessBoard/PlayerHandRig
+@onready var left_hand: ChessHandRig = $ChessBoard/LeftHandRig
 
 var setup_profile := ChessArmySetupProfile.new()
 var setup_sequence: ChessArmySetupSequence
@@ -282,7 +282,7 @@ func _prepare_activation() -> void:
 	board.add_child(hand_aura)
 	hand_aura.bind_targets(hand.get_aura_sprites())
 	var lightning := Lightning.new()
-	lightning.z_index = PlayerHandRig.ACTIVE_PIECE_Z
+	lightning.z_index = ChessHandRig.ACTIVE_PIECE_Z
 	board.add_child(lightning)
 	var anchor := Marker2D.new()
 	anchor.position = hand.get_connection_anchor_position()
@@ -696,7 +696,7 @@ func _refresh_debug_path() -> void:
 	var a := start + Vector2(motion.entry_departure_handle.x * mirror, motion.entry_departure_handle.y) * scale
 	var b := finish + Vector2(motion.entry_arrival_handle.x * mirror, motion.entry_arrival_handle.y) * scale
 	var points := PackedVector2Array()
-	for index in range(33): points.append(PlayerHandRig.calculate_bezier_position(start, a, b, finish, index / 32.0))
+	for index in range(33): points.append(ChessHandRig.calculate_bezier_position(start, a, b, finish, index / 32.0))
 	path_debug.points = points
 
 

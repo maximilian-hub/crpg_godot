@@ -60,10 +60,10 @@ func _test_player_relative_orientation() -> void:
 	_expect(board_view.get_piece_depth(Vector2i(7, 0)) - board_view.get_piece_depth(Vector2i(6, 0)) == ChessBoardView.BOARD_DEPTH_STRIDE, "adjacent displayed rows reserve one complete hand-layer depth band")
 	board_view.projection = black_view
 	_expect(board_view.get_piece_depth(Vector2i(0, 0)) - board_view.get_piece_depth(Vector2i(1, 0)) == ChessBoardView.BOARD_DEPTH_STRIDE, "Black perspective reverses row depth while preserving the hand-layer band")
-	_expect(PlayerHandRig.GRIP_FRONT_Z > 7 * ChessBoardView.BOARD_DEPTH_STRIDE, "front grip remains above ordinary board pieces")
-	_expect(PlayerHandRig.GRIP_BACK_Z < PlayerHandRig.ACTIVE_PIECE_Z and PlayerHandRig.ACTIVE_PIECE_Z < PlayerHandRig.CAPTURED_PIECE_Z and PlayerHandRig.CAPTURED_PIECE_Z < PlayerHandRig.PLACEMENT_OCCLUDER_Z and PlayerHandRig.PLACEMENT_OCCLUDER_Z < PlayerHandRig.GRIP_FRONT_Z, "absolute grip stack supports a placement occluder between carried pieces and the front grip")
-	_expect(PlayerHandRig.GRIP_FRONT_Z < PlayerHandRig.INTERACTION_OCCLUDER_Z and PlayerHandRig.INTERACTION_OCCLUDER_Z < PlayerHandRig.ARM_FOREGROUND_Z, "temporary interaction occluders fit between the front grip and foreground arm")
-	_expect(ChessBoardView.BOARD_EFFECT_Z > PlayerHandRig.ARM_FOREGROUND_Z, "board effects remain above the foreground arm")
+	_expect(ChessHandRig.GRIP_FRONT_Z > 7 * ChessBoardView.BOARD_DEPTH_STRIDE, "front grip remains above ordinary board pieces")
+	_expect(ChessHandRig.GRIP_BACK_Z < ChessHandRig.ACTIVE_PIECE_Z and ChessHandRig.ACTIVE_PIECE_Z < ChessHandRig.CAPTURED_PIECE_Z and ChessHandRig.CAPTURED_PIECE_Z < ChessHandRig.PLACEMENT_OCCLUDER_Z and ChessHandRig.PLACEMENT_OCCLUDER_Z < ChessHandRig.GRIP_FRONT_Z, "absolute grip stack supports a placement occluder between carried pieces and the front grip")
+	_expect(ChessHandRig.GRIP_FRONT_Z < ChessHandRig.INTERACTION_OCCLUDER_Z and ChessHandRig.INTERACTION_OCCLUDER_Z < ChessHandRig.ARM_FOREGROUND_Z, "temporary interaction occluders fit between the front grip and foreground arm")
+	_expect(ChessBoardView.BOARD_EFFECT_Z > ChessHandRig.ARM_FOREGROUND_Z, "board effects remain above the foreground arm")
 	board_view.free()
 
 

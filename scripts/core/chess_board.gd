@@ -77,7 +77,13 @@ var active_loop_player: AudioStreamPlayer
 @onready var aura_loop_player = AudioStreamPlayer.new()
 @onready var powerdown_player = AudioStreamPlayer.new()
 @onready var board_body: Node2D = $BoardBody
-@onready var player_hand_rig: Node2D = $PlayerHandRig
+@onready var near_hand_rig: ChessHandRig = $NearHandRig
+@onready var far_hand_rig: ChessHandRig = $FarHandRig
+## Compatibility alias for developer labs and older focused tests. Shipping
+## presentation should resolve a rig by army color through get_hand_rig_for_color().
+var player_hand_rig: ChessHandRig:
+	get:
+		return near_hand_rig
 const POWERUP_VOLUME = -20
 const AURA_LOOP_VOLUME = -20
 const POWERDOWN_VOLUME = -20
@@ -96,6 +102,11 @@ const BONE_PAWN_SUMMON_SHAKE_CYCLES := 6.0
 
 
 func _ready():
+	# Seat is a board-space role, not character or army identity. Enforce it here
+	# so an open Godot scene saved after an external edit cannot silently turn the
+	# far rig back into a near rig.
+	near_hand_rig.seat = ChessHandRig.Seat.NEAR
+	far_hand_rig.seat = ChessHandRig.Seat.FAR
 	setup_audio_players()
 	_connect_visual_style()
 	_sync_hand_board_sounds()
@@ -176,7 +187,7 @@ func _squares_match_board(model_board: Array) -> bool:
 func clear_transient_presentation() -> void:
 	clear_highlights()
 	for child in get_children():
-		if child != $BoardBody and child != $Squares and child != $Pieces and child != $PlayerHandRig and (child.is_in_group("aura") or child.is_in_group("stun")):
+		if child != $BoardBody and child != $Squares and child != $Pieces and child != near_hand_rig and child != far_hand_rig and (child.is_in_group("aura") or child.is_in_group("stun")):
 			child.queue_free()
 
 func _layout_board() -> void:
@@ -197,8 +208,20 @@ func set_viewing_color(color: String) -> void:
 	_layout_board()
 
 func set_player_hand_style(style: Resource) -> void:
-	if is_instance_valid(player_hand_rig):
-		player_hand_rig.set_hand_style(style)
+	if is_instance_valid(near_hand_rig):
+		near_hand_rig.set_hand_style(style)
+
+func set_hand_styles(near_style: Resource, far_style: Resource) -> void:
+	set_player_hand_style(near_style)
+	if is_instance_valid(far_hand_rig):
+		far_hand_rig.set_hand_style(far_style)
+
+func get_hand_rig_for_color(color: String) -> ChessHandRig:
+	return near_hand_rig if color == viewing_color else far_hand_rig
+
+func _get_piece_hand_rig(piece_node: Node) -> ChessHandRig:
+	var piece_model: ModelPiece = piece_node.get("model") if piece_node != null else null
+	return get_hand_rig_for_color(piece_model.color) if piece_model != null else near_hand_rig
 
 func _sync_piece_grip_anchor_debug() -> void:
 	for piece in $Pieces.get_children():
@@ -214,8 +237,9 @@ func _on_visual_style_changed() -> void:
 	_request_layout()
 
 func _sync_hand_board_sounds() -> void:
-	if is_instance_valid(player_hand_rig):
-		player_hand_rig.set_board_sound_set(visual_style.interaction_sounds if visual_style != null else null)
+	for hand_rig in [near_hand_rig, far_hand_rig]:
+		if is_instance_valid(hand_rig):
+			hand_rig.set_board_sound_set(visual_style.interaction_sounds if visual_style != null else null)
 
 func _connect_visual_style() -> void:
 	if visual_style != null and not visual_style.changed.is_connected(_on_visual_style_changed):
@@ -409,10 +433,21 @@ func move_piece_node_with_player_hand(
 	retreat_offscreen := true,
 	carry_path_override: StringName = &""
 ) -> void:
+	await move_piece_node_with_hand(piece_node, from, to, enter_from_offscreen, retreat_offscreen, carry_path_override)
+
+func move_piece_node_with_hand(
+	piece_node: Node,
+	from: Vector2i,
+	to: Vector2i,
+	enter_from_offscreen := true,
+	retreat_offscreen := true,
+	carry_path_override: StringName = &""
+) -> void:
 	if not is_instance_valid(piece_node):
-		printerr("move_piece_node_with_player_hand: Invalid piece node.")
+		printerr("move_piece_node_with_hand: Invalid piece node.")
 		return
-	if not is_instance_valid(player_hand_rig) or not player_hand_rig.can_animate():
+	var hand_rig := _get_piece_hand_rig(piece_node)
+	if not is_instance_valid(hand_rig) or not hand_rig.can_animate():
 		await move_piece_node(piece_node, to)
 		return
 
@@ -424,13 +459,17 @@ func move_piece_node_with_player_hand(
 	var destination := grid_to_screen(to.x, to.y)
 	var destination_z_index := get_piece_depth(to)
 	var carry_path := carry_path_override if not carry_path_override.is_empty() else get_player_hand_carry_path(piece_node, from, to)
-	await player_hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path, enter_from_offscreen, retreat_offscreen, interaction_occluders, pickup_occluders, placement_occluders, destination_z_index)
+	await hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path, enter_from_offscreen, retreat_offscreen, interaction_occluders, pickup_occluders, placement_occluders, destination_z_index)
 	_update_piece_depth(piece_node)
 
 func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i) -> bool:
+	return await capture_piece_node_with_hand(attacker_node, defender_node, from, to)
+
+func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i) -> bool:
 	if not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
 		return false
-	if not is_instance_valid(player_hand_rig) or not player_hand_rig.can_animate():
+	var hand_rig := _get_piece_hand_rig(attacker_node)
+	if not is_instance_valid(hand_rig) or not hand_rig.can_animate():
 		await move_piece_node(attacker_node, to)
 		return false
 
@@ -441,7 +480,7 @@ func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Nod
 	attacker_node.coordinate = to
 	var destination := grid_to_screen(to.x, to.y)
 	var destination_z_index := get_piece_depth(to)
-	var carried_offscreen: bool = await player_hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale(), interaction_occluders, pickup_occluders, placement_occluders, destination_z_index)
+	var carried_offscreen: bool = await hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale(), interaction_occluders, pickup_occluders, placement_occluders, destination_z_index)
 	_update_piece_depth(attacker_node)
 	return carried_offscreen
 
@@ -487,17 +526,21 @@ func attack_piece_node(piece_node: Node, to: Vector2i, contact_callback: Callabl
 	await _tween_piece_to(piece_node, original_position)
 
 func attack_piece_node_with_player_hand(piece_node: Node, from: Vector2i, to: Vector2i, contact_callback: Callable = Callable()) -> void:
+	await attack_piece_node_with_hand(piece_node, from, to, contact_callback)
+
+func attack_piece_node_with_hand(piece_node: Node, from: Vector2i, to: Vector2i, contact_callback: Callable = Callable()) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("attack_piece_node_with_player_hand: Invalid piece node.")
 		return
-	if not is_instance_valid(player_hand_rig) or not player_hand_rig.can_animate():
+	var hand_rig := _get_piece_hand_rig(piece_node)
+	if not is_instance_valid(hand_rig) or not hand_rig.can_animate():
 		await attack_piece_node(piece_node, to, contact_callback)
 		return
 
 	var clearance_blockers := get_player_hand_clearance_blockers(piece_node, from, to)
 	var interaction_occluders := get_hand_interaction_occluders(from, to, clearance_blockers)
 	var pickup_occluders := get_hand_pickup_occluders(from, clearance_blockers)
-	await player_hand_rig.play_piece_attack(piece_node, grid_to_screen(to.x, to.y), get_world_scale(), contact_callback, interaction_occluders, pickup_occluders, get_piece_depth(from))
+	await hand_rig.play_piece_attack(piece_node, grid_to_screen(to.x, to.y), get_world_scale(), contact_callback, interaction_occluders, pickup_occluders, get_piece_depth(from))
 	_update_piece_depth(piece_node)
 
 func _tween_piece_to(piece_node: Node, target_position: Vector2) -> void:

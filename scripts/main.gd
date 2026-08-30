@@ -113,15 +113,15 @@ static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
 		"logical_side": logical_side,
 	}
 
-func _on_challenge_requested(_encounter_id: String) -> void:
+func _on_challenge_requested(encounter_profile: ChessEncounterProfile) -> void:
 	if is_transitioning or active_overworld == null:
 		return
 	player_cell = active_overworld.get_player_cell()
 	player_facing = active_overworld.get_player_facing()
 	encounter_state = "awaiting_result"
-	await _transition_to_battle()
+	await _transition_to_battle(encounter_profile)
 
-func _transition_to_battle() -> void:
+func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> void:
 	is_transitioning = true
 	active_overworld.set_world_input_enabled(false)
 	await _fade_to(1.0)
@@ -131,6 +131,7 @@ func _transition_to_battle() -> void:
 	active_battle = CHESS_SCENE.instantiate()
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.player_color = "white"
+	active_battle.opponent_hand_style = encounter_profile.opponent_hand_style if encounter_profile != null else null
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	if battle_presentation_mode == BattlePresentationMode.FLUID_NATIVE:

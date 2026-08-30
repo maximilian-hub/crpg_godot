@@ -1,5 +1,5 @@
 extends Node2D
-class_name PlayerHandRig
+class_name ChessHandRig
 
 signal pose_changed(pose: StringName)
 signal piece_grabbed(piece: Node2D)
@@ -17,6 +17,7 @@ const SOUND_GRAB := &"grab"
 const SOUND_CAPTURE_PICKUP := &"capture_pickup"
 const SOUND_PLACE := &"place"
 const SOUND_RELEASE := &"release"
+enum Seat { NEAR, FAR }
 ## Absolute board-canvas interaction stack above ordinary pieces (0-70).
 const GRIP_BACK_Z := 72
 const ACTIVE_PIECE_Z := 73
@@ -25,54 +26,41 @@ const PLACEMENT_OCCLUDER_Z := 75
 const GRIP_FRONT_Z := 76
 const INTERACTION_OCCLUDER_Z := 77
 const ARM_FOREGROUND_Z := 80
-## Palm point in the 96 x 160 source artwork where activation energy originates.
-## Keeping this in source-pixel space makes it independent of the rig's grip
-## origin and of whatever scale the board applies to the hand.
-const CONNECTION_ANCHOR_PIXELS := Vector2(23.0, 24.0)
-
-@export var hand_style: Resource
-## Grip location measured from the top-left of the 96 x 160 source artwork.
-@export var grip_anchor_pixels := Vector2(11.0, 29.0)
-## Offset from the piece's configured GripAnchor, measured in local piece pixels.
-@export var piece_grip_offset := Vector2(0.0, 6.0)
-@export_range(0.25, 4.0, 0.05) var art_scale_multiplier := 3.5
-@export_group("Approach Curve")
-@export_range(0.01, 2.0, 0.01) var approach_duration := 0.24 # Time taken to travel from the lower-right rest point to the first piece.
-@export_range(0.0, 1.0, 0.01) var approach_departure_progress := 0.45: # Places the first Bezier handle this far along the start-to-piece line.
-	set(value):
-		approach_departure_progress = value
-		_refresh_live_approach()
-@export_range(0.0, 256.0, 1.0) var approach_departure_lift := 96.0: # Pulls the first handle upward, controlling how early the hand rises.
-	set(value):
-		approach_departure_lift = value
-		_refresh_live_approach()
-@export var approach_arrival_handle := Vector2(32.0, -96.0): # Offset from the grip to the second handle; negative Y makes the hand arrive from above.
-	set(value):
-		approach_arrival_handle = value
-		_refresh_live_approach()
+@export var hand_style: ChessHandStyle
+@export var seat := Seat.NEAR
+@export_group("Debug")
 @export var show_approach_path_debug := false: # Draws the computed Bezier in-game; toggle this and edit the handles in Godot's Remote inspector.
 	set(value):
 		show_approach_path_debug = value
 		_refresh_live_approach()
 @export_group("")
-@export_range(0.0, 1.0, 0.01) var grasp_hold_duration := 0.18
-@export_range(0.01, 2.0, 0.01) var carry_duration := .24
-@export_range(0.0, 128.0, 1.0) var jump_arc_height := 32.0
-@export_range(0.01, 2.0, 0.01) var jump_carry_duration := 0.36
-@export_range(0.01, 2.0, 0.01) var attack_slam_duration := 0.16
-@export_range(0.01, 2.0, 0.01) var attack_rebound_duration := 0.28
-@export_range(0.0, 64.0, 1.0) var capture_approach_offset := 18.0 # Distance left of the defender where the capture approach ends.
-@export_range(0.0, 128.0, 1.0) var capture_approach_arc_height := 32.0 # Height of the arc used to approach a capture.
-@export_range(0.01, 2.0, 0.01) var capture_approach_duration := 0.18 # Time taken to arc toward the defender's left side.
-@export_range(0.0, 128.0, 1.0) var capture_swipe_distance := 36.0 # Total left-to-right distance of the pickup swipe.
-@export_range(0.01, 2.0, 0.01) var capture_swipe_duration := 0.18 # Time taken to swipe across and collect the defender.
-@export var captured_piece_grip_offset := Vector2.ZERO # Fine-tunes the captured grip relative to the attacker's grip.
-@export_range(-180.0, 180.0, 1.0) var captured_piece_rotation_degrees := -20.0 # Tilts the captured piece while it is carried away.
-@export_range(0.0, 128.0, 1.0) var capture_placement_arc_height := 32.0 # Height of the arc used to place the attacker.
-@export_range(0.01, 2.0, 0.01) var capture_placement_duration := 0.30 # Time taken to arc back and place the attacker.
-@export_range(0.0, 1.0, 0.01) var release_hold_duration := 0.35
-@export_range(0.01, 2.0, 0.01) var retreat_duration := 0.24
-@export_range(0.0, 128.0, 1.0) var offscreen_margin := 8.0
+
+var motion_override: ChessHandMotionProfile
+var grip_anchor_pixels: Vector2: get = _get_grip_anchor_pixels
+var piece_grip_offset: Vector2: get = _get_piece_grip_offset
+var art_scale_multiplier: float: get = _get_art_scale_multiplier
+var approach_duration: float: get = _get_approach_duration, set = _set_approach_duration
+var approach_departure_progress: float: get = _get_approach_departure_progress, set = _set_approach_departure_progress
+var approach_departure_lift: float: get = _get_approach_departure_lift, set = _set_approach_departure_lift
+var approach_arrival_handle: Vector2: get = _get_approach_arrival_handle, set = _set_approach_arrival_handle
+var grasp_hold_duration: float: get = _get_grasp_hold_duration, set = _set_grasp_hold_duration
+var carry_duration: float: get = _get_carry_duration, set = _set_carry_duration
+var jump_arc_height: float: get = _get_jump_arc_height, set = _set_jump_arc_height
+var jump_carry_duration: float: get = _get_jump_carry_duration, set = _set_jump_carry_duration
+var attack_slam_duration: float: get = _get_attack_slam_duration, set = _set_attack_slam_duration
+var attack_rebound_duration: float: get = _get_attack_rebound_duration, set = _set_attack_rebound_duration
+var capture_approach_offset: float: get = _get_capture_approach_offset, set = _set_capture_approach_offset
+var capture_approach_arc_height: float: get = _get_capture_approach_arc_height, set = _set_capture_approach_arc_height
+var capture_approach_duration: float: get = _get_capture_approach_duration, set = _set_capture_approach_duration
+var capture_swipe_distance: float: get = _get_capture_swipe_distance, set = _set_capture_swipe_distance
+var capture_swipe_duration: float: get = _get_capture_swipe_duration, set = _set_capture_swipe_duration
+var captured_piece_grip_offset: Vector2: get = _get_captured_piece_grip_offset, set = _set_captured_piece_grip_offset
+var captured_piece_rotation_degrees: float: get = _get_captured_piece_rotation_degrees, set = _set_captured_piece_rotation_degrees
+var capture_placement_arc_height: float: get = _get_capture_placement_arc_height, set = _set_capture_placement_arc_height
+var capture_placement_duration: float: get = _get_capture_placement_duration, set = _set_capture_placement_duration
+var release_hold_duration: float: get = _get_release_hold_duration, set = _set_release_hold_duration
+var retreat_duration: float: get = _get_retreat_duration, set = _set_retreat_duration
+var offscreen_margin: float: get = _get_offscreen_margin, set = _set_offscreen_margin
 
 @onready var grip_back_sprite: Sprite2D = $GripBack
 @onready var captured_piece_pivot: Node2D = $CapturedPiecePivot
@@ -103,6 +91,70 @@ var setup_piece: Node2D
 var setup_piece_parent: Node
 var setup_piece_scale := Vector2.ONE
 var setup_piece_z := 0
+var fallback_motion := ChessHandMotionProfile.new()
+
+
+func _motion() -> ChessHandMotionProfile:
+	if motion_override != null:
+		return motion_override
+	if hand_style != null and hand_style.motion_profile != null:
+		return hand_style.motion_profile
+	return fallback_motion
+
+
+func _motion_for_write() -> ChessHandMotionProfile:
+	if motion_override == null:
+		motion_override = _motion().duplicate(true)
+	return motion_override
+
+
+func _get_grip_anchor_pixels() -> Vector2: return hand_style.grip_anchor_pixels if hand_style != null else Vector2(11.0, 29.0)
+func _get_piece_grip_offset() -> Vector2: return hand_style.piece_grip_offset if hand_style != null else Vector2(0.0, 6.0)
+func _get_art_scale_multiplier() -> float: return hand_style.art_scale_multiplier if hand_style != null else 3.5
+func _get_approach_duration() -> float: return _motion().approach_duration
+func _set_approach_duration(value: float) -> void: _motion_for_write().approach_duration = value
+func _get_approach_departure_progress() -> float: return _motion().approach_departure_progress
+func _set_approach_departure_progress(value: float) -> void: _motion_for_write().approach_departure_progress = value; _refresh_live_approach()
+func _get_approach_departure_lift() -> float: return _motion().approach_departure_lift
+func _set_approach_departure_lift(value: float) -> void: _motion_for_write().approach_departure_lift = value; _refresh_live_approach()
+func _get_approach_arrival_handle() -> Vector2: return _motion().approach_arrival_handle
+func _set_approach_arrival_handle(value: Vector2) -> void: _motion_for_write().approach_arrival_handle = value; _refresh_live_approach()
+func _get_grasp_hold_duration() -> float: return _motion().grasp_hold_duration
+func _set_grasp_hold_duration(value: float) -> void: _motion_for_write().grasp_hold_duration = value
+func _get_carry_duration() -> float: return _motion().carry_duration
+func _set_carry_duration(value: float) -> void: _motion_for_write().carry_duration = value
+func _get_jump_arc_height() -> float: return _motion().jump_arc_height
+func _set_jump_arc_height(value: float) -> void: _motion_for_write().jump_arc_height = value
+func _get_jump_carry_duration() -> float: return _motion().jump_carry_duration
+func _set_jump_carry_duration(value: float) -> void: _motion_for_write().jump_carry_duration = value
+func _get_attack_slam_duration() -> float: return _motion().attack_slam_duration
+func _set_attack_slam_duration(value: float) -> void: _motion_for_write().attack_slam_duration = value
+func _get_attack_rebound_duration() -> float: return _motion().attack_rebound_duration
+func _set_attack_rebound_duration(value: float) -> void: _motion_for_write().attack_rebound_duration = value
+func _get_capture_approach_offset() -> float: return _motion().capture_approach_offset
+func _set_capture_approach_offset(value: float) -> void: _motion_for_write().capture_approach_offset = value
+func _get_capture_approach_arc_height() -> float: return _motion().capture_approach_arc_height
+func _set_capture_approach_arc_height(value: float) -> void: _motion_for_write().capture_approach_arc_height = value
+func _get_capture_approach_duration() -> float: return _motion().capture_approach_duration
+func _set_capture_approach_duration(value: float) -> void: _motion_for_write().capture_approach_duration = value
+func _get_capture_swipe_distance() -> float: return _motion().capture_swipe_distance
+func _set_capture_swipe_distance(value: float) -> void: _motion_for_write().capture_swipe_distance = value
+func _get_capture_swipe_duration() -> float: return _motion().capture_swipe_duration
+func _set_capture_swipe_duration(value: float) -> void: _motion_for_write().capture_swipe_duration = value
+func _get_captured_piece_grip_offset() -> Vector2: return _motion().captured_piece_grip_offset
+func _set_captured_piece_grip_offset(value: Vector2) -> void: _motion_for_write().captured_piece_grip_offset = value
+func _get_captured_piece_rotation_degrees() -> float: return _motion().captured_piece_rotation_degrees
+func _set_captured_piece_rotation_degrees(value: float) -> void: _motion_for_write().captured_piece_rotation_degrees = value
+func _get_capture_placement_arc_height() -> float: return _motion().capture_placement_arc_height
+func _set_capture_placement_arc_height(value: float) -> void: _motion_for_write().capture_placement_arc_height = value
+func _get_capture_placement_duration() -> float: return _motion().capture_placement_duration
+func _set_capture_placement_duration(value: float) -> void: _motion_for_write().capture_placement_duration = value
+func _get_release_hold_duration() -> float: return _motion().release_hold_duration
+func _set_release_hold_duration(value: float) -> void: _motion_for_write().release_hold_duration = value
+func _get_retreat_duration() -> float: return _motion().retreat_duration
+func _set_retreat_duration(value: float) -> void: _motion_for_write().retreat_duration = value
+func _get_offscreen_margin() -> float: return _motion().offscreen_margin
+func _set_offscreen_margin(value: float) -> void: _motion_for_write().offscreen_margin = value
 
 
 func _ready() -> void:
@@ -125,6 +177,7 @@ func _detach_approach_path_debug() -> void:
 
 func set_hand_style(style: Resource) -> void:
 	hand_style = style
+	motion_override = null
 	if is_node_ready():
 		_apply_pose(false)
 
@@ -145,7 +198,8 @@ func get_aura_sprites() -> Array[Sprite2D]:
 
 
 func get_connection_anchor_position() -> Vector2:
-	var anchor := CONNECTION_ANCHOR_PIXELS - grip_anchor_pixels
+	var connection_pixels := hand_style.connection_anchor_pixels if hand_style != null else Vector2(23.0, 24.0)
+	var anchor: Vector2 = connection_pixels - grip_anchor_pixels
 	return Vector2(-anchor.x, anchor.y) if visual_mirrored else anchor
 
 
@@ -227,9 +281,7 @@ func cancel_setup_placement() -> void:
 
 
 func _setup_rest_position(world_scale: float) -> Vector2:
-	var viewport_size := get_viewport_rect().size
-	var x := -(grip_anchor_pixels.x + offscreen_margin) * world_scale if visual_mirrored else viewport_size.x + (grip_anchor_pixels.x + offscreen_margin) * world_scale
-	return Vector2(x, viewport_size.y + (grip_anchor_pixels.y + offscreen_margin) * world_scale)
+	return _offscreen_rest_position(world_scale)
 
 
 func _setup_curve(start: Vector2, finish: Vector2, departure: Vector2, arrival: Vector2, duration: float, world_scale: float, token: int) -> bool:
@@ -400,9 +452,10 @@ func play_piece_capture(
 	# back and front artwork.
 	capture_stage_changed.emit(&"initiation")
 	carry_path_started.emit(CARRY_PATH_JUMP)
-	var swipe_start := defender_contact + Vector2.LEFT * capture_approach_offset * world_scale
+	var role_x := -1.0 if seat == Seat.FAR else 1.0
+	var swipe_start := defender_contact + Vector2.LEFT * role_x * capture_approach_offset * world_scale
 	await _tween_jump_position(swipe_start, capture_approach_duration, capture_approach_arc_height * world_scale)
-	var swipe_end := swipe_start + Vector2.RIGHT * capture_swipe_distance * world_scale
+	var swipe_end := swipe_start + Vector2.RIGHT * role_x * capture_swipe_distance * world_scale
 	capture_stage_changed.emit(&"swipe")
 	var pickup_progress := 0.0
 	if capture_swipe_distance > 0.0:
@@ -622,10 +675,26 @@ func _get_grip_anchor(piece_node: Node2D) -> Node2D:
 
 func _offscreen_rest_position(world_scale: float) -> Vector2:
 	var viewport_size := get_viewport_rect().size
-	return Vector2(
-		viewport_size.x + (grip_anchor_pixels.x + offscreen_margin) * world_scale,
-		viewport_size.y + (grip_anchor_pixels.y + offscreen_margin) * world_scale
-	)
+	var bounds := _art_bounds_from_grip()
+	var margin := offscreen_margin * world_scale
+	if seat == Seat.FAR:
+		return Vector2(-bounds.end.x * world_scale - margin, -bounds.end.y * world_scale - margin)
+	return Vector2(viewport_size.x - bounds.position.x * world_scale + margin, viewport_size.y - bounds.position.y * world_scale + margin)
+
+
+func _art_bounds_from_grip() -> Rect2:
+	var combined := Rect2(-grip_anchor_pixels, Vector2.ONE)
+	var initialized := false
+	if hand_style != null:
+		for texture in [hand_style.open_grip_back, hand_style.open_grip_front, hand_style.open_arm_foreground, hand_style.closed_grip_back, hand_style.closed_grip_front, hand_style.closed_arm_foreground]:
+			if texture == null:
+				continue
+			var texture_rect := Rect2(-grip_anchor_pixels, texture.get_size())
+			combined = texture_rect if not initialized else combined.merge(texture_rect)
+			initialized = true
+	if visual_mirrored:
+		combined = Rect2(Vector2(-combined.end.x, combined.position.y), combined.size)
+	return combined
 
 
 func _apply_pose(closed: bool) -> void:
@@ -684,8 +753,9 @@ func _tween_approach_position(target: Vector2, duration: float, world_scale: flo
 func _refresh_live_approach() -> void:
 	if not is_node_ready() or not has_approach_preview:
 		return
-	var departure_control := approach_preview_start.lerp(approach_preview_target, approach_departure_progress) + Vector2.UP * approach_departure_lift * approach_preview_world_scale
-	var arrival_control := approach_preview_target + approach_arrival_handle * approach_preview_world_scale
+	var role_basis := Vector2(-1.0, -1.0) if seat == Seat.FAR else Vector2.ONE
+	var departure_control := approach_preview_start.lerp(approach_preview_target, approach_departure_progress) + Vector2.UP * role_basis.y * approach_departure_lift * approach_preview_world_scale
+	var arrival_control := approach_preview_target + approach_arrival_handle * role_basis * approach_preview_world_scale
 	position = calculate_bezier_position(approach_preview_start, departure_control, arrival_control, approach_preview_target, approach_preview_progress)
 	_update_approach_path_debug(approach_preview_start, departure_control, arrival_control, approach_preview_target)
 
@@ -708,7 +778,7 @@ func _tween_jump_position(target: Vector2, duration: float, arc_height: float) -
 	var start := position
 	var tween := create_tween()
 	tween.tween_method(
-		func(progress: float): position = calculate_jump_position(start, target, progress, arc_height),
+		func(progress: float): position = calculate_jump_position(start, target, progress, -arc_height if seat == Seat.FAR else arc_height),
 		0.0,
 		1.0,
 			duration * animation_duration_scale
