@@ -730,9 +730,21 @@ func _offscreen_rest_position(world_scale: float) -> Vector2:
 	var viewport_size := get_viewport_rect().size
 	var bounds := _art_bounds_from_grip()
 	var margin := offscreen_margin * world_scale
-	if seat == Seat.FAR:
-		return Vector2(-bounds.end.x * world_scale - margin, -bounds.end.y * world_scale - margin)
-	return Vector2(viewport_size.x - bounds.position.x * world_scale + margin, viewport_size.y - bounds.position.y * world_scale + margin)
+	# Seat selects the vertical table edge. The hand's left/right authored role
+	# independently selects the horizontal edge, so paired setup hands enter from
+	# opposite corners instead of sharing one offscreen home.
+	var rests_on_right := (seat == Seat.NEAR) != visual_mirrored
+	var rest_x := (
+		viewport_size.x - bounds.position.x * world_scale + margin
+		if rests_on_right
+		else -bounds.end.x * world_scale - margin
+	)
+	var rest_y := (
+		viewport_size.y - bounds.position.y * world_scale + margin
+		if seat == Seat.NEAR
+		else -bounds.end.y * world_scale - margin
+	)
+	return Vector2(rest_x, rest_y)
 
 
 func _art_bounds_from_grip() -> Rect2:

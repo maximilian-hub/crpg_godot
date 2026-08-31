@@ -22,11 +22,19 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_check(lab.setup_sequence.seat == ChessHandRig.Seat.FAR and lab.left_hand.seat == ChessHandRig.Seat.FAR and lab.right_hand.seat == ChessHandRig.Seat.FAR, "Setup Lab sends both placement tracks through the genuine far seat")
 	_check(lab.left_hand.hand_style.resource_path.ends_with("hood_hand_style.tres") and lab.right_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "far setup uses the opponent Hood loadout for both hand roles")
+	var far_scale: float = lab.board.get_world_scale()
+	var far_left_home: Vector2 = lab.left_hand._setup_rest_position(far_scale * lab.left_hand.art_scale_multiplier)
+	var far_right_home: Vector2 = lab.right_hand._setup_rest_position(far_scale * lab.right_hand.art_scale_multiplier)
+	_check(far_left_home.x > lab.left_hand.get_viewport_rect().size.x and far_right_home.x < 0.0 and far_left_home.y < 0.0 and far_right_home.y < 0.0, "far setup hands home at opposite northwest/northeast corners")
 	_check(lab._activation_king_coordinate() == lab.board.projection.get_model_coordinate(Vector2i(0, 3)), "far setup half-turns the authored king square across the table")
 	lab.preview_context.seat = ChessHandRig.Seat.NEAR
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER
 	lab._rebuild_preview()
 	await get_tree().process_frame
+	var near_scale: float = lab.board.get_world_scale()
+	var near_left_home: Vector2 = lab.left_hand._setup_rest_position(near_scale * lab.left_hand.art_scale_multiplier)
+	var near_right_home: Vector2 = lab.right_hand._setup_rest_position(near_scale * lab.right_hand.art_scale_multiplier)
+	_check(near_left_home.x < 0.0 and near_right_home.x > lab.right_hand.get_viewport_rect().size.x and near_left_home.y > lab.left_hand.get_viewport_rect().size.y and near_right_home.y > lab.right_hand.get_viewport_rect().size.y, "near setup hands home at opposite southwest/southeast corners")
 	lab.left_hand._apply_pose(true)
 	_check(lab.left_hand.arm_foreground_sprite.flip_h and lab.left_hand.grip_front_sprite.flip_h and lab.left_hand.grip_back_sprite.flip_h, "every left-hand art layer mirrors around its grip")
 	var activation_hand: ChessHandRig = lab.activation_sequence.hand_root

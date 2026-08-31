@@ -78,6 +78,7 @@ func _build_stage() -> void:
 	# fingers visible while the long arm naturally continues offscreen.
 	add_child(preview_hand)
 	preview_context.apply_to_hand(preview_hand)
+	preview_hand.visible = true
 	preview_hand.position = _base_hand_position()
 
 	king_aura = Aura.new() as ChessAura2D
@@ -509,6 +510,7 @@ func _apply_preview_context() -> void:
 	var particles := hand_aura.particle_power
 	hand_aura.clear_targets()
 	preview_context.apply_to_hand(preview_hand)
+	preview_hand.visible = true
 	hand_aura.bind_targets(preview_hand.get_aura_sprites())
 	hand_aura.set_mode(mode_selector.selected if mode_selector != null else Aura.AuraMode.HYBRID)
 	hand_aura.set_silhouette_power(silhouette)

@@ -134,5 +134,6 @@ func _test_lab_presets_and_selectors() -> void:
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.OPPONENT
 	lab._apply_preview_context()
 	_check(lab.preview_hand.seat == ChessHandRig.Seat.FAR and lab.preview_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "Aura Lab previews a genuine far-seat Hood hand")
+	_check(lab.preview_hand.visible, "Aura Lab keeps the real preview hand visible outside animation-driven shipping defaults")
 	_check(Vector2(lab.hand_aura.silhouette_power, lab.hand_aura.particle_power) == saved_hand_channels and lab.hand_aura.bindings.size() == 3, "switching Aura Lab seats rebinds one hand treatment without losing channel powers")
 	lab.queue_free()
