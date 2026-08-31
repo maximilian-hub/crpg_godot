@@ -55,10 +55,11 @@ func refresh_geometry() -> void:
 	hand.scale = Vector2.ONE * effective_scale
 	activation_sequence.base_hand_position = king.position + PresentationTransform.king_hover_offset(
 		activation_sequence.profile.hand_hover_offset,
-		hand.seat
+		hand.seat,
+		hand.visual_mirrored
 	)
 	activation_sequence.hand_rest_position = hand._offscreen_rest_position(effective_scale)
-	activation_sequence.mirror_hand_motion = hand.seat == ChessHandRig.Seat.FAR
+	activation_sequence.mirror_hand_motion = hand.visual_mirrored != (hand.seat == ChessHandRig.Seat.FAR)
 
 
 func play_activation(playback_speed := 1.0) -> void:
@@ -99,11 +100,11 @@ func _build_activation_sequence() -> void:
 	add_child(activation_sequence)
 	var effective_scale := board.get_world_scale() * hand.art_scale_multiplier
 	hand.scale = Vector2.ONE * effective_scale
-	hand.position = king.position + PresentationTransform.king_hover_offset(profile.activation_profile.hand_hover_offset, hand.seat)
+	hand.position = king.position + PresentationTransform.king_hover_offset(profile.activation_profile.hand_hover_offset, hand.seat, hand.visual_mirrored)
 	activation_sequence.configure(
 		profile.activation_profile.duplicate(true), hand, connection_anchor, king.sprite, stone_sprite,
 		hand_aura, king_aura, lightning, {}, hand._offscreen_rest_position(effective_scale), 1.0,
-		hand.seat == ChessHandRig.Seat.FAR
+		hand.visual_mirrored != (hand.seat == ChessHandRig.Seat.FAR)
 	)
 
 

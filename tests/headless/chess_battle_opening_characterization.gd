@@ -7,8 +7,10 @@ var checks := 0
 
 
 func _ready() -> void:
-	await _test_concurrent_opening("white")
-	await _test_concurrent_opening("black")
+	await _test_staggered_opening("white")
+	await _test_staggered_opening("black")
+	await _test_reactions_precede_black_activation()
+	await _test_black_cpu_waits_for_activation()
 	await _test_cancellation()
 	await _test_instant_bypass()
 	if failures == 0:
@@ -18,56 +20,94 @@ func _ready() -> void:
 	get_tree().quit(0 if failures == 0 else 1)
 
 
-func _test_concurrent_opening(player_color: String) -> void:
-	var viewport := SubViewport.new()
-	viewport.size = Vector2i(1280, 720)
-	add_child(viewport)
-	var game := GAME.instantiate() as ChessGame
-	game.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
-	game.player_color = player_color
-	game.player_presentation = _fast_profile(load("res://assets/player_army_presentation.tres"))
-	game.opponent_presentation = _fast_profile(load("res://assets/opponent_army_presentation.tres"))
-	var completion := {"emitted": false, "input_locked": true, "cpu_enabled": false, "hands_ready": false}
-	game.opening_completed.connect(func():
-		completion.emitted = true
-		completion.input_locked = game.controller.is_input_locked
-		completion.cpu_enabled = game.white_cpu_player.is_enabled or game.black_cpu_player.is_enabled
-		var completed_board := game.get_node("CanvasLayer/ChessBoard") as ChessBoardView
-		completion.hands_ready = not completed_board.near_hand_rig.visual_mirrored and not completed_board.far_hand_rig.visual_mirrored and not completed_board.near_hand_rig.visible and not completed_board.far_hand_rig.visible
-	)
-	viewport.add_child(game)
-	await get_tree().process_frame
+func _test_staggered_opening(player_color: String) -> void:
+	var context := await _create_game(player_color)
+	var game: ChessGame = context.game
+	var adapter: ChessPresentationAdapter = context.adapter
 	var director: ChessBattleOpeningDirector = game.opening_director
-	var adapter: ChessPresentationAdapter = game.get_node("ChessPresentationAdapter")
-	var board: ChessBoardView = game.get_node("CanvasLayer/ChessBoard")
-	_check(director != null and director.is_running and game.controller.is_input_locked, "%s opening begins with its director running and input locked" % player_color)
-	_check(not game.white_cpu_player.is_enabled and not game.black_cpu_player.is_enabled, "%s opening keeps both automatic players disabled" % player_color)
-	_check(director.setup_sequences.size() == 2 and director.setup_sequences.all(func(sequence): return sequence.running), "%s opening runs both army setup sequences concurrently" % player_color)
-	_check(director.temporary_hands.size() == 2 and director.permanent_hands.size() == 2, "%s opening supplies one temporary companion hand to each permanent army hand" % player_color)
-	var seats := director.setup_sequences.map(func(sequence): return sequence.seat)
-	_check(ChessHandRig.Seat.NEAR in seats and ChessHandRig.Seat.FAR in seats, "%s opening transforms one setup for each board seat" % player_color)
-	_check(adapter.piece_views.values().any(func(piece): return not piece.visible), "%s opening does not expose the already-complete initial board" % player_color)
-
-	var saw_concurrent_activation := false
-	var timeout := 5.0
-	while not completion.emitted and timeout > 0.0:
-		var white_magic := adapter.get_king_magic_controller("white")
-		var black_magic := adapter.get_king_magic_controller("black")
-		if white_magic != null and black_magic != null and white_magic.running and black_magic.running:
-			saw_concurrent_activation = true
-		await get_tree().process_frame
-		timeout -= get_process_delta_time()
-	_check(timeout > 0.0 and saw_concurrent_activation, "%s opening starts both King activations concurrently after setup" % player_color)
-	_check(adapter.piece_views.values().all(func(piece): return piece.visible), "%s opening finishes with every current piece visible" % player_color)
-	_check(director.temporary_hands.is_empty() and director.setup_sequences.is_empty(), "%s opening removes its temporary hands and setup sequences" % player_color)
-	_check(completion.hands_ready, "%s opening restores both permanent gameplay hands before gameplay resumes" % player_color)
-	_check(not completion.input_locked and completion.cpu_enabled, "%s opening unlocks gameplay and starts the configured opponent CPU" % player_color)
+	_check(context.setup_concurrent, "%s view runs both army setups concurrently" % player_color)
+	_check(context.white_ran_without_black, "%s view activates White alone immediately after setup" % player_color)
+	_check(director.stage == ChessBattleOpeningDirector.Stage.AWAITING_BLACK_ACTIVATION and game.opening_pending and not game.opening_in_progress, "%s view waits for White's first settled action after White activation" % player_color)
+	_check(not game.controller.is_input_locked and not game.white_cpu_player.is_enabled and not game.black_cpu_player.is_enabled, "%s view releases a player-controlled White turn while Black remains pending" % player_color)
 	var white_magic := adapter.get_king_magic_controller("white")
 	var black_magic := adapter.get_king_magic_controller("black")
-	_check(white_magic.king_aura.silhouette_power > 0.0 and black_magic.king_aura.silhouette_power > 0.0, "%s opening leaves both Kings at their persistent resting Aura" % player_color)
-	viewport.queue_free()
+	_check(white_magic.king_aura.silhouette_power > 0.0 and black_magic.activation_sequence == null, "%s view leaves White awakened while Black has not begun its ritual" % player_color)
+
+	var black_boundary := {"started": false, "locked": false, "settled": false, "black_turn": false}
+	director.black_activation_started.connect(func():
+		black_boundary.started = true
+		black_boundary.locked = game.controller.is_input_locked
+		black_boundary.settled = game.model.is_settled()
+		black_boundary.black_turn = game.model.current_turn == "black"
+	, CONNECT_ONE_SHOT)
+	var final_completed := {"value": false}
+	game.opening_completed.connect(func(): final_completed.value = true, CONNECT_ONE_SHOT)
+	var moved := await game.model.submit_move(game.model.board[6][0], Vector2i(5, 0))
+	await _wait_until(func(): return final_completed.value, 5.0)
+	_check(moved and black_boundary.started and black_boundary.locked and black_boundary.settled and black_boundary.black_turn, "%s view gates the settled Black turn before starting Black activation" % player_color)
+	_check(final_completed.value and not game.opening_pending and not game.controller.is_input_locked, "%s view unlocks Black only after its ritual completes" % player_color)
+	_check(not adapter.get_king_magic_controller("black").running and adapter.get_king_magic_controller("black").king_aura.silhouette_power > 0.0, "%s view finishes with Black's resting Aura active" % player_color)
+	await _destroy_game(game)
+
+
+func _test_reactions_precede_black_activation() -> void:
+	var context := await _create_game("white")
+	var game: ChessGame = context.game
+	var director: ChessBattleOpeningDirector = game.opening_director
+	var order: Array[String] = []
+	var boundary := {"queue_empty": false, "no_pending": false}
+	game.model.reaction_selection_resolved.connect(func(_piece, _action, _target): order.append("reaction_resolved"), CONNECT_ONE_SHOT)
+	director.black_activation_started.connect(func():
+		order.append("black_activation")
+		boundary.queue_empty = game.model.selection_queue.is_empty()
+		boundary.no_pending = not game.model.has_pending_reaction()
+	, CONNECT_ONE_SHOT)
+	var victim: ModelPiece = game.model.board[0][1]
+	game.model.piece_move_committed.connect(func(_piece, _from, _to, _completion):
+		if game.model.is_piece_active(victim):
+			game.model.destroy_piece(victim, true)
+	, CONNECT_ONE_SHOT)
+	var accepted := await game.model.submit_move(game.model.board[6][0], Vector2i(5, 0))
+	_check(accepted and game.model.has_pending_reaction(), "The injected first White move pauses on Black's queued reaction selection")
+	var pending := game.model.get_pending_reaction()
+	if not pending.is_empty():
+		await game.model.submit_reaction_selection(pending.targets[0])
+	await _wait_until(func(): return not game.opening_pending, 5.0)
+	_check(order == ["reaction_resolved", "black_activation"], "Every queued reaction resolves before Black activation begins")
+	_check(boundary.queue_empty and boundary.no_pending and game.model.is_settled(), "Black activation begins only after both reaction containers and the action are settled")
+	await _destroy_game(game)
+
+
+func _test_cancellation() -> void:
+	var context := await _create_game("white", 2.0)
+	var game: ChessGame = context.game
+	var director: ChessBattleOpeningDirector = game.opening_director
+	var started := {"value": false}
+	director.black_activation_started.connect(func(): started.value = true, CONNECT_ONE_SHOT)
+	await game.model.submit_move(game.model.board[6][0], Vector2i(5, 0))
+	await _wait_until(func(): return started.value, 3.0)
+	director.cancel()
 	await get_tree().process_frame
-	await get_tree().process_frame
+	_check(started.value and not game.opening_pending and game.get_node("ChessPresentationAdapter").piece_views.values().all(func(piece): return piece.visible), "Cancelling delayed Black activation resolves onto a visible board")
+	_check(not director.temporary_hands.size() and not game.controller.is_input_locked, "Delayed activation cancellation clears temporary state and releases the turn gate")
+	await _destroy_game(game)
+
+
+func _test_black_cpu_waits_for_activation() -> void:
+	var context := await _create_game("white", 0.01, ChessGame.ControlMode.PLAYER_VS_CPU)
+	var game: ChessGame = context.game
+	var director: ChessBattleOpeningDirector = game.opening_director
+	var order: Array[String] = []
+	director.black_activation_started.connect(func(): order.append("black_activation"), CONNECT_ONE_SHOT)
+	game.opening_completed.connect(func(): order.append("opening_completed"), CONNECT_ONE_SHOT)
+	game.model.action_started.connect(func(color: String):
+		if color == "black":
+			order.append("black_action")
+	)
+	await game.model.submit_move(game.model.board[6][0], Vector2i(5, 0))
+	await _wait_until(func(): return "black_action" in order, 5.0)
+	_check(order.slice(0, 3) == ["black_activation", "opening_completed", "black_action"], "The deferred Black CPU command begins only after Black activation and the final opening boundary")
+	await _destroy_game(game)
 
 
 func _test_instant_bypass() -> void:
@@ -81,42 +121,38 @@ func _test_instant_bypass() -> void:
 	adapter.presentation_policy.speed = ChessPresentationPolicy.Speed.INSTANT
 	viewport.add_child(game)
 	await get_tree().process_frame
-	_check(not game.opening_in_progress and adapter.piece_views.values().all(func(piece): return piece.visible), "Instant presentation bypasses the opening on a complete visible board")
-	_check(not game.controller.is_input_locked and game.opening_director.temporary_hands.is_empty(), "Instant presentation leaves no opening lock or temporary hands")
-	viewport.queue_free()
-	await get_tree().process_frame
+	_check(not game.opening_pending and adapter.piece_views.values().all(func(piece): return piece.visible), "Instant presentation resolves both activations without a delayed barrier")
+	_check(not game.controller.is_input_locked and game.opening_director.stage == ChessBattleOpeningDirector.Stage.COMPLETE, "Instant presentation starts ordinary play in the completed opening state")
+	await _destroy_game(game)
 
 
-func _test_cancellation() -> void:
+func _create_game(player_color: String, black_buildup := 0.01, control_mode := ChessGame.ControlMode.PLAYER_VS_PLAYER) -> Dictionary:
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(960, 540)
+	viewport.size = Vector2i(1280, 720)
 	add_child(viewport)
 	var game := GAME.instantiate() as ChessGame
-	game.control_mode = ChessGame.ControlMode.PLAYER_VS_PLAYER
+	game.control_mode = control_mode
+	game.player_color = player_color
 	game.player_presentation = _fast_profile(load("res://assets/player_army_presentation.tres"))
 	game.opponent_presentation = _fast_profile(load("res://assets/opponent_army_presentation.tres"))
-	for profile in [game.player_presentation, game.opponent_presentation]:
-		profile.king_presentation.activation_profile.buildup_duration = 2.0
+	var black_profile: ChessArmyPresentationProfile = game.player_presentation if player_color == "black" else game.opponent_presentation
+	black_profile.king_presentation.activation_profile.buildup_duration = black_buildup
 	viewport.add_child(game)
 	await get_tree().process_frame
+	var director: ChessBattleOpeningDirector = game.opening_director
 	var adapter := game.get_node("ChessPresentationAdapter") as ChessPresentationAdapter
-	var timeout := 3.0
-	while timeout > 0.0:
+	var setup_concurrent := director.setup_sequences.size() == 2 and director.setup_sequences.all(func(sequence): return sequence.running)
+	var observation := {"white_ran_without_black": false}
+	var white_ready := {"value": false}
+	game.white_activation_completed.connect(func(): white_ready.value = true, CONNECT_ONE_SHOT)
+	await _wait_until(func():
 		var white_magic := adapter.get_king_magic_controller("white")
 		var black_magic := adapter.get_king_magic_controller("black")
-		if white_magic.running and black_magic.running:
-			break
-		await get_tree().process_frame
-		timeout -= get_process_delta_time()
-	game.opening_director.cancel()
-	await get_tree().process_frame
-	_check(not game.opening_in_progress and adapter.piece_views.values().all(func(piece): return piece.visible), "Cancelling during activation completes onto a visible board")
-	_check(game.opening_director.temporary_hands.is_empty() and not game.controller.is_input_locked, "Opening cancellation cleans temporary state and releases the startup gate")
-	for color in ["white", "black"]:
-		var magic := adapter.get_king_magic_controller(color)
-		_check(not magic.running and magic.king_aura.silhouette_power > 0.0, "Opening cancellation resolves the %s King to its resting Aura" % color)
-	viewport.queue_free()
-	await get_tree().process_frame
+		if director.stage == ChessBattleOpeningDirector.Stage.WHITE_ACTIVATION and white_magic != null and black_magic != null and not black_magic.running:
+			observation.white_ran_without_black = true
+		return white_ready.value
+	, 5.0)
+	return {"game": game, "adapter": adapter, "setup_concurrent": setup_concurrent, "white_ran_without_black": observation.white_ran_without_black}
 
 
 func _fast_profile(source: ChessArmyPresentationProfile) -> ChessArmyPresentationProfile:
@@ -135,6 +171,19 @@ func _fast_profile(source: ChessArmyPresentationProfile) -> ChessArmyPresentatio
 	activation.buildup_crackle_times = PackedFloat32Array()
 	activation.crackle_duration = 0.001
 	return result
+
+
+func _wait_until(predicate: Callable, timeout: float) -> void:
+	while not predicate.call() and timeout > 0.0:
+		await get_tree().process_frame
+		timeout -= get_process_delta_time()
+
+
+func _destroy_game(game: Node) -> void:
+	var viewport := game.get_parent()
+	viewport.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 
 func _check(condition: bool, description: String) -> void:

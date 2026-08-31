@@ -8,6 +8,7 @@ class_name ChessGame
 signal battle_completed(player_result: String)
 signal battle_exit_requested(player_result: String)
 signal opening_completed()
+signal white_activation_completed()
 
 const OpeningDirector := preload("res://scripts/view/chess_battle_opening_director.gd")
 const DEFAULT_PLAYER_PRESENTATION := preload("res://assets/player_army_presentation.tres")
@@ -32,10 +33,16 @@ enum ControlMode {
 @export var play_opening_presentation := true
 var completed_player_result: String = ""
 var opening_director: ChessBattleOpeningDirector
+var _white_turn_released := false
+var _black_activation_barrier_started := false
 
 var opening_in_progress: bool:
 	get:
 		return is_instance_valid(opening_director) and opening_director.is_running
+
+var opening_pending: bool:
+	get:
+		return is_instance_valid(opening_director) and opening_director.is_pending
 
 func _ready() -> void:
 	player_color = _normalize_color(player_color)
@@ -57,6 +64,8 @@ func _ready() -> void:
 		model.battle_finished.connect(_on_battle_finished)
 	if not model.board_rebuilt.is_connected(_on_board_rebuilt):
 		model.board_rebuilt.connect(_on_board_rebuilt)
+	if not model.settled_action_completed.is_connected(_on_settled_action_completed):
+		model.settled_action_completed.connect(_on_settled_action_completed)
 	var result_view := get_node_or_null("CanvasLayer/ResultOverlay") as BattleResultView
 	if result_view != null and not result_view.result_confirmed.is_connected(_on_result_confirmed):
 		result_view.result_confirmed.connect(_on_result_confirmed)
@@ -71,7 +80,11 @@ func _ready() -> void:
 		await opening_director.play()
 	controller.is_input_locked = model.battle_over
 	_configure_participants(true)
-	opening_completed.emit()
+	_white_turn_released = true
+	if opening_director == null or not opening_director.is_pending:
+		opening_completed.emit()
+	else:
+		white_activation_completed.emit()
 
 
 func _configure_participants(enable_automatic_players: bool) -> void:
@@ -109,8 +122,10 @@ func _on_result_confirmed() -> void:
 	battle_exit_requested.emit(completed_player_result)
 
 func _on_board_rebuilt(_board: Array) -> void:
-	if opening_in_progress:
+	if opening_pending:
 		opening_director.cancel()
+		if _white_turn_released:
+			opening_completed.emit()
 	if not model.battle_over:
 		completed_player_result = ""
 		return
@@ -120,6 +135,29 @@ func _on_board_rebuilt(_board: Array) -> void:
 		completed_player_result = "win"
 	else:
 		completed_player_result = "loss"
+
+
+func _on_settled_action_completed() -> void:
+	if (
+		_black_activation_barrier_started
+		or not _white_turn_released
+		or not opening_pending
+		or opening_director.stage != ChessBattleOpeningDirector.Stage.AWAITING_BLACK_ACTIVATION
+		or (model.current_turn != "black" and not model.battle_over)
+		or not model.is_settled()
+	):
+		return
+	_black_activation_barrier_started = true
+	controller.is_input_locked = true
+	_configure_participants(false)
+	if model.battle_over:
+		opening_director.finish_immediately()
+	else:
+		await opening_director.play_black_activation()
+	controller.is_input_locked = model.battle_over
+	if not model.battle_over:
+		_configure_participants(true)
+	opening_completed.emit()
 
 func restart_battle() -> void:
 	get_tree().reload_current_scene()

@@ -2,8 +2,12 @@ extends Node
 class_name ChessBattleOpeningDirector
 
 signal opening_completed()
+signal white_activation_completed()
+signal black_activation_started()
 
 const HAND_RIG_SCENE := preload("res://scenes/player_hand_rig.tscn")
+
+enum Stage { IDLE, SETUP, WHITE_ACTIVATION, AWAITING_BLACK_ACTIVATION, BLACK_ACTIVATION, COMPLETE }
 
 var model: ChessBoardModel
 var board: ChessBoardView
@@ -13,13 +17,17 @@ var player_color := "white"
 var player_profile: ChessArmyPresentationProfile
 var opponent_profile: ChessArmyPresentationProfile
 var is_running := false
+var stage := Stage.IDLE
+
+var is_pending: bool:
+	get:
+		return stage not in [Stage.IDLE, Stage.COMPLETE]
 
 var setup_sequences: Array[ChessArmySetupSequence] = []
 var temporary_hands: Array[ChessHandRig] = []
 var permanent_hands: Array[ChessHandRig] = []
 var _generation := 0
 var _pending_setups := 0
-var _pending_activations := 0
 
 
 func configure(
@@ -41,8 +49,10 @@ func configure(
 
 
 func play() -> void:
+	if stage == Stage.AWAITING_BLACK_ACTIVATION or stage == Stage.COMPLETE:
+		return
 	if is_running:
-		await opening_completed
+		await white_activation_completed
 		return
 	if not _can_present() or not policy.should_animate():
 		finish_immediately()
@@ -50,19 +60,34 @@ func play() -> void:
 	_generation += 1
 	var token := _generation
 	is_running = true
+	stage = Stage.SETUP
 	_hide_all_pieces()
 	_build_setup_for_army(player_color, player_profile, token)
 	_build_setup_for_army(model.get_other_color(player_color), opponent_profile, token)
 	if setup_sequences.is_empty():
-		_start_activations(token)
+		_start_white_activation(token)
 	else:
 		_pending_setups = setup_sequences.size()
 		for sequence in setup_sequences:
 			sequence.play()
-	await opening_completed
+	await white_activation_completed
+
+
+func play_black_activation() -> void:
+	if stage != Stage.AWAITING_BLACK_ACTIVATION:
+		return
+	var token := _generation
+	stage = Stage.BLACK_ACTIVATION
+	is_running = true
+	black_activation_started.emit()
+	await _play_color_activation("black", _profile_for_color("black"), token)
+	if token != _generation:
+		return
+	_complete(token)
 
 
 func finish_immediately() -> void:
+	var white_was_pending := stage in [Stage.IDLE, Stage.SETUP, Stage.WHITE_ACTIVATION]
 	_generation += 1
 	for sequence in setup_sequences:
 		if is_instance_valid(sequence):
@@ -75,6 +100,9 @@ func finish_immediately() -> void:
 	_reveal_all_pieces()
 	_cleanup_hands_and_sequences()
 	is_running = false
+	stage = Stage.COMPLETE
+	if white_was_pending:
+		white_activation_completed.emit()
 	opening_completed.emit()
 
 
@@ -134,35 +162,36 @@ func _on_setup_completed(token: int) -> void:
 		return
 	_pending_setups -= 1
 	if _pending_setups <= 0:
-		_start_activations(token)
+		_start_white_activation(token)
 
 
-func _start_activations(token: int) -> void:
+func _start_white_activation(token: int) -> void:
 	if token != _generation or not is_running:
 		return
-	var controllers: Array[ChessKingMagicController] = []
-	for color in [player_color, model.get_other_color(player_color)]:
-		var magic := adapter.get_king_magic_controller(color)
-		if is_instance_valid(magic) and is_instance_valid(magic.hand) and magic.hand.can_animate():
-			controllers.append(magic)
-		else:
-			printerr("Opening presentation has no King activation controller for ", color, ".")
-	if controllers.is_empty():
-		_complete(token)
+	_cleanup_hands_and_sequences()
+	stage = Stage.WHITE_ACTIVATION
+	await _play_color_activation("white", _profile_for_color("white"), token)
+	if token != _generation:
 		return
-	_pending_activations = controllers.size()
-	var playback_speed := 1.0 / maxf(policy.duration_scale(), 0.01)
-	for magic in controllers:
-		_run_activation(magic, playback_speed, token)
+	is_running = false
+	stage = Stage.AWAITING_BLACK_ACTIVATION
+	white_activation_completed.emit()
 
 
-func _run_activation(magic: ChessKingMagicController, playback_speed: float, token: int) -> void:
-	await magic.play_activation(playback_speed)
-	if token != _generation or not is_running:
+func _play_color_activation(color: String, profile: ChessArmyPresentationProfile, token: int) -> void:
+	var magic := adapter.get_king_magic_controller(color)
+	if not is_instance_valid(magic) or not is_instance_valid(magic.hand) or not magic.hand.can_animate():
+		printerr("Opening presentation has no King activation controller for ", color, ".")
 		return
-	_pending_activations -= 1
-	if _pending_activations <= 0:
-		_complete(token)
+	var activating_left := profile != null and profile.setup_profile != null and profile.setup_profile.activating_hand == ChessArmySetupProfile.ActivatingHand.LEFT
+	magic.hand.set_visual_mirrored(activating_left)
+	await magic.play_activation(1.0 / maxf(policy.duration_scale(), 0.01))
+	if token == _generation and is_instance_valid(magic.hand):
+		magic.hand.set_visual_mirrored(false)
+
+
+func _profile_for_color(color: String) -> ChessArmyPresentationProfile:
+	return player_profile if color == player_color else opponent_profile
 
 
 func _complete(token: int) -> void:
@@ -171,6 +200,7 @@ func _complete(token: int) -> void:
 	_reveal_all_pieces()
 	_cleanup_hands_and_sequences()
 	is_running = false
+	stage = Stage.COMPLETE
 	opening_completed.emit()
 
 
@@ -204,4 +234,3 @@ func _cleanup_hands_and_sequences() -> void:
 	temporary_hands.clear()
 	setup_sequences.clear()
 	_pending_setups = 0
-	_pending_activations = 0
