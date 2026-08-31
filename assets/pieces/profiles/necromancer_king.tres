@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=4 format=3 uid="uid://by0gex3vbl1uv"]
 
 [ext_resource type="Script" uid="uid://bixky4gegipld" path="res://scripts/view/piece_art_profile.gd" id="1_profile"]
 [ext_resource type="Texture2D" uid="uid://cov1rvrt6asr6" path="res://assets/pieces/kings/black_necromancer.png" id="2_texture"]

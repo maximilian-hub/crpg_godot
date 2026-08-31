@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=3 format=3 uid="uid://qq6ga46llaps"]
+[gd_resource type="Resource" script_class="PieceArtProfile" load_steps=3 format=3 uid="uid://cp5321q0epvo4"]
 
 [ext_resource type="Script" uid="uid://bixky4gegipld" path="res://scripts/view/piece_art_profile.gd" id="1_profile"]
 [ext_resource type="Texture2D" uid="uid://id5uiadvmas0" path="res://assets/pieces/standard/black_pawn.png" id="2_texture"]
@@ -7,4 +7,4 @@
 script = ExtResource("1_profile")
 reference_texture = ExtResource("2_texture")
 display_height = 32.0
-grip_anchor = Vector2(0, -26)
+grip_anchor = Vector2(0, -29)
