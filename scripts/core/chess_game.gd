@@ -7,6 +7,11 @@ class_name ChessGame
 
 signal battle_completed(player_result: String)
 signal battle_exit_requested(player_result: String)
+signal opening_completed()
+
+const OpeningDirector := preload("res://scripts/view/chess_battle_opening_director.gd")
+const DEFAULT_PLAYER_PRESENTATION := preload("res://assets/player_army_presentation.tres")
+const DEFAULT_OPPONENT_PRESENTATION := preload("res://assets/opponent_army_presentation.tres")
 
 enum ControlMode {
 	CPU_VS_CPU,
@@ -24,10 +29,20 @@ enum ControlMode {
 @export var opponent_hand_style: Resource
 @export var player_presentation: Resource
 @export var opponent_presentation: Resource
+@export var play_opening_presentation := true
 var completed_player_result: String = ""
+var opening_director: ChessBattleOpeningDirector
+
+var opening_in_progress: bool:
+	get:
+		return is_instance_valid(opening_director) and opening_director.is_running
 
 func _ready() -> void:
 	player_color = _normalize_color(player_color)
+	if player_presentation == null:
+		player_presentation = DEFAULT_PLAYER_PRESENTATION
+	if opponent_presentation == null:
+		opponent_presentation = DEFAULT_OPPONENT_PRESENTATION
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
 	_apply_army_presentations(board_view)
 	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter
@@ -46,16 +61,30 @@ func _ready() -> void:
 	if result_view != null and not result_view.result_confirmed.is_connected(_on_result_confirmed):
 		result_view.result_confirmed.connect(_on_result_confirmed)
 
+	_configure_participants(false)
+	controller.is_input_locked = play_opening_presentation
+	if play_opening_presentation and board_view != null and adapter != null:
+		opening_director = OpeningDirector.new()
+		opening_director.name = "BattleOpeningDirector"
+		add_child(opening_director)
+		opening_director.configure(model, board_view, adapter, adapter.presentation_policy, player_color, player_presentation, opponent_presentation)
+		await opening_director.play()
+	controller.is_input_locked = model.battle_over
+	_configure_participants(true)
+	opening_completed.emit()
+
+
+func _configure_participants(enable_automatic_players: bool) -> void:
 	match control_mode:
 		ControlMode.CPU_VS_CPU:
 			controller.configure_player_controlled_colors([])
-			white_cpu_player.configure(true, "white")
-			black_cpu_player.configure(true, "black")
+			white_cpu_player.configure(enable_automatic_players, "white")
+			black_cpu_player.configure(enable_automatic_players, "black")
 		ControlMode.PLAYER_VS_CPU:
 			var opponent_color := model.get_other_color(player_color)
 			controller.configure_player_controlled_colors([player_color])
-			white_cpu_player.configure(opponent_color == "white", "white")
-			black_cpu_player.configure(opponent_color == "black", "black")
+			white_cpu_player.configure(enable_automatic_players and opponent_color == "white", "white")
+			black_cpu_player.configure(enable_automatic_players and opponent_color == "black", "black")
 		ControlMode.PLAYER_VS_PLAYER:
 			controller.configure_player_controlled_colors(["white", "black"])
 			white_cpu_player.configure(false, "white")
@@ -80,6 +109,8 @@ func _on_result_confirmed() -> void:
 	battle_exit_requested.emit(completed_player_result)
 
 func _on_board_rebuilt(_board: Array) -> void:
+	if opening_in_progress:
+		opening_director.cancel()
 	if not model.battle_over:
 		completed_player_result = ""
 		return

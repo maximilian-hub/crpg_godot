@@ -466,6 +466,7 @@ func _test_ai_configuration_and_turns() -> void:
 	await _destroy_game(black_player_context.game)
 
 	var zero_game := CHESS_GAME_SCENE.instantiate()
+	zero_game.play_opening_presentation = false
 	zero_game.control_mode = ChessGame.ControlMode.CPU_VS_CPU
 	add_child(zero_game)
 	var zero_model: ChessBoardModel = zero_game.get_node("ChessModel")
@@ -812,6 +813,7 @@ func _create_game(control_mode: ChessGame.ControlMode = ChessGame.ControlMode.PL
 	viewport.snap_2d_transforms_to_pixel = true
 	add_child(viewport)
 	var game := CHESS_GAME_SCENE.instantiate()
+	game.play_opening_presentation = false
 	game.control_mode = control_mode
 	game.player_color = player_color
 	game.opponent_hand_style = HOOD_HAND_STYLE

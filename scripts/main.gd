@@ -131,7 +131,8 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	active_battle = CHESS_SCENE.instantiate()
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.player_color = "white"
-	active_battle.opponent_presentation = encounter_profile.opponent_presentation if encounter_profile != null else null
+	if encounter_profile != null and encounter_profile.opponent_presentation != null:
+		active_battle.opponent_presentation = encounter_profile.opponent_presentation
 	active_battle.opponent_hand_style = encounter_profile.opponent_hand_style if encounter_profile != null else null
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView

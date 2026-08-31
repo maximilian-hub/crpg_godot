@@ -95,6 +95,16 @@ func resume() -> void:
 	_pause_audio(false)
 
 
+func complete_immediately() -> void:
+	if profile == null:
+		return
+	elapsed = profile.total_duration()
+	current_phase = Phase.COMPLETE
+	_apply_visual_state()
+	_enter_phase(Phase.COMPLETE)
+	elapsed_changed.emit(elapsed)
+
+
 func restart(autoplay := true) -> void:
 	running = false
 	elapsed = 0.0

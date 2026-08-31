@@ -203,6 +203,9 @@ func _test_main_starts_in_overworld() -> void:
 	main.player_facing = Vector2i.LEFT
 	var forest_profile := main.active_overworld.npc.encounter_profile
 	await main._transition_to_battle(forest_profile)
+	if main.active_battle.opening_in_progress:
+		main.active_battle.opening_director.finish_immediately()
+		await get_tree().process_frame
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as TextureRect
@@ -260,13 +263,16 @@ func _test_main_starts_in_overworld() -> void:
 	add_child(fixed_main)
 	await get_tree().process_frame
 	await fixed_main._transition_to_battle()
+	if fixed_main.active_battle.opening_in_progress:
+		fixed_main.active_battle.opening_director.finish_immediately()
+		await get_tree().process_frame
 	var fixed_frame := fixed_main.active_content.get_node("BattleFrame") as SubViewportContainer
 	var fixed_viewport := fixed_frame.get_node("BattleViewport") as SubViewport
 	var fixed_board := fixed_main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	_check(fixed_main.active_battle.get_parent() == fixed_viewport, "fixed comparison mode retains the logical battle viewport")
 	_check(fixed_viewport.physics_object_picking, "fixed comparison viewport retains square picking")
 	_check(not fixed_board.scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
-	_check(fixed_main.active_battle.opponent_presentation == null and fixed_main.active_battle.opponent_hand_style == null and not fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile safely retains piece-only opponent presentation")
+	_check(fixed_main.active_battle.opponent_presentation != null and fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile uses the scene's default opponent presentation")
 	fixed_main.queue_free()
 	await get_tree().process_frame
 

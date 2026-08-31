@@ -89,6 +89,13 @@ func refresh_magic_controllers() -> void:
 			_register_king_magic(piece, piece_views[piece])
 
 
+func get_king_magic_controller(color: String) -> ChessKingMagicController:
+	if model == null:
+		return null
+	var king := model.get_king(color)
+	return _get_king_magic(king) as ChessKingMagicController if king != null else null
+
+
 func _on_board_initialized(board: Array) -> void:
 	piece_views = view.draw_board(board)
 	for row in board:

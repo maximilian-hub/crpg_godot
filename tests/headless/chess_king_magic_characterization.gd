@@ -11,6 +11,7 @@ func _ready() -> void:
 	viewport.size = Vector2i(960, 540)
 	add_child(viewport)
 	var game := GAME.instantiate() as ChessGame
+	game.play_opening_presentation = false
 	game.control_mode = ChessGame.ControlMode.PLAYER_VS_PLAYER
 	game.opponent_presentation = preload("res://assets/opponent_army_presentation.tres")
 	viewport.add_child(game)

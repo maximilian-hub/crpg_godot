@@ -61,15 +61,22 @@ func refresh_geometry() -> void:
 	activation_sequence.mirror_hand_motion = hand.seat == ChessHandRig.Seat.FAR
 
 
-func play_activation() -> void:
+func play_activation(playback_speed := 1.0) -> void:
 	if not is_instance_valid(hand) or not hand.can_animate() or running:
 		return
 	if activation_sequence == null:
 		_build_activation_sequence()
 	refresh_geometry()
+	activation_sequence.set_playback_speed(playback_speed)
 	running = true
 	activation_sequence.play()
 	await activation_sequence.activation_completed
+	running = false
+
+
+func finish_activation_immediately() -> void:
+	if activation_sequence != null and activation_sequence.running:
+		activation_sequence.complete_immediately()
 	running = false
 
 
