@@ -4,6 +4,7 @@
 extends Node2D
 
 const HAND_STYLE := preload("res://assets/arms/player/skeleton_hand_style.tres")
+const PreviewContext := preload("res://tools/dev_chess_shared/chess_lab_preview_context.gd")
 const ActivationPreset := preload("res://tools/dev_chess_activation/chess_activation_lab_preset.gd")
 const SetupPreset := preload("res://tools/dev_chess_setup/chess_setup_lab_preset.gd")
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
@@ -49,12 +50,15 @@ var status_label: Label
 var pause_button: Button
 var phase_label: Label
 var path_debug: Line2D
+var preview_context := PreviewContext.new()
+var seat_selector: OptionButton
+var loadout_selector: OptionButton
 
 
 func _ready() -> void:
 	get_viewport().canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
-	left_hand.set_hand_style(HAND_STYLE)
-	right_hand.set_hand_style(HAND_STYLE)
+	preview_context.apply_to_hand(left_hand, true)
+	preview_context.apply_to_hand(right_hand, false)
 	left_hand.set_board_sound_set(board.visual_style.interaction_sounds)
 	right_hand.set_board_sound_set(board.visual_style.interaction_sounds)
 	left_hand.set_visual_mirrored(true)
@@ -85,6 +89,16 @@ func _build_controls() -> void:
 	title.text = "Player Army Setup Lab"
 	title.add_theme_font_size_override("font_size", 22)
 	controls.add_child(title)
+	seat_selector = _add_option(controls, "Seat")
+	for name in ["Near", "Far"]: seat_selector.add_item(name)
+	seat_selector.item_selected.connect(func(index: int):
+		preview_context.seat = ChessHandRig.Seat.FAR if index == 1 else ChessHandRig.Seat.NEAR
+		_rebuild_preview())
+	loadout_selector = _add_option(controls, "Loadout")
+	for name in ["Player / Skeleton", "Opponent / Hood"]: loadout_selector.add_item(name)
+	loadout_selector.item_selected.connect(func(index: int):
+		preview_context.loadout = PreviewContext.Loadout.OPPONENT if index == 1 else PreviewContext.Loadout.PLAYER
+		_rebuild_preview())
 	setup_selector = _add_option(controls, "Setup Profile")
 	setup_selector.item_selected.connect(_load_selected_setup)
 	activation_selector = _add_option(controls, "Activation")
@@ -206,7 +220,8 @@ func _rebuild_preview() -> void:
 	_clear_activation()
 	var color: String = activation_preset.army_color if activation_preset != null else "white"
 	var king_type: StringName = activation_preset.king_type_id if activation_preset != null else &"classic_king"
-	board.set_viewing_color(color)
+	var viewing_color := color if preview_context.seat == ChessHandRig.Seat.NEAR else ("black" if color == "white" else "white")
+	board.set_viewing_color(viewing_color)
 	var fixture := _make_standard_fixture(color, king_type)
 	var rendered: Dictionary
 	if board.board == null or board.board.is_empty():
@@ -218,11 +233,13 @@ func _rebuild_preview() -> void:
 		var view: PieceView = rendered[model]
 		piece_views[model.coordinate] = view
 		view.visible = false
-	left_hand.set_visual_mirrored(true)
-	right_hand.set_visual_mirrored(false)
+	preview_context.apply_to_hand(left_hand, true)
+	preview_context.apply_to_hand(right_hand, false)
+	left_hand.set_board_sound_set(board.visual_style.interaction_sounds)
+	right_hand.set_board_sound_set(board.visual_style.interaction_sounds)
 	setup_sequence = ChessArmySetupSequence.new()
 	add_child(setup_sequence)
-	setup_sequence.configure(setup_profile, board, left_hand, right_hand, piece_views)
+	setup_sequence.configure(setup_profile, board, left_hand, right_hand, piece_views, preview_context.seat)
 	setup_sequence.cue_started.connect(func(cue: ChessSetupCue): phase_label.text = "Placing %s" % cue.label())
 	setup_sequence.setup_completed.connect(_on_setup_completed)
 	_prepare_activation()
@@ -255,7 +272,7 @@ func _model_coordinate(display: Vector2i, color: String) -> Vector2i:
 func _prepare_activation() -> void:
 	if activation_preset == null:
 		activation_preset = _default_activation_preset()
-	var king_coordinate := board.projection.get_model_coordinate(Vector2i(7, 4))
+	var king_coordinate := _activation_king_coordinate()
 	var king_view: PieceView = piece_views.get(king_coordinate)
 	if not is_instance_valid(king_view):
 		return
@@ -290,9 +307,7 @@ func _prepare_activation() -> void:
 	activation_sequence = ActivationSequence.new()
 	board.add_child(activation_sequence)
 	activation_nodes.append_array([king_aura, hand_aura, lightning, anchor, activation_sequence])
-	var direction := -1.0 if hand.visual_mirrored else 1.0
-	var offset: Vector2 = activation_preset.activation_profile.hand_hover_offset
-	offset.x *= direction
+	var offset := _activation_hover_offset(hand, activation_preset.activation_profile.hand_hover_offset)
 	var hover_position := king_view.position + offset
 	hand.position = hover_position
 	hand.scale = Vector2.ONE * board.get_world_scale() * hand.art_scale_multiplier
@@ -309,7 +324,7 @@ func _prepare_activation() -> void:
 		{},
 		rest_position,
 		1.0,
-		hand.visual_mirrored
+		hand.visual_mirrored != (preview_context.seat == ChessHandRig.Seat.FAR)
 	)
 	activation_sequence.phase_changed.connect(func(_phase: int): phase_label.text = "Activation: %s" % activation_sequence.phase_name())
 	activation_sequence.activation_completed.connect(func(): phase_label.text = "Ceremony complete")
@@ -361,23 +376,32 @@ func _refresh_activation_hand_geometry() -> void:
 	if setup_sequence != null and setup_sequence.running:
 		return
 	var hand := left_hand if setup_profile.activating_hand == ChessArmySetupProfile.ActivatingHand.LEFT else right_hand
-	var king_coordinate := board.projection.get_model_coordinate(Vector2i(7, 4))
+	var king_coordinate := _activation_king_coordinate()
 	var king_view: PieceView = piece_views.get(king_coordinate)
 	if not is_instance_valid(hand) or not is_instance_valid(king_view):
 		return
-	var direction := -1.0 if hand.visual_mirrored else 1.0
-	var offset: Vector2 = activation_sequence.profile.hand_hover_offset
-	offset.x *= direction
+	var offset := _activation_hover_offset(hand, activation_sequence.profile.hand_hover_offset)
 	var world_scale := board.get_world_scale()
 	var effective_hand_scale := world_scale * hand.art_scale_multiplier
 	hand.scale = Vector2.ONE * effective_hand_scale
 	activation_sequence.base_hand_position = king_view.position + offset
 	activation_sequence.hand_rest_position = hand._setup_rest_position(effective_hand_scale)
 	activation_sequence.hand_motion_scale = 1.0
-	activation_sequence.mirror_hand_motion = hand.visual_mirrored
+	activation_sequence.mirror_hand_motion = hand.visual_mirrored != (preview_context.seat == ChessHandRig.Seat.FAR)
 	if activation_sequence.current_phase == activation_sequence.Phase.RESET:
 		hand.position = activation_sequence.hand_rest_position
 		hand.visible = false
+
+
+func _activation_king_coordinate() -> Vector2i:
+	var authored := ChessPresentationTransform.authored_display_coordinate(Vector2i(7, 4), preview_context.seat)
+	return board.projection.get_model_coordinate(authored)
+
+
+func _activation_hover_offset(hand: ChessHandRig, authored: Vector2) -> Vector2:
+	var offset := preview_context.hover_offset(authored)
+	if hand.visual_mirrored: offset.x *= -1.0
+	return offset
 
 
 func _toggle_pause() -> void:
@@ -692,7 +716,8 @@ func _refresh_debug_path() -> void:
 	var scale := board.get_world_scale()
 	var start := hand._setup_rest_position(scale * hand.art_scale_multiplier)
 	var finish := board.to_local(piece.get_grip_anchor().global_position)
-	var mirror := -1.0 if hand.visual_mirrored else 1.0
+	var horizontally_mirrored := hand.visual_mirrored != (preview_context.seat == ChessHandRig.Seat.FAR)
+	var mirror := -1.0 if horizontally_mirrored else 1.0
 	var a := start + Vector2(motion.entry_departure_handle.x * mirror, motion.entry_departure_handle.y) * scale
 	var b := finish + Vector2(motion.entry_arrival_handle.x * mirror, motion.entry_arrival_handle.y) * scale
 	var points := PackedVector2Array()

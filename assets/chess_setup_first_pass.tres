@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="ChessArmySetupProfile" load_steps=6 format=3 uid="uid://vu524avig2sr"]
+
+[ext_resource type="Script" uid="uid://bv2vxsebqarul" path="res://scripts/view/chess_army_setup_profile.gd" id="1"]
+[ext_resource type="Script" uid="uid://c340pr01kpmqt" path="res://scripts/view/chess_setup_cue.gd" id="1_qfngd"]
+[ext_resource type="Script" uid="uid://bd7bxvrx43bom" path="res://scripts/view/chess_setup_motion_profile.gd" id="2"]
+
+[sub_resource type="Resource" id="LeftMotion"]
+script = ExtResource("2")
+pickup_delay = 0.06
+entry_duration = 0.2
+entry_departure_handle = Vector2(-90, -180)
+entry_arrival_handle = Vector2(70, 110)
+placement_hold = 0.01
+release_hold = 0.01
+retreat_duration = 0.15
+retreat_departure_handle = Vector2(60, 100)
+retreat_arrival_handle = Vector2(-80, -170)
+
+[sub_resource type="Resource" id="RightMotion"]
+script = ExtResource("2")
+pickup_delay = 0.06
+entry_duration = 0.2
+entry_departure_handle = Vector2(-90, -180)
+entry_arrival_handle = Vector2(70, 110)
+placement_hold = 0.01
+release_hold = 0.01
+retreat_duration = 0.15
+retreat_departure_handle = Vector2(60, 100)
+retreat_arrival_handle = Vector2(-80, -170)
+
+[resource]
+script = ExtResource("1")
+left_motion = SubResource("LeftMotion")
+right_motion = SubResource("RightMotion")
+cues = Array[ExtResource("1_qfngd")]([])
+activating_hand = 1

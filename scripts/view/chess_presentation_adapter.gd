@@ -2,6 +2,8 @@ extends Node
 class_name ChessPresentationAdapter
 
 const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
+const KingMagicController = preload("res://scripts/view/chess_king_magic_controller.gd")
+const KingPresentationProfile = preload("res://scripts/view/chess_king_presentation_profile.gd")
 
 ## Bridges authoritative Model and Controller events to the visual chess board and UI.
 #
@@ -29,8 +31,11 @@ var necromancer_auras: Dictionary = {}
 var selection_effect_piece: ModelPiece = null
 var player_move_submission_active := false
 var silently_removed_piece_views: Dictionary = {}
-var castling_hand_continuations: Dictionary = {}
 var pending_attack_damage_visuals: Dictionary = {}
+var king_magic_controllers: Dictionary = {}
+var player_color := "white"
+var player_presentation: Resource
+var opponent_presentation: Resource
 
 
 func _ready() -> void:
@@ -70,6 +75,20 @@ func get_piece_view(piece: ModelPiece) -> Node:
 	return piece_views.get(piece)
 
 
+func configure_army_presentations(color: String, player_profile: Resource, opponent_profile: Resource) -> void:
+	player_color = "black" if color == "black" else "white"
+	player_presentation = player_profile
+	opponent_presentation = opponent_profile
+	refresh_magic_controllers()
+
+
+func refresh_magic_controllers() -> void:
+	_clear_magic_controllers()
+	for piece in piece_views:
+		if piece is KingPiece:
+			_register_king_magic(piece, piece_views[piece])
+
+
 func _on_board_initialized(board: Array) -> void:
 	piece_views = view.draw_board(board)
 	for row in board:
@@ -78,13 +97,13 @@ func _on_board_initialized(board: Array) -> void:
 					_register_piece(piece, view.get_piece_node(piece.coordinate))
 
 func _on_board_rebuilt(board: Array) -> void:
+	_clear_magic_controllers()
 	piece_views.clear()
 	necromancer_auras.clear()
 	silently_removed_piece_views.clear()
 	pending_attack_damage_visuals.clear()
 	selection_effect_piece = null
 	player_move_submission_active = false
-	castling_hand_continuations.clear()
 	piece_views = view.rebuild_board(board)
 	for row in board:
 		for piece in row:
@@ -126,16 +145,15 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		return
 
 	gate.hold()
-	var starts_castling := piece.type.ends_with("king") and from.x == to.x and absi(to.y - from.y) == 2
-	var continues_castling := bool(castling_hand_continuations.get(piece.color, false)) and piece.type == "rook"
-	if starts_castling:
-		await view.move_piece_node_with_hand(piece_node, from, to, true, false)
-		castling_hand_continuations[piece.color] = true
-	elif continues_castling:
-		await view.move_piece_node_with_hand(piece_node, from, to, false, true, &"jump")
-		castling_hand_continuations.erase(piece.color)
-	else:
-		await view.move_piece_node_with_hand(piece_node, from, to)
+	if piece is KingPiece:
+		var magic := _get_king_magic(piece)
+		if magic != null:
+			await magic.play_move(from, to)
+		else:
+			await _play_unpowered_king_move(piece_node, to)
+		gate.release()
+		return
+	await view.move_piece_node_with_hand(piece_node, from, to)
 	gate.release()
 
 
@@ -149,6 +167,15 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		return
 
 	gate.hold()
+	if attacker is KingPiece:
+		var magic := _get_king_magic(attacker)
+		if magic != null and is_instance_valid(defender_node):
+			await magic.play_capture(from, to, defender_node)
+			silently_removed_piece_views[defender] = true
+		else:
+			await _play_unpowered_king_move(attacker_node, to)
+		gate.release()
+		return
 	var carried_offscreen := false
 	if is_instance_valid(defender_node):
 		carried_offscreen = await view.capture_piece_node_with_hand(attacker_node, defender_node, from, to)
@@ -178,7 +205,14 @@ func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, from: V
 	gate.hold()
 	pending_attack_damage_visuals[defender] = []
 	var contact_callback := func(): _flush_pending_attack_damage(defender)
-	await view.attack_piece_node_with_hand(piece_node, from, to, contact_callback)
+	if piece is KingPiece:
+		var magic := _get_king_magic(piece)
+		if magic != null:
+			await magic.play_attack(from, to, contact_callback)
+		else:
+			await view.attack_piece_node(piece_node, to, contact_callback)
+	else:
+		await view.attack_piece_node_with_hand(piece_node, from, to, contact_callback)
 	# Never strand an HP display if an animation implementation exits without
 	# invoking its contact callback.
 	_flush_pending_attack_damage(defender)
@@ -189,6 +223,9 @@ func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, from: V
 func _on_piece_destroyed(piece: ModelPiece) -> void:
 	pending_attack_damage_visuals.erase(piece)
 	var piece_node: Node = piece_views.get(piece)
+	var magic: Node = king_magic_controllers.get(piece)
+	king_magic_controllers.erase(piece)
+	if is_instance_valid(magic): magic.queue_free()
 	piece_views.erase(piece)
 	necromancer_auras.erase(piece)
 	if is_instance_valid(piece_node):
@@ -205,6 +242,9 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void:
 	var old_node: Node = piece_views.get(old_piece)
 	piece_views.erase(old_piece)
+	var old_magic: Node = king_magic_controllers.get(old_piece)
+	king_magic_controllers.erase(old_piece)
+	if is_instance_valid(old_magic): old_magic.queue_free()
 	if is_instance_valid(old_node):
 		view.remove_piece(old_node)
 	_register_piece(new_piece, view.draw_piece(new_piece))
@@ -339,6 +379,45 @@ func _register_piece(piece: ModelPiece, piece_node: Node) -> void:
 			_on_cooldown_changed(king, king.current_cooldown)
 		else:
 			_on_cooldown_ready(king)
+		_register_king_magic(piece, piece_node)
+
+
+func _register_king_magic(piece: KingPiece, piece_node: PieceView) -> void:
+	if not is_instance_valid(piece_node) or king_magic_controllers.has(piece):
+		return
+	var army_profile := player_presentation if piece.color == player_color else opponent_presentation
+	var king_profile: Resource = army_profile.king_presentation if army_profile != null else null
+	if king_profile == null:
+		king_profile = KingPresentationProfile.new()
+		king_profile.ensure_defaults()
+	var magic := KingMagicController.new()
+	view.add_child(magic)
+	magic.configure(view, view.get_hand_rig_for_color(piece.color), piece_node, king_profile)
+	king_magic_controllers[piece] = magic
+
+
+func _get_king_magic(piece: ModelPiece) -> Node:
+	var magic: Node = king_magic_controllers.get(piece) as Node
+	if not is_instance_valid(magic):
+		var piece_node := get_piece_view(piece) as PieceView
+		if piece is KingPiece and is_instance_valid(piece_node):
+			_register_king_magic(piece, piece_node)
+			magic = king_magic_controllers.get(piece) as Node
+	return magic
+
+
+func _clear_magic_controllers() -> void:
+	for magic in king_magic_controllers.values():
+		if is_instance_valid(magic): magic.queue_free()
+	king_magic_controllers.clear()
+
+
+func _play_unpowered_king_move(piece_node: PieceView, to: Vector2i) -> void:
+	var fallback := KingMagicController.new()
+	view.add_child(fallback)
+	fallback.configure(view, null, piece_node, null)
+	await fallback.play_move(piece_node.coordinate, to)
+	fallback.queue_free()
 
 
 func _on_cooldown_changed(king: KingPiece, new_cooldown: int) -> void:

@@ -63,8 +63,8 @@ func bind_targets(targets: Array[Sprite2D]) -> void:
 
 func clear_targets() -> void:
 	for binding in bindings:
-		var overlay: Sprite2D = binding["overlay"]
-		var emitter: ChessSquareEmitter2D = binding["emitter"]
+		var overlay: Variant = binding.get("overlay")
+		var emitter: Variant = binding.get("emitter")
 		if is_instance_valid(overlay):
 			overlay.queue_free()
 		if is_instance_valid(emitter):
@@ -188,9 +188,14 @@ func _process(delta: float) -> void:
 
 func _sync_bindings() -> void:
 	for binding in bindings:
-		var source: Sprite2D = binding["source"]
-		var overlay: Sprite2D = binding["overlay"]
-		var material: ShaderMaterial = binding["material"]
+		var source_value: Variant = binding.get("source")
+		var overlay_value: Variant = binding.get("overlay")
+		var material_value: Variant = binding.get("material")
+		if not is_instance_valid(source_value) or not is_instance_valid(overlay_value) or not is_instance_valid(material_value):
+			continue
+		var source := source_value as Sprite2D
+		var overlay := overlay_value as Sprite2D
+		var material := material_value as ShaderMaterial
 		if not is_instance_valid(source) or not is_instance_valid(overlay):
 			continue
 		overlay.texture = source.texture

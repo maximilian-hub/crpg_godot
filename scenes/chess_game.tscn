@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=16 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
 [ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
@@ -13,6 +13,7 @@
 [ext_resource type="Resource" uid="uid://hyuqx5axgyc" path="res://assets/chess_board_default_style.tres" id="12_board_style"]
 [ext_resource type="PackedScene" path="res://scenes/player_hand_rig.tscn" id="13_hand_rig"]
 [ext_resource type="Resource" uid="uid://d0mfkbmg22hl4" path="res://assets/arms/player/skeleton_hand_style.tres" id="14_hand_style"]
+[ext_resource type="Resource" path="res://assets/player_army_presentation.tres" id="15_player_presentation"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
 bg_color = Color(0.1, 0.075, 0.14, 0.98)
@@ -31,6 +32,7 @@ shadow_size = 9
 [node name="ChessGame" type="Node"]
 script = ExtResource("1_wnm4a")
 player_hand_style = ExtResource("14_hand_style")
+player_presentation = ExtResource("15_player_presentation")
 
 [node name="ChessModel" type="Node" parent="."]
 script = ExtResource("2_fv27a")

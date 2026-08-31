@@ -14,7 +14,7 @@
 [ext_resource type="Texture2D" uid="uid://drb71dllp55k6" path="res://assets/overworld/characters/hood/hood_down_0001.png" id="12_hood_down"]
 [ext_resource type="Texture2D" uid="uid://ds25rs4ncei8m" path="res://assets/overworld/characters/hood/hood_right_0001.png" id="13_hood_right"]
 [ext_resource type="Texture2D" uid="uid://dxt7icybgfyhl" path="res://assets/overworld/characters/hood/hood_up_0001.png" id="14_hood_up"]
-[ext_resource type="Resource" path="res://assets/encounters/forest_challenger.tres" id="15_encounter"]
+[ext_resource type="Resource" uid="uid://uwh6fie1lsqq" path="res://assets/encounters/forest_challenger.tres" id="15_encounter"]
 
 [sub_resource type="TileSetAtlasSource" id="CollisionAtlas"]
 resource_name = "Fully Blocked Cells"

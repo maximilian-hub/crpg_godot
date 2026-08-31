@@ -1,9 +1,11 @@
-[gd_resource type="Resource" script_class="ChessEncounterProfile" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ChessEncounterProfile" load_steps=4 format=3 uid="uid://uwh6fie1lsqq"]
 
-[ext_resource type="Script" path="res://scripts/encounters/chess_encounter_profile.gd" id="1_profile"]
-[ext_resource type="Resource" path="res://assets/arms/opponent/hood_hand_style.tres" id="2_hood"]
+[ext_resource type="Script" uid="uid://cblp3c6caubb8" path="res://scripts/encounters/chess_encounter_profile.gd" id="1_profile"]
+[ext_resource type="Resource" uid="uid://decf0w417gdm" path="res://assets/arms/opponent/hood_hand_style.tres" id="2_hood"]
+[ext_resource type="Resource" path="res://assets/opponent_army_presentation.tres" id="3_presentation"]
 
 [resource]
 script = ExtResource("1_profile")
 encounter_id = &"forest_challenger"
+opponent_presentation = ExtResource("3_presentation")
 opponent_hand_style = ExtResource("2_hood")

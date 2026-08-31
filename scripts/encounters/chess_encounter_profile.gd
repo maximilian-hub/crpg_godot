@@ -6,4 +6,6 @@ class_name ChessEncounterProfile
 ## without teaching GameFlow about individual NPC types.
 
 @export var encounter_id: StringName
+@export var opponent_presentation: Resource
+## Compatibility fallback for older encounter resources.
 @export var opponent_hand_style: ChessHandStyle

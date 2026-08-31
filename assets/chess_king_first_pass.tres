@@ -1,0 +1,106 @@
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=8 format=3 uid="uid://f1htc7ckspqt"]
+
+[ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
+[ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
+[ext_resource type="Script" uid="uid://bjplfx6h5sa57" path="res://scripts/view/chess_king_activation_profile.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/view/chess_magical_move_profile.gd" id="4"]
+
+[sub_resource type="Resource" id="Activation"]
+script = ExtResource("3")
+hand_hover_offset = Vector2(150, -300)
+approach_duration = 0.55
+approach_settle_duration = 0.1
+approach_departure_handle = Vector2(-140, -180)
+approach_arrival_handle = Vector2(120, 180)
+invocation_duration = 2.0
+response_duration = 1.0
+buildup_duration = 2.5
+climax_duration = 1.0
+afterimage_duration = 1.5
+aura_release_duration = 3.0
+resolve_duration = 0.2
+invocation_hand_power = 0.35
+response_king_power = 0.25
+final_density_multiplier = 2.0
+final_speed_multiplier = 4.0
+burst_multiplier = 6.0
+buildup_crackle_times = null
+secondary_crackle_count = 3
+crackle_duration = 0.09
+crackle_width = 2.0
+crackle_hand_shift_distance = 16.0
+crackle_hand_hold_duration = 0.05
+crackle_hand_return_duration = 0.16
+beam_width = 40.0
+climax_beam_count = 12
+climax_hand_shift_distance = 64.0
+climax_hand_return_duration = 1.0
+post_climax_retreat_delay = 0.18
+retreat_duration = 0.65
+retreat_departure_handle = Vector2(100, 140)
+retreat_arrival_handle = Vector2(-140, -180)
+lightning_segment_length = 10.0
+lightning_displacement = 35.0
+lightning_curve_max = 36.0
+lightning_checker_size = 8.0
+rift_edge_roughness = 3.0
+beam_branch_count = 1
+impact_bolt_count = 5
+impact_radius_min = 18.0
+impact_radius_max = 52.0
+impact_bolt_width = 3.0
+tremor_interval = 0.12
+tremor_max_pixels = 8
+tremor_start_fraction = 0.0
+tremor_ramp_exponent = 0.5
+hand_fade_duration = 0.22
+resting_aura_power = 0.5
+resting_particle_power = 0.08
+resting_density_multiplier = 1.0
+resting_speed_multiplier = 0.5
+random_seed = 2808
+
+[sub_resource type="Resource" id="Aura"]
+script = ExtResource("2")
+core_color = Color(0.945312, 0.363724, 0.0147705, 1)
+accent_color = Color(1, 0.952482, 0.447059, 1)
+outline_width = 1.0
+outline_intensity = 0.9
+interior_intensity = 0.45
+square_size = 1.5
+square_density = 84.0
+square_lifetime = 0.8
+rise_speed = 42.0
+horizontal_spread = 47.0
+upward_acceleration = 24.0
+turbulence = 8.0
+idle_power = 0.0
+power_up_duration = 0.65
+power_down_duration = 0.55
+random_seed = 1701
+
+[sub_resource type="Resource" id="Movement"]
+script = ExtResource("4")
+hand_hover_offset = Vector2(150, -180)
+hand_approach_duration = 0.24
+invocation_duration = 0.14
+settle_duration = 0.1
+hand_retreat_duration = 0.24
+travel_duration = 0.3
+lift_height = 34.0
+hand_silhouette_power = 0.45
+hand_particle_power = 0.2
+king_silhouette_power = 0.65
+king_particle_power = 0.35
+attack_rebound_duration = 0.24
+knockoff_duration = 0.58
+knockoff_arc_height = 180.0
+knockoff_side_margin = 180.0
+knockoff_spin_degrees = 900.0
+
+[resource]
+script = ExtResource("1")
+aura_profile = SubResource("Aura")
+aura_mode = 2
+activation_profile = SubResource("Activation")
+movement_profile = SubResource("Movement")

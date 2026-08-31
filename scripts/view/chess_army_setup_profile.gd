@@ -9,6 +9,10 @@ enum ActivatingHand { LEFT, RIGHT }
 @export var activating_hand := ActivatingHand.RIGHT
 
 
+func _init() -> void:
+	ensure_standard_cues()
+
+
 func motion_for(cue: ChessSetupCue) -> ChessSetupMotionProfile:
 	if cue.motion_override != null:
 		return cue.motion_override
@@ -30,4 +34,3 @@ func _cue(coordinate: Vector2i, side: int) -> ChessSetupCue:
 	cue.display_coordinate = coordinate
 	cue.hand_side = side
 	return cue
-

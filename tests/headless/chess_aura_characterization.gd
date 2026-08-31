@@ -129,4 +129,10 @@ func _test_lab_presets_and_selectors() -> void:
 	_check(is_equal_approx(lab.king_aura.silhouette_power, 0.2) and is_equal_approx(lab.king_aura.particle_power, 0.4) and is_equal_approx(lab.hand_aura.silhouette_power, 0.6) and is_equal_approx(lab.hand_aura.particle_power, 0.8), "loading restores independent silhouette and particle power for both targets")
 	_check(is_equal_approx(lab.preview_hand.position.y, lab.HAND_PREVIEW_GRIP_POSITION.y + 123.0), "loading restores the vertical hand-grip offset")
 	_check(is_equal_approx(lab.preview_hand.position.x, lab.HAND_PREVIEW_GRIP_POSITION.x - 87.0), "loading restores the horizontal hand-grip offset")
+	var saved_hand_channels := Vector2(lab.hand_aura.silhouette_power, lab.hand_aura.particle_power)
+	lab.preview_context.seat = ChessHandRig.Seat.FAR
+	lab.preview_context.loadout = lab.PreviewContext.Loadout.OPPONENT
+	lab._apply_preview_context()
+	_check(lab.preview_hand.seat == ChessHandRig.Seat.FAR and lab.preview_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "Aura Lab previews a genuine far-seat Hood hand")
+	_check(Vector2(lab.hand_aura.silhouette_power, lab.hand_aura.particle_power) == saved_hand_channels and lab.hand_aura.bindings.size() == 3, "switching Aura Lab seats rebinds one hand treatment without losing channel powers")
 	lab.queue_free()

@@ -1,6 +1,8 @@
 extends Node
 class_name ChessArmySetupSequence
 
+const PresentationTransform = preload("res://scripts/view/chess_presentation_transform.gd")
+
 signal cue_started(cue: ChessSetupCue)
 signal piece_placed(cue: ChessSetupCue, piece: Node2D)
 signal setup_completed()
@@ -17,14 +19,16 @@ var playback_speed := 1.0
 var elapsed := 0.0
 var _generation := 0
 var _finished_tracks := 0
+var seat := ChessHandRig.Seat.NEAR
 
 
-func configure(setup_profile: ChessArmySetupProfile, view: ChessBoardView, left: ChessHandRig, right: ChessHandRig, views: Dictionary) -> void:
+func configure(setup_profile: ChessArmySetupProfile, view: ChessBoardView, left: ChessHandRig, right: ChessHandRig, views: Dictionary, target_seat := ChessHandRig.Seat.NEAR) -> void:
 	profile = setup_profile
 	board_view = view
 	left_hand = left
 	right_hand = right
 	piece_views = views
+	seat = target_seat
 	restart(false)
 
 
@@ -93,7 +97,9 @@ func _run_track(side: int, token: int) -> void:
 			continue
 		if not await _wait_interruptible(cue.gap_before, token):
 			return
-		var model_coordinate := board_view.projection.get_model_coordinate(cue.display_coordinate)
+		var board_size := Vector2i(board_view.projection.rows, board_view.projection.columns)
+		var display_coordinate := PresentationTransform.authored_display_coordinate(cue.display_coordinate, seat, board_size)
+		var model_coordinate := board_view.projection.get_model_coordinate(display_coordinate)
 		var piece: Node2D = piece_views.get(model_coordinate)
 		if not is_instance_valid(piece):
 			continue

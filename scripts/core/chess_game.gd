@@ -22,13 +22,17 @@ enum ControlMode {
 @export var control_mode: ControlMode = ControlMode.CPU_VS_CPU
 @export var player_hand_style: Resource
 @export var opponent_hand_style: Resource
+@export var player_presentation: Resource
+@export var opponent_presentation: Resource
 var completed_player_result: String = ""
 
 func _ready() -> void:
 	player_color = _normalize_color(player_color)
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
-	if board_view != null:
-		board_view.set_hand_styles(player_hand_style, opponent_hand_style)
+	_apply_army_presentations(board_view)
+	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter
+	if adapter != null:
+		adapter.configure_army_presentations(player_color, player_presentation, opponent_presentation)
 	set_viewing_color(player_color)
 	if model == null:
 		printerr("ChessGame has no ChessBoardModel assigned.")
@@ -97,7 +101,22 @@ func set_viewing_color(color: String) -> void:
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
 	if board_view != null:
 		board_view.set_viewing_color(normalized)
+		_apply_army_presentations(board_view)
+	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter
+	if adapter != null:
+		adapter.refresh_magic_controllers()
 	_layout_side_ui(normalized)
+
+
+func _apply_army_presentations(board_view: ChessBoardView) -> void:
+	if board_view == null:
+		return
+	var player_style: Resource = player_presentation.hand_style if player_presentation != null else player_hand_style
+	var opponent_style: Resource = opponent_presentation.hand_style if opponent_presentation != null else opponent_hand_style
+	if board_view.viewing_color == player_color:
+		board_view.set_hand_styles(player_style, opponent_style)
+	else:
+		board_view.set_hand_styles(opponent_style, player_style)
 
 
 func _layout_side_ui(viewing_color: String) -> void:

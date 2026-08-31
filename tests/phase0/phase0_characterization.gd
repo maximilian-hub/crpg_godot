@@ -185,10 +185,10 @@ func _test_player_hand_castling_presentation() -> void:
 	await controller._on_square_clicked(Vector2i(7, 6))
 
 	_expect(moved_types == ["king", "rook"], "castling presents the king before the rook")
-	_expect(carry_paths == [&"slide", &"jump"], "castling slides the king and jumps the rook")
-	_expect(observation["visible_after_king_release"] and observation["completion_count"] == 1, "castling keeps one continuous hand visit between pieces")
-	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)), "castling makes one final retreat to the shared lower-right hand rest position")
-	_expect(model.board[7][6] == king and model.board[7][5] == rook, "continuous hand castling lands both pieces on their final squares")
+	_expect(carry_paths == [&"slide"], "castling moves the king magically and hand-carries only the rook")
+	_expect(not observation["visible_after_king_release"] and observation["completion_count"] == 1, "castling never attaches the king to the hand rig")
+	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)), "castling retreats after the magical king gesture and ordinary rook move")
+	_expect(model.board[7][6] == king and model.board[7][5] == rook, "magical castling lands both pieces on their final squares")
 
 	await _destroy_game(context.game)
 

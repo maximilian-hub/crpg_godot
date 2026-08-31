@@ -335,7 +335,11 @@ func _setup_rest_position(world_scale: float) -> Vector2:
 
 
 func _setup_curve(start: Vector2, finish: Vector2, departure: Vector2, arrival: Vector2, duration: float, world_scale: float, token: int) -> bool:
-	var mirror := -1.0 if visual_mirrored else 1.0
+	# Left/right artwork mirroring and across-table seat mirroring are independent
+	# transforms. Combining them keeps lift screen-up while swapping the authored
+	# horizontal curve for the far seat.
+	var horizontally_mirrored := visual_mirrored != (seat == Seat.FAR)
+	var mirror := -1.0 if horizontally_mirrored else 1.0
 	var control_a := start + Vector2(departure.x * mirror, departure.y) * world_scale
 	var control_b := finish + Vector2(arrival.x * mirror, arrival.y) * world_scale
 	var elapsed := 0.0

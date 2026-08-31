@@ -6,6 +6,7 @@ extends Node2D
 const PIECE_SCENE := preload("res://scenes/piece.tscn")
 const HAND_RIG_SCENE := preload("res://scenes/player_hand_rig.tscn")
 const HAND_STYLE := preload("res://assets/arms/player/skeleton_hand_style.tres")
+const PreviewContext := preload("res://tools/dev_chess_shared/chess_lab_preview_context.gd")
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const ActivationProfile := preload("res://scripts/view/chess_king_activation_profile.gd")
@@ -56,6 +57,9 @@ var profile_controls: Dictionary = {}
 var motion_vector_controls: Dictionary = {}
 var approach_path_debug: Line2D
 var retreat_path_debug: Line2D
+var preview_context := PreviewContext.new()
+var seat_selector: OptionButton
+var loadout_selector: OptionButton
 
 
 func _ready() -> void:
@@ -89,11 +93,9 @@ func _build_stage() -> void:
 	preview_king.set_model(MinotaurKing.new("white", Vector2i.ZERO))
 	add_child(preview_king)
 	preview_hand = HAND_RIG_SCENE.instantiate() as ChessHandRig
-	preview_hand.hand_style = HAND_STYLE
-	preview_hand.position = preview_king.position + activation_profile.hand_hover_offset
 	add_child(preview_hand)
-	preview_hand.set_visual_mirrored(false)
-	preview_hand._apply_pose(false)
+	preview_context.apply_to_hand(preview_hand)
+	preview_hand.position = _hover_position()
 	hand_sprites.assign(preview_hand.get_aura_sprites())
 	hand_connection_anchor = Marker2D.new()
 	hand_connection_anchor.position = preview_hand.get_connection_anchor_position()
@@ -186,6 +188,16 @@ func _build_controls() -> void:
 	title.text = "King Activation Lab"
 	title.add_theme_font_size_override("font_size", 22)
 	controls.add_child(title)
+	seat_selector = _add_option(controls, "Seat")
+	for name in ["Near", "Far"]: seat_selector.add_item(name)
+	seat_selector.item_selected.connect(func(index: int):
+		preview_context.seat = ChessHandRig.Seat.FAR if index == 1 else ChessHandRig.Seat.NEAR
+		_apply_preview_context())
+	loadout_selector = _add_option(controls, "Loadout")
+	for name in ["Player / Skeleton", "Opponent / Hood"]: loadout_selector.add_item(name)
+	loadout_selector.item_selected.connect(func(index: int):
+		preview_context.loadout = PreviewContext.Loadout.OPPONENT if index == 1 else PreviewContext.Loadout.PLAYER
+		_apply_preview_context())
 	aura_selector = _add_option(controls, "Aura Profile")
 	aura_selector.item_selected.connect(_load_selected_aura)
 	activation_selector = _add_option(controls, "Ritual Profile")
@@ -203,14 +215,14 @@ func _build_controls() -> void:
 	hand_offset_x = _add_spin(controls, "Hand hover X", -900.0, 900.0, 1.0, activation_profile.hand_hover_offset.x, func(value: float):
 		activation_profile.hand_hover_offset.x = value
 		if sequence != null:
-			sequence.base_hand_position = preview_king.position + activation_profile.hand_hover_offset
+			sequence.base_hand_position = _hover_position()
 			sequence.restart(false)
 		_refresh_hand_paths()
 	)
 	hand_offset = _add_spin(controls, "Hand hover Y", -900.0, 900.0, 1.0, activation_profile.hand_hover_offset.y, func(value: float):
 		activation_profile.hand_hover_offset.y = value
 		if sequence != null:
-			sequence.base_hand_position = preview_king.position + activation_profile.hand_hover_offset
+			sequence.base_hand_position = _hover_position()
 			sequence.restart(false)
 		_refresh_hand_paths()
 	)
@@ -686,14 +698,36 @@ func _sync_profile_controls() -> void:
 	hand_offset_x.set_value_no_signal(activation_profile.hand_hover_offset.x)
 	hand_offset.set_value_no_signal(activation_profile.hand_hover_offset.y)
 	if sequence != null:
-		sequence.base_hand_position = preview_king.position + activation_profile.hand_hover_offset
+		sequence.base_hand_position = _hover_position()
 	_refresh_crackle_editor(0)
 	_refresh_hand_paths()
 
 
 func _activation_rest_position() -> Vector2:
-	var viewport := get_viewport_rect().size
-	return Vector2(viewport.x + 96.0, viewport.y + 160.0)
+	return preview_hand._offscreen_rest_position(maxf(absf(preview_hand.scale.x), 0.01))
+
+
+func _hover_position() -> Vector2:
+	return preview_king.position + preview_context.hover_offset(activation_profile.hand_hover_offset)
+
+
+func _apply_preview_context() -> void:
+	var hand_silhouette := hand_aura.silhouette_power
+	var hand_particles := hand_aura.particle_power
+	hand_aura.clear_targets()
+	preview_context.apply_to_hand(preview_hand)
+	hand_connection_anchor.position = preview_hand.get_connection_anchor_position()
+	hand_aura.bind_targets(preview_hand.get_aura_sprites())
+	hand_aura.set_mode(selected_aura_mode)
+	hand_aura.set_silhouette_power(hand_silhouette)
+	hand_aura.set_particle_power(hand_particles)
+	_layout_scale()
+	if sequence != null:
+		sequence.base_hand_position = _hover_position()
+		sequence.hand_rest_position = _activation_rest_position()
+		sequence.mirror_hand_motion = preview_context.seat == ChessHandRig.Seat.FAR
+		sequence.restart(false)
+	_refresh_hand_paths()
 
 
 func _make_hand_path_line(color: Color) -> Line2D:
@@ -710,18 +744,23 @@ func _refresh_hand_paths() -> void:
 	if not is_instance_valid(approach_path_debug) or not is_instance_valid(retreat_path_debug): return
 	if sequence != null:
 		sequence.hand_rest_position = _activation_rest_position()
+		sequence.mirror_hand_motion = preview_context.seat == ChessHandRig.Seat.FAR
 	var rest := _activation_rest_position()
-	var hover: Vector2 = preview_king.position + activation_profile.hand_hover_offset
+	var hover := _hover_position()
 	if sequence != null:
 		sequence.base_hand_position = hover
+		if sequence.current_phase == sequence.Phase.RESET:
+			preview_hand.position = rest
+			preview_hand.visible = false
 	approach_path_debug.points = _sample_hand_path(rest, hover, activation_profile.approach_departure_handle, activation_profile.approach_arrival_handle)
 	retreat_path_debug.points = _sample_hand_path(hover, rest, activation_profile.retreat_departure_handle, activation_profile.retreat_arrival_handle)
 
 
 func _sample_hand_path(start: Vector2, finish: Vector2, departure: Vector2, arrival: Vector2) -> PackedVector2Array:
 	var points := PackedVector2Array()
-	var control_a := start + departure
-	var control_b := finish + arrival
+	var mirror := -1.0 if preview_context.seat == ChessHandRig.Seat.FAR else 1.0
+	var control_a := start + Vector2(departure.x * mirror, departure.y)
+	var control_b := finish + Vector2(arrival.x * mirror, arrival.y)
 	for index in range(33):
 		points.append(start.bezier_interpolate(control_a, control_b, finish, index / 32.0))
 	return points

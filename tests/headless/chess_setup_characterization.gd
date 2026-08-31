@@ -16,6 +16,17 @@ func _ready() -> void:
 	_check(lab.left_cue_list.get_item_text(0).ends_with("a_rook") and lab.right_cue_list.get_item_text(0).ends_with("h_rook"), "Every setup cue label begins with its chess file, not only pawns")
 	_check(not lab.setup_sequence.running and lab.piece_views.values().all(func(piece): return not piece.visible), "Setup Lab opens paused on an empty player side")
 	_check(lab.left_hand.visual_mirrored and not lab.right_hand.visual_mirrored, "setup hands use mirrored left and original right artwork")
+	lab.preview_context.seat = ChessHandRig.Seat.FAR
+	lab.preview_context.loadout = lab.PreviewContext.Loadout.OPPONENT
+	lab._rebuild_preview()
+	await get_tree().process_frame
+	_check(lab.setup_sequence.seat == ChessHandRig.Seat.FAR and lab.left_hand.seat == ChessHandRig.Seat.FAR and lab.right_hand.seat == ChessHandRig.Seat.FAR, "Setup Lab sends both placement tracks through the genuine far seat")
+	_check(lab.left_hand.hand_style.resource_path.ends_with("hood_hand_style.tres") and lab.right_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "far setup uses the opponent Hood loadout for both hand roles")
+	_check(lab._activation_king_coordinate() == lab.board.projection.get_model_coordinate(Vector2i(0, 3)), "far setup half-turns the authored king square across the table")
+	lab.preview_context.seat = ChessHandRig.Seat.NEAR
+	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER
+	lab._rebuild_preview()
+	await get_tree().process_frame
 	lab.left_hand._apply_pose(true)
 	_check(lab.left_hand.arm_foreground_sprite.flip_h and lab.left_hand.grip_front_sprite.flip_h and lab.left_hand.grip_back_sprite.flip_h, "every left-hand art layer mirrors around its grip")
 	var activation_hand: ChessHandRig = lab.activation_sequence.hand_root

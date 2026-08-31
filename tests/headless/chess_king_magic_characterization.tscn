@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/headless/chess_king_magic_characterization.gd" id="1"]
+
+[node name="ChessKingMagicCharacterization" type="Node"]
+script = ExtResource("1")
+

@@ -4,7 +4,9 @@
 extends Node2D
 
 const PIECE_SCENE := preload("res://scenes/piece.tscn")
+const HAND_RIG_SCENE := preload("res://scenes/player_hand_rig.tscn")
 const HAND_STYLE := preload("res://assets/arms/player/skeleton_hand_style.tres")
+const PreviewContext := preload("res://tools/dev_chess_shared/chess_lab_preview_context.gd")
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const LabPreset := preload("res://tools/dev_chess_aura/chess_aura_lab_preset.gd")
@@ -35,7 +37,10 @@ var overwrite_confirmation: ConfirmationDialog
 var profile_controls: Dictionary = {}
 var color_controls: Dictionary = {}
 var preview_king: PieceView
-var preview_hand: Node2D
+var preview_hand: ChessHandRig
+var preview_context := PreviewContext.new()
+var seat_selector: OptionButton
+var loadout_selector: OptionButton
 var pending_preset: Resource
 var pending_preset_path := ""
 
@@ -66,27 +71,14 @@ func _build_stage() -> void:
 	preview_king.set_model(MinotaurKing.new("white", Vector2i.ZERO))
 	add_child(preview_king)
 
-	preview_hand = Node2D.new()
+	preview_hand = HAND_RIG_SCENE.instantiate() as ChessHandRig
 	preview_hand.name = "AuraHand"
 	# This is the grip position, not the artwork center. Keeping it near the
 	# viewport bottom mirrors an actual board visit and leaves the aura-bearing
 	# fingers visible while the long arm naturally continues offscreen.
-	preview_hand.position = HAND_PREVIEW_GRIP_POSITION
 	add_child(preview_hand)
-	var hand_sprites: Array[Sprite2D] = []
-	for entry in [
-		{"name": "GripBack", "texture": HAND_STYLE.open_grip_back, "z": 1},
-		{"name": "GripFront", "texture": HAND_STYLE.open_grip_front, "z": 3},
-		{"name": "ArmForeground", "texture": HAND_STYLE.open_arm_foreground, "z": 4},
-	]:
-		var sprite := Sprite2D.new()
-		sprite.name = entry["name"]
-		sprite.texture = entry["texture"]
-		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		sprite.position = Vector2(sprite.texture.get_size()) * 0.5 - Vector2(48, 118)
-		sprite.z_index = entry["z"]
-		preview_hand.add_child(sprite)
-		hand_sprites.append(sprite)
+	preview_context.apply_to_hand(preview_hand)
+	preview_hand.position = _base_hand_position()
 
 	king_aura = Aura.new() as ChessAura2D
 	king_aura.name = "KingAura"
@@ -97,7 +89,7 @@ func _build_stage() -> void:
 	hand_aura.name = "HandAura"
 	hand_aura.profile = aura_profile
 	add_child(hand_aura)
-	hand_aura.bind_targets(hand_sprites)
+	hand_aura.bind_targets(preview_hand.get_aura_sprites())
 
 
 func _layout_preview_scale() -> void:
@@ -112,9 +104,8 @@ func _layout_preview_scale() -> void:
 	preview_king.scale = Vector2.ONE * board_world_scale
 	# ChessHandRig applies this additional art multiplier to the same board
 	# world scale for every real move animation.
-	var hand_defaults := ChessHandRig.new()
-	preview_hand.scale = Vector2.ONE * board_world_scale * hand_defaults.art_scale_multiplier
-	hand_defaults.free()
+	preview_hand.scale = Vector2.ONE * board_world_scale * preview_hand.art_scale_multiplier
+	_refresh_hand_position()
 
 
 func _build_controls() -> void:
@@ -129,6 +120,14 @@ func _build_controls() -> void:
 	title.text = "Chess Aura Lab"
 	title.add_theme_font_size_override("font_size", 22)
 	controls.add_child(title)
+	seat_selector = _add_option(controls, "Seat", ["Near", "Far"])
+	seat_selector.item_selected.connect(func(index: int):
+		preview_context.seat = ChessHandRig.Seat.FAR if index == 1 else ChessHandRig.Seat.NEAR
+		_apply_preview_context())
+	loadout_selector = _add_option(controls, "Loadout", ["Player / Skeleton", "Opponent / Hood"])
+	loadout_selector.item_selected.connect(func(index: int):
+		preview_context.loadout = PreviewContext.Loadout.OPPONENT if index == 1 else PreviewContext.Loadout.PLAYER
+		_apply_preview_context())
 
 	mode_selector = _add_option(controls, "Treatment", ["Silhouette Resonance", "Chess-Square Flame", "Hybrid Soulfire"])
 	mode_selector.select(Aura.AuraMode.HYBRID)
@@ -180,7 +179,7 @@ func _build_controls() -> void:
 		HAND_GRIP_OFFSET_MAX,
 		1.0,
 		0.0,
-		func(value: float): preview_hand.position.x = HAND_PREVIEW_GRIP_POSITION.x + value
+		func(_value: float): _refresh_hand_position()
 	)
 	hand_grip_slider = _add_editable_slider(
 		controls,
@@ -189,7 +188,7 @@ func _build_controls() -> void:
 		HAND_GRIP_OFFSET_MAX,
 		1.0,
 		0.0,
-		func(value: float): preview_hand.position.y = HAND_PREVIEW_GRIP_POSITION.y + value
+		func(_value: float): _refresh_hand_position()
 	)
 	profile_controls[&"rise_speed"] = _add_slider(controls, "Rise speed", 0.0, 120.0, 1.0, aura_profile.rise_speed, func(value: float): aura_profile.rise_speed = value)
 	profile_controls[&"horizontal_spread"] = _add_slider(controls, "Spread", 0.0, 100.0, 1.0, aura_profile.horizontal_spread, func(value: float): aura_profile.horizontal_spread = value)
@@ -498,11 +497,38 @@ func _apply_preset(preset: Resource) -> void:
 		hand_aura.set_power(preset.hand_power)
 	hand_grip_slider.set_value_no_signal(clampf(preset.hand_grip_y_offset, hand_grip_slider.min_value, hand_grip_slider.max_value))
 	hand_grip_x_slider.set_value_no_signal(clampf(preset.hand_grip_x_offset, hand_grip_x_slider.min_value, hand_grip_x_slider.max_value))
-	preview_hand.position.x = HAND_PREVIEW_GRIP_POSITION.x + hand_grip_x_slider.value
-	preview_hand.position.y = HAND_PREVIEW_GRIP_POSITION.y + hand_grip_slider.value
+	_refresh_hand_position()
 	_sync_profile_controls()
 	_sync_power_control()
 	preset_name_edit.text = preset.display_name
+
+
+func _apply_preview_context() -> void:
+	var hand_power := hand_aura.power
+	var silhouette := hand_aura.silhouette_power
+	var particles := hand_aura.particle_power
+	hand_aura.clear_targets()
+	preview_context.apply_to_hand(preview_hand)
+	hand_aura.bind_targets(preview_hand.get_aura_sprites())
+	hand_aura.set_mode(mode_selector.selected if mode_selector != null else Aura.AuraMode.HYBRID)
+	hand_aura.set_silhouette_power(silhouette)
+	hand_aura.set_particle_power(particles)
+	if is_equal_approx(silhouette, particles): hand_aura.set_power(hand_power)
+	_layout_preview_scale()
+
+
+func _base_hand_position() -> Vector2:
+	return preview_context.opposite_screen_point(HAND_PREVIEW_GRIP_POSITION, get_viewport_rect().size)
+
+
+func _refresh_hand_position() -> void:
+	if not is_instance_valid(preview_hand): return
+	var base := _base_hand_position()
+	var offset := Vector2(
+		hand_grip_x_slider.value if hand_grip_x_slider != null else 0.0,
+		hand_grip_slider.value if hand_grip_slider != null else 0.0
+	)
+	preview_hand.position = base + (-offset if preview_context.seat == ChessHandRig.Seat.FAR else offset)
 
 
 func _copy_stored_properties(source: Resource, destination: Resource) -> void:

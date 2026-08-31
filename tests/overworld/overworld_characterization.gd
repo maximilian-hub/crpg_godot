@@ -50,6 +50,7 @@ func _test_overworld_scene() -> void:
 	_check(npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "NPC starts in its authored down-facing pose")
 	_check(overworld.npc.encounter_profile != null and overworld.npc.encounter_profile.encounter_id == &"forest_challenger", "forest NPC owns its encounter profile")
 	_check(overworld.npc.encounter_profile.opponent_hand_style.resource_path.ends_with("hood_hand_style.tres"), "forest encounter owns the Hood hand style")
+	_check(overworld.npc.encounter_profile.opponent_presentation != null and overworld.npc.encounter_profile.opponent_presentation.hand_style == overworld.npc.encounter_profile.opponent_hand_style, "forest encounter owns a complete opponent presentation loadout")
 	var requested_profiles: Array[ChessEncounterProfile] = []
 	overworld.challenge_requested.connect(func(profile: ChessEncounterProfile): requested_profiles.append(profile))
 	overworld._accept_challenge()
@@ -220,6 +221,7 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_battle.player_color == "white", "current NPC battle assigns the player to White")
 	_check(not main.active_battle.white_cpu_player.is_enabled and main.active_battle.black_cpu_player.is_enabled, "current NPC battle assigns the CPU to Black")
 	_check(main.active_battle.opponent_hand_style == forest_profile.opponent_hand_style, "NPC encounter applies its opponent hand before battle startup")
+	_check(main.active_battle.opponent_presentation == forest_profile.opponent_presentation, "NPC encounter applies its opponent setup, activation, and king-magic loadout")
 	_check(battle_board.far_hand_rig.seat == ChessHandRig.Seat.FAR and battle_board.far_hand_rig.hand_style == forest_profile.opponent_hand_style, "forest challenger uses the animated Hood rig in the far seat")
 	_check(battle_board.far_hand_rig.can_animate(), "forest challenger does not fall back to piece-only sliding")
 	var controller := main.active_battle.get_node("ChessController") as ChessBoardController
@@ -264,7 +266,7 @@ func _test_main_starts_in_overworld() -> void:
 	_check(fixed_main.active_battle.get_parent() == fixed_viewport, "fixed comparison mode retains the logical battle viewport")
 	_check(fixed_viewport.physics_object_picking, "fixed comparison viewport retains square picking")
 	_check(not fixed_board.scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
-	_check(fixed_main.active_battle.opponent_hand_style == null and not fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile safely retains piece-only opponent presentation")
+	_check(fixed_main.active_battle.opponent_presentation == null and fixed_main.active_battle.opponent_hand_style == null and not fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile safely retains piece-only opponent presentation")
 	fixed_main.queue_free()
 	await get_tree().process_frame
 

@@ -27,6 +27,16 @@ func _ready() -> void:
 	_check(not lab.preview_hand.visible and lab.preview_hand.position == lab.sequence.hand_rest_position, "Activation reset hides the hand at its off-board rest position")
 	_check(lab.preview_hand is ChessHandRig and lab.hand_connection_anchor.position == lab.preview_hand.get_connection_anchor_position(), "Activation Lab uses the real hand rig and its shared source-art palm anchor")
 	_check(lab.preview_hand.arm_foreground_sprite.position == Vector2(lab.preview_hand.arm_foreground_sprite.texture.get_size()) * 0.5 - lab.preview_hand.grip_anchor_pixels, "Activation Lab hand artwork uses the live rig's canonical grip origin")
+	var near_hover: Vector2 = lab.sequence.base_hand_position
+	lab.preview_context.seat = ChessHandRig.Seat.FAR
+	lab.preview_context.loadout = lab.PreviewContext.Loadout.OPPONENT
+	lab._apply_preview_context()
+	_check(lab.preview_hand.seat == ChessHandRig.Seat.FAR and lab.preview_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "Activation Lab previews the production far-seat Hood rig")
+	_check(lab.sequence.base_hand_position == lab.preview_king.position - lab.activation_profile.hand_hover_offset and lab.sequence.base_hand_position != near_hover, "Activation Lab half-turns the authored hover endpoint for the far seat")
+	_check(lab.sequence.hand_rest_position.x < 0.0 and lab.sequence.hand_rest_position.y < 0.0 and lab.sequence.mirror_hand_motion, "far activation rests upper-left and uses seat-aware motion handles")
+	lab.preview_context.seat = ChessHandRig.Seat.NEAR
+	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER
+	lab._apply_preview_context()
 	_check(lab.activation_selector.selected == 0 and lab.activation_selector.get_item_text(0) == "Unsaved defaults", "Ritual selector explicitly distinguishes defaults from saved profiles")
 	_check(lab.activation_profile.climax_hand_return_duration > lab.activation_profile.crackle_hand_return_duration, "Post-climax hand return defaults slower than ordinary crackle recovery")
 	var curve_rng := RandomNumberGenerator.new()
