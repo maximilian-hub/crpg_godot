@@ -53,6 +53,7 @@ var preset_name: LineEdit
 var status_label: Label
 var overwrite_confirmation: ConfirmationDialog
 var publish_confirmation: ConfirmationDialog
+var publish_aura_checkbox: CheckBox
 var pending_preset: Resource
 var pending_path := ""
 var profile_controls: Dictionary = {}
@@ -311,6 +312,10 @@ func _build_controls() -> void:
 	_add_profile_spin(controls, &"resting_speed_multiplier", "Resting speed", 0, 2, 0.01)
 	_add_profile_spin(controls, &"random_seed", "Random seed", 0, 999999, 1)
 	controls.add_child(HSeparator.new())
+	publish_aura_checkbox = CheckBox.new()
+	publish_aura_checkbox.text = "Also publish selected King's Aura"
+	publish_aura_checkbox.tooltip_text = "When enabled, also replaces the selected King type's universal Aura for both armies."
+	controls.add_child(publish_aura_checkbox)
 	var save_row := HBoxContainer.new()
 	controls.add_child(save_row)
 	preset_name = LineEdit.new()
@@ -323,7 +328,7 @@ func _build_controls() -> void:
 	save_row.add_child(save)
 	var publish := Button.new()
 	publish.text = "Publish to Game"
-	publish.tooltip_text = "Updates the shared runtime Aura and ritual used by both armies. Magical movement is preserved."
+	publish.tooltip_text = "Updates the shared ritual. Optionally publishes the selected King type's Aura."
 	publish.pressed.connect(_request_publish_activation)
 	save_row.add_child(publish)
 	status_label = Label.new()
@@ -333,7 +338,6 @@ func _build_controls() -> void:
 	overwrite_confirmation.confirmed.connect(_write_pending_activation)
 	add_child(overwrite_confirmation)
 	publish_confirmation = ConfirmationDialog.new()
-	publish_confirmation.dialog_text = "Publish the current Aura and ritual to the shared game profile used by both armies?\n\nThe magical movement profile will be preserved."
 	publish_confirmation.confirmed.connect(_publish_activation)
 	add_child(publish_confirmation)
 
@@ -632,11 +636,30 @@ func _write_pending_activation() -> void:
 
 
 func _request_publish_activation() -> void:
+	var type_id: StringName = king_selector.get_item_metadata(king_selector.selected)
+	var aura_note := ""
+	if publish_aura_checkbox.button_pressed:
+		aura_note = "\n\nThe current Aura will also replace the universal %s Aura for both armies." % ChessPieceCatalog.get_definition(type_id).get("name", str(type_id))
+	publish_confirmation.dialog_text = "Publish the current activation ritual to the shared game profile?\n\nThe magical movement profile will be preserved.%s" % aura_note
 	publish_confirmation.popup_centered()
 
 
-func _publish_activation(target_path := RuntimePublisher.KING_RUNTIME_PATH) -> Dictionary:
-	var result: Dictionary = RuntimePublisher.publish_king_profile(aura_profile, selected_aura_mode, activation_profile, target_path)
+func _publish_activation(target_path := RuntimePublisher.KING_RUNTIME_PATH, aura_target_path := RuntimePublisher.AURA_RUNTIME_PATH) -> Dictionary:
+	if publish_aura_checkbox.button_pressed:
+		var type_id: StringName = king_selector.get_item_metadata(king_selector.selected)
+		var validation_error := RuntimePublisher.validate_aura_profile(type_id, aura_profile)
+		if not validation_error.is_empty():
+			var invalid_result := {"ok": false, "message": validation_error}
+			_set_status(invalid_result.message, true)
+			return invalid_result
+	var result: Dictionary = RuntimePublisher.publish_activation_profile(activation_profile, target_path)
+	if result.ok and publish_aura_checkbox.button_pressed:
+		var type_id: StringName = king_selector.get_item_metadata(king_selector.selected)
+		var aura_result: Dictionary = RuntimePublisher.publish_aura_profile(type_id, aura_profile, selected_aura_mode, aura_target_path)
+		if aura_result.ok:
+			result.message = "%s\n%s" % [result.message, aura_result.message]
+		else:
+			result = aura_result
 	_set_status(result.message, not result.ok)
 	return result
 

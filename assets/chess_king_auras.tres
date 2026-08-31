@@ -1,0 +1,84 @@
+[gd_resource type="Resource" script_class="ChessKingAuraCatalog" load_steps=10 format=3 uid="uid://csre3s1oq46ch"]
+
+[ext_resource type="Script" path="res://scripts/view/chess_king_aura_catalog.gd" id="1_catalog"]
+[ext_resource type="Script" path="res://scripts/view/chess_king_aura_entry.gd" id="2_entry"]
+[ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="3_aura"]
+
+[sub_resource type="Resource" id="AuraMinotaur"]
+script = ExtResource("3_aura")
+core_color = Color(0.945312, 0.363724, 0.0147705, 1)
+accent_color = Color(1, 0.952482, 0.447059, 1)
+outline_width = 1.0
+outline_intensity = 0.9
+interior_intensity = 0.45
+square_size = 1.5
+square_density = 84.0
+square_lifetime = 0.8
+rise_speed = 42.0
+horizontal_spread = 47.0
+upward_acceleration = 24.0
+turbulence = 8.0
+idle_power = 0.0
+power_up_duration = 0.65
+power_down_duration = 0.55
+random_seed = 1701
+
+[sub_resource type="Resource" id="EntryMinotaur"]
+script = ExtResource("2_entry")
+king_type_id = &"minotaur_king"
+aura_profile = SubResource("AuraMinotaur")
+aura_mode = 2
+
+[sub_resource type="Resource" id="AuraNecromancer"]
+script = ExtResource("3_aura")
+core_color = Color(0.364044, 0, 0.589844, 1)
+accent_color = Color(0.56749, 0.031723, 0.902344, 1)
+outline_width = 1.0
+outline_intensity = 0.9
+interior_intensity = 0.45
+square_size = 1.5
+square_density = 84.0
+square_lifetime = 0.8
+rise_speed = 42.0
+horizontal_spread = 47.0
+upward_acceleration = 24.0
+turbulence = 8.0
+idle_power = 0.0
+power_up_duration = 0.65
+power_down_duration = 0.55
+random_seed = 1701
+
+[sub_resource type="Resource" id="EntryNecromancer"]
+script = ExtResource("2_entry")
+king_type_id = &"necromancer_king"
+aura_profile = SubResource("AuraNecromancer")
+aura_mode = 0
+
+[sub_resource type="Resource" id="AuraArakne"]
+script = ExtResource("3_aura")
+core_color = Color(0.65625, 0.65625, 0.65625, 1)
+accent_color = Color(0.390625, 0.390625, 0.390625, 1)
+outline_width = 1.0
+outline_intensity = 0.9
+interior_intensity = 0.45
+square_size = 1.5
+square_density = 84.0
+square_lifetime = 0.8
+rise_speed = 42.0
+horizontal_spread = 47.0
+upward_acceleration = 24.0
+turbulence = 8.0
+idle_power = 0.0
+power_up_duration = 0.65
+power_down_duration = 0.55
+random_seed = 1701
+
+[sub_resource type="Resource" id="EntryArakne"]
+script = ExtResource("2_entry")
+king_type_id = &"arakne_king"
+aura_profile = SubResource("AuraArakne")
+aura_mode = 2
+
+[resource]
+script = ExtResource("1_catalog")
+entries = Array[Resource]([SubResource("EntryMinotaur"), SubResource("EntryNecromancer"), SubResource("EntryArakne")])

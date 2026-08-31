@@ -2,6 +2,8 @@ extends Node
 
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
+const AuraCatalog := preload("res://scripts/view/chess_king_aura_catalog.gd")
+const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
 const PIECE_SCENE := preload("res://scenes/piece.tscn")
 const LAB_SCENE := preload("res://tools/dev_chess_aura/chess_aura_lab.tscn")
 const LabPreset := preload("res://tools/dev_chess_aura/chess_aura_lab_preset.gd")
@@ -129,6 +131,28 @@ func _test_lab_presets_and_selectors() -> void:
 	_check(is_equal_approx(lab.king_aura.silhouette_power, 0.2) and is_equal_approx(lab.king_aura.particle_power, 0.4) and is_equal_approx(lab.hand_aura.silhouette_power, 0.6) and is_equal_approx(lab.hand_aura.particle_power, 0.8), "loading restores independent silhouette and particle power for both targets")
 	_check(is_equal_approx(lab.preview_hand.position.y, lab.HAND_PREVIEW_GRIP_POSITION.y + 123.0), "loading restores the vertical hand-grip offset")
 	_check(is_equal_approx(lab.preview_hand.position.x, lab.HAND_PREVIEW_GRIP_POSITION.x - 87.0), "loading restores the horizontal hand-grip offset")
+	var runtime_path := "user://chess_aura_publish_characterization.tres"
+	var runtime_catalog: Resource = AuraCatalog.new()
+	var original_aura := AuraProfile.new()
+	original_aura.square_density = 12.0
+	runtime_catalog.upsert(&"minotaur_king", original_aura, Aura.AuraMode.SILHOUETTE)
+	_check(ResourceSaver.save(runtime_catalog, runtime_path) == OK, "Aura publishing fixture saves")
+	lab._select_king_type(&"necromancer_king")
+	lab.aura_profile.square_density = 91.0
+	lab.mode_selector.select(Aura.AuraMode.SQUARE_FLAME)
+	var publish_result: Dictionary = lab._publish_aura(runtime_path)
+	var published: Resource = ResourceLoader.load(runtime_path, "ChessKingAuraCatalog", ResourceLoader.CACHE_MODE_IGNORE)
+	_check(publish_result.ok and published.find_entry(&"necromancer_king") != null and is_equal_approx(published.find_entry(&"necromancer_king").aura_profile.square_density, 91.0) and published.find_entry(&"necromancer_king").aura_mode == Aura.AuraMode.SQUARE_FLAME, "Aura Lab publishes the current look under the selected canonical King type")
+	_check(published.find_entry(&"minotaur_king") != null and is_equal_approx(published.find_entry(&"minotaur_king").aura_profile.square_density, 12.0), "Publishing one King Aura preserves other King entries")
+	lab.aura_profile.square_density = 47.0
+	_check(lab._publish_aura(runtime_path).ok, "Republishing a King Aura succeeds")
+	published = ResourceLoader.load(runtime_path, "ChessKingAuraCatalog", ResourceLoader.CACHE_MODE_IGNORE)
+	_check(published.entries.size() == 2 and is_equal_approx(published.find_entry(&"necromancer_king").aura_profile.square_density, 47.0), "Republishing replaces by King type rather than appending by profile name")
+	_check(not RuntimePublisher.publish_aura_profile(&"pawn", lab.aura_profile, Aura.AuraMode.HYBRID, runtime_path).ok, "Aura publishing rejects non-King piece types")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(runtime_path))
+	var game_catalog: Resource = load(RuntimePublisher.AURA_RUNTIME_PATH)
+	_check(game_catalog.entries.size() == 3 and game_catalog.find_entry(&"minotaur_king") != null and game_catalog.find_entry(&"necromancer_king") != null and game_catalog.find_entry(&"arakne_king") != null, "The game Aura catalog is seeded from Minotaur, Necromancer, and Arakne authoring profiles")
+	_check(game_catalog.find_entry(&"minotaur_king").aura_profile.core_color.is_equal_approx(Color(0.945312, 0.363724, 0.0147705, 1)) and game_catalog.find_entry(&"necromancer_king").aura_mode == Aura.AuraMode.SILHOUETTE, "Seeded game entries preserve the authored Aura look and treatment")
 	var saved_hand_channels := Vector2(lab.hand_aura.silhouette_power, lab.hand_aura.particle_power)
 	lab.preview_context.seat = ChessHandRig.Seat.FAR
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.OPPONENT

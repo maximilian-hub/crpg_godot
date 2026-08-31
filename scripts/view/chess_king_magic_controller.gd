@@ -10,6 +10,8 @@ var board: ChessBoardView
 var hand: ChessHandRig
 var king: PieceView
 var profile: Resource
+var resolved_aura_profile: ChessAuraProfile
+var resolved_aura_mode := ChessAura2D.AuraMode.HYBRID
 var king_aura: ChessAura2D
 var hand_aura: ChessAura2D
 var activation_sequence: ChessKingActivationSequence
@@ -20,20 +22,23 @@ var running := false
 var rng := RandomNumberGenerator.new()
 
 
-func configure(board_view: ChessBoardView, hand_rig: ChessHandRig, king_view: PieceView, king_profile: Resource) -> void:
+func configure(board_view: ChessBoardView, hand_rig: ChessHandRig, king_view: PieceView, king_profile: Resource, king_type_id: StringName = &"classic_king") -> void:
 	board = board_view
 	hand = hand_rig
 	king = king_view
 	profile = king_profile if king_profile != null else KingPresentationProfile.new()
 	profile.ensure_defaults()
+	var aura_entry: Resource = profile.resolve_aura_entry(king_type_id)
+	resolved_aura_profile = aura_entry.aura_profile if aura_entry != null else profile.aura_profile
+	resolved_aura_mode = aura_entry.aura_mode if aura_entry != null else profile.aura_mode
 	rng.randomize()
 	_build_effects()
 
 
 func _build_effects() -> void:
 	king_aura = ChessAura2D.new()
-	king_aura.profile = profile.aura_profile.duplicate(true)
-	king_aura.mode = profile.aura_mode
+	king_aura.profile = resolved_aura_profile.duplicate(true)
+	king_aura.mode = resolved_aura_mode
 	add_child(king_aura)
 	king_aura.bind_targets([king.sprite])
 	king_aura.set_silhouette_power(profile.activation_profile.resting_aura_power)
@@ -41,8 +46,8 @@ func _build_effects() -> void:
 	king_aura.set_runtime_multipliers(profile.activation_profile.resting_density_multiplier, profile.activation_profile.resting_speed_multiplier)
 	if is_instance_valid(hand) and hand.can_animate():
 		hand_aura = ChessAura2D.new()
-		hand_aura.profile = profile.aura_profile.duplicate(true)
-		hand_aura.mode = profile.aura_mode
+		hand_aura.profile = resolved_aura_profile.duplicate(true)
+		hand_aura.mode = resolved_aura_mode
 		add_child(hand_aura)
 		hand_aura.bind_targets(hand.get_aura_sprites())
 		hand_aura.set_power(0.0)

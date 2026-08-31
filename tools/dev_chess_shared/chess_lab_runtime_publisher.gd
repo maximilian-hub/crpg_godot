@@ -1,8 +1,49 @@
 extends RefCounted
 class_name ChessLabRuntimePublisher
 
+const AuraCatalog := preload("res://scripts/view/chess_king_aura_catalog.gd")
+
 const KING_RUNTIME_PATH := "res://assets/chess_king_first_pass.tres"
+const AURA_RUNTIME_PATH := "res://assets/chess_king_auras.tres"
 const SETUP_RUNTIME_PATH := "res://assets/chess_setup_first_pass.tres"
+
+
+static func publish_activation_profile(
+		activation_profile: ChessKingActivationProfile,
+		target_path := KING_RUNTIME_PATH
+	) -> Dictionary:
+	if activation_profile == null:
+		return _failure("An activation profile is required.")
+	var target := ResourceLoader.load(target_path, "ChessKingPresentationProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+	if target == null:
+		return _failure("Could not load a King presentation profile from %s." % target_path)
+	if target.movement_profile == null:
+		return _failure("The runtime King profile has no magical movement profile to preserve.")
+	target.activation_profile = activation_profile.duplicate(true) as ChessKingActivationProfile
+	var error := ResourceSaver.save(target, target_path)
+	if error != OK:
+		return _failure("Could not publish the King presentation (error %d)." % error)
+	return _success(target_path, "activation ritual")
+
+
+static func publish_aura_profile(
+		king_type_id: StringName,
+		aura_profile: ChessAuraProfile,
+		aura_mode: int,
+		target_path := AURA_RUNTIME_PATH
+	) -> Dictionary:
+	var validation_error := validate_aura_profile(king_type_id, aura_profile)
+	if not validation_error.is_empty():
+		return _failure(validation_error)
+	var target := ResourceLoader.load(target_path, "ChessKingAuraCatalog", ResourceLoader.CACHE_MODE_IGNORE)
+	if target == null or target.get_script() != AuraCatalog:
+		return _failure("Could not load a King aura catalog from %s." % target_path)
+	var normalized := ChessPieceCatalog.normalize_type_id(king_type_id)
+	target.upsert(normalized, aura_profile, aura_mode)
+	var error := ResourceSaver.save(target, target_path)
+	if error != OK:
+		return _failure("Could not publish the %s aura (error %d)." % [normalized, error])
+	return _success(target_path, "%s aura" % normalized)
 
 
 static func publish_king_profile(
@@ -11,11 +52,15 @@ static func publish_king_profile(
 		activation_profile: ChessKingActivationProfile,
 		target_path := KING_RUNTIME_PATH
 	) -> Dictionary:
-	if aura_profile == null or activation_profile == null:
-		return _failure("Aura and activation profiles are required.")
+	# Compatibility helper for older callers. New lab code publishes activation
+	# and type-owned auras independently.
+	if aura_profile == null:
+		return _failure("An Aura profile is required.")
 	var target := ResourceLoader.load(target_path, "ChessKingPresentationProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
 	if target == null:
 		return _failure("Could not load a King presentation profile from %s." % target_path)
+	if activation_profile == null:
+		return _failure("An activation profile is required.")
 	if target.movement_profile == null:
 		return _failure("The runtime King profile has no magical movement profile to preserve.")
 	target.aura_profile = aura_profile.duplicate(true) as ChessAuraProfile
@@ -65,8 +110,17 @@ static func validate_setup_profile(profile: ChessArmySetupProfile) -> String:
 	return ""
 
 
-static func _success(path: String) -> Dictionary:
-	return {"ok": true, "message": "Published shared game presentation to %s" % ProjectSettings.globalize_path(path)}
+static func validate_aura_profile(king_type_id: StringName, aura_profile: ChessAuraProfile) -> String:
+	if aura_profile == null:
+		return "An Aura profile is required."
+	var normalized := ChessPieceCatalog.normalize_type_id(king_type_id)
+	if normalized not in ChessPieceCatalog.get_palette_type_ids(&"king"):
+		return "'%s' is not a publishable King type." % king_type_id
+	return ""
+
+
+static func _success(path: String, subject := "shared game presentation") -> Dictionary:
+	return {"ok": true, "message": "Published %s to %s" % [subject, ProjectSettings.globalize_path(path)]}
 
 
 static func _failure(message: String) -> Dictionary:

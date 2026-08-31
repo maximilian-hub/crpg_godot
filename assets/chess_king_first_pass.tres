@@ -1,9 +1,10 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=8 format=3 uid="uid://f1htc7ckspqt"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://f1htc7ckspqt"]
 
 [ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
 [ext_resource type="Script" uid="uid://bjplfx6h5sa57" path="res://scripts/view/chess_king_activation_profile.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/view/chess_magical_move_profile.gd" id="4"]
+[ext_resource type="Resource" path="res://assets/chess_king_auras.tres" id="5"]
 
 [sub_resource type="Resource" id="Activation"]
 script = ExtResource("3")
@@ -102,5 +103,6 @@ knockoff_spin_degrees = 900.0
 script = ExtResource("1")
 aura_profile = SubResource("Aura")
 aura_mode = 2
+aura_catalog = ExtResource("5")
 activation_profile = SubResource("Activation")
 movement_profile = SubResource("Movement")

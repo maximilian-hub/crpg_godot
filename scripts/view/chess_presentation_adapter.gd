@@ -399,7 +399,7 @@ func _register_king_magic(piece: KingPiece, piece_node: PieceView) -> void:
 		king_profile.ensure_defaults()
 	var magic := KingMagicController.new()
 	view.add_child(magic)
-	magic.configure(view, view.get_hand_rig_for_color(piece.color), piece_node, king_profile)
+	magic.configure(view, view.get_hand_rig_for_color(piece.color), piece_node, king_profile, piece.get_position_type_id())
 	king_magic_controllers[piece] = magic
 
 

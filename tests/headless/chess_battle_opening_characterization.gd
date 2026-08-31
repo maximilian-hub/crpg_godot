@@ -32,6 +32,8 @@ func _test_staggered_opening(player_color: String) -> void:
 	_check(not game.controller.is_input_locked and not game.white_cpu_player.is_enabled and not game.black_cpu_player.is_enabled, "%s view releases a player-controlled White turn while Black remains pending" % player_color)
 	var white_magic := adapter.get_king_magic_controller("white")
 	var black_magic := adapter.get_king_magic_controller("black")
+	_check(white_magic.resolved_aura_profile.core_color.is_equal_approx(Color(0.65625, 0.65625, 0.65625, 1)) and black_magic.resolved_aura_profile.core_color.is_equal_approx(Color(0.364044, 0, 0.589844, 1)), "%s view resolves Arakne and Necromancer Auras by King type rather than player/opponent army" % player_color)
+	_check(white_magic.hand_aura.profile.core_color.is_equal_approx(white_magic.king_aura.profile.core_color) and black_magic.hand_aura.profile.core_color.is_equal_approx(black_magic.king_aura.profile.core_color), "%s view applies each King's universal Aura identity to both King and ritual hand" % player_color)
 	_check(white_magic.king_aura.silhouette_power > 0.0 and black_magic.stone_sprite.visible and is_zero_approx(black_magic.king.sprite.self_modulate.a) and is_zero_approx(black_magic.king_aura.silhouette_power) and is_zero_approx(black_magic.king_aura.particle_power), "%s view leaves White awakened while Black remains inert stone during White's first turn" % player_color)
 
 	var black_boundary := {"started": false, "locked": false, "settled": false, "black_turn": false}

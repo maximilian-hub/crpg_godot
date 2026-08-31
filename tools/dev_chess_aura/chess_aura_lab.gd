@@ -10,6 +10,7 @@ const PreviewContext := preload("res://tools/dev_chess_shared/chess_lab_preview_
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const LabPreset := preload("res://tools/dev_chess_aura/chess_aura_lab_preset.gd")
+const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
 const PRESET_DIRECTORY := "res://.cache/chess_aura_presets"
 ## Match the fluid standalone ChessBoard settings in scenes/chess_game.tscn.
 const CHESS_VIEWPORT_HEIGHT_WIDTH_RATIO := 1.0
@@ -34,6 +35,7 @@ var preset_selector: OptionButton
 var preset_name_edit: LineEdit
 var preset_status: Label
 var overwrite_confirmation: ConfirmationDialog
+var publish_confirmation: ConfirmationDialog
 var profile_controls: Dictionary = {}
 var color_controls: Dictionary = {}
 var preview_king: PieceView
@@ -229,6 +231,12 @@ func _build_controls() -> void:
 	save_button.focus_mode = Control.FOCUS_NONE
 	save_button.pressed.connect(_request_save_preset)
 	save_row.add_child(save_button)
+	var publish_button := Button.new()
+	publish_button.text = "Publish to Game"
+	publish_button.tooltip_text = "Publishes this Aura for the selected King type, regardless of army color."
+	publish_button.focus_mode = Control.FOCUS_NONE
+	publish_button.pressed.connect(_request_publish_aura)
+	save_row.add_child(publish_button)
 	preset_status = Label.new()
 	preset_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	preset_status.custom_minimum_size.x = 290
@@ -237,6 +245,10 @@ func _build_controls() -> void:
 	overwrite_confirmation.title = "Overwrite Aura Settings?"
 	overwrite_confirmation.confirmed.connect(_write_pending_preset)
 	add_child(overwrite_confirmation)
+	publish_confirmation = ConfirmationDialog.new()
+	publish_confirmation.title = "Publish King Aura?"
+	publish_confirmation.confirmed.connect(_publish_aura)
+	add_child(publish_confirmation)
 
 
 func _add_option(parent: Control, label_text: String, options: Array[String]) -> OptionButton:
@@ -398,6 +410,20 @@ func _request_save_preset() -> void:
 		overwrite_confirmation.popup_centered()
 		return
 	_write_pending_preset()
+
+
+func _request_publish_aura() -> void:
+	var type_id: StringName = king_selector.get_item_metadata(king_selector.selected)
+	var definition := ChessPieceCatalog.get_definition(type_id)
+	publish_confirmation.dialog_text = "Publish the current Aura for %s?\n\nThis replaces that King type's game Aura for both white and black armies." % definition.get("name", str(type_id))
+	publish_confirmation.popup_centered()
+
+
+func _publish_aura(target_path := RuntimePublisher.AURA_RUNTIME_PATH) -> Dictionary:
+	var type_id: StringName = king_selector.get_item_metadata(king_selector.selected)
+	var result: Dictionary = RuntimePublisher.publish_aura_profile(type_id, aura_profile, mode_selector.selected, target_path)
+	_set_preset_status(result.message, not result.ok)
+	return result
 
 
 func _capture_preset(display_name: String) -> Resource:
