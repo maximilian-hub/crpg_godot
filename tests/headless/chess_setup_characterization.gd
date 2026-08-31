@@ -2,6 +2,7 @@ extends Node
 
 const LAB_SCENE := preload("res://tools/dev_chess_setup/chess_setup_lab.tscn")
 const SetupPreset := preload("res://tools/dev_chess_setup/chess_setup_lab_preset.gd")
+const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
 
 var failures := 0
 
@@ -152,7 +153,26 @@ func _ready() -> void:
 	_check(ResourceSaver.save(preset, path) == OK, "setup preset fixture saves")
 	var loaded := ResourceLoader.load(path, "ChessSetupLabPreset", ResourceLoader.CACHE_MODE_IGNORE)
 	_check(loaded != null and loaded.is_supported() and loaded.setup_profile.cues.size() == 16 and is_equal_approx(loaded.setup_profile.cues[0].motion_override.entry_duration, 1.23) and loaded.activation_snapshot != null, "setup preset round-trips cue order, overrides, and activation fallback")
+
+	var runtime_path := "user://chess_setup_publish_characterization.tres"
+	var runtime_seed := ChessArmySetupProfile.new()
+	_check(ResourceSaver.save(runtime_seed, runtime_path) == OK, "Setup publishing fixture saves")
+	lab.setup_profile.cues[0].gap_before = 0.73
+	lab.setup_profile.activating_hand = ChessArmySetupProfile.ActivatingHand.LEFT
+	var first_coordinate: Vector2i = lab.setup_profile.cues[0].display_coordinate
+	var publish_result: Dictionary = RuntimePublisher.publish_setup_profile(lab.setup_profile, runtime_path)
+	var published_runtime := ResourceLoader.load(runtime_path, "ChessArmySetupProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessArmySetupProfile
+	_check(publish_result.ok and published_runtime != null and published_runtime.cues.size() == 16 and published_runtime.cues[0].display_coordinate == first_coordinate and is_equal_approx(published_runtime.cues[0].gap_before, 0.73) and is_equal_approx(published_runtime.cues[0].motion_override.entry_duration, 1.23) and published_runtime.activating_hand == ChessArmySetupProfile.ActivatingHand.LEFT, "Publishing preserves cue order, gaps, nested overrides, and the activating hand")
+	var invalid_setup := lab.setup_profile.duplicate(true) as ChessArmySetupProfile
+	invalid_setup.cues.remove_at(invalid_setup.cues.size() - 1)
+	var invalid_result: Dictionary = RuntimePublisher.publish_setup_profile(invalid_setup, runtime_path)
+	var preserved_runtime := ResourceLoader.load(runtime_path, "ChessArmySetupProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessArmySetupProfile
+	_check(not invalid_result.ok and preserved_runtime.cues.size() == 16 and is_equal_approx(preserved_runtime.cues[0].gap_before, 0.73), "Invalid setup coverage is rejected without modifying the runtime target")
+	var player_presentation := load("res://assets/player_army_presentation.tres") as ChessArmyPresentationProfile
+	var opponent_presentation := load("res://assets/opponent_army_presentation.tres") as ChessArmyPresentationProfile
+	_check(player_presentation.setup_profile.resource_path == RuntimePublisher.SETUP_RUNTIME_PATH and opponent_presentation.setup_profile.resource_path == RuntimePublisher.SETUP_RUNTIME_PATH, "Both army loadouts consume the shared published setup presentation")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(runtime_path))
 
 	lab.queue_free()
 	if failures == 0:

@@ -7,7 +7,7 @@
 
 [sub_resource type="Resource" id="Activation"]
 script = ExtResource("3")
-hand_hover_offset = Vector2(150, -300)
+hand_hover_offset = Vector2(250, -300)
 approach_duration = 0.55
 approach_settle_duration = 0.1
 approach_departure_handle = Vector2(-140, -180)
@@ -24,7 +24,7 @@ response_king_power = 0.25
 final_density_multiplier = 2.0
 final_speed_multiplier = 4.0
 burst_multiplier = 6.0
-buildup_crackle_times = null
+buildup_crackle_times = PackedFloat32Array(0.3, 0.78, 0.9)
 secondary_crackle_count = 3
 crackle_duration = 0.09
 crackle_width = 2.0
@@ -51,7 +51,7 @@ impact_radius_max = 52.0
 impact_bolt_width = 3.0
 tremor_interval = 0.12
 tremor_max_pixels = 8
-tremor_start_fraction = 0.0
+tremor_start_fraction = 0.12
 tremor_ramp_exponent = 0.5
 hand_fade_duration = 0.22
 resting_aura_power = 0.5

@@ -14,6 +14,7 @@ const ActivationSequence := preload("res://scripts/view/chess_king_activation_se
 const Lightning := preload("res://scripts/view/chess_lightning_2d.gd")
 const AuraLabPreset := preload("res://tools/dev_chess_aura/chess_aura_lab_preset.gd")
 const ActivationPreset := preload("res://tools/dev_chess_activation/chess_activation_lab_preset.gd")
+const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
 const STONE_SHADER := preload("res://effects/chess_stone_piece.gdshader")
 const AURA_PRESET_DIRECTORY := "res://.cache/chess_aura_presets"
 const ACTIVATION_PRESET_DIRECTORY := "res://.cache/chess_activation_presets"
@@ -51,6 +52,7 @@ var syncing_crackle_editor := false
 var preset_name: LineEdit
 var status_label: Label
 var overwrite_confirmation: ConfirmationDialog
+var publish_confirmation: ConfirmationDialog
 var pending_preset: Resource
 var pending_path := ""
 var profile_controls: Dictionary = {}
@@ -319,12 +321,21 @@ func _build_controls() -> void:
 	save.text = "Save Ritual"
 	save.pressed.connect(_request_save_activation)
 	save_row.add_child(save)
+	var publish := Button.new()
+	publish.text = "Publish to Game"
+	publish.tooltip_text = "Updates the shared runtime Aura and ritual used by both armies. Magical movement is preserved."
+	publish.pressed.connect(_request_publish_activation)
+	save_row.add_child(publish)
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(status_label)
 	overwrite_confirmation = ConfirmationDialog.new()
 	overwrite_confirmation.confirmed.connect(_write_pending_activation)
 	add_child(overwrite_confirmation)
+	publish_confirmation = ConfirmationDialog.new()
+	publish_confirmation.dialog_text = "Publish the current Aura and ritual to the shared game profile used by both armies?\n\nThe magical movement profile will be preserved."
+	publish_confirmation.confirmed.connect(_publish_activation)
+	add_child(publish_confirmation)
 
 
 func _add_option(parent: Control, label_text: String) -> OptionButton:
@@ -618,6 +629,16 @@ func _write_pending_activation() -> void:
 	pending_path = ""
 	_refresh_activation_presets(saved_path)
 	_set_status("Saved to %s" % ProjectSettings.globalize_path(saved_path))
+
+
+func _request_publish_activation() -> void:
+	publish_confirmation.popup_centered()
+
+
+func _publish_activation(target_path := RuntimePublisher.KING_RUNTIME_PATH) -> Dictionary:
+	var result: Dictionary = RuntimePublisher.publish_king_profile(aura_profile, selected_aura_mode, activation_profile, target_path)
+	_set_status(result.message, not result.ok)
+	return result
 
 
 func _refresh_activation_presets(selected_path := "") -> void:

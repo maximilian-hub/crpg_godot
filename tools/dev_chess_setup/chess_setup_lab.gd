@@ -7,6 +7,7 @@ const HAND_STYLE := preload("res://assets/arms/player/skeleton_hand_style.tres")
 const PreviewContext := preload("res://tools/dev_chess_shared/chess_lab_preview_context.gd")
 const ActivationPreset := preload("res://tools/dev_chess_activation/chess_activation_lab_preset.gd")
 const SetupPreset := preload("res://tools/dev_chess_setup/chess_setup_lab_preset.gd")
+const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const ActivationProfile := preload("res://scripts/view/chess_king_activation_profile.gd")
@@ -53,6 +54,7 @@ var path_debug: Line2D
 var preview_context := PreviewContext.new()
 var seat_selector: OptionButton
 var loadout_selector: OptionButton
+var publish_confirmation: ConfirmationDialog
 
 
 func _ready() -> void:
@@ -203,9 +205,15 @@ func _build_controls() -> void:
 	preset_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save_row.add_child(preset_name)
 	_add_button(save_row, "Save", _save_setup)
+	var publish := _add_button(save_row, "Publish to Game", _request_publish_setup)
+	publish.tooltip_text = "Updates the shared setup used by both armies. The preview ritual is not published here."
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(status_label)
+	publish_confirmation = ConfirmationDialog.new()
+	publish_confirmation.dialog_text = "Publish the current setup to the shared game profile used by both armies?\n\nThe Activation Lab owns the Aura and ritual; this publishes setup motion and cue order only."
+	publish_confirmation.confirmed.connect(_publish_setup)
+	add_child(publish_confirmation)
 	path_debug = Line2D.new()
 	path_debug.visible = false
 	path_debug.width = 2.0
@@ -518,6 +526,20 @@ func _save_setup() -> void:
 		status_label.text = "Saved to %s" % ProjectSettings.globalize_path(path)
 	else:
 		status_label.text = "Save failed with error %d." % error
+
+
+func _request_publish_setup() -> void:
+	var validation_error := RuntimePublisher.validate_setup_profile(setup_profile)
+	if not validation_error.is_empty():
+		status_label.text = validation_error
+		return
+	publish_confirmation.popup_centered()
+
+
+func _publish_setup(target_path := RuntimePublisher.SETUP_RUNTIME_PATH) -> Dictionary:
+	var result: Dictionary = RuntimePublisher.publish_setup_profile(setup_profile, target_path)
+	status_label.text = result.message
+	return result
 
 
 func _discover(directory_path: String, expected_script: Script) -> Array[Dictionary]:

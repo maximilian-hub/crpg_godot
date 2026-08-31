@@ -4,6 +4,7 @@ const LAB_SCENE := preload("res://tools/dev_chess_activation/king_activation_lab
 const AuraLabPreset := preload("res://tools/dev_chess_aura/chess_aura_lab_preset.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const ActivationPreset := preload("res://tools/dev_chess_activation/chess_activation_lab_preset.gd")
+const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
 
 var failures := 0
 
@@ -210,9 +211,28 @@ func _ready() -> void:
 	loaded.schema_version = 1
 	_check(loaded.is_supported(), "Version-one activation presets remain supported after the hand-path schema addition")
 
+	var runtime_path := "user://chess_king_publish_characterization.tres"
+	var runtime_seed := ChessKingPresentationProfile.new()
+	runtime_seed.ensure_defaults()
+	runtime_seed.movement_profile.travel_duration = 9.25
+	_check(ResourceSaver.save(runtime_seed, runtime_path) == OK, "King publishing fixture saves")
+	var publish_activation := ChessKingActivationProfile.new()
+	publish_activation.hand_hover_offset = Vector2(77.0, -123.0)
+	publish_activation.buildup_crackle_times = PackedFloat32Array([0.11, 0.44, 0.88])
+	var publish_aura := ChessAuraProfile.new()
+	publish_aura.square_density = 91.0
+	var publish_result: Dictionary = RuntimePublisher.publish_king_profile(publish_aura, ChessAura2D.AuraMode.SQUARE_FLAME, publish_activation, runtime_path)
+	var published_runtime := ResourceLoader.load(runtime_path, "ChessKingPresentationProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+	_check(publish_result.ok and published_runtime != null and published_runtime.aura_mode == ChessAura2D.AuraMode.SQUARE_FLAME and is_equal_approx(published_runtime.aura_profile.square_density, 91.0) and published_runtime.activation_profile.hand_hover_offset == Vector2(77.0, -123.0) and _times_equal(published_runtime.activation_profile.buildup_crackle_times, PackedFloat32Array([0.11, 0.44, 0.88])), "Publishing round-trips the current Aura mode, Aura profile, and every nested ritual value")
+	_check(is_equal_approx(published_runtime.movement_profile.travel_duration, 9.25), "Publishing a ritual preserves the existing magical movement profile")
+	var player_presentation := load("res://assets/player_army_presentation.tres") as ChessArmyPresentationProfile
+	var opponent_presentation := load("res://assets/opponent_army_presentation.tres") as ChessArmyPresentationProfile
+	_check(player_presentation.king_presentation.resource_path == RuntimePublisher.KING_RUNTIME_PATH and opponent_presentation.king_presentation.resource_path == RuntimePublisher.KING_RUNTIME_PATH, "Both army loadouts consume the shared published King presentation")
+
 	lab.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(aura_path))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(activation_path))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(runtime_path))
 	if failures == 0:
 		print("CHESS ACTIVATION CHARACTERIZATION: PASS")
 	else:
