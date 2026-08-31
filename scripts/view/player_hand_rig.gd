@@ -483,7 +483,10 @@ func play_piece_capture(
 	var destination_contact := attacker_contact + destination - attacker_origin
 	var defender_contact := _piece_grip_position(defender_node)
 	var defender_z_index := defender_node.z_index
-	var capture_swipe_base_depth := mini(attacker_z_index, defender_z_index - DEPTH_BAND_STRIDE)
+	# Settle the pre-swipe hand in the defender's row. This keeps the waiting
+	# defender beneath the near thumb (GripFront) and the far hand's interaction
+	# layers, avoiding a visible depth pop just before pickup.
+	var capture_swipe_base_depth := defender_z_index
 
 	position = _offscreen_rest_position(effective_hand_scale)
 	_set_grounded_depth(attacker_z_index)
@@ -633,11 +636,15 @@ func _attach_captured_piece(attacker_node: Node2D, defender_node: Node2D, world_
 	var defender_anchor := _get_grip_anchor(defender_node)
 	if attacker_anchor != null:
 		captured_piece_pivot.global_position = attacker_anchor.global_position + captured_piece_grip_offset * world_scale
-	captured_piece_pivot.rotation = deg_to_rad(captured_piece_rotation_degrees)
+	captured_piece_pivot.rotation = deg_to_rad(calculate_captured_piece_rotation_degrees(captured_piece_rotation_degrees, seat))
 	if defender_anchor != null:
 		defender_node.global_position += captured_piece_pivot.global_position - defender_anchor.global_position
 	_play_board_sound(SOUND_CAPTURE_PICKUP)
 	captured_piece_grabbed.emit(defender_node)
+
+
+static func calculate_captured_piece_rotation_degrees(configured_degrees: float, hand_seat: Seat) -> float:
+	return -configured_degrees if hand_seat == Seat.FAR else configured_degrees
 
 
 func _play_hand_sound(cue: StringName) -> void:

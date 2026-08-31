@@ -68,6 +68,7 @@ func _test_player_relative_orientation() -> void:
 	_expect(ChessHandRig.calculate_jump_depth_state(0.1, 32.0, 4.0, 8.0) == ChessHandRig.DepthState.ELEVATED, "jump elevates only after exceeding takeoff clearance")
 	_expect(ChessHandRig.calculate_jump_depth_state(0.95, 32.0, 4.0, 8.0) == ChessHandRig.DepthState.GROUNDED, "descending jump grounds before exact contact once it reaches landing clearance")
 	_expect(ChessHandRig.calculate_jump_depth_state(0.5, 0.0, 4.0, 8.0) == ChessHandRig.DepthState.GROUNDED and ChessHandRig.calculate_jump_depth_state(0.5, 4.0, 4.0, 8.0) == ChessHandRig.DepthState.GROUNDED, "zero-height and insufficient-height arcs never enter elevated depth")
+	_expect(ChessHandRig.calculate_captured_piece_rotation_degrees(-20.0, ChessHandRig.Seat.NEAR) == -20.0 and ChessHandRig.calculate_captured_piece_rotation_degrees(-20.0, ChessHandRig.Seat.FAR) == 20.0, "far hand mirrors the configured captured-piece carry rotation")
 	_expect(ChessBoardView.BOARD_EFFECT_Z > ChessHandRig.ARM_FOREGROUND_Z, "board effects remain above the foreground arm")
 	board_view.free()
 
