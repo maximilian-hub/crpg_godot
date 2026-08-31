@@ -64,6 +64,7 @@ func play() -> void:
 	_hide_all_pieces()
 	_build_setup_for_army(player_color, player_profile, token)
 	_build_setup_for_army(model.get_other_color(player_color), opponent_profile, token)
+	_prepare_dormant_kings()
 	if setup_sequences.is_empty():
 		_start_white_activation(token)
 	else:
@@ -112,6 +113,13 @@ func cancel() -> void:
 
 func _can_present() -> bool:
 	return model != null and board != null and adapter != null and policy != null
+
+
+func _prepare_dormant_kings() -> void:
+	for color in ["white", "black"]:
+		var magic := adapter.get_king_magic_controller(color)
+		if is_instance_valid(magic):
+			magic.prepare_for_activation()
 
 
 func _build_setup_for_army(color: String, profile: ChessArmyPresentationProfile, token: int) -> void:

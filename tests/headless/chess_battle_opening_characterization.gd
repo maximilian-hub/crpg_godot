@@ -26,12 +26,13 @@ func _test_staggered_opening(player_color: String) -> void:
 	var adapter: ChessPresentationAdapter = context.adapter
 	var director: ChessBattleOpeningDirector = game.opening_director
 	_check(context.setup_concurrent, "%s view runs both army setups concurrently" % player_color)
+	_check(context.black_dormant_during_setup, "%s view presents Black's King as inert stone without an Aura during setup" % player_color)
 	_check(context.white_ran_without_black, "%s view activates White alone immediately after setup" % player_color)
 	_check(director.stage == ChessBattleOpeningDirector.Stage.AWAITING_BLACK_ACTIVATION and game.opening_pending and not game.opening_in_progress, "%s view waits for White's first settled action after White activation" % player_color)
 	_check(not game.controller.is_input_locked and not game.white_cpu_player.is_enabled and not game.black_cpu_player.is_enabled, "%s view releases a player-controlled White turn while Black remains pending" % player_color)
 	var white_magic := adapter.get_king_magic_controller("white")
 	var black_magic := adapter.get_king_magic_controller("black")
-	_check(white_magic.king_aura.silhouette_power > 0.0 and black_magic.activation_sequence == null, "%s view leaves White awakened while Black has not begun its ritual" % player_color)
+	_check(white_magic.king_aura.silhouette_power > 0.0 and black_magic.stone_sprite.visible and is_zero_approx(black_magic.king.sprite.self_modulate.a) and is_zero_approx(black_magic.king_aura.silhouette_power) and is_zero_approx(black_magic.king_aura.particle_power), "%s view leaves White awakened while Black remains inert stone during White's first turn" % player_color)
 
 	var black_boundary := {"started": false, "locked": false, "settled": false, "black_turn": false}
 	director.black_activation_started.connect(func():
@@ -142,6 +143,8 @@ func _create_game(player_color: String, black_buildup := 0.01, control_mode := C
 	var director: ChessBattleOpeningDirector = game.opening_director
 	var adapter := game.get_node("ChessPresentationAdapter") as ChessPresentationAdapter
 	var setup_concurrent := director.setup_sequences.size() == 2 and director.setup_sequences.all(func(sequence): return sequence.running)
+	var black_setup_magic := adapter.get_king_magic_controller("black")
+	var black_dormant_during_setup := black_setup_magic.activation_sequence != null and black_setup_magic.stone_sprite.visible and is_zero_approx(black_setup_magic.king.sprite.self_modulate.a) and is_zero_approx(black_setup_magic.king_aura.silhouette_power) and is_zero_approx(black_setup_magic.king_aura.particle_power)
 	var observation := {"white_ran_without_black": false}
 	var white_ready := {"value": false}
 	game.white_activation_completed.connect(func(): white_ready.value = true, CONNECT_ONE_SHOT)
@@ -152,7 +155,7 @@ func _create_game(player_color: String, black_buildup := 0.01, control_mode := C
 			observation.white_ran_without_black = true
 		return white_ready.value
 	, 5.0)
-	return {"game": game, "adapter": adapter, "setup_concurrent": setup_concurrent, "white_ran_without_black": observation.white_ran_without_black}
+	return {"game": game, "adapter": adapter, "setup_concurrent": setup_concurrent, "black_dormant_during_setup": black_dormant_during_setup, "white_ran_without_black": observation.white_ran_without_black}
 
 
 func _fast_profile(source: ChessArmyPresentationProfile) -> ChessArmyPresentationProfile:

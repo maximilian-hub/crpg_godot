@@ -62,6 +62,16 @@ func refresh_geometry() -> void:
 	activation_sequence.mirror_hand_motion = hand.visual_mirrored != (hand.seat == ChessHandRig.Seat.FAR)
 
 
+func prepare_for_activation() -> void:
+	if not is_instance_valid(hand) or not hand.can_animate():
+		return
+	if activation_sequence == null:
+		_build_activation_sequence()
+	else:
+		activation_sequence.restart(false)
+	refresh_geometry()
+
+
 func play_activation(playback_speed := 1.0) -> void:
 	if not is_instance_valid(hand) or not hand.can_animate() or running:
 		return
