@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="ChessHandMotionProfile" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="ChessHandMotionProfile" load_steps=2 format=3 uid="uid://c2hkmy6dhmvd2"]
 
-[ext_resource type="Script" path="res://scripts/view/chess_hand_motion_profile.gd" id="1_motion"]
+[ext_resource type="Script" uid="uid://do8dxklv5feys" path="res://scripts/view/chess_hand_motion_profile.gd" id="1_motion"]
 
 [resource]
 script = ExtResource("1_motion")
@@ -10,8 +10,10 @@ approach_departure_lift = 96.0
 approach_arrival_handle = Vector2(32, -96)
 grasp_hold_duration = 0.18
 carry_duration = 0.24
-jump_arc_height = 32.0
+jump_arc_height = 64.0
 jump_carry_duration = 0.36
+jump_takeoff_depth_clearance = 20.0
+jump_landing_depth_clearance = 20.0
 attack_slam_duration = 0.16
 attack_rebound_duration = 0.28
 capture_approach_offset = 18.0

@@ -13,6 +13,10 @@ class_name ChessHandMotionProfile
 @export_range(0.01, 2.0, 0.01) var carry_duration := 0.24
 @export_range(0.0, 128.0, 1.0) var jump_arc_height := 32.0
 @export_range(0.01, 2.0, 0.01) var jump_carry_duration := 0.36
+## Logical pixels of visible lift required before the held rig leaves board-row
+## depth, and before it returns to board-row depth on descent.
+@export_range(0.0, 16.0, 1.0) var jump_takeoff_depth_clearance := 4.0
+@export_range(0.0, 16.0, 1.0) var jump_landing_depth_clearance := 8.0
 @export_group("Attack")
 @export_range(0.01, 2.0, 0.01) var attack_slam_duration := 0.16
 @export_range(0.01, 2.0, 0.01) var attack_rebound_duration := 0.28

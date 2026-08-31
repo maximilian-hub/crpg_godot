@@ -12,7 +12,7 @@
 [ext_resource type="PackedScene" uid="uid://bsvn40v11grhl" path="res://scenes/board_body.tscn" id="11_board_body"]
 [ext_resource type="Resource" uid="uid://hyuqx5axgyc" path="res://assets/chess_board_default_style.tres" id="12_board_style"]
 [ext_resource type="PackedScene" path="res://scenes/player_hand_rig.tscn" id="13_hand_rig"]
-[ext_resource type="Resource" uid="uid://b702w2llvnxct" path="res://assets/arms/player/skeleton_hand_style.tres" id="14_hand_style"]
+[ext_resource type="Resource" path="res://assets/arms/player/skeleton_hand_style.tres" id="14_hand_style"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
 bg_color = Color(0.1, 0.075, 0.14, 0.98)

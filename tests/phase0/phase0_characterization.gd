@@ -285,6 +285,7 @@ func _test_surrounded_knight_depth_presentation() -> void:
 	var rig: ChessHandRig = view.near_hand_rig
 	for property_name in ["approach_duration", "grasp_hold_duration", "jump_carry_duration", "release_hold_duration", "retreat_duration"]:
 		rig.set(property_name, 0.01)
+	rig.jump_carry_duration = 0.12
 	var knight := Knight.new("white", Vector2i(4, 3))
 	var origin_nearer_queen := Queen.new("black", Vector2i(5, 3))
 	var destination_nearer_queen := Queen.new("black", Vector2i(3, 4))
@@ -298,7 +299,16 @@ func _test_surrounded_knight_depth_presentation() -> void:
 	var natural_depths: Array[int] = []
 	for piece_view in stationary_views:
 		natural_depths.append(piece_view.z_index)
-	var observed := {"origin_grounded": false, "destination_grounded": false, "elevated": false}
+	var observed := {"origin_grounded": false, "destination_grounded": false, "elevated": false, "grounded_at_jump_start": false, "grounded_before_contact": false}
+	var knight_view: Node2D = context.adapter.get_piece_view(knight)
+	var origin_position := knight_view.position
+	var origin_contact := view.to_local(knight_view.get_grip_anchor().global_position) + rig.piece_grip_offset * view.get_world_scale()
+	var destination_contact := origin_contact + view.grid_to_screen(2, 4) - origin_position
+	rig.carry_path_started.connect(
+		func(path: StringName):
+			if path == ChessHandRig.CARRY_PATH_JUMP:
+				observed["grounded_at_jump_start"] = rig.depth_state == ChessHandRig.DepthState.GROUNDED
+	)
 	rig.piece_grabbed.connect(
 		func(_piece: Node2D):
 			observed["origin_grounded"] = (
@@ -308,9 +318,11 @@ func _test_surrounded_knight_depth_presentation() -> void:
 			)
 	)
 	rig.depth_state_changed.connect(
-		func(state: ChessHandRig.DepthState, _base_depth: int):
+		func(state: ChessHandRig.DepthState, base_depth: int):
 			if state == ChessHandRig.DepthState.ELEVATED:
 				observed["elevated"] = rig.piece_slot.z_index > 7 * ChessBoardView.BOARD_DEPTH_STRIDE
+			elif observed["elevated"] and base_depth == view.get_piece_depth(Vector2i(2, 4)):
+				observed["grounded_before_contact"] = not rig.position.is_equal_approx(destination_contact)
 	)
 	rig.piece_released.connect(
 		func(_piece: Node2D):
@@ -323,7 +335,9 @@ func _test_surrounded_knight_depth_presentation() -> void:
 	controller.select_piece(knight)
 	await controller._on_square_clicked(Vector2i(2, 4))
 	_expect(observed["origin_grounded"] and observed["destination_grounded"], "surrounded knight grounds its thumb beneath the naturally nearer tall piece at pickup and landing")
+	_expect(observed["grounded_at_jump_start"], "knight remains row-sorted when its jump begins instead of popping immediately into foreground")
 	_expect(observed["elevated"], "jumping knight and grip enter the foreground band during the arc")
+	_expect(observed["grounded_before_contact"], "descending knight returns to destination-row depth before reaching its exact landing contact")
 	for index in range(stationary_views.size()):
 		_expect(stationary_views[index].z_index == natural_depths[index], "surrounding tall piece %d keeps its natural board depth through the knight jump" % index)
 	await _destroy_game(context.game)

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=9 format=3 uid="uid://bowmxqi8o6gf7"]
+[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=9 format=3 uid="uid://decf0w417gdm"]
 
 [ext_resource type="Script" uid="uid://behhgroodpugy" path="res://scripts/view/chess_hand_style.gd" id="1_style"]
 [ext_resource type="Texture2D" uid="uid://da4yg4didxiwq" path="res://assets/arms/opponent/hood_open_grip_back.png" id="2_open_back"]
@@ -7,7 +7,7 @@
 [ext_resource type="Texture2D" uid="uid://cm7e6fyslim66" path="res://assets/arms/opponent/hood_closed_grip_back.png" id="5_closed_back"]
 [ext_resource type="Texture2D" uid="uid://5mjc3rgjuceh" path="res://assets/arms/opponent/hood_closed_grip_front.png" id="6_closed_front"]
 [ext_resource type="Texture2D" uid="uid://barda2g6q80eo" path="res://assets/arms/opponent/hood_closed_arm_foreground.png" id="7_closed_arm"]
-[ext_resource type="Resource" path="res://assets/arms/opponent/hood_hand_motion.tres" id="8_motion"]
+[ext_resource type="Resource" uid="uid://c2hkmy6dhmvd2" path="res://assets/arms/opponent/hood_hand_motion.tres" id="8_motion"]
 
 [resource]
 script = ExtResource("1_style")

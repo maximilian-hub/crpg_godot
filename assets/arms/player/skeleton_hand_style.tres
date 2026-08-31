@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=10 format=3 uid="uid://b702w2llvnxct"]
+[gd_resource type="Resource" script_class="ChessHandStyle" load_steps=10 format=3 uid="uid://d0mfkbmg22hl4"]
 
 [ext_resource type="Script" uid="uid://behhgroodpugy" path="res://scripts/view/chess_hand_style.gd" id="1_style"]
 [ext_resource type="Texture2D" uid="uid://c88rw62x8i2j5" path="res://assets/arms/player/skeleton_open_arm.png" id="2_open_arm"]

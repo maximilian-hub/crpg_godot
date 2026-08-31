@@ -120,8 +120,8 @@ func _build_ui() -> void:
 	var motion_title := Label.new()
 	motion_title.text = "Motion Profile"
 	rows.add_child(motion_title)
-	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_arc_height", "jump_carry_duration", "capture_swipe_distance", "capture_swipe_duration", "attack_slam_duration", "attack_rebound_duration", "release_hold_duration", "retreat_duration"]:
-		var maximum := 256.0 if property_name.ends_with("height") or property_name.ends_with("distance") else 5.0
+	for property_name in ["approach_duration", "grasp_hold_duration", "carry_duration", "jump_arc_height", "jump_carry_duration", "jump_takeoff_depth_clearance", "jump_landing_depth_clearance", "capture_swipe_distance", "capture_swipe_duration", "attack_slam_duration", "attack_rebound_duration", "release_hold_duration", "retreat_duration"]:
+		var maximum := 16.0 if property_name.ends_with("clearance") else (256.0 if property_name.ends_with("height") or property_name.ends_with("distance") else 5.0)
 		var step := 1.0 if maximum > 5.0 else 0.01
 		var field := _number_row(rows, property_name.capitalize(), 0.0, maximum, step)
 		field.value_changed.connect(_on_motion_changed.bind(property_name))

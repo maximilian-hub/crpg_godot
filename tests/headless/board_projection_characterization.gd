@@ -64,6 +64,10 @@ func _test_player_relative_orientation() -> void:
 	_expect(ChessHandRig.GRIP_BACK_Z < ChessHandRig.ACTIVE_PIECE_Z and ChessHandRig.ACTIVE_PIECE_Z < ChessHandRig.CAPTURED_PIECE_Z and ChessHandRig.CAPTURED_PIECE_Z < ChessHandRig.GRIP_FRONT_Z, "elevated grip stack sandwiches both carried pieces")
 	_expect(ChessHandRig.GROUNDED_GRIP_BACK_OFFSET < ChessHandRig.GROUNDED_ACTIVE_PIECE_OFFSET and ChessHandRig.GROUNDED_ACTIVE_PIECE_OFFSET < ChessHandRig.GROUNDED_CAPTURED_PIECE_OFFSET and ChessHandRig.GROUNDED_CAPTURED_PIECE_OFFSET < ChessHandRig.GROUNDED_GRIP_FRONT_OFFSET and ChessHandRig.GROUNDED_GRIP_FRONT_OFFSET < ChessBoardView.BOARD_DEPTH_STRIDE, "grounded interaction layers fit inside one board-row depth band")
 	_expect(ChessHandRig.DEPTH_BAND_STRIDE == ChessBoardView.BOARD_DEPTH_STRIDE and ChessHandRig.calculate_grounded_base_depth(60, 40, 0.5) == 50, "grounded slides cross discrete board-row depth bands without spilling local offsets into neighboring rows")
+	_expect(ChessHandRig.calculate_jump_depth_state(0.0, 32.0, 4.0, 8.0) == ChessHandRig.DepthState.GROUNDED, "jump begins in grounded row depth")
+	_expect(ChessHandRig.calculate_jump_depth_state(0.1, 32.0, 4.0, 8.0) == ChessHandRig.DepthState.ELEVATED, "jump elevates only after exceeding takeoff clearance")
+	_expect(ChessHandRig.calculate_jump_depth_state(0.95, 32.0, 4.0, 8.0) == ChessHandRig.DepthState.GROUNDED, "descending jump grounds before exact contact once it reaches landing clearance")
+	_expect(ChessHandRig.calculate_jump_depth_state(0.5, 0.0, 4.0, 8.0) == ChessHandRig.DepthState.GROUNDED and ChessHandRig.calculate_jump_depth_state(0.5, 4.0, 4.0, 8.0) == ChessHandRig.DepthState.GROUNDED, "zero-height and insufficient-height arcs never enter elevated depth")
 	_expect(ChessBoardView.BOARD_EFFECT_Z > ChessHandRig.ARM_FOREGROUND_Z, "board effects remain above the foreground arm")
 	board_view.free()
 

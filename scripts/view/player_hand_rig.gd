@@ -54,6 +54,8 @@ var grasp_hold_duration: float: get = _get_grasp_hold_duration, set = _set_grasp
 var carry_duration: float: get = _get_carry_duration, set = _set_carry_duration
 var jump_arc_height: float: get = _get_jump_arc_height, set = _set_jump_arc_height
 var jump_carry_duration: float: get = _get_jump_carry_duration, set = _set_jump_carry_duration
+var jump_takeoff_depth_clearance: float: get = _get_jump_takeoff_depth_clearance, set = _set_jump_takeoff_depth_clearance
+var jump_landing_depth_clearance: float: get = _get_jump_landing_depth_clearance, set = _set_jump_landing_depth_clearance
 var attack_slam_duration: float: get = _get_attack_slam_duration, set = _set_attack_slam_duration
 var attack_rebound_duration: float: get = _get_attack_rebound_duration, set = _set_attack_rebound_duration
 var capture_approach_offset: float: get = _get_capture_approach_offset, set = _set_capture_approach_offset
@@ -135,6 +137,10 @@ func _get_jump_arc_height() -> float: return _motion().jump_arc_height
 func _set_jump_arc_height(value: float) -> void: _motion_for_write().jump_arc_height = value
 func _get_jump_carry_duration() -> float: return _motion().jump_carry_duration
 func _set_jump_carry_duration(value: float) -> void: _motion_for_write().jump_carry_duration = value
+func _get_jump_takeoff_depth_clearance() -> float: return _motion().jump_takeoff_depth_clearance
+func _set_jump_takeoff_depth_clearance(value: float) -> void: _motion_for_write().jump_takeoff_depth_clearance = value
+func _get_jump_landing_depth_clearance() -> float: return _motion().jump_landing_depth_clearance
+func _set_jump_landing_depth_clearance(value: float) -> void: _motion_for_write().jump_landing_depth_clearance = value
 func _get_attack_slam_duration() -> float: return _motion().attack_slam_duration
 func _set_attack_slam_duration(value: float) -> void: _motion_for_write().attack_slam_duration = value
 func _get_attack_rebound_duration() -> float: return _motion().attack_rebound_duration
@@ -413,9 +419,15 @@ func play_piece_move(
 	# Carry the closed hand and grabbed piece to the destination together.
 	carry_path_started.emit(carry_path)
 	if carry_path == CARRY_PATH_JUMP:
-		_set_elevated_depth()
-		await _tween_jump_position(destination_contact, jump_carry_duration, jump_arc_height * world_scale)
-		_set_grounded_depth(release_z_index)
+		await _tween_jump_position(
+			destination_contact,
+			jump_carry_duration,
+			jump_arc_height * world_scale,
+			original_z_index,
+			release_z_index,
+			jump_takeoff_depth_clearance * world_scale,
+			jump_landing_depth_clearance * world_scale
+		)
 	else:
 		_start_slide_sound()
 		await _tween_grounded_position(destination_contact, carry_duration, original_z_index, release_z_index)
@@ -493,11 +505,17 @@ func play_piece_capture(
 	carry_path_started.emit(CARRY_PATH_JUMP)
 	var role_x := -1.0 if seat == Seat.FAR else 1.0
 	var swipe_start := defender_contact + Vector2.LEFT * role_x * capture_approach_offset * world_scale
-	_set_elevated_depth()
-	await _tween_jump_position(swipe_start, capture_approach_duration, capture_approach_arc_height * world_scale)
+	await _tween_jump_position(
+		swipe_start,
+		capture_approach_duration,
+		capture_approach_arc_height * world_scale,
+		attacker_z_index,
+		capture_swipe_base_depth,
+		jump_takeoff_depth_clearance * world_scale,
+		jump_landing_depth_clearance * world_scale
+	)
 	# Until contact, treat the defender as the naturally nearer object so it can
 	# remain in front of board-occludable grip artwork without changing its z.
-	_set_grounded_depth(capture_swipe_base_depth)
 	var swipe_end := swipe_start + Vector2.RIGHT * role_x * capture_swipe_distance * world_scale
 	capture_stage_changed.emit(&"swipe")
 	var pickup_progress := 0.0
@@ -524,9 +542,15 @@ func play_piece_capture(
 	# Jump to the destination and leave the attacker on its exact square. Keep the
 	# hand closed around the captured defender while carrying it offscreen.
 	capture_stage_changed.emit(&"placement")
-	_set_elevated_depth()
-	await _tween_jump_position(destination_contact, capture_placement_duration, capture_placement_arc_height * world_scale)
-	_set_grounded_depth(release_z_index)
+	await _tween_jump_position(
+		destination_contact,
+		capture_placement_duration,
+		capture_placement_arc_height * world_scale,
+		defender_z_index,
+		release_z_index,
+		jump_takeoff_depth_clearance * world_scale,
+		jump_landing_depth_clearance * world_scale
+	)
 	_play_board_sound(SOUND_PLACE)
 	await _wait(release_hold_duration)
 	attacker_node.reparent(attacker_parent, true)
@@ -820,25 +844,60 @@ static func calculate_bezier_position(start: Vector2, departure_control: Vector2
 	return start.bezier_interpolate(departure_control, arrival_control, destination, clampf(progress, 0.0, 1.0))
 
 
-func _tween_jump_position(target: Vector2, duration: float, arc_height: float) -> void:
+func _tween_jump_position(
+	target: Vector2,
+	duration: float,
+	arc_height: float,
+	start_depth: int,
+	destination_depth: int,
+	takeoff_clearance: float,
+	landing_clearance: float
+) -> void:
 	var start := position
 	var tween := create_tween()
 	tween.tween_method(
 		# A jump represents lifting away from the board, so its screen-space arc
-		# remains upward for near and far hands alike.
-		func(progress: float): position = calculate_jump_position(start, target, progress, arc_height),
+		# remains upward for near and far hands alike. Its z-state follows visible
+		# lift so takeoff and landing do not pop in front of neighboring pieces.
+		func(progress: float):
+			position = calculate_jump_position(start, target, progress, arc_height)
+			var grounded_depth := calculate_grounded_base_depth(start_depth, destination_depth, progress)
+			if calculate_jump_depth_state(progress, arc_height, takeoff_clearance, landing_clearance) == DepthState.ELEVATED:
+				_set_elevated_depth()
+			else:
+				_set_grounded_depth(grounded_depth),
 		0.0,
 		1.0,
 			duration * animation_duration_scale
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
+	position = target
+	_set_grounded_depth(destination_depth)
 
 
 static func calculate_jump_position(start: Vector2, destination: Vector2, progress: float, arc_height: float) -> Vector2:
 	var normalized_progress := clampf(progress, 0.0, 1.0)
 	var straight_position := start.lerp(destination, normalized_progress)
-	var lift := 4.0 * arc_height * normalized_progress * (1.0 - normalized_progress)
+	var lift := calculate_jump_lift(normalized_progress, arc_height)
 	return straight_position + Vector2.UP * lift
+
+
+static func calculate_jump_lift(progress: float, arc_height: float) -> float:
+	var normalized_progress := clampf(progress, 0.0, 1.0)
+	return 4.0 * maxf(arc_height, 0.0) * normalized_progress * (1.0 - normalized_progress)
+
+
+static func calculate_jump_depth_state(progress: float, arc_height: float, takeoff_clearance: float, landing_clearance: float) -> DepthState:
+	var resolved_arc_height := maxf(arc_height, 0.0)
+	var resolved_takeoff := maxf(takeoff_clearance, 0.0)
+	var resolved_landing := maxf(landing_clearance, 0.0)
+	if resolved_arc_height <= 0.0 or resolved_arc_height <= maxf(resolved_takeoff, resolved_landing):
+		return DepthState.GROUNDED
+	var normalized_progress := clampf(progress, 0.0, 1.0)
+	var lift := calculate_jump_lift(normalized_progress, resolved_arc_height)
+	if normalized_progress <= 0.5:
+		return DepthState.ELEVATED if lift > resolved_takeoff else DepthState.GROUNDED
+	return DepthState.ELEVATED if lift > resolved_landing else DepthState.GROUNDED
 
 
 func _wait(duration: float) -> void:
