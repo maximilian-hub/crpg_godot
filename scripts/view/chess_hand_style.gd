@@ -15,7 +15,6 @@ class_name ChessHandStyle
 @export_group("Art Geometry")
 @export var grip_anchor_pixels := Vector2(11.0, 29.0)
 @export var connection_anchor_pixels := Vector2(23.0, 24.0)
-@export var piece_grip_offset := Vector2(0.0, 6.0)
 @export_range(0.25, 8.0, 0.05) var art_scale_multiplier := 3.5
 ## When true, GripFront shares the active board row's depth band and can pass
 ## behind pieces in rows toward the viewer. Disable for foreground fingers that

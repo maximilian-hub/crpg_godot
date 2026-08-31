@@ -21,7 +21,6 @@ closed_arm_foreground = ExtResource("5_closed_arm")
 sounds = ExtResource("8_sounds")
 grip_anchor_pixels = Vector2(11, 29)
 connection_anchor_pixels = Vector2(23, 24)
-piece_grip_offset = Vector2(0, 6)
 art_scale_multiplier = 3.5
 grip_front_follows_board_depth = true
 motion_profile = ExtResource("9_motion")

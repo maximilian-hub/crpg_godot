@@ -7,4 +7,4 @@
 script = ExtResource("1_profile")
 reference_texture = ExtResource("2_texture")
 display_height = 64.0
-grip_anchor = Vector2(0, -39)
+grip_anchor = Vector2(0, -33)

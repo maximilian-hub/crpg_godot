@@ -49,12 +49,19 @@ var step_button: Button
 var speed_slider: HSlider
 var speed_value_label: Label
 var grip_check: CheckButton
+var grip_profile_option: OptionButton
+var grip_x_spin: SpinBox
+var grip_y_spin: SpinBox
+var grip_save_button: Button
+var grip_status_label: Label
 var seed_spin: SpinBox
 var preset_option: OptionButton
 var turn_option: OptionButton
 var piece_palette
 var thought_label: Label
 var execute_button: Button
+var grip_profile_ids: Array[StringName] = []
+var syncing_grip_controls := false
 
 func _ready() -> void:
 	editor.model = model
@@ -130,6 +137,29 @@ func _build_panel() -> void:
 	grip_check.text = "Grip Anchors"
 	grip_check.toggled.connect(_on_grip_toggled)
 	panel.add_child(grip_check)
+
+	_add_section_label("Piece Grip Tuning")
+	grip_profile_option = OptionButton.new()
+	for profile_id in PieceView.PIECE_ART_PROFILES.keys():
+		grip_profile_ids.append(profile_id)
+	grip_profile_ids.sort()
+	for profile_id in grip_profile_ids:
+		grip_profile_option.add_item(String(profile_id).capitalize())
+	grip_profile_option.item_selected.connect(_load_grip_profile_controls)
+	_add_labeled_control("Piece", grip_profile_option)
+	var grip_row := HBoxContainer.new()
+	panel.add_child(grip_row)
+	grip_x_spin = _make_grip_spin_box()
+	grip_y_spin = _make_grip_spin_box()
+	grip_row.add_child(_make_compact_labeled_control("X", grip_x_spin))
+	grip_row.add_child(_make_compact_labeled_control("Y", grip_y_spin))
+	grip_x_spin.value_changed.connect(func(_value: float): _apply_live_piece_grip())
+	grip_y_spin.value_changed.connect(func(_value: float): _apply_live_piece_grip())
+	grip_save_button = _add_button("Save Piece Grip", _save_piece_grip)
+	grip_status_label = Label.new()
+	grip_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel.add_child(grip_status_label)
+	_load_grip_profile_controls(0)
 
 	seed_spin = SpinBox.new()
 	seed_spin.min_value = 0
@@ -242,6 +272,25 @@ func _add_labeled_control(label_text: String, control: Control) -> void:
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(control)
 	panel.add_child(row)
+
+func _make_compact_labeled_control(label_text: String, control: Control) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var label := Label.new()
+	label.text = label_text
+	row.add_child(label)
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(control)
+	return row
+
+func _make_grip_spin_box() -> SpinBox:
+	var spin := SpinBox.new()
+	spin.min_value = -256.0
+	spin.max_value = 256.0
+	spin.step = 1.0
+	spin.allow_lesser = true
+	spin.allow_greater = true
+	return spin
 
 func _add_section_label(text: String) -> void:
 	var label := Label.new()
@@ -411,6 +460,47 @@ func _on_grip_toggled(enabled: bool) -> void:
 	board.show_piece_grip_anchors = enabled
 	_refresh_control_states()
 
+func _selected_grip_profile() -> PieceArtProfile:
+	if grip_profile_option == null or grip_profile_option.selected < 0 or grip_profile_option.selected >= grip_profile_ids.size():
+		return null
+	return PieceView.PIECE_ART_PROFILES.get(grip_profile_ids[grip_profile_option.selected]) as PieceArtProfile
+
+func _load_grip_profile_controls(index: int) -> void:
+	if index < 0 or index >= grip_profile_ids.size():
+		return
+	grip_profile_option.select(index)
+	var profile := _selected_grip_profile()
+	if profile == null:
+		return
+	syncing_grip_controls = true
+	grip_x_spin.set_value_no_signal(profile.grip_anchor.x)
+	grip_y_spin.set_value_no_signal(profile.grip_anchor.y)
+	syncing_grip_controls = false
+	grip_status_label.text = profile.resource_path
+
+func _apply_live_piece_grip() -> void:
+	if syncing_grip_controls:
+		return
+	var profile := _selected_grip_profile()
+	if profile == null:
+		return
+	profile.grip_anchor = Vector2(grip_x_spin.value, grip_y_spin.value)
+	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
+	board.show_piece_grip_anchors = true
+	for piece in board.get_node("Pieces").get_children():
+		if piece is PieceView and piece.art_profile == profile:
+			piece.refresh_grip_anchor_from_profile()
+	grip_check.set_pressed_no_signal(true)
+	grip_status_label.text = "Unsaved: %s" % profile.resource_path
+
+func _save_piece_grip() -> void:
+	var profile := _selected_grip_profile()
+	if profile == null or profile.resource_path.is_empty():
+		grip_status_label.text = "Save failed: profile has no resource path"
+		return
+	var error := ResourceSaver.save(profile, profile.resource_path)
+	grip_status_label.text = "Saved: %s" % profile.resource_path if error == OK else "Save failed (%s): %s" % [error, profile.resource_path]
+
 func _clear_ai_thoughts() -> void:
 	game.white_cpu_player.clear_thought()
 	game.black_cpu_player.clear_thought()
@@ -462,6 +552,10 @@ func _refresh_control_states() -> void:
 	turn_option.select(0 if model.current_turn == "white" else 1)
 	piece_palette.set_palette_enabled(editing)
 	piece_palette.sync_selection(editor.selected_tool, editor.selected_type_id, editor.selected_color)
+	grip_profile_option.disabled = not settled
+	grip_x_spin.editable = settled
+	grip_y_spin.editable = settled
+	grip_save_button.disabled = not settled
 	var manual_ai_available := mode == Mode.PLAY and ai_mode == ChessCpuPlayer.ExecutionMode.MANUAL and _manual_cpu() != null and settled and not model.battle_over
 	think_button.disabled = not manual_ai_available
 	step_button.disabled = not manual_ai_available

@@ -93,6 +93,9 @@ func get_head_anchor() -> Marker2D:
 func get_grip_anchor() -> Marker2D:
 	return get_node("GripAnchor") as Marker2D
 
+func refresh_grip_anchor_from_profile() -> void:
+	_update_effect_anchors()
+
 func set_grip_anchor_debug_visible(enabled: bool) -> void:
 	show_grip_anchor_debug = enabled
 	_sync_grip_anchor_debug_overlay()

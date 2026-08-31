@@ -212,6 +212,14 @@ func _ready() -> void:
 	_check(sandbox.grip_check.button_pressed and view.show_piece_grip_anchors, "Grip Anchors check state mirrors the board", failures)
 	var grip_overlay: Node2D = view.get_node("Pieces").get_child(0).get_node("GripAnchorDebugOverlay")
 	_check(grip_overlay.visible and grip_overlay.z_index > 0, "grip anchor indicators render in a foreground piece overlay", failures)
+	var pawn_grip_index: int = sandbox.grip_profile_ids.find(&"pawn")
+	sandbox._load_grip_profile_controls(pawn_grip_index)
+	var pawn_profile: PieceArtProfile = sandbox._selected_grip_profile()
+	var original_pawn_grip := pawn_profile.grip_anchor
+	sandbox.grip_x_spin.value = original_pawn_grip.x + 1.0
+	var tuned_pawn: PieceView = view.get_piece_node(Vector2i(6, 0))
+	_check(tuned_pawn.get_grip_anchor().position == original_pawn_grip + Vector2.RIGHT and sandbox.grip_status_label.text.begins_with("Unsaved:"), "piece grip tuner updates matching board anchors live without silently saving", failures)
+	sandbox.grip_x_spin.value = original_pawn_grip.x
 	sandbox._configure_ai(ChessCpuPlayer.ExecutionMode.DISABLED)
 	sandbox._set_speed(sandbox.PresentationPolicy.Speed.INSTANT)
 	await model.submit_move(model.board[6][0], Vector2i(4, 0))

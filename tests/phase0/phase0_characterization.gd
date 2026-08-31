@@ -93,7 +93,7 @@ func _test_player_hand_move_presentation() -> void:
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(7, 3), Vector2i(4, 6)) == &"jump", "a diagonally moving queen uses the same squeezed-corner rule as a bishop")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][3]), Vector2i(4, 3), Vector2i(2, 5)) == &"slide", "a diagonally moving queen slides through a clear corridor")
 	_expect(view.get_player_hand_carry_path(context.adapter.get_piece_view(model.board[7][4]), Vector2i(7, 4), Vector2i(4, 4)) == &"slide", "kings retain the slide carry path")
-	var expected_grip_position := view.to_local(pawn_view.get_grip_anchor().to_global(rig.piece_grip_offset))
+	var expected_grip_position := view.to_local(pawn_view.get_grip_anchor().global_position)
 	var observations: Array[String] = []
 	var carry_paths: Array[StringName] = []
 	rig.pose_changed.connect(func(pose: StringName): observations.append(String(pose)))
@@ -305,7 +305,7 @@ func _test_surrounded_knight_depth_presentation() -> void:
 	var observed := {"origin_grounded": false, "destination_grounded": false, "elevated": false, "grounded_at_jump_start": false, "grounded_before_contact": false}
 	var knight_view: Node2D = context.adapter.get_piece_view(knight)
 	var origin_position := knight_view.position
-	var origin_contact := view.to_local(knight_view.get_grip_anchor().global_position) + rig.piece_grip_offset * view.get_world_scale()
+	var origin_contact := view.to_local(knight_view.get_grip_anchor().global_position)
 	var destination_contact := origin_contact + view.grid_to_screen(2, 4) - origin_position
 	rig.carry_path_started.connect(
 		func(path: StringName):

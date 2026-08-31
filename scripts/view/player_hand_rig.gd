@@ -44,7 +44,6 @@ const DEPTH_BAND_STRIDE := 10
 
 var motion_override: ChessHandMotionProfile
 var grip_anchor_pixels: Vector2: get = _get_grip_anchor_pixels
-var piece_grip_offset: Vector2: get = _get_piece_grip_offset
 var art_scale_multiplier: float: get = _get_art_scale_multiplier
 var approach_duration: float: get = _get_approach_duration, set = _set_approach_duration
 var approach_departure_progress: float: get = _get_approach_departure_progress, set = _set_approach_departure_progress
@@ -119,7 +118,6 @@ func _motion_for_write() -> ChessHandMotionProfile:
 
 
 func _get_grip_anchor_pixels() -> Vector2: return hand_style.grip_anchor_pixels if hand_style != null else Vector2(11.0, 29.0)
-func _get_piece_grip_offset() -> Vector2: return hand_style.piece_grip_offset if hand_style != null else Vector2(0.0, 6.0)
 func _get_art_scale_multiplier() -> float: return hand_style.art_scale_multiplier if hand_style != null else 3.5
 func _get_approach_duration() -> float: return _motion().approach_duration
 func _set_approach_duration(value: float) -> void: _motion_for_write().approach_duration = value
@@ -714,7 +712,7 @@ func _stop_slide_sound() -> void:
 func _piece_grip_position(piece_node: Node2D) -> Vector2:
 	var anchor := _get_grip_anchor(piece_node)
 	if anchor != null:
-		return get_parent().to_local(anchor.to_global(piece_grip_offset))
+		return get_parent().to_local(anchor.global_position)
 	return piece_node.position
 
 
