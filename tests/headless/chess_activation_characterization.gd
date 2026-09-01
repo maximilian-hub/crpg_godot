@@ -34,7 +34,8 @@ func _ready() -> void:
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.OPPONENT
 	lab._apply_preview_context()
 	_check(lab.preview_hand.seat == ChessHandRig.Seat.FAR and lab.preview_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "Activation Lab previews the production far-seat Hood rig")
-	_check(lab.sequence.base_hand_position == lab.preview_king.position - lab.activation_profile.hand_hover_offset and lab.sequence.base_hand_position != near_hover, "Activation Lab half-turns the authored hover endpoint for the far seat")
+	var expected_far_hover: Vector2 = lab.preview_king.position + Vector2(-lab.activation_profile.hand_hover_offset.x, lab.activation_profile.hand_hover_offset.y)
+	_check(lab.sequence.base_hand_position == expected_far_hover and lab.sequence.base_hand_position != near_hover, "Activation Lab mirrors the far hover horizontally while preserving screen-up elevation")
 	_check(lab.sequence.hand_rest_position.x < 0.0 and lab.sequence.hand_rest_position.y < 0.0 and lab.sequence.mirror_hand_motion, "far activation rests upper-left and uses seat-aware motion handles")
 	lab.preview_context.seat = ChessHandRig.Seat.NEAR
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER

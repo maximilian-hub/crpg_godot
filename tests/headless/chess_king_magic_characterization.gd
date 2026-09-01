@@ -28,8 +28,8 @@ func _ready() -> void:
 
 	_check(white_magic.hand.seat == ChessHandRig.Seat.NEAR and black_magic.hand.seat == ChessHandRig.Seat.FAR, "army magic resolves the hand rig for each displayed seat")
 	var authored := Vector2(150, -180)
-	_check(ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.NEAR) == authored and ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.FAR) == -authored, "far hover occupies the opposite side of its king")
-	_check(ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.NEAR, true) == Vector2(-150, -180) and ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.FAR, true) == Vector2(150, 180), "left-hand activation combines hand mirroring with the far-seat half turn")
+	_check(ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.NEAR) == authored and ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.FAR) == Vector2(-150, -180), "far hover mirrors horizontally while preserving screen-up elevation")
+	_check(ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.NEAR, true) == Vector2(-150, -180) and ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.FAR, true) == Vector2(150, -180), "left-hand activation combines hand mirroring with the far-seat horizontal reflection")
 
 	var grabbed_kings: Array[Node2D] = []
 	view.near_hand_rig.piece_grabbed.connect(func(piece: Node2D):
