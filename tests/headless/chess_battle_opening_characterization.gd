@@ -25,6 +25,8 @@ func _test_staggered_opening(player_color: String) -> void:
 	var game: ChessGame = context.game
 	var adapter: ChessPresentationAdapter = context.adapter
 	var director: ChessBattleOpeningDirector = game.opening_director
+	var board_view := game.get_node("CanvasLayer/ChessBoard") as ChessBoardView
+	_check(board_view.visual_style == game.battle_presentation.board_style and board_view.visual_style.material_surface_enabled, "%s view applies the default battle profile before the opening presentation" % player_color)
 	_check(context.setup_concurrent, "%s view runs both army setups concurrently" % player_color)
 	_check(context.black_dormant_during_setup, "%s view presents Black's King as inert stone without an Aura during setup" % player_color)
 	_check(context.white_ran_without_black, "%s view activates White alone immediately after setup" % player_color)

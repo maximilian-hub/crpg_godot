@@ -4,7 +4,7 @@ class_name GameFlow
 
 const OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
 const CHESS_SCENE := preload("res://scenes/chess_game.tscn")
-const BATTLE_BACKGROUND_TEXTURE := preload("res://assets/woodtile.png")
+const DEFAULT_BATTLE_PRESENTATION := preload("res://assets/boards/presentations/default_battle_presentation.tres")
 const BATTLE_LOGICAL_SIZE := Vector2i(960, 540)
 const TARGET_OVERWORLD_LOGICAL_SIDE := 180
 const DIALOGUE_LOGICAL_MARGIN := 4
@@ -30,7 +30,7 @@ var is_transitioning: bool = false
 var overworld_frame: SubViewportContainer = null
 var overworld_viewport: SubViewport = null
 var overworld_dialogue_layer: CanvasLayer = null
-var battle_environment: TextureRect = null
+var battle_environment: ChessEnvironmentSurface = null
 var battle_frame: SubViewportContainer = null
 var battle_viewport: SubViewport = null
 
@@ -38,6 +38,7 @@ func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
 	get_viewport().size_changed.connect(_layout_overworld_frame)
 	get_viewport().size_changed.connect(_layout_battle_frame)
+	get_viewport().size_changed.connect(_layout_battle_environment)
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_min_size(BATTLE_LOGICAL_SIZE)
 	_show_overworld("")
@@ -127,10 +128,12 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	await _fade_to(1.0)
 	_clear_active_content()
 
-	_create_battle_environment()
+	var resolved_presentation := _resolve_battle_presentation(encounter_profile)
+	_create_battle_environment(resolved_presentation.environment_style)
 	active_battle = CHESS_SCENE.instantiate()
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.player_color = "white"
+	active_battle.battle_presentation = resolved_presentation
 	if encounter_profile != null and encounter_profile.opponent_presentation != null:
 		active_battle.opponent_presentation = encounter_profile.opponent_presentation
 	active_battle.opponent_hand_style = encounter_profile.opponent_hand_style if encounter_profile != null else null
@@ -147,15 +150,26 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	await _fade_to(0.0)
 	is_transitioning = false
 
-func _create_battle_environment() -> void:
-	battle_environment = TextureRect.new()
+func _create_battle_environment(style: ChessEnvironmentVisualStyle) -> void:
+	battle_environment = ChessEnvironmentSurface.new()
 	battle_environment.name = "BattleEnvironment"
-	battle_environment.texture = BATTLE_BACKGROUND_TEXTURE
-	battle_environment.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	battle_environment.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	battle_environment.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	active_content.add_child(battle_environment)
-	battle_environment.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	battle_environment.set_meta("environment_style", style)
+	_layout_battle_environment()
+
+
+func _layout_battle_environment() -> void:
+	if not is_instance_valid(battle_environment):
+		return
+	var style := battle_environment.get_meta("environment_style", null) as ChessEnvironmentVisualStyle
+	if style != null:
+		battle_environment.configure(get_viewport().get_visible_rect().size, style)
+
+
+func _resolve_battle_presentation(encounter_profile: ChessEncounterProfile) -> ChessBattlePresentationProfile:
+	if encounter_profile != null and encounter_profile.battle_presentation != null:
+		return encounter_profile.battle_presentation
+	return DEFAULT_BATTLE_PRESENTATION
 
 func _create_fixed_battle_frame() -> void:
 	battle_frame = SubViewportContainer.new()

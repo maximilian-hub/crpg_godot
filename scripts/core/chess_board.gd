@@ -2,6 +2,8 @@
 extends Node2D
 class_name ChessBoardView
 
+const BoardMaterialSurface := preload("res://scripts/view/chess_board_material_surface.gd")
+
 ## This node serves as the main View component of the chess game.
 # It receives signals from the Model,
 # and renders the scene accordingly.
@@ -77,6 +79,7 @@ var active_loop_player: AudioStreamPlayer
 @onready var aura_loop_player = AudioStreamPlayer.new()
 @onready var powerdown_player = AudioStreamPlayer.new()
 @onready var board_body: Node2D = $BoardBody
+@onready var material_surface: MeshInstance2D = $BoardBody/MaterialSurface
 @onready var near_hand_rig: ChessHandRig = (get_node_or_null("NearHandRig") if has_node("NearHandRig") else get_node_or_null("PlayerHandRig")) as ChessHandRig
 @onready var far_hand_rig: ChessHandRig = get_node_or_null("FarHandRig") as ChessHandRig
 ## Compatibility alias for developer labs and older focused tests. Shipping
@@ -200,6 +203,7 @@ func _layout_board() -> void:
 	for square in $Squares.get_children():
 		square.configure_geometry(square.coordinate, projection.get_cell_polygon(square.coordinate))
 		square.set_color(get_square_color(square.coordinate.x, square.coordinate.y))
+		square.set_surface_visible(not _uses_material_surface())
 	for piece in $Pieces.get_children():
 		piece.position = grid_to_screen(piece.coordinate.x, piece.coordinate.y)
 		piece.scale = Vector2.ONE * get_world_scale()
@@ -267,12 +271,15 @@ func _layout_board_body() -> void:
 			projection.get_presentation_scale(),
 			visual_style
 		)
+	if material_surface != null:
+		material_surface.configure(projection, visual_style)
 
 func draw_square(row: int, col: int):
 	var squares = $Squares
 	var square: SquareView = square_scene.instantiate()
 	var square_color = get_square_color(row, col)
 	square.set_color(square_color)
+	square.set_surface_visible(not _uses_material_surface())
 	square.configure_geometry(
 		Vector2i(row, col),
 		projection.get_cell_polygon(Vector2i(row, col))
@@ -283,6 +290,9 @@ func draw_square(row: int, col: int):
 	square.editor_pointer_exited.connect(func(coord: Vector2i): editor_square_exited.emit(coord))
 	square.z_index = -2
 	squares.add_child(square)
+
+func _uses_material_surface() -> bool:
+	return visual_style != null and bool(visual_style.material_surface_enabled)
 
 func _on_square_selected(coordinate: Vector2i) -> void:
 	square_selected.emit(coordinate)

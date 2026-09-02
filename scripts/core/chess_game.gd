@@ -13,6 +13,7 @@ signal white_activation_completed()
 const OpeningDirector := preload("res://scripts/view/chess_battle_opening_director.gd")
 const DEFAULT_PLAYER_PRESENTATION := preload("res://assets/player_army_presentation.tres")
 const DEFAULT_OPPONENT_PRESENTATION := preload("res://assets/opponent_army_presentation.tres")
+const DEFAULT_BATTLE_PRESENTATION := preload("res://assets/boards/presentations/default_battle_presentation.tres")
 
 enum ControlMode {
 	CPU_VS_CPU,
@@ -30,6 +31,7 @@ enum ControlMode {
 @export var opponent_hand_style: Resource
 @export var player_presentation: Resource
 @export var opponent_presentation: Resource
+@export var battle_presentation: ChessBattlePresentationProfile
 @export var play_opening_presentation := true
 var completed_player_result: String = ""
 var opening_director: ChessBattleOpeningDirector
@@ -46,11 +48,14 @@ var opening_pending: bool:
 
 func _ready() -> void:
 	player_color = _normalize_color(player_color)
+	if battle_presentation == null:
+		battle_presentation = DEFAULT_BATTLE_PRESENTATION
 	if player_presentation == null:
 		player_presentation = DEFAULT_PLAYER_PRESENTATION
 	if opponent_presentation == null:
 		opponent_presentation = DEFAULT_OPPONENT_PRESENTATION
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
+	_apply_battle_presentation(board_view)
 	_apply_army_presentations(board_view)
 	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter
 	if adapter != null:
@@ -186,6 +191,11 @@ func _apply_army_presentations(board_view: ChessBoardView) -> void:
 		board_view.set_hand_styles(player_style, opponent_style)
 	else:
 		board_view.set_hand_styles(opponent_style, player_style)
+
+
+func _apply_battle_presentation(board_view: ChessBoardView) -> void:
+	if board_view != null and battle_presentation != null and battle_presentation.board_style != null:
+		board_view.visual_style = battle_presentation.board_style
 
 
 func _layout_side_ui(viewing_color: String) -> void:

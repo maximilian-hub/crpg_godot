@@ -26,6 +26,9 @@ func configure_geometry(model_coordinate: Vector2i, points: PackedVector2Array) 
 func set_color(color: Color) -> void:
 	$Surface.color = color
 
+func set_surface_visible(value: bool) -> void:
+	$Surface.visible = value
+
 func highlight() -> void:
 	$Highlight.visible = true
 

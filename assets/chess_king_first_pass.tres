@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
 [ext_resource type="Script" uid="uid://bjplfx6h5sa57" path="res://scripts/view/chess_king_activation_profile.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/view/chess_magical_move_profile.gd" id="4"]
-[ext_resource type="Resource" path="res://assets/chess_king_auras.tres" id="5"]
+[ext_resource type="Resource" uid="uid://csre3s1oq46ch" path="res://assets/chess_king_auras.tres" id="5"]
 
 [sub_resource type="Resource" id="Activation"]
 script = ExtResource("3")

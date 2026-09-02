@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="ChessBoardVisualStyle" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/view/chess_board_visual_style.gd" id="1_style"]
+[ext_resource type="Resource" path="res://assets/chess_board_default_sounds.tres" id="2_sounds"]
+[ext_resource type="Texture2D" path="res://assets/boards/materials/ivory_marble_128_v2.png" id="3_ivory"]
+[ext_resource type="Texture2D" path="res://assets/boards/materials/burgundy_marble_128_v2.png" id="4_burgundy"]
+[ext_resource type="Texture2D" path="res://assets/boards/materials/dark_wood_frame_128_v2.png" id="5_frame"]
+
+[resource]
+script = ExtResource("1_style")
+interaction_sounds = ExtResource("2_sounds")
+light_square_color = Color(0.847059, 0.776471, 0.627451, 1)
+dark_square_color = Color(0.501961, 0.376471, 0.278431, 1)
+material_surface_enabled = true
+light_square_texture = ExtResource("3_ivory")
+dark_square_texture = ExtResource("4_burgundy")
+material_texture_scale = 0.75
+material_texture_strength = 1.0
+material_light_brightness = 0.85
+material_variation_strength = 0.06
+material_procedural_detail = 0.0
+material_seam_width = 0.0
+material_seam_color = Color(0.12, 0.08, 0.06, 0.45)
+frame_top_color = Color(0.290196, 0.176471, 0.109804, 1)
+frame_material_enabled = true
+frame_top_texture = ExtResource("5_frame")
+frame_edge_texture = ExtResource("5_frame")
+frame_material_texture_scale = 0.35
+frame_material_grain_tightness = 0.5
+frame_material_texture_strength = 1.0
+frame_material_brightness = 1.0
+frame_material_edge_brightness = 0.63
+frame_material_procedural_detail = 0.74
+frame_front_color = Color(0.184314, 0.101961, 0.0705882, 1)
+frame_side_color = Color(0.227451, 0.129412, 0.0862745, 1)
+shadow_color = Color(0, 0, 0, 0.8)
+board_shadow_enabled = true
+reference_frame_width = 64.0
+reference_thickness = 48.0
+reference_shadow_offset = Vector2(9, 7)
+reference_shadow_softness = 16.0

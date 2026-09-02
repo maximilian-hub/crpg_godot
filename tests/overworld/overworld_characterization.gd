@@ -208,8 +208,11 @@ func _test_main_starts_in_overworld() -> void:
 		await get_tree().process_frame
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
-	var battle_environment := main.active_content.get_node("BattleEnvironment") as TextureRect
-	_check(battle_environment.size == main.get_viewport().get_visible_rect().size, "battle environment fills native window space")
+	var battle_environment := main.active_content.get_node("BattleEnvironment") as ChessEnvironmentSurface
+	var environment_quad := battle_environment.mesh as QuadMesh
+	_check(environment_quad != null and environment_quad.size == main.get_viewport().get_visible_rect().size, "battle environment fills native window space")
+	_check(battle_environment.z_index >= 0, "battle environment renders above Main's flat fallback background")
+	_check(main.active_battle.battle_presentation == GameFlow.DEFAULT_BATTLE_PRESENTATION and battle_board_style(main).material_surface_enabled, "battles without an override use the promoted marble-and-walnut presentation")
 	_check(main.battle_frame == null and main.battle_viewport == null, "fluid battle does not create a fixed-resolution frame")
 	_check(main.active_battle.get_parent() == main.active_content, "fluid chess game renders directly in native window space")
 	var battle_board := main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
@@ -270,11 +273,22 @@ func _test_main_starts_in_overworld() -> void:
 	var fixed_viewport := fixed_frame.get_node("BattleViewport") as SubViewport
 	var fixed_board := fixed_main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	_check(fixed_main.active_battle.get_parent() == fixed_viewport, "fixed comparison mode retains the logical battle viewport")
+	var fixed_environment_quad := fixed_main.battle_environment.mesh as QuadMesh
+	_check(fixed_environment_quad != null and fixed_environment_quad.size == fixed_main.get_viewport().get_visible_rect().size, "fixed comparison mode keeps the environment outside and across the full battle viewport")
 	_check(fixed_viewport.physics_object_picking, "fixed comparison viewport retains square picking")
 	_check(not fixed_board.scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
 	_check(fixed_main.active_battle.opponent_presentation != null and fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile uses the scene's default opponent presentation")
+	var override_profile := load("res://assets/boards/presentations/legacy_flat_battle_presentation.tres") as ChessBattlePresentationProfile
+	var override_encounter := ChessEncounterProfile.new()
+	override_encounter.battle_presentation = override_profile
+	_check(fixed_main._resolve_battle_presentation(override_encounter) == override_profile and not override_profile.board_style.material_surface_enabled and override_profile.environment_style.surface_texture.resource_path.ends_with("woodtile.png"), "encounters can select the preserved legacy presentation without changing chess rules")
 	fixed_main.queue_free()
 	await get_tree().process_frame
+
+
+func battle_board_style(main: GameFlow) -> ChessBoardVisualStyle:
+	var board := main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
+	return board.visual_style as ChessBoardVisualStyle
 
 func _test_edge_barriers(overworld: Overworld, player: OverworldPlayer) -> void:
 	var grid := overworld.collision_grid

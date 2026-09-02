@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ChessEnvironmentVisualStyle" load_steps=3 format=3 uid="uid://dwgwlkirjbbp3"]
+
+[ext_resource type="Script" path="res://scripts/view/chess_environment_visual_style.gd" id="1_style"]
+[ext_resource type="Texture2D" uid="uid://c8o4ophr6tfpe" path="res://assets/boards/environments/portable_walnut_table_256_v2.png" id="2_table"]
+
+[resource]
+script = ExtResource("1_style")
+texture_enabled = true
+flat_color = Color(0.0901961, 0.0745098, 0.109804, 1)
+surface_texture = ExtResource("2_table")
+texture_scale = 3.7
+texture_strength = 1.0
+brightness = 1.26
+tint = Color(1, 0.941176, 0.87451, 1)

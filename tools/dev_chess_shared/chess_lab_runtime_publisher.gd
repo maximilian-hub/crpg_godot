@@ -6,6 +6,8 @@ const AuraCatalog := preload("res://scripts/view/chess_king_aura_catalog.gd")
 const KING_RUNTIME_PATH := "res://assets/chess_king_first_pass.tres"
 const AURA_RUNTIME_PATH := "res://assets/chess_king_auras.tres"
 const SETUP_RUNTIME_PATH := "res://assets/chess_setup_first_pass.tres"
+const BOARD_RUNTIME_PATH := "res://assets/boards/presentations/burgundy_marble_board.tres"
+const ENVIRONMENT_RUNTIME_PATH := "res://assets/boards/presentations/portable_walnut_environment.tres"
 
 
 static func publish_activation_profile(
@@ -90,6 +92,65 @@ static func publish_setup_profile(
 	if error != OK:
 		return _failure("Could not publish the setup presentation (error %d)." % error)
 	return _success(target_path)
+
+
+static func publish_battle_presentation(
+		board_style: ChessBoardVisualStyle,
+		environment_style: ChessEnvironmentVisualStyle,
+		board_target_path := BOARD_RUNTIME_PATH,
+		environment_target_path := ENVIRONMENT_RUNTIME_PATH
+	) -> Dictionary:
+	var validation_error := validate_battle_presentation(board_style, environment_style)
+	if not validation_error.is_empty():
+		return _failure(validation_error)
+	var board_target: ChessBoardVisualStyle
+	if ResourceLoader.exists(board_target_path):
+		board_target = ResourceLoader.load(board_target_path, "ChessBoardVisualStyle", ResourceLoader.CACHE_MODE_IGNORE) as ChessBoardVisualStyle
+	if board_target == null:
+		board_target = ChessBoardVisualStyle.new()
+	_copy_storage_properties(board_style, board_target)
+	var environment_target: ChessEnvironmentVisualStyle
+	if ResourceLoader.exists(environment_target_path):
+		environment_target = ResourceLoader.load(environment_target_path, "ChessEnvironmentVisualStyle", ResourceLoader.CACHE_MODE_IGNORE) as ChessEnvironmentVisualStyle
+	if environment_target == null:
+		environment_target = ChessEnvironmentVisualStyle.new()
+	_copy_storage_properties(environment_style, environment_target)
+	var board_error := ResourceSaver.save(board_target, board_target_path)
+	if board_error != OK:
+		return _failure("Could not publish the board style (error %d)." % board_error)
+	var environment_error := ResourceSaver.save(environment_target, environment_target_path)
+	if environment_error != OK:
+		return _failure("Published the board style, but could not publish the environment style (error %d)." % environment_error)
+	return {
+		"ok": true,
+		"message": "Published board to %s\nand environment to %s" % [
+			ProjectSettings.globalize_path(board_target_path),
+			ProjectSettings.globalize_path(environment_target_path),
+		],
+		"board_path": board_target_path,
+		"environment_path": environment_target_path,
+	}
+
+
+static func validate_battle_presentation(board_style: ChessBoardVisualStyle, environment_style: ChessEnvironmentVisualStyle) -> String:
+	if board_style == null or environment_style == null:
+		return "Both board and environment styles are required."
+	if board_style.material_surface_enabled and (board_style.light_square_texture == null or board_style.dark_square_texture == null):
+		return "The material board requires both light and dark square textures."
+	if board_style.frame_material_enabled and (board_style.frame_top_texture == null or board_style.frame_edge_texture == null):
+		return "The material frame requires both top and edge textures."
+	if environment_style.texture_enabled and environment_style.surface_texture == null:
+		return "The textured environment requires a surface texture."
+	return ""
+
+
+static func _copy_storage_properties(source: Resource, target: Resource) -> void:
+	for property in source.get_property_list():
+		var property_name: StringName = property.name
+		if property_name in [&"script", &"resource_path", &"resource_name", &"resource_local_to_scene"]:
+			continue
+		if (int(property.usage) & PROPERTY_USAGE_STORAGE) != 0:
+			target.set(property_name, source.get(property_name))
 
 
 static func validate_setup_profile(profile: ChessArmySetupProfile) -> String:
