@@ -22,6 +22,13 @@ class_name ChessBoardVisualStyle
 		dark_square_color = value
 		emit_changed()
 
+## Places each piece's ground-contact origin between the geometric center of
+## its projected square (0.0) and that square's viewer-facing edge (1.0).
+@export_range(0.0, 1.0, 0.01) var piece_forward_bias := 0.35:
+	set(value):
+		piece_forward_bias = clampf(value, 0.0, 1.0)
+		emit_changed()
+
 @export var material_surface_enabled := false:
 	set(value):
 		material_surface_enabled = value

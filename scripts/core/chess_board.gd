@@ -45,10 +45,18 @@ signal editor_square_exited(coordinate: Vector2i)
 	set(value):
 		vertical_center_ratio = value
 		_request_layout()
-@export_range(0.0, 0.25, 0.01) var piece_forward_bias := 0.35: # adjust this for piece placement
+var _piece_forward_bias_fallback := 0.35
+## Compatibility proxy. Authored placement now belongs to visual_style so the
+## lab and runtime board necessarily consume the same published value.
+var piece_forward_bias: float:
+	get:
+		return visual_style.piece_forward_bias if visual_style != null else _piece_forward_bias_fallback
 	set(value):
-		piece_forward_bias = value
-		_request_layout()
+		if visual_style != null:
+			visual_style.piece_forward_bias = value
+		else:
+			_piece_forward_bias_fallback = clampf(value, 0.0, 1.0)
+			_request_layout()
 @export var scale_world_with_projection := false:
 	set(value):
 		scale_world_with_projection = value

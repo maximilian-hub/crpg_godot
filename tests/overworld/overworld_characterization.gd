@@ -211,7 +211,7 @@ func _test_main_starts_in_overworld() -> void:
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as ChessEnvironmentSurface
 	var environment_quad := battle_environment.mesh as QuadMesh
 	_check(environment_quad != null and environment_quad.size == main.get_viewport().get_visible_rect().size, "battle environment fills native window space")
-	_check(battle_environment.z_index >= 0, "battle environment renders above Main's flat fallback background")
+	_check(main.get_node("Background").z_index < battle_environment.z_index, "battle environment renders above Main's emergency flat background")
 	_check(main.active_battle.battle_presentation == GameFlow.DEFAULT_BATTLE_PRESENTATION and battle_board_style(main).material_surface_enabled, "battles without an override use the promoted marble-and-walnut presentation")
 	_check(main.battle_frame == null and main.battle_viewport == null, "fluid battle does not create a fixed-resolution frame")
 	_check(main.active_battle.get_parent() == main.active_content, "fluid chess game renders directly in native window space")

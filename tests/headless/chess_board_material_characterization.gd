@@ -52,6 +52,7 @@ func _ready() -> void:
 	add_child(lab)
 	await get_tree().process_frame
 	_check(lab.environment_surface.visible and lab.environment_surface.mesh is QuadMesh, "Board Lab presents its replaceable environment through a viewport-filling surface")
+	_check(lab.environment_surface.z_index < lab.board_body.get_node("ShadowSoft").z_index, "Board Lab keeps the environment behind every physical-board layer")
 	lab.environment_style.texture_enabled = false
 	_check(lab.environment_surface.visible and not bool(lab.environment_surface.surface_material.get_shader_parameter("use_texture")), "Disabling environment texture preserves the flat-color fallback")
 	lab.environment_style.texture_scale = 2.25
@@ -87,6 +88,11 @@ func _ready() -> void:
 	_check(is_equal_approx(lab.visual_style.shadow_color.a, 0.48) and lab.visual_style.reference_shadow_offset == Vector2(7.0, 19.0), "Board Lab exposes shadow opacity and two-axis placement")
 	lab.visual_style.reference_shadow_softness = 27.0
 	_check(is_equal_approx(lab.visual_style.reference_shadow_softness, 27.0), "Board Lab exposes contact-shadow softness")
+	var placement_coordinate := Vector2i(5, 3)
+	var centered_anchor := lab.projection.get_piece_ground_anchor(placement_coordinate, 0.0)
+	lab.visual_style.piece_forward_bias = 0.62
+	var tuned_anchor := lab.projection.get_piece_ground_anchor(placement_coordinate, lab.visual_style.piece_forward_bias)
+	_check(tuned_anchor.y > centered_anchor.y and is_equal_approx(lab.visual_style.piece_forward_bias, 0.62), "Board Lab tunes piece ground contact toward the viewer through the shared board style")
 	var board_publish_path := "user://chess_board_publish_characterization.tres"
 	var environment_publish_path := "user://chess_environment_publish_characterization.tres"
 	lab.visual_style.material_texture_scale = 1.37
@@ -97,7 +103,7 @@ func _ready() -> void:
 	var published_board := ResourceLoader.load(board_publish_path, "ChessBoardVisualStyle", ResourceLoader.CACHE_MODE_IGNORE) as ChessBoardVisualStyle
 	var published_environment := ResourceLoader.load(environment_publish_path, "ChessEnvironmentVisualStyle", ResourceLoader.CACHE_MODE_IGNORE) as ChessEnvironmentVisualStyle
 	_check(publish_result.ok and published_board != null and published_environment != null, "Board Lab publishes both named presentation resources together")
-	_check(is_equal_approx(published_board.material_texture_scale, 1.37) and published_board.reference_shadow_offset == Vector2(8.0, 6.0) and published_board.light_square_texture.resource_path == lab.visual_style.light_square_texture.resource_path, "Board publishing preserves material, shadow, and texture identity")
+	_check(is_equal_approx(published_board.material_texture_scale, 1.37) and is_equal_approx(published_board.piece_forward_bias, 0.62) and published_board.reference_shadow_offset == Vector2(8.0, 6.0) and published_board.light_square_texture.resource_path == lab.visual_style.light_square_texture.resource_path, "Board publishing preserves placement, material, shadow, and texture identity")
 	_check(is_equal_approx(published_environment.texture_scale, 3.25) and published_environment.tint.is_equal_approx(Color("fff0df")) and published_environment.surface_texture.resource_path == lab.environment_style.surface_texture.resource_path, "Environment publishing preserves texture grading independently")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(board_publish_path))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(environment_publish_path))

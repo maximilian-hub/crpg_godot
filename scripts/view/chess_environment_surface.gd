@@ -9,11 +9,10 @@ var surface_material := ShaderMaterial.new()
 func _ready() -> void:
 	surface_material.shader = SURFACE_SHADER
 	material = surface_material
-	# The lab adds this surface before its board, and GameFlow adds ActiveContent
-	# after Main's flat fallback background. Keeping the environment at ordinary
-	# canvas depth therefore places it correctly in both contexts. A negative
-	# z-index would put it behind Main/Background and make it invisible in-game.
-	z_index = 0
+	# Board surfaces, rails, thickness, and shadows intentionally occupy several
+	# negative z-indices. The environment must sit behind all of them in both the
+	# lab and the game; Main's emergency flat background is placed farther back.
+	z_index = -100
 
 
 func configure(viewport_size: Vector2, style: ChessEnvironmentVisualStyle) -> void:

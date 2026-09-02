@@ -6,6 +6,7 @@
 script = ExtResource("1_jjgbg")
 
 [node name="Background" type="ColorRect" parent="."]
+z_index = -200
 texture_filter = 1
 anchors_preset = 15
 anchor_right = 1.0

@@ -11,6 +11,7 @@ script = ExtResource("1_style")
 interaction_sounds = ExtResource("2_sounds")
 light_square_color = Color(0.847059, 0.776471, 0.627451, 1)
 dark_square_color = Color(0.501961, 0.376471, 0.278431, 1)
+piece_forward_bias = 0.12
 material_surface_enabled = true
 light_square_texture = ExtResource("3_ivory")
 dark_square_texture = ExtResource("4_burgundy")

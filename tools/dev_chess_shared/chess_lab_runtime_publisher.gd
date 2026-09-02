@@ -108,7 +108,9 @@ static func publish_battle_presentation(
 		board_target = ResourceLoader.load(board_target_path, "ChessBoardVisualStyle", ResourceLoader.CACHE_MODE_IGNORE) as ChessBoardVisualStyle
 	if board_target == null:
 		board_target = ChessBoardVisualStyle.new()
-	_copy_storage_properties(board_style, board_target)
+	# Board sound authoring lives outside this lab. Preserve the runtime sound set
+	# rather than bundling a duplicated AudioStream graph into the .tres.
+	_copy_storage_properties(board_style, board_target, [&"interaction_sounds"])
 	var environment_target: ChessEnvironmentVisualStyle
 	if ResourceLoader.exists(environment_target_path):
 		environment_target = ResourceLoader.load(environment_target_path, "ChessEnvironmentVisualStyle", ResourceLoader.CACHE_MODE_IGNORE) as ChessEnvironmentVisualStyle
@@ -144,13 +146,18 @@ static func validate_battle_presentation(board_style: ChessBoardVisualStyle, env
 	return ""
 
 
-static func _copy_storage_properties(source: Resource, target: Resource) -> void:
+static func _copy_storage_properties(source: Resource, target: Resource, excluded: Array[StringName] = []) -> void:
 	for property in source.get_property_list():
 		var property_name: StringName = property.name
-		if property_name in [&"script", &"resource_path", &"resource_name", &"resource_local_to_scene"]:
+		if property_name in [&"script", &"resource_path", &"resource_name", &"resource_local_to_scene"] or property_name in excluded:
 			continue
 		if (int(property.usage) & PROPERTY_USAGE_STORAGE) != 0:
-			target.set(property_name, source.get(property_name))
+			var value: Variant = source.get(property_name)
+			# Imported project assets must remain external references. A pathless
+			# nested resource here usually means an older lab instance deep-cloned it.
+			if value is Resource and (value as Resource).resource_path.is_empty():
+				continue
+			target.set(property_name, value)
 
 
 static func validate_setup_profile(profile: ChessArmySetupProfile) -> String:

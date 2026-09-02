@@ -32,9 +32,11 @@ var publish_confirmation: ConfirmationDialog
 
 func _ready() -> void:
 	get_viewport().canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
-	visual_style = LAB_STYLE.duplicate(true) as ChessBoardVisualStyle
+	# Styles need an editable top-level clone, but imported textures and sound
+	# resources must remain external references when this look is published.
+	visual_style = LAB_STYLE.duplicate(false) as ChessBoardVisualStyle
 	visual_style.changed.connect(_refresh_board)
-	environment_style = ENVIRONMENT_STYLE.duplicate(true) as ChessEnvironmentVisualStyle
+	environment_style = ENVIRONMENT_STYLE.duplicate(false) as ChessEnvironmentVisualStyle
 	environment_style.changed.connect(_refresh_background)
 	environment_surface = ChessEnvironmentSurface.new()
 	environment_surface.name = "EnvironmentSurface"
@@ -80,6 +82,7 @@ func _build_controls() -> void:
 		piece_mode = index
 		_rebuild_pieces()
 		_refresh_status())
+	_add_slider(controls, "Piece forward", 0.0, 1.0, 0.01, visual_style.piece_forward_bias, func(value: float): visual_style.piece_forward_bias = value)
 	var material_version := _add_option(controls, "Material", ["Original downscale", "Posterized RPG"])
 	material_version.select(1)
 	material_version.item_selected.connect(_set_material_version)
@@ -291,7 +294,7 @@ func _rebuild_pieces() -> void:
 		var piece := PIECE_SCENE.instantiate() as PieceView
 		piece.set_model(model_piece)
 		piece.coordinate = model_piece.coordinate
-		piece.position = projection.get_piece_ground_anchor(model_piece.coordinate, 0.35)
+		piece.position = projection.get_piece_ground_anchor(model_piece.coordinate, visual_style.piece_forward_bias)
 		piece.scale = Vector2.ONE * world_scale
 		piece.z_index = projection.get_display_coordinate(model_piece.coordinate).x * ChessBoardView.BOARD_DEPTH_STRIDE
 		pieces.add_child(piece)

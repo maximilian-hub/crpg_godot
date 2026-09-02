@@ -8,6 +8,7 @@ script = ExtResource("1_style")
 interaction_sounds = ExtResource("2_sounds")
 light_square_color = Color(0.847059, 0.776471, 0.627451, 1)
 dark_square_color = Color(0.501961, 0.376471, 0.278431, 1)
+piece_forward_bias = 0.35
 frame_top_color = Color(0.290196, 0.176471, 0.109804, 1)
 frame_front_color = Color(0.184314, 0.101961, 0.0705882, 1)
 frame_side_color = Color(0.227451, 0.129412, 0.0862745, 1)
