@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="ChessEnvironmentVisualStyle" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="ChessEnvironmentVisualStyle" load_steps=3 format=3 uid="uid://b0hi7j5d0deam"]
 
 [ext_resource type="Script" path="res://scripts/view/chess_environment_visual_style.gd" id="1_style"]
-[ext_resource type="Texture2D" path="res://assets/boards/environments/portable_walnut_table_256_v2.png" id="2_table"]
+[ext_resource type="Texture2D" uid="uid://c8o4ophr6tfpe" path="res://assets/boards/environments/portable_walnut_table_256_v2.png" id="2_table"]
 
 [resource]
 script = ExtResource("1_style")

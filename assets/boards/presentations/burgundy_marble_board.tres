@@ -1,10 +1,10 @@
-[gd_resource type="Resource" script_class="ChessBoardVisualStyle" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="ChessBoardVisualStyle" load_steps=6 format=3 uid="uid://crgytil3a0fng"]
 
-[ext_resource type="Script" path="res://scripts/view/chess_board_visual_style.gd" id="1_style"]
-[ext_resource type="Resource" path="res://assets/chess_board_default_sounds.tres" id="2_sounds"]
-[ext_resource type="Texture2D" path="res://assets/boards/materials/ivory_marble_128_v2.png" id="3_ivory"]
-[ext_resource type="Texture2D" path="res://assets/boards/materials/burgundy_marble_128_v2.png" id="4_burgundy"]
-[ext_resource type="Texture2D" path="res://assets/boards/materials/dark_wood_frame_128_v2.png" id="5_frame"]
+[ext_resource type="Script" uid="uid://dxble8qrijmbl" path="res://scripts/view/chess_board_visual_style.gd" id="1_style"]
+[ext_resource type="Resource" uid="uid://b27w0mpafvjqe" path="res://assets/chess_board_default_sounds.tres" id="2_sounds"]
+[ext_resource type="Texture2D" uid="uid://qyywprdt40sk" path="res://assets/boards/materials/ivory_marble_128_v2.png" id="3_ivory"]
+[ext_resource type="Texture2D" uid="uid://c12tr2tura4a4" path="res://assets/boards/materials/burgundy_marble_128_v2.png" id="4_burgundy"]
+[ext_resource type="Texture2D" uid="uid://cx4djlik3muw4" path="res://assets/boards/materials/dark_wood_frame_128_v2.png" id="5_frame"]
 
 [resource]
 script = ExtResource("1_style")
