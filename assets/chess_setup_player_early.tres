@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessArmySetupProfile" load_steps=23 format=3 uid="uid://dvm2xdn7nue7j"]
+[gd_resource type="Resource" script_class="ChessArmySetupProfile" load_steps=23 format=3 uid="uid://oikofnwgr01f"]
 
 [ext_resource type="Script" uid="uid://bv2vxsebqarul" path="res://scripts/view/chess_army_setup_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://c340pr01kpmqt" path="res://scripts/view/chess_setup_cue.gd" id="1_qfngd"]
@@ -8,7 +8,7 @@
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 7)
 hand_side = 1
-gap_before = 0.08
+gap_before = 0.35
 
 [sub_resource type="Resource" id="Resource_pyu3l"]
 script = ExtResource("1_qfngd")
@@ -38,7 +38,7 @@ gap_before = 0.08
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 6)
 hand_side = 1
-gap_before = 0.08
+gap_before = 0.35
 
 [sub_resource type="Resource" id="Resource_by45i"]
 script = ExtResource("1_qfngd")
@@ -74,7 +74,7 @@ gap_before = 0.08
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 3)
 hand_side = 0
-gap_before = 0.08
+gap_before = 0.35
 
 [sub_resource type="Resource" id="Resource_u3p4k"]
 script = ExtResource("1_qfngd")
@@ -119,7 +119,7 @@ pickup_delay = 0.06
 entry_duration = 0.3
 entry_departure_handle = Vector2(-90, -180)
 entry_arrival_handle = Vector2(70, 110)
-placement_hold = 0.01
+placement_hold = 0.04
 release_hold = 0.01
 retreat_duration = 0.15
 retreat_departure_handle = Vector2(60, 100)
@@ -131,7 +131,7 @@ pickup_delay = 0.06
 entry_duration = 0.3
 entry_departure_handle = Vector2(-90, -180)
 entry_arrival_handle = Vector2(70, 110)
-placement_hold = 0.01
+placement_hold = 0.04
 release_hold = 0.01
 retreat_duration = 0.15
 retreat_departure_handle = Vector2(60, 100)
