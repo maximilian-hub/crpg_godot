@@ -2,6 +2,7 @@ extends Node
 class_name ChessPresentationAdapter
 
 const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
+const DEFAULT_KING_DEATH_PROFILE := preload("res://assets/chess_king_death.tres")
 
 const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
 const KingMagicController = preload("res://scripts/view/chess_king_magic_controller.gd")
@@ -27,12 +28,14 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var view: ChessBoardView
 @export var result_view: BattleResultView
 @export var presentation_policy: Resource
+@export var king_death_profile: Resource = DEFAULT_KING_DEATH_PROFILE
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
 var selection_effect_piece: ModelPiece = null
 var player_move_submission_active := false
 var silently_removed_piece_views: Dictionary = {}
+var persistent_king_corpses: Dictionary = {}
 var pending_attack_damage_visuals: Dictionary = {}
 var king_magic_controllers: Dictionary = {}
 var player_color := "white"
@@ -111,6 +114,7 @@ func _on_board_rebuilt(board: Array) -> void:
 	piece_views.clear()
 	necromancer_auras.clear()
 	silently_removed_piece_views.clear()
+	persistent_king_corpses.clear()
 	pending_attack_damage_visuals.clear()
 	selection_effect_piece = null
 	player_move_submission_active = false
@@ -179,10 +183,15 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 	gate.hold()
 	if defender is KingPiece and is_instance_valid(defender_node):
 		var defender_magic := _get_king_magic(defender)
-		var death_profile: Resource = defender_magic.profile.death_profile if defender_magic != null else KingDeathProfile.new()
+		var death_profile: Resource = king_death_profile if king_death_profile != null else KingDeathProfile.new()
 		if defender_magic != null: defender_magic.disable_effects()
 		var death_effect := view.create_king_death_effect(defender_node, death_profile)
-		var death_contact := func(): death_effect.play()
+		var death_contact := func():
+			# Lethal captures bypass ModelPiece.take_damage(), so reproduce the
+			# ordinary hit feedback explicitly at physical contact. The splatter
+			# scene owns the universal hurt sound as well as the blood animation.
+			view.spawn_splatter(defender_node)
+			death_effect.play()
 		if attacker is KingPiece:
 			var attacking_magic := _get_king_magic(attacker)
 			if attacking_magic != null:
@@ -193,7 +202,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 			await view.attack_piece_node_with_hand(attacker_node, from, to, death_contact)
 		if not death_effect.running and not death_effect.finished: death_effect.play()
 		if not death_effect.finished: await death_effect.completed
-		silently_removed_piece_views[defender] = true
+		persistent_king_corpses[defender] = true
 		gate.release()
 		return
 	if attacker is KingPiece:
@@ -253,7 +262,7 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 	pending_attack_damage_visuals.erase(piece)
 	var piece_node: Node = piece_views.get(piece)
 	var magic: Node = king_magic_controllers.get(piece)
-	var death_profile: Resource = magic.profile.death_profile if piece is KingPiece and is_instance_valid(magic) else null
+	var death_profile: Resource = king_death_profile if piece is KingPiece else null
 	king_magic_controllers.erase(piece)
 	if is_instance_valid(magic):
 		if piece is KingPiece: magic.disable_effects()
@@ -264,7 +273,11 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 		if not presentation_policy.should_animate():
 			view.remove_piece(piece_node)
 			return
-		if silently_removed_piece_views.has(piece):
+		if persistent_king_corpses.has(piece):
+			# The model no longer owns this piece, but its awakened body remains as
+			# inert stone presentation until the board is rebuilt or battle exits.
+			persistent_king_corpses.erase(piece)
+		elif silently_removed_piece_views.has(piece):
 			silently_removed_piece_views.erase(piece)
 			view.remove_piece(piece_node)
 		else:

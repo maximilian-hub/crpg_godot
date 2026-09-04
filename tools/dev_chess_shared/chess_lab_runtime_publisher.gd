@@ -6,6 +6,7 @@ const AuraCatalog := preload("res://scripts/view/chess_king_aura_catalog.gd")
 const KING_RUNTIME_PATH := "res://assets/chess_king_first_pass.tres"
 const PLAYER_KING_RUNTIME_PATH := KING_RUNTIME_PATH
 const HOOD_KING_RUNTIME_PATH := "res://assets/chess_king_hood.tres"
+const KING_DEATH_RUNTIME_PATH := "res://assets/chess_king_death.tres"
 const AURA_RUNTIME_PATH := "res://assets/chess_king_auras.tres"
 const SETUP_RUNTIME_PATH := "res://assets/chess_setup_first_pass.tres"
 const PLAYER_SETUP_RUNTIME_PATH := "res://assets/chess_setup_player_early.tres"
@@ -35,18 +36,14 @@ static func publish_activation_profile(
 	return _success(target_path, "activation ritual")
 
 
-static func publish_death_profile(death_profile: Resource, target_path := PLAYER_KING_RUNTIME_PATH) -> Dictionary:
+static func publish_death_profile(death_profile: Resource, target_path := KING_DEATH_RUNTIME_PATH) -> Dictionary:
 	if death_profile == null:
 		return _failure("A King death profile is required.")
-	var target := ResourceLoader.load(target_path, "ChessKingPresentationProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
-	if target == null:
-		return _failure("Could not load a King presentation profile from %s." % target_path)
 	var published_profile: Resource = death_profile.duplicate(true)
 	# Keep imported audio as an external project asset rather than embedding its
 	# byte stream into the runtime .tres.
 	published_profile.death_sound = death_profile.death_sound
-	target.death_profile = published_profile
-	var error := ResourceSaver.save(target, target_path)
+	var error := ResourceSaver.save(published_profile, target_path)
 	if error != OK:
 		return _failure("Could not publish the King death profile (error %d)." % error)
 	return _success(target_path, "King death profile")

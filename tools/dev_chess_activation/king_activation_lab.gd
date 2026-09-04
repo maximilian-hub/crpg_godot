@@ -675,7 +675,7 @@ func _request_publish_activation() -> void:
 	var aura_note := ""
 	if publish_aura_checkbox.button_pressed:
 		aura_note = "\n\nThe current Aura will also replace the universal %s Aura for both armies." % ChessPieceCatalog.get_definition(type_id).get("name", str(type_id))
-	publish_confirmation.dialog_text = "Publish the current activation ritual and choreography to the selected army target?\n\nThe magical movement and death profiles will be preserved.%s" % aura_note
+	publish_confirmation.dialog_text = "Publish the current activation ritual and choreography to the selected army target?\n\nThe universal magical movement will be preserved.%s" % aura_note
 	publish_confirmation.popup_centered()
 
 

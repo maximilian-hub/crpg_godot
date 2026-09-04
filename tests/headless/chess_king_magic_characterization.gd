@@ -19,6 +19,7 @@ func _ready() -> void:
 	var model: ChessBoardModel = game.model
 	var adapter: ChessPresentationAdapter = game.get_node("ChessPresentationAdapter")
 	var view: ChessBoardView = game.get_node("CanvasLayer/ChessBoard")
+	_check(adapter.king_death_profile.resource_path == "res://assets/chess_king_death.tres", "runtime resolves one universal King death profile independently of army activation choreography")
 	var white_king: KingPiece = model.get_king("white")
 	var black_king: KingPiece = model.get_king("black")
 	var white_magic: ChessKingMagicController = adapter.king_magic_controllers[white_king]
@@ -142,17 +143,22 @@ func _ready() -> void:
 	lethal_profile.red_blink_count = 1
 	lethal_profile.blink_on_duration = 0.01
 	lethal_profile.blink_off_duration = 0.01
-	lethal_profile.stone_hold_duration = 0.01
+	lethal_profile.pre_death_hold_duration = 0.01
 	lethal_profile.stone_fade_duration = 0.04
+	lethal_profile.tremor_slowdown_duration = 0.02
 	lethal_profile.rift_speed = 10000.0
-	black_magic.profile.death_profile = lethal_profile
+	adapter.king_death_profile = lethal_profile
 	var lethal_attacker: ModelPiece = model.board[7][0]
 	var lethal_attacker_view := adapter.get_piece_view(lethal_attacker) as PieceView
 	var lethal_origin := lethal_attacker_view.position
+	var lethal_hit_feedback := {"count": 0}
+	view.child_entered_tree.connect(func(child: Node):
+		if child.name == "BloodSplatter": lethal_hit_feedback.count += 1)
 	view.near_hand_rig.animation_duration_scale = 0.02
 	var lethal_gate := CompletionGate.new()
 	await adapter._on_piece_capture_committed(lethal_attacker, black_king, lethal_attacker.coordinate, black_king.coordinate, black_king.coordinate, lethal_gate)
 	_check(lethal_attacker_view.position.is_equal_approx(lethal_origin), "lethal King capture reuses the long-range attack slam and returns the attacker to its original square")
+	_check(lethal_hit_feedback.count == 1, "lethal King impact preserves the ordinary blood splatter and hurt-sound feedback")
 
 	var death_piece := preload("res://scenes/piece.tscn").instantiate() as PieceView
 	death_piece.set_model(ClassicKing.new("black", Vector2i.ZERO))
@@ -161,16 +167,26 @@ func _ready() -> void:
 	var death_profile := preload("res://scripts/view/chess_king_death_profile.gd").new()
 	death_profile.death_sound = null
 	death_profile.red_blink_count = 1
-	death_profile.blink_on_duration = 0.01
+	death_profile.blink_on_duration = 0.08
 	death_profile.blink_off_duration = 0.01
-	death_profile.stone_hold_duration = 0.01
+	death_profile.pre_death_hold_duration = 0.01
 	death_profile.stone_fade_duration = 0.04
+	death_profile.tremor_slowdown_duration = 0.02
+	death_profile.rift_frame_duration = 0.02
+	death_profile.rift_frame_growth = 0.1
 	death_profile.rift_speed = 10000.0
+	var expected_death_origin := death_piece.sprite.global_position
 	var death_effect := view.create_king_death_effect(death_piece, death_profile)
+	_check(death_effect.global_position.is_equal_approx(expected_death_origin), "King death circles share the activation climax beam's sprite-center target")
 	death_effect.play()
-	await get_tree().create_timer(0.035).timeout
+	await get_tree().create_timer(0.02).timeout
+	_check(death_piece.sprite.material is ShaderMaterial and (death_piece.sprite.material as ShaderMaterial).shader.resource_path == "res://effects/chess_king_death_flash.gdshader", "King death red-on interval uses the dedicated visible flash material")
+	await get_tree().create_timer(0.085).timeout
 	_check(death_effect.rift_circles.size() == 8, "King death emits exactly eight radial rift circles")
 	_check((death_effect.rift_circles[0].material as ShaderMaterial).shader.resource_path == "res://effects/chess_lightning_rift.gdshader", "King death circles reveal the stationary chessboard-rift pattern")
+	var first_circle_scale: Vector2 = death_effect.rift_circles[0].scale
+	await get_tree().create_timer(0.025).timeout
+	_check(death_effect.rift_circles[0].scale != first_circle_scale, "King death rift circles cycle through three expanding animation frames")
 	var endpoints_offscreen := true
 	for index in range(8):
 		var direction := Vector2.RIGHT.rotated(TAU * float(index) / 8.0)
@@ -180,7 +196,7 @@ func _ready() -> void:
 	_check(endpoints_offscreen, "every constant-speed death circle targets a point fully beyond the viewport")
 	if not death_effect.finished: await death_effect.completed
 	await get_tree().process_frame
-	_check(not is_instance_valid(death_piece), "King view survives the blink and stone transition, then leaves with the completed death effect")
+	_check(is_instance_valid(death_piece) and death_piece.sprite.material is ShaderMaterial and (death_piece.sprite.material as ShaderMaterial).shader.resource_path == "res://effects/chess_stone_piece.gdshader" and death_piece.sprite.self_modulate.a > 0.99, "Defeated King remains visibly on the board as inert stone")
 
 	viewport.queue_free()
 	await get_tree().process_frame

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ChessKingDeathProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/view/chess_king_death_profile.gd" id="1_profile"]
+[ext_resource type="AudioStream" path="res://assets/audio/chess/kings/death/king_death.wav" id="2_sound"]
+
+[resource]
+script = ExtResource("1_profile")
+red_blink_count = 3
+blink_on_duration = 0.08
+blink_off_duration = 0.06
+pre_death_hold_duration = 1.0
+stone_fade_duration = 0.05
+tremor_interval = 0.07
+tremor_max_pixels = 1
+tremor_slowdown_duration = 0.01
+rift_circle_count = 8
+rift_radius = 7.0
+rift_speed = 120.0
+rift_frame_duration = 0.2
+rift_frame_growth = 0.12
+checker_size = 8.0
+death_sound = ExtResource("2_sound")
+sound_volume_db = -3.0
