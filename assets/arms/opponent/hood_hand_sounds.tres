@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ChessHandSoundSet" load_steps=4 format=3 uid="uid://ckc2r1ubuu660"]
+
+[ext_resource type="AudioStream" uid="uid://dh0xp1f0g84ii" path="res://assets/audio/hands/hood/grab.wav" id="1_grab"]
+[ext_resource type="Script" uid="uid://dy7yp2abxotow" path="res://scripts/view/chess_hand_sound_set.gd" id="1_sound_set"]
+[ext_resource type="AudioStream" uid="uid://b5d1o1652dswl" path="res://assets/audio/hands/hood/release.wav" id="2_release"]
+
+[resource]
+script = ExtResource("1_sound_set")
+grab = ExtResource("1_grab")
+grab_volume_db = -6.0
+grab_pitch_variation = 0.05
+release = ExtResource("2_release")
+release_volume_db = -7.0
+release_pitch_variation = 0.05

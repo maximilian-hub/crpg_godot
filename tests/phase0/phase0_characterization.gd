@@ -142,7 +142,8 @@ func _test_player_hand_move_presentation() -> void:
 	_expect(rig.get_node("ReleaseSound").stream == sound_set.release, "ordinary movement plays its release sound")
 	_expect(rig.get_node("CapturePickupSound").stream == null, "ordinary movement does not play a capture pickup sound")
 	_expect(rig.get_node("SlideSound").stream == board_sound_set.default_slide, "sliding movement uses the board's default slide sound")
-	_expect(rig.get_node("GrabSound").bus == &"SFX" and is_equal_approx(rig.get_node("GrabSound").volume_db, sound_set.volume_db), "hand sounds use the SFX bus and configured volume")
+	_expect(rig.get_node("GrabSound").bus == &"SFX" and is_equal_approx(rig.get_node("GrabSound").volume_db, sound_set.grab_volume_db), "grab sounds use the SFX bus and their independently configured volume")
+	_expect(rig.get_node("ReleaseSound").bus == &"SFX" and is_equal_approx(rig.get_node("ReleaseSound").volume_db, sound_set.release_volume_db), "release sounds use the SFX bus and their independently configured volume")
 	_expect(rig.get_node("GrabSound").pitch_scale >= 0.92 and rig.get_node("GrabSound").pitch_scale <= 1.08, "hand sound pitch stays inside its configured variation")
 	var expected_rest_position: Vector2 = rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)
 	_expect(not rig.visible and not rig.is_animating and rig.position.is_equal_approx(expected_rest_position), "player hand retreats to its durable lower-right rest position")
@@ -351,9 +352,11 @@ func _test_surrounded_knight_depth_presentation() -> void:
 func _make_test_hand_sound_set() -> ChessHandSoundSet:
 	var sound_set := ChessHandSoundSet.new()
 	sound_set.grab = AudioStreamWAV.new()
+	sound_set.grab_volume_db = -7.0
+	sound_set.grab_pitch_variation = 0.08
 	sound_set.release = AudioStreamWAV.new()
-	sound_set.volume_db = -7.0
-	sound_set.pitch_variation = 0.08
+	sound_set.release_volume_db = -7.0
+	sound_set.release_pitch_variation = 0.08
 	return sound_set
 
 

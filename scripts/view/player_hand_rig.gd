@@ -721,10 +721,11 @@ func _play_hand_sound(cue: StringName) -> void:
 		SOUND_GRAB:
 			player = grab_sound
 			stream = sound_set.grab
+			_play_one_shot(player, stream, sound_set.grab_volume_db, sound_set.grab_pitch_variation)
 		SOUND_RELEASE:
 			player = release_sound
 			stream = sound_set.release
-	_play_one_shot(player, stream, sound_set.volume_db, sound_set.pitch_variation)
+			_play_one_shot(player, stream, sound_set.release_volume_db, sound_set.release_pitch_variation)
 
 
 func _play_board_sound(cue: StringName) -> void:
