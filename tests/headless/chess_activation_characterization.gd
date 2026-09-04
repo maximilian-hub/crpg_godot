@@ -45,8 +45,20 @@ func _ready() -> void:
 	lab.choreography_selector.select(1)
 	lab._select_choreography(1)
 	var hood_runtime := ResourceLoader.load(RuntimePublisher.HOOD_KING_RUNTIME_PATH, "", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
-	_check(lab.sequence.get_script().resource_path == "res://scripts/view/chess_hood_activation_sequence.gd" and is_equal_approx(lab.activation_profile.buildup_duration, hood_runtime.activation_profile.buildup_duration), "Hood Decisive selector loads and previews the actual tuned runtime choreography")
+	_check(lab.choreography_selector.get_item_text(1) == "Decisive" and lab.sequence.get_script().resource_path == "res://scripts/view/chess_hood_activation_sequence.gd" and is_equal_approx(lab.activation_profile.buildup_duration, hood_runtime.activation_profile.buildup_duration), "Decisive selector loads and previews the actual tuned runtime choreography")
 	_check(lab.preview_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "Hood choreography selection also presents the Hood hand identity")
+	var decisive_cues: Array[StringName] = []
+	lab.sequence.audio_cue.connect(func(cue: StringName): decisive_cues.append(cue))
+	lab.sequence.restart(false)
+	lab.sequence._enter_phase(lab.sequence.Phase.RESPONSE)
+	_check(&"crackle" not in decisive_cues and lab.sequence.crackle_hand_started_at < 0.0 and &"king_hum" in decisive_cues, "Decisive begins its sympathetic charge without a response-opening crackle")
+	var decisive_boundaries: PackedFloat32Array = lab.sequence._phase_boundaries()
+	lab.sequence.elapsed = decisive_boundaries[1] + lab.activation_profile.invocation_duration * 0.5
+	lab.sequence._apply_visual_state()
+	_check(lab.hand_aura.particle_power > 0.0 and is_equal_approx(lab.hand_aura.particle_power, lab.hand_aura.silhouette_power), "Decisive hand particles rise with its silhouette immediately after lock-in")
+	lab.sequence.elapsed = lerpf(decisive_boundaries[2], decisive_boundaries[4], 0.75)
+	lab.sequence._apply_visual_state()
+	_check(lab.hand_aura.speed_multiplier > 1.0 and is_equal_approx(lab.hand_aura.speed_multiplier, lab.king_aura.speed_multiplier) and is_equal_approx(lab.king_aura.particle_power, lab.king_aura.silhouette_power), "Decisive accelerates the hand and King auras sympathetically toward climax")
 	lab.choreography_selector.select(0)
 	lab._copy_properties(default_activation, lab.activation_profile)
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER

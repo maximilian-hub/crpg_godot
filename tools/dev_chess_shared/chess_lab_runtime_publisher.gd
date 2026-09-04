@@ -69,7 +69,7 @@ static func publish_universal_movement_profile(movement_profile: Resource) -> Di
 			return _failure("Could not publish universal King movement to %s (error %d)." % [path, error])
 	return {
 		"ok": true,
-		"message": "Published universal King movement to Player Standard and Hood Decisive runtime assets.",
+		"message": "Published universal King movement to Player Standard and Decisive runtime assets.",
 	}
 
 

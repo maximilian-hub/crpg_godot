@@ -230,7 +230,8 @@ func _enter_phase(next_phase: int) -> void:
 		Phase.INVOCATION:
 			_play_loop(&"hand_hum")
 		Phase.RESPONSE:
-			_fire_crackle(0)
+			if _uses_response_crackle():
+				_fire_crackle(0)
 			_play_loop(&"king_hum")
 		Phase.BUILDUP:
 			pass
@@ -268,6 +269,10 @@ func _enter_phase(next_phase: int) -> void:
 			lightning.clear()
 			_stop_all_audio()
 			activation_completed.emit()
+
+
+func _uses_response_crackle() -> bool:
+	return true
 
 
 func _apply_visual_state() -> void:

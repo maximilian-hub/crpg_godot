@@ -34,7 +34,7 @@ class_name ChessKingActivationProfile
 @export_range(0.0, 240.0, 1.0) var crackle_hand_shift_distance := 48.0
 @export_range(0.0, 0.5, 0.01) var crackle_hand_hold_duration := 0.05
 @export_range(0.01, 1.0, 0.01) var crackle_hand_return_duration := 0.16
-@export_range(1.0, 40.0, 0.5) var beam_width := 13.0
+@export_range(1.0, 500.0, 0.5) var beam_width := 13.0
 @export_range(1, 12, 1) var climax_beam_count := 4
 @export_range(0.0, 240.0, 1.0) var climax_hand_shift_distance := 64.0
 @export_range(0.01, 2.0, 0.01) var climax_hand_return_duration := 0.45

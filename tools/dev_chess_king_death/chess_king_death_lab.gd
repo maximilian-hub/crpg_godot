@@ -91,7 +91,7 @@ func _build_controls() -> void:
 	preset_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save_row.add_child(preset_name)
 	_button(save_row, "Save", _save_preset)
-	publish_target = _option(controls, "Publish Target", ["Player Standard", "Hood Decisive"])
+	publish_target = _option(controls, "Publish Target", ["Player Standard", "Decisive"])
 	_button(controls, "Publish to Game", _publish)
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

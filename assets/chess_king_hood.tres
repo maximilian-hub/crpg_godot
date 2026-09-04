@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://b87x5li3tx405"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://dsb4v4o1upimc"]
 
 [ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
@@ -6,17 +6,17 @@
 [ext_resource type="Script" uid="uid://bfnd1ky31ginl" path="res://scripts/view/chess_magical_move_profile.gd" id="4"]
 [ext_resource type="Resource" uid="uid://csre3s1oq46ch" path="res://assets/chess_king_auras.tres" id="5"]
 
-[sub_resource type="Resource" id="Activation"]
+[sub_resource type="Resource" id="Resource_kmb16"]
 script = ExtResource("3")
-hand_hover_offset = Vector2(250, -300)
+hand_hover_offset = Vector2(-50, -300)
 approach_duration = 0.35
-approach_settle_duration = 0.04
+approach_settle_duration = 0.0
 approach_departure_handle = Vector2(-140, -180)
 approach_arrival_handle = Vector2(120, 180)
-invocation_duration = 0.18
-response_duration = 0.2
+invocation_duration = 1.0
+response_duration = 1.0
 buildup_duration = 0.15
-climax_duration = 0.3
+climax_duration = 0.6
 afterimage_duration = 1.5
 aura_release_duration = 3.0
 resolve_duration = 0.2
@@ -32,8 +32,8 @@ crackle_width = 2.0
 crackle_hand_shift_distance = 16.0
 crackle_hand_hold_duration = 0.05
 crackle_hand_return_duration = 0.16
-beam_width = 40.0
-climax_beam_count = 1
+beam_width = 160.0
+climax_beam_count = 12
 climax_hand_shift_distance = 64.0
 climax_hand_return_duration = 1.0
 post_climax_retreat_delay = 0.08
@@ -47,11 +47,11 @@ lightning_checker_size = 8.0
 rift_edge_roughness = 3.0
 beam_branch_count = 1
 impact_bolt_count = 5
-impact_radius_min = 18.0
-impact_radius_max = 52.0
-impact_bolt_width = 3.0
+impact_radius_min = 80.0
+impact_radius_max = 120.0
+impact_bolt_width = 10.0
 tremor_interval = 0.12
-tremor_max_pixels = 8
+tremor_max_pixels = 0
 tremor_start_fraction = 0.12
 tremor_ramp_exponent = 0.5
 hand_fade_duration = 0.22
@@ -121,6 +121,6 @@ script = ExtResource("1")
 aura_profile = SubResource("Aura")
 aura_mode = 2
 aura_catalog = ExtResource("5")
-activation_profile = SubResource("Activation")
+activation_profile = SubResource("Resource_kmb16")
 movement_profile = SubResource("Resource_td5fq")
 activation_choreography = 1
