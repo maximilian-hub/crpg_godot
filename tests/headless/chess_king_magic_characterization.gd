@@ -182,6 +182,10 @@ func _ready() -> void:
 	death_profile.rift_frame_duration = 0.02
 	death_profile.rift_frame_growth = 0.1
 	death_profile.rift_speed = 10000.0
+	death_profile.discharge_frequency = 40.0
+	death_profile.discharge_duration = 0.2
+	death_profile.discharge_marker_lifetime = 0.08
+	death_profile.discharge_falloff_exponent = 2.0
 	var expected_death_origin := death_piece.sprite.global_position
 	var death_effect := view.create_king_death_effect(death_piece, death_profile)
 	_check(death_effect.global_position.is_equal_approx(expected_death_origin), "King death circles share the activation climax beam's sprite-center target")
@@ -191,6 +195,8 @@ func _ready() -> void:
 	await get_tree().create_timer(0.085).timeout
 	_check(death_effect.rift_circles.size() == 8, "King death emits exactly eight radial rift circles")
 	_check((death_effect.rift_circles[0].material as ShaderMaterial).shader.resource_path == "res://effects/chess_lightning_rift.gdshader", "King death circles reveal the stationary chessboard-rift pattern")
+	_check(death_effect.spawned_discharge_count >= 1 and not death_effect.discharge_markers.is_empty() and not (death_effect.discharge_markers[0].marker as ChessLightning2D).impact_paths.is_empty(), "King death begins successive activation-style hit markers over the King at the death beat")
+	_check(ChessKingDeathEffect.discharge_rate(0.5, 20.0, 4.0) < ChessKingDeathEffect.discharge_rate(0.5, 20.0, 1.0) and is_zero_approx(ChessKingDeathEffect.discharge_rate(1.0, 20.0, 2.0)), "discharge falloff exponent controls how aggressively marker frequency trails to zero")
 	var first_circle_scale: Vector2 = death_effect.rift_circles[0].scale
 	await get_tree().create_timer(0.025).timeout
 	_check(death_effect.rift_circles[0].scale != first_circle_scale, "King death rift circles cycle through three expanding animation frames")

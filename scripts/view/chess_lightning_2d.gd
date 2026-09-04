@@ -65,6 +65,28 @@ func configure_path(start: Vector2, finish: Vector2, segment_length: float, disp
 	queue_redraw()
 
 
+## Builds only the radial contact bolts used where activation lightning strikes
+## a King, allowing other effects to reuse the same hit-marker language.
+func configure_impact_marker(center: Vector2, radius: float, marker_width: float, seed: int, bolt_count := 5) -> void:
+	points.clear()
+	branches.clear()
+	main_rift_segments.clear()
+	branch_rift_segments.clear()
+	impact_paths.clear()
+	impact_rift_segments.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var resolved_radius := maxf(radius, 1.0)
+	for _index in range(maxi(bolt_count, 1)):
+		var direction := Vector2.RIGHT.rotated(rng.randf_range(0.0, TAU))
+		var impact_end := center + direction * rng.randf_range(resolved_radius * 0.55, resolved_radius)
+		var impact_path := _make_path(center, impact_end, maxf(resolved_radius * 0.28, 2.0), resolved_radius * 0.18, rng)
+		impact_paths.append(impact_path)
+		impact_rift_segments.append(_make_rift_segments(impact_path, marker_width, edge_roughness * 0.5, rng, false, true))
+	rift_material.set_shader_parameter("checker_size", checker_size)
+	queue_redraw()
+
+
 func show_strength(value: float) -> void:
 	visible_strength = clampf(value, 0.0, 1.0)
 	visible = visible_strength > 0.0
@@ -141,7 +163,7 @@ func _make_rift_segments(path: PackedVector2Array, path_width: float, roughness:
 
 
 func _draw() -> void:
-	if main_rift_segments.is_empty() or visible_strength <= 0.0:
+	if (main_rift_segments.is_empty() and impact_rift_segments.is_empty()) or visible_strength <= 0.0:
 		return
 	for segment in main_rift_segments:
 		draw_colored_polygon(segment, Color.WHITE)

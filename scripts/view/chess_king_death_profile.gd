@@ -17,6 +17,15 @@ class_name ChessKingDeathProfile
 @export_range(10.0, 1000.0, 1.0) var rift_speed := 120.0
 @export_range(0.02, 0.5, 0.01) var rift_frame_duration := 0.10
 @export_range(0.0, 0.5, 0.01) var rift_frame_growth := 0.12
+@export_group("Energy Discharge")
+@export_range(2.0, 160.0, 1.0) var discharge_marker_size := 32.0
+@export_range(0.5, 32.0, 0.5) var discharge_marker_width := 3.0
+@export_range(1.0, 60.0, 1.0) var discharge_frequency := 18.0
+@export_range(0.05, 4.0, 0.05) var discharge_duration := 1.8
+@export_range(0.02, 1.0, 0.01) var discharge_marker_lifetime := 0.14
+## Higher values concentrate more markers near the beginning of the discharge.
+@export_range(0.1, 8.0, 0.1) var discharge_falloff_exponent := 2.0
+@export_group("")
 ## Deprecated serialized timings retained for older saved profiles.
 @export_storage var stone_hold_duration := 0.18
 @export_storage var rift_travel_distance := 96.0
