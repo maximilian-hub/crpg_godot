@@ -1,12 +1,12 @@
 [gd_scene load_steps=11 format=3 uid="uid://b5yn8y7m53yy0"]
 
-[ext_resource type="Texture2D" uid="uid://0ilig36e86qg" path="res://assets/blood_splatter/frame_0_delay-0.1s.png" id="1_7ik35"]
-[ext_resource type="Texture2D" uid="uid://dv6s1oujvcqi3" path="res://assets/blood_splatter/frame_1_delay-0.1s.png" id="2_6yn2k"]
-[ext_resource type="Texture2D" uid="uid://hc4gpvovov81" path="res://assets/blood_splatter/frame_2_delay-0.1s.png" id="3_1dgvs"]
-[ext_resource type="Texture2D" uid="uid://d2jlisglfbdqu" path="res://assets/blood_splatter/frame_3_delay-0.1s.png" id="4_cjiu1"]
-[ext_resource type="Texture2D" uid="uid://mvlbtnua8gp4" path="res://assets/blood_splatter/frame_4_delay-0.1s.png" id="5_ja14q"]
-[ext_resource type="Texture2D" uid="uid://dy2ijonutkigw" path="res://assets/blood_splatter/frame_5_delay-0.1s.png" id="6_ioflx"]
-[ext_resource type="Texture2D" uid="uid://csvmwegrhnmdv" path="res://assets/blood_splatter/frame_6_delay-0.1s.png" id="7_ep38y"]
+[ext_resource type="Texture2D" uid="uid://d35urppb5k8vv" path="res://assets/blood_splatter/frame_0_delay-0.1s.png" id="1_7ik35"]
+[ext_resource type="Texture2D" uid="uid://b53weqccdbdce" path="res://assets/blood_splatter/frame_1_delay-0.1s.png" id="2_6yn2k"]
+[ext_resource type="Texture2D" uid="uid://f74uu3v4qmw2" path="res://assets/blood_splatter/frame_2_delay-0.1s.png" id="3_1dgvs"]
+[ext_resource type="Texture2D" uid="uid://c8l34lofsnxx7" path="res://assets/blood_splatter/frame_3_delay-0.1s.png" id="4_cjiu1"]
+[ext_resource type="Texture2D" uid="uid://d4cerygxnd0bj" path="res://assets/blood_splatter/frame_4_delay-0.1s.png" id="5_ja14q"]
+[ext_resource type="Texture2D" uid="uid://oq6ebgb4p0tl" path="res://assets/blood_splatter/frame_5_delay-0.1s.png" id="6_ioflx"]
+[ext_resource type="Texture2D" uid="uid://dx2b7oucylrbs" path="res://assets/blood_splatter/frame_6_delay-0.1s.png" id="7_ep38y"]
 [ext_resource type="AudioStream" uid="uid://c8qqtekfrsmn5" path="res://assets/blood_splatter/hurt.wav" id="9_cjiu1"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_c6f07"]
@@ -51,7 +51,7 @@ func _on_animation_finished():
 "
 
 [node name="BloodSplatter" type="AnimatedSprite2D"]
-scale = Vector2(0.15, 0.15)
+scale = Vector2(1.5, 1.5)
 sprite_frames = SubResource("SpriteFrames_c6f07")
 animation = &"splatter"
 autoplay = "splatter"
