@@ -287,6 +287,7 @@ func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i,
 	approach.tween_method(func(progress: float): king.position = _arc(king_start, target, progress * impact_fraction, move.lift_height), 0.0, 1.0, approach_duration * board.animation_duration_scale)
 	await approach.finished
 	king.position = _arc(king_start, target, impact_fraction, move.lift_height)
+	board.spawn_capture_clack(defender, true)
 	capture_impact.emit(defender)
 	var total: float = maxf(finish_duration, knock_duration)
 	var impact := create_tween()

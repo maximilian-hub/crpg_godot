@@ -9,6 +9,9 @@ class_name ChessKingDeathProfile
 @export_range(0.01, 0.5, 0.01) var tremor_interval := 0.07
 @export_range(0, 16, 1) var tremor_max_pixels := 2
 @export_range(0.01, 3.0, 0.01) var tremor_slowdown_duration := 0.45
+## Time from the death beat until battle flow may advance to results. This is
+## deliberately independent of how long the outward rift circles remain visible.
+@export_range(0.0, 10.0, 0.05) var result_delay := 3.0
 @export_range(1, 16, 1) var rift_circle_count := 8
 @export_range(1.0, 48.0, 1.0) var rift_radius := 9.0
 @export_range(10.0, 1000.0, 1.0) var rift_speed := 120.0

@@ -5,6 +5,7 @@ class_name ChessBoardView
 const BoardMaterialSurface := preload("res://scripts/view/chess_board_material_surface.gd")
 const KingDeathEffect := preload("res://scripts/view/chess_king_death_effect.gd")
 const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
+const CaptureClackEffect := preload("res://scripts/view/chess_capture_clack_effect.gd")
 
 ## This node serves as the main View component of the chess game.
 # It receives signals from the Model,
@@ -125,6 +126,7 @@ func _ready():
 	setup_audio_players()
 	_connect_visual_style()
 	_sync_hand_board_sounds()
+	_connect_hand_capture_feedback()
 	get_viewport().size_changed.connect(_layout_board)
 
 func setup_audio_players():
@@ -256,6 +258,42 @@ func _sync_hand_board_sounds() -> void:
 	for hand_rig in [near_hand_rig, far_hand_rig]:
 		if is_instance_valid(hand_rig):
 			hand_rig.set_board_sound_set(visual_style.interaction_sounds if visual_style != null else null)
+
+func _connect_hand_capture_feedback() -> void:
+	for hand_rig in [near_hand_rig, far_hand_rig]:
+		if is_instance_valid(hand_rig) and not hand_rig.captured_piece_grabbed.is_connected(_on_hand_captured_piece_grabbed):
+			hand_rig.captured_piece_grabbed.connect(_on_hand_captured_piece_grabbed)
+
+func _on_hand_captured_piece_grabbed(piece: Node2D) -> void:
+	# The hand rig already plays the capture-pickup sound at this exact event.
+	spawn_capture_clack(piece, false)
+
+func spawn_capture_clack(piece_node: Node2D, play_sound := true) -> Node2D:
+	if not is_instance_valid(piece_node):
+		return null
+	var effect := CaptureClackEffect.new()
+	effect.name = "CaptureClackEffect"
+	effect.z_index = BOARD_EFFECT_Z + 1
+	effect.z_as_relative = false
+	add_child(effect)
+	if piece_node.has_method("get_body_anchor") and piece_node.has_method("get_anchor_position_in"):
+		effect.position = piece_node.get_anchor_position_in(self, piece_node.get_body_anchor())
+	else:
+		effect.position = piece_node.position
+	effect.configure(get_world_scale())
+	if play_sound and visual_style != null and visual_style.interaction_sounds != null:
+		var sounds: ChessBoardSoundSet = visual_style.interaction_sounds
+		if sounds.default_capture_pickup != null:
+			var player := AudioStreamPlayer.new()
+			player.name = "MagicalCaptureSound"
+			player.bus = &"SFX"
+			player.stream = sounds.default_capture_pickup
+			player.volume_db = sounds.volume_db
+			player.pitch_scale = randf_range(1.0 - sounds.pitch_variation, 1.0 + sounds.pitch_variation)
+			add_child(player)
+			player.finished.connect(player.queue_free)
+			player.play()
+	return effect
 
 func _connect_visual_style() -> void:
 	if visual_style != null and not visual_style.changed.is_connected(_on_visual_style_changed):

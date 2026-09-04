@@ -57,7 +57,7 @@ func play() -> void:
 	# The final blink remains red during the authored pre-death tension hold.
 	await _wait(profile.pre_death_hold_duration)
 	_play_sound()
-	var rift_travel_duration := _spawn_rift_circles()
+	_spawn_rift_circles()
 	var transition_material := ShaderMaterial.new()
 	transition_material.shader = DEATH_TRANSITION_SHADER
 	transition_material.set_shader_parameter("stone_progress", 0.0)
@@ -74,7 +74,9 @@ func play() -> void:
 	stone_material.shader = STONE_SHADER
 	stone_material.set_shader_parameter("opacity", 1.0)
 	sprite.material = stone_material
-	var remaining := maxf(rift_travel_duration - maxf(profile.stone_fade_duration, profile.tremor_slowdown_duration), 0.0)
+	# Completion releases the capture gate and therefore the battle result. It is
+	# an authored beat, not a side effect of viewport size or circle travel time.
+	var remaining := maxf(profile.result_delay - maxf(profile.stone_fade_duration, profile.tremor_slowdown_duration), 0.0)
 	await _wait(remaining)
 	_finish()
 

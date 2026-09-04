@@ -61,6 +61,10 @@ func _ready() -> void:
 	var defender := adapter.get_piece_view(model.board[1][0]) as PieceView
 	var defender_start := defender.position
 	white_view.position = view.grid_to_screen(4, 0)
+	var capture_feedback := {"clacks": 0, "sounds": 0}
+	view.child_entered_tree.connect(func(child: Node):
+		if child.name == "CaptureClackEffect": capture_feedback.clacks += 1
+		if child.name == "MagicalCaptureSound": capture_feedback.sounds += 1)
 	var impact_observation := {"count": 0, "defender_position": Vector2.INF, "king_z": 0, "defender_z": 0}
 	white_magic.capture_impact.connect(func(hit: PieceView):
 		impact_observation.count += 1
@@ -70,6 +74,7 @@ func _ready() -> void:
 	, CONNECT_ONE_SHOT)
 	await white_magic.play_capture(Vector2i(4, 0), Vector2i(3, 1), defender)
 	_check(impact_observation.count == 1 and impact_observation.defender_position == defender_start, "captured piece remains planted until the King reaches its impact point")
+	_check(capture_feedback.clacks == 1 and capture_feedback.sounds == 1, "magical King impact emits one shared clack burst and one board capture sound as knockoff flight begins")
 	_check(impact_observation.king_z > impact_observation.defender_z, "King approaching from screen-below renders above the attacked knockoff piece")
 	var defender_radius := ChessKingMagicController.piece_visual_radius(defender)
 	var defender_offscreen := defender.position.x - defender_radius >= view.get_viewport_rect().size.x or defender.position.x + defender_radius <= 0.0 or defender.position.y - defender_radius >= view.get_viewport_rect().size.y or defender.position.y + defender_radius <= 0.0
@@ -146,6 +151,7 @@ func _ready() -> void:
 	lethal_profile.pre_death_hold_duration = 0.01
 	lethal_profile.stone_fade_duration = 0.04
 	lethal_profile.tremor_slowdown_duration = 0.02
+	lethal_profile.result_delay = 0.05
 	lethal_profile.rift_speed = 10000.0
 	adapter.king_death_profile = lethal_profile
 	var lethal_attacker: ModelPiece = model.board[7][0]
@@ -172,6 +178,7 @@ func _ready() -> void:
 	death_profile.pre_death_hold_duration = 0.01
 	death_profile.stone_fade_duration = 0.04
 	death_profile.tremor_slowdown_duration = 0.02
+	death_profile.result_delay = 0.05
 	death_profile.rift_frame_duration = 0.02
 	death_profile.rift_frame_growth = 0.1
 	death_profile.rift_speed = 10000.0

@@ -251,6 +251,7 @@ func _test_player_hand_capture_presentation() -> void:
 		func(piece: Node2D):
 			var moving_view: Node2D = context.adapter.get_piece_view(rook)
 			observation["grips_aligned"] = piece.get_grip_anchor().global_position.is_equal_approx(moving_view.get_grip_anchor().global_position)
+			observation["clack_vfx"] = _count_children_named(context.view, &"CaptureClackEffect") == 1
 			_expect(rig.get_node("CapturePickupSound").stream == board_sound_set.default_capture_pickup, "the board's default capture pickup sounds at the instant the defender attaches")
 			_expect(piece.get_parent() == rig.get_node("CapturedPiecePivot"), "captured piece is attached to its hand-rig pivot")
 			_expect(rig.get_node("CapturedPiecePivot").z_index > rig.get_node("PieceSlot").z_index, "captured piece renders in front of the attacking piece")
@@ -271,6 +272,7 @@ func _test_player_hand_capture_presentation() -> void:
 	_expect(observation["defender_occluded"], "a defender directly below the attacker retains natural occlusion during the initial attacker pickup")
 	_expect(observation["thumb_above_pre_swipe_defender"], "near thumb settles above the waiting defender before the capture swipe begins")
 	_expect(observation["grips_aligned"], "capture swipe stacks attacker and defender grip anchors at pickup")
+	_expect(observation.get("clack_vfx", false), "ordinary capture pickup emits the shared clack burst without duplicating its existing sound")
 	_expect(is_equal_approx(rad_to_deg(rig.get_node("CapturedPiecePivot").rotation), rig.captured_piece_rotation_degrees), "captured piece finishes at its configured carry angle")
 	_expect(model.board[5][0] == rook and rook_view.position == context.view.grid_to_screen(5, 0), "hand-carried attacker occupies the captured piece's square")
 	_expect(removal_timeline == ["hand_finished", "defender_destroyed"], "captured defender is destroyed only after the hand retreats offscreen")

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://dsb4v4o1upimc"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://dxqlob47pgrrd"]
 
 [ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
@@ -13,8 +13,8 @@ approach_duration = 0.35
 approach_settle_duration = 0.0
 approach_departure_handle = Vector2(-140, -180)
 approach_arrival_handle = Vector2(120, 180)
-invocation_duration = 1.0
-response_duration = 1.0
+invocation_duration = 0.5
+response_duration = 0.5
 buildup_duration = 0.15
 climax_duration = 0.6
 afterimage_duration = 1.5

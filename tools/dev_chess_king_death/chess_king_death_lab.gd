@@ -71,6 +71,7 @@ func _build_controls() -> void:
 	_spin(controls, &"tremor_interval", "Tremor interval", 0.01, 0.5, 0.01)
 	_spin(controls, &"tremor_max_pixels", "Tremor pixels", 0, 16, 1)
 	_spin(controls, &"tremor_slowdown_duration", "Tremor slowdown", 0.01, 3.0, 0.01)
+	_spin(controls, &"result_delay", "Results delay", 0.0, 10.0, 0.05)
 	_spin(controls, &"rift_circle_count", "Rift circles", 1, 16, 1)
 	_spin(controls, &"rift_radius", "Circle radius", 1, 48, 1)
 	_spin(controls, &"rift_speed", "Circle speed", 10, 1000, 1)
