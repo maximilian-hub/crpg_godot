@@ -181,7 +181,7 @@ func _ready() -> void:
 	death_profile.result_delay = 0.05
 	death_profile.rift_frame_duration = 0.02
 	death_profile.rift_frame_growth = 0.1
-	death_profile.rift_speed = 10000.0
+	death_profile.rift_speed = 2000.0
 	death_profile.discharge_frequency = 40.0
 	death_profile.discharge_duration = 0.2
 	death_profile.discharge_marker_lifetime = 0.08
@@ -207,6 +207,8 @@ func _ready() -> void:
 		var endpoint: Vector2 = death_effect.global_position + direction * distance
 		endpoints_offscreen = endpoints_offscreen and (endpoint.x < 0.0 or endpoint.x > viewport.size.x or endpoint.y < 0.0 or endpoint.y > viewport.size.y)
 	_check(endpoints_offscreen, "every constant-speed death circle targets a point fully beyond the viewport")
+	if not death_effect.result_ready: await death_effect.result_ready_for_display
+	_check(not death_effect.finished and is_instance_valid(death_effect.rift_circles[0]), "results may appear while death circles continue animating independently")
 	if not death_effect.finished: await death_effect.completed
 	await get_tree().process_frame
 	_check(is_instance_valid(death_piece) and death_piece.sprite.material is ShaderMaterial and (death_piece.sprite.material as ShaderMaterial).shader.resource_path == "res://effects/chess_stone_piece.gdshader" and death_piece.sprite.self_modulate.a > 0.99, "Defeated King remains visibly on the board as inert stone")

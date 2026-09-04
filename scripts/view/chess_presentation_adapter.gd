@@ -201,7 +201,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		else:
 			await view.attack_piece_node_with_hand(attacker_node, from, to, death_contact)
 		if not death_effect.running and not death_effect.finished: death_effect.play()
-		if not death_effect.finished: await death_effect.completed
+		if not death_effect.result_ready: await death_effect.result_ready_for_display
 		persistent_king_corpses[defender] = true
 		gate.release()
 		return
@@ -288,8 +288,8 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 
 func _on_battle_finished(winner_color: String) -> void:
 	for effect in active_king_deaths:
-		if is_instance_valid(effect) and not effect.finished:
-			await effect.completed
+		if is_instance_valid(effect) and not effect.result_ready:
+			await effect.result_ready_for_display
 	active_king_deaths.clear()
 	result_view.show_battle_result(winner_color)
 

@@ -2,6 +2,7 @@ extends Node2D
 class_name ChessKingDeathEffect
 
 signal completed()
+signal result_ready_for_display()
 
 const STONE_SHADER := preload("res://effects/chess_stone_piece.gdshader")
 const RIFT_SHADER := preload("res://effects/chess_lightning_rift.gdshader")
@@ -14,6 +15,7 @@ var profile: Resource
 var world_scale := 1.0
 var running := false
 var finished := false
+var result_ready := false
 var rift_circles: Array[Polygon2D] = []
 var base_piece_position := Vector2.ZERO
 var tremor_rng := RandomNumberGenerator.new()
@@ -64,9 +66,10 @@ func play() -> void:
 	# The final blink remains red during the authored pre-death tension hold.
 	await _wait(profile.pre_death_hold_duration)
 	_play_sound()
-	_spawn_rift_circles()
+	var rift_travel_duration := _spawn_rift_circles()
 	discharge_active = true
 	_spawn_discharge_marker()
+	_release_result_after_delay()
 	var transition_material := ShaderMaterial.new()
 	transition_material.shader = DEATH_TRANSITION_SHADER
 	transition_material.set_shader_parameter("stone_progress", 0.0)
@@ -83,11 +86,21 @@ func play() -> void:
 	stone_material.shader = STONE_SHADER
 	stone_material.set_shader_parameter("opacity", 1.0)
 	sprite.material = stone_material
-	# Completion releases the capture gate and therefore the battle result. It is
-	# an authored beat, not a side effect of viewport size or circle travel time.
-	var remaining := maxf(profile.result_delay - maxf(profile.stone_fade_duration, profile.tremor_slowdown_duration), 0.0)
+	# Result flow has its own timer. Visual ownership continues independently so
+	# circles can keep crossing the board beneath the result overlay.
+	var visual_duration := maxf(rift_travel_duration, profile.discharge_duration + profile.discharge_marker_lifetime)
+	visual_duration = maxf(visual_duration, profile.result_delay)
+	var remaining := maxf(visual_duration - maxf(profile.stone_fade_duration, profile.tremor_slowdown_duration), 0.0)
 	await _wait(remaining)
 	_finish()
+
+
+func _release_result_after_delay() -> void:
+	await _wait(profile.result_delay)
+	if result_ready:
+		return
+	result_ready = true
+	result_ready_for_display.emit()
 
 
 func _process(delta: float) -> void:
