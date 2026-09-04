@@ -1,7 +1,7 @@
 extends Resource
 class_name ChessActivationLabPreset
 
-const CURRENT_SCHEMA_VERSION := 3
+const CURRENT_SCHEMA_VERSION := 4
 
 @export var schema_version := CURRENT_SCHEMA_VERSION
 @export var display_name := ""
@@ -12,6 +12,7 @@ const CURRENT_SCHEMA_VERSION := 3
 @export var aura_mode := ChessAura2D.AuraMode.HYBRID
 @export var king_type_id: StringName = &"minotaur_king"
 @export_enum("white", "black") var army_color := "white"
+@export var choreography := ChessKingPresentationProfile.ActivationChoreography.STANDARD_RITUAL
 ## Deprecated schema-one/two fields. Hover placement now lives in the shared
 ## activation profile as hand_hover_offset so every preview uses king-relative
 ## coordinates. Keep these serialized fields so old presets remain loadable.

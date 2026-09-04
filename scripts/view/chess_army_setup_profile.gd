@@ -2,11 +2,13 @@ extends Resource
 class_name ChessArmySetupProfile
 
 enum ActivatingHand { LEFT, RIGHT }
+enum OrderMode { AUTHORED, SEEDED_RANDOM_KING_LAST }
 
 @export var left_motion: ChessSetupMotionProfile = ChessSetupMotionProfile.new()
 @export var right_motion: ChessSetupMotionProfile = ChessSetupMotionProfile.new()
 @export var cues: Array[ChessSetupCue] = []
 @export var activating_hand := ActivatingHand.RIGHT
+@export var order_mode := OrderMode.AUTHORED
 
 
 func _init() -> void:

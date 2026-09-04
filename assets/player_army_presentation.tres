@@ -1,9 +1,9 @@
-[gd_resource type="Resource" script_class="ChessArmyPresentationProfile" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="ChessArmyPresentationProfile" load_steps=5 format=3 uid="uid://c6awk4axdemy3"]
 
-[ext_resource type="Script" path="res://scripts/view/chess_army_presentation_profile.gd" id="1"]
-[ext_resource type="Resource" path="res://assets/arms/player/skeleton_hand_style.tres" id="2"]
-[ext_resource type="Resource" path="res://assets/chess_king_first_pass.tres" id="3"]
-[ext_resource type="Resource" path="res://assets/chess_setup_first_pass.tres" id="4"]
+[ext_resource type="Script" uid="uid://n5b0qmockonk" path="res://scripts/view/chess_army_presentation_profile.gd" id="1"]
+[ext_resource type="Resource" uid="uid://d0mfkbmg22hl4" path="res://assets/arms/player/skeleton_hand_style.tres" id="2"]
+[ext_resource type="Resource" uid="uid://f1htc7ckspqt" path="res://assets/chess_king_first_pass.tres" id="3"]
+[ext_resource type="Resource" path="res://assets/chess_setup_player_early.tres" id="4"]
 
 [resource]
 script = ExtResource("1")

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://bkx5254cqlhhy"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://b87x5li3tx405"]
 
 [ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
@@ -9,22 +9,22 @@
 [sub_resource type="Resource" id="Activation"]
 script = ExtResource("3")
 hand_hover_offset = Vector2(250, -300)
-approach_duration = 0.55
-approach_settle_duration = 0.1
+approach_duration = 0.35
+approach_settle_duration = 0.04
 approach_departure_handle = Vector2(-140, -180)
 approach_arrival_handle = Vector2(120, 180)
-invocation_duration = 2.0
-response_duration = 1.0
-buildup_duration = 2.5
-climax_duration = 1.0
+invocation_duration = 0.18
+response_duration = 0.2
+buildup_duration = 0.15
+climax_duration = 0.3
 afterimage_duration = 1.5
 aura_release_duration = 3.0
 resolve_duration = 0.2
 invocation_hand_power = 0.35
 response_king_power = 0.25
-final_density_multiplier = 2.0
+final_density_multiplier = 4.0
 final_speed_multiplier = 4.0
-burst_multiplier = 6.0
+burst_multiplier = 8.0
 buildup_crackle_times = PackedFloat32Array(0.3, 0.78, 0.9)
 secondary_crackle_count = 3
 crackle_duration = 0.09
@@ -33,10 +33,10 @@ crackle_hand_shift_distance = 16.0
 crackle_hand_hold_duration = 0.05
 crackle_hand_return_duration = 0.16
 beam_width = 40.0
-climax_beam_count = 12
+climax_beam_count = 1
 climax_hand_shift_distance = 64.0
 climax_hand_return_duration = 1.0
-post_climax_retreat_delay = 0.18
+post_climax_retreat_delay = 0.08
 retreat_duration = 0.65
 retreat_departure_handle = Vector2(100, 140)
 retreat_arrival_handle = Vector2(-140, -180)
@@ -80,7 +80,7 @@ power_up_duration = 0.65
 power_down_duration = 0.55
 random_seed = 1701
 
-[sub_resource type="Resource" id="Resource_18jf6"]
+[sub_resource type="Resource" id="Resource_td5fq"]
 script = ExtResource("4")
 hand_hover_offset = Vector2(150, -180)
 gesture_corridor_clearance = 96.0
@@ -122,5 +122,5 @@ aura_profile = SubResource("Aura")
 aura_mode = 2
 aura_catalog = ExtResource("5")
 activation_profile = SubResource("Activation")
-movement_profile = SubResource("Resource_18jf6")
-activation_choreography = 0
+movement_profile = SubResource("Resource_td5fq")
+activation_choreography = 1

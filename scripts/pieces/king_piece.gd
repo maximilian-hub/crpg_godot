@@ -48,10 +48,9 @@ func get_legal_moves() -> Array:
 					moves.append(Vector2i(r, c))
 
 	if not has_moved:
-		if model.can_castle_through(row, col, row, 0, color):
-			moves.append(Vector2i(row, col - 2))
-		if model.can_castle_through(row, col, row, 7, color):
-			moves.append(Vector2i(row, col + 2))
+		for castle_target in [Vector2i(row, 2), Vector2i(row, 6)]:
+			if model.can_castle_move(self, coordinate, castle_target):
+				moves.append(castle_target)
 
 	return moves
 

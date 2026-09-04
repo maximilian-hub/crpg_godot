@@ -31,6 +31,17 @@ func _ready() -> void:
 
 
 func bind_targets(targets: Array[Sprite2D]) -> void:
+	_bind_targets(targets, true, 1, true, 2)
+
+
+## Layered rigs need one uninterrupted exterior treatment. Each overlay still
+## follows its source sprite, but all overlays render beneath the entire rig;
+## particles remain independently controllable above it.
+func bind_layered_targets(targets: Array[Sprite2D], silhouette_z: int, particle_z: int) -> void:
+	_bind_targets(targets, false, silhouette_z, false, particle_z)
+
+
+func _bind_targets(targets: Array[Sprite2D], silhouette_relative: bool, silhouette_z: int, particle_relative: bool, particle_z: int) -> void:
 	clear_targets()
 	if profile == null:
 		profile = ChessAuraProfile.new()
@@ -41,8 +52,8 @@ func bind_targets(targets: Array[Sprite2D]) -> void:
 		var overlay := Sprite2D.new()
 		overlay.name = "ChessAuraOverlay"
 		overlay.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		overlay.z_index = 0
-		overlay.z_as_relative = true
+		overlay.z_index = silhouette_z
+		overlay.z_as_relative = silhouette_relative
 		var material := ShaderMaterial.new()
 		material.shader = AURA_SHADER
 		overlay.material = material
@@ -50,8 +61,8 @@ func bind_targets(targets: Array[Sprite2D]) -> void:
 
 		var emitter := SquareEmitter.new() as ChessSquareEmitter2D
 		emitter.name = "ChessSquareEmitter"
-		emitter.z_index = 0
-		emitter.z_as_relative = true
+		emitter.z_index = particle_z
+		emitter.z_as_relative = particle_relative
 		source.add_child(emitter)
 		emitter.configure(source, profile, index * 101)
 		bindings.append({"source": source, "overlay": overlay, "material": material, "emitter": emitter})
@@ -81,6 +92,14 @@ func set_power(value: float) -> void:
 	var resolved_power := clampf(value, 0.0, 1.0)
 	set_silhouette_power(resolved_power)
 	set_particle_power(resolved_power)
+
+
+func set_layer_z(silhouette_z: int, particle_z: int) -> void:
+	for binding in bindings:
+		var overlay: Sprite2D = binding["overlay"]
+		var emitter: ChessSquareEmitter2D = binding["emitter"]
+		overlay.z_index = silhouette_z
+		emitter.z_index = particle_z
 
 
 func set_silhouette_power(value: float) -> void:

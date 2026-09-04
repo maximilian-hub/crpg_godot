@@ -20,15 +20,19 @@ var elapsed := 0.0
 var _generation := 0
 var _finished_tracks := 0
 var seat := ChessHandRig.Seat.NEAR
+var opening_seed := 1
+var resolved_tracks: Dictionary = {}
+var _king_barrier_cue: ChessSetupCue
 
 
-func configure(setup_profile: ChessArmySetupProfile, view: ChessBoardView, left: ChessHandRig, right: ChessHandRig, views: Dictionary, target_seat := ChessHandRig.Seat.NEAR) -> void:
+func configure(setup_profile: ChessArmySetupProfile, view: ChessBoardView, left: ChessHandRig, right: ChessHandRig, views: Dictionary, target_seat := ChessHandRig.Seat.NEAR, seed := 1) -> void:
 	profile = setup_profile
 	board_view = view
 	left_hand = left
 	right_hand = right
 	piece_views = views
 	seat = target_seat
+	opening_seed = seed
 	restart(false)
 
 
@@ -42,6 +46,7 @@ func play() -> void:
 	running = true
 	paused = false
 	_finished_tracks = 0
+	_resolve_tracks()
 	var token := _generation
 	_run_track(ChessSetupCue.HandSide.LEFT, token)
 	_run_track(ChessSetupCue.HandSide.RIGHT, token)
@@ -92,9 +97,7 @@ func _process(delta: float) -> void:
 
 
 func _run_track(side: int, token: int) -> void:
-	for cue in profile.cues:
-		if cue.hand_side != side:
-			continue
+	for cue in resolved_tracks.get(side, []):
 		if not await _wait_interruptible(cue.gap_before, token):
 			return
 		var board_size := Vector2i(board_view.projection.rows, board_view.projection.columns)
@@ -117,8 +120,55 @@ func _run_track(side: int, token: int) -> void:
 		piece_placed.emit(cue, piece)
 	_finished_tracks += 1
 	if _finished_tracks == 2 and token == _generation:
-		running = false
-		setup_completed.emit()
+		if _king_barrier_cue != null:
+			var king_cue := _king_barrier_cue
+			_king_barrier_cue = null
+			await _run_single_cue(king_cue, token)
+		if token == _generation:
+			running = false
+			setup_completed.emit()
+
+
+func _resolve_tracks() -> void:
+	resolved_tracks = {
+		ChessSetupCue.HandSide.LEFT: [],
+		ChessSetupCue.HandSide.RIGHT: [],
+	}
+	_king_barrier_cue = null
+	for cue in profile.cues:
+		if profile.order_mode == ChessArmySetupProfile.OrderMode.SEEDED_RANDOM_KING_LAST and cue.display_coordinate == Vector2i(7, 4):
+			_king_barrier_cue = cue
+		else:
+			resolved_tracks[cue.hand_side].append(cue)
+	if profile.order_mode == ChessArmySetupProfile.OrderMode.SEEDED_RANDOM_KING_LAST:
+		_shuffle_track(resolved_tracks[ChessSetupCue.HandSide.LEFT], opening_seed ^ 0x4c454654)
+		_shuffle_track(resolved_tracks[ChessSetupCue.HandSide.RIGHT], opening_seed ^ 0x52474854)
+
+
+func _shuffle_track(track: Array, seed: int) -> void:
+	var random := RandomNumberGenerator.new()
+	random.seed = seed
+	for index in range(track.size() - 1, 0, -1):
+		var swap_index := random.randi_range(0, index)
+		var value = track[index]
+		track[index] = track[swap_index]
+		track[swap_index] = value
+
+
+func _run_single_cue(cue: ChessSetupCue, token: int) -> void:
+	if not await _wait_interruptible(cue.gap_before, token):
+		return
+	var board_size := Vector2i(board_view.projection.rows, board_view.projection.columns)
+	var display_coordinate := PresentationTransform.authored_display_coordinate(cue.display_coordinate, seat, board_size)
+	var model_coordinate := board_view.projection.get_model_coordinate(display_coordinate)
+	var piece: Node2D = piece_views.get(model_coordinate)
+	if not is_instance_valid(piece):
+		return
+	cue_started.emit(cue)
+	var hand := left_hand if cue.hand_side == ChessSetupCue.HandSide.LEFT else right_hand
+	await hand.play_setup_placement(piece, board_view.grid_to_screen(model_coordinate.x, model_coordinate.y), board_view.get_world_scale(), profile.motion_for(cue), board_view.get_piece_depth(model_coordinate))
+	if token == _generation:
+		piece_placed.emit(cue, piece)
 
 
 func _wait_interruptible(seconds: float, token: int) -> bool:

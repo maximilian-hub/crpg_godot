@@ -3,6 +3,8 @@ extends Node2D
 class_name ChessBoardView
 
 const BoardMaterialSurface := preload("res://scripts/view/chess_board_material_surface.gd")
+const KingDeathEffect := preload("res://scripts/view/chess_king_death_effect.gd")
+const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
 
 ## This node serves as the main View component of the chess game.
 # It receives signals from the Model,
@@ -474,6 +476,15 @@ func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from
 	_update_piece_depth(attacker_node)
 	return carried_offscreen
 
+
+func create_king_death_effect(piece: PieceView, profile: Resource) -> Node:
+	var effect := KingDeathEffect.new()
+	effect.position = piece.position
+	effect.z_index = BOARD_EFFECT_Z
+	add_child(effect)
+	effect.configure(piece, profile, get_world_scale())
+	return effect
+
 func get_player_hand_carry_path(piece_node: Node, from: Vector2i, to: Vector2i) -> StringName:
 	var piece_model: ModelPiece = piece_node.get("model") if piece_node != null else null
 	var piece_type: String = piece_model.type if piece_model != null else ""
@@ -551,13 +562,17 @@ func get_piece_at(coord: Vector2i) -> Node:
 	return null
 
 ## Destroy a sprite with a visual effect.
-func destroy_piece(piece: Node):
-	# TODO: if piece.is_king: play king death sound, spawn king death effect
+func destroy_piece(piece: Node, king_death_profile: Resource = null):
+	if piece is PieceView and piece.model is KingPiece:
+		var death := create_king_death_effect(piece, king_death_profile if king_death_profile != null else KingDeathProfile.new())
+		death.play()
+		return death
 	var effect_position: Vector2 = piece.position
 	if piece.has_method("get_body_anchor") and piece.has_method("get_anchor_position_in"):
 		effect_position = piece.get_anchor_position_in(self, piece.get_body_anchor())
 	spawn_explosion(effect_position)
 	piece.queue_free()
+	return null
 
 ## Disappear a sprite.
 func remove_piece(piece: Node):

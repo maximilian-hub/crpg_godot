@@ -27,6 +27,14 @@ const CAPTURED_PIECE_Z := 74
 const HAND_OVERLAY_Z := 75
 const GRIP_FRONT_Z := 76
 const ARM_FOREGROUND_Z := 80
+## Magical King gestures keep the complete hand above pieces and board effects.
+const MAGIC_AURA_Z := 89
+const MAGIC_ROOT_Z := 100
+const MAGIC_GRIP_BACK_Z := 0
+const MAGIC_PIECE_SLOT_Z := 1
+const MAGIC_CAPTURED_PIECE_Z := 2
+const MAGIC_GRIP_FRONT_Z := 3
+const MAGIC_ARM_FOREGROUND_Z := 4
 ## Grounded slots live inside one board row's ten-level depth band.
 const GROUNDED_GRIP_BACK_OFFSET := 2
 const GROUNDED_ACTIVE_PIECE_OFFSET := 3
@@ -101,6 +109,9 @@ var setup_piece_parent: Node
 var setup_piece_scale := Vector2.ONE
 var setup_piece_z := 0
 var fallback_motion := ChessHandMotionProfile.new()
+var magical_foreground_active := false
+var magical_foreground_owner: Object
+var _pre_magic_depths: Dictionary = {}
 
 
 func _motion() -> ChessHandMotionProfile:
@@ -212,6 +223,52 @@ func _set_elevated_depth() -> void:
 		depth_state_changed.emit(depth_state, grounded_base_depth)
 
 
+func set_magical_foreground(enabled: bool, owner: Object = null) -> void:
+	if enabled:
+		# Lab fixture rebuilds queue the previous controller for deletion while a
+		# replacement may already be using the shared hand. Transfer ownership
+		# without capturing the promoted depths as the new restoration baseline.
+		if magical_foreground_active:
+			if owner != null:
+				magical_foreground_owner = owner
+			return
+		magical_foreground_active = true
+		magical_foreground_owner = owner
+		_pre_magic_depths = {
+			"root": z_index,
+			"grip_back": grip_back_sprite.z_index,
+			"piece_slot": piece_slot.z_index,
+			"captured_piece": captured_piece_pivot.z_index,
+			"grip_front": grip_front_sprite.z_index,
+			"arm": arm_foreground_sprite.z_index,
+		}
+		z_index = MAGIC_ROOT_Z
+		for layer in [grip_back_sprite, piece_slot, captured_piece_pivot, grip_front_sprite, arm_foreground_sprite]:
+			layer.z_as_relative = true
+		grip_back_sprite.z_index = MAGIC_GRIP_BACK_Z
+		piece_slot.z_index = MAGIC_PIECE_SLOT_Z
+		captured_piece_pivot.z_index = MAGIC_CAPTURED_PIECE_Z
+		grip_front_sprite.z_index = MAGIC_GRIP_FRONT_Z
+		arm_foreground_sprite.z_index = MAGIC_ARM_FOREGROUND_Z
+		return
+	if not magical_foreground_active:
+		return
+	if owner != null and owner != magical_foreground_owner:
+		return
+	magical_foreground_active = false
+	magical_foreground_owner = null
+	if not _pre_magic_depths.is_empty():
+		z_index = _pre_magic_depths.root
+		for layer in [grip_back_sprite, piece_slot, captured_piece_pivot, grip_front_sprite, arm_foreground_sprite]:
+			layer.z_as_relative = false
+		grip_back_sprite.z_index = _pre_magic_depths.grip_back
+		piece_slot.z_index = _pre_magic_depths.piece_slot
+		captured_piece_pivot.z_index = _pre_magic_depths.captured_piece
+		grip_front_sprite.z_index = _pre_magic_depths.grip_front
+		arm_foreground_sprite.z_index = _pre_magic_depths.arm
+	_pre_magic_depths.clear()
+
+
 func _detach_approach_path_debug() -> void:
 	if is_instance_valid(approach_path_debug) and approach_path_debug.get_parent() == self:
 		approach_path_debug.reparent(get_parent(), false)
@@ -241,6 +298,11 @@ func set_visual_mirrored(mirrored: bool) -> void:
 
 func get_aura_sprites() -> Array[Sprite2D]:
 	return [grip_back_sprite, grip_front_sprite, arm_foreground_sprite]
+
+
+func bind_aura(aura: ChessAura2D) -> void:
+	if is_instance_valid(aura):
+		aura.bind_layered_targets(get_aura_sprites(), GRIP_BACK_Z - 1, ARM_FOREGROUND_Z + 1)
 
 
 func get_connection_anchor_position() -> Vector2:

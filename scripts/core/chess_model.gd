@@ -582,15 +582,19 @@ func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	
 func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
 	var row := from.x
+	var rook_from := Vector2i(row, 7 if to.y == 6 else 0)
+	var rook_to := Vector2i(row, 5 if to.y == 6 else 3)
+	var rook: ModelPiece = board[rook_from.x][rook_from.y]
+	if not can_castle_move(king, from, to) or not is_instance_valid(rook):
+		printerr("handle_castling: Castling state changed before the move could be committed.")
+		return
 	# Present castling in the order the hand performs it: place the king first,
 	# then carry the rook over it into the adjacent square.
 	await actually_move_piece(king, to)
-	if to.y == 6: # King-side castle
-		var kingside_rook = board[row][7]
-		await actually_move_piece(kingside_rook, Vector2i(row, 5))
-	elif to.y == 2: # Queen-side castle
-		var queenside_rook = board[row][0]
-		await actually_move_piece(queenside_rook, Vector2i(row, 3))
+	if is_instance_valid(rook) and board[rook_from.x][rook_from.y] == rook and board[to.x][to.y] == king:
+		await actually_move_piece(rook, rook_to)
+	else:
+		printerr("handle_castling: The rook or king changed while presenting castling.")
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row := from.x
@@ -671,7 +675,18 @@ func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
 	
 func move_is_castling(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
-	return piece.type.ends_with("king") and abs(to.y - from.y) == 2
+	return piece is KingPiece and can_castle_move(piece as KingPiece, from, to)
+
+func can_castle_move(king: KingPiece, from: Vector2i, to: Vector2i) -> bool:
+	if not is_instance_valid(king) or king.has_moved:
+		return false
+	var home_row := get_back_rank(king.color)
+	if from != Vector2i(home_row, 4) or king.coordinate != from:
+		return false
+	if to.x != home_row or to.y not in [2, 6] or board[to.x][to.y] != null:
+		return false
+	var rook_col := 0 if to.y == 2 else 7
+	return can_castle_through(home_row, 4, home_row, rook_col, king.color)
 
 func move_is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
 	return piece.type == "pawn" and from.y != to.y and board[to.x][to.y] == null

@@ -92,7 +92,7 @@ func _build_stage() -> void:
 	hand_aura.name = "HandAura"
 	hand_aura.profile = aura_profile
 	add_child(hand_aura)
-	hand_aura.bind_targets(preview_hand.get_aura_sprites())
+	preview_hand.bind_aura(hand_aura)
 
 
 func _layout_preview_scale() -> void:
@@ -537,7 +537,7 @@ func _apply_preview_context() -> void:
 	hand_aura.clear_targets()
 	preview_context.apply_to_hand(preview_hand)
 	preview_hand.visible = true
-	hand_aura.bind_targets(preview_hand.get_aura_sprites())
+	preview_hand.bind_aura(hand_aura)
 	hand_aura.set_mode(mode_selector.selected if mode_selector != null else Aura.AuraMode.HYBRID)
 	hand_aura.set_silhouette_power(silhouette)
 	hand_aura.set_particle_power(particles)

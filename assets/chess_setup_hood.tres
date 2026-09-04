@@ -1,0 +1,133 @@
+[gd_resource type="Resource" script_class="ChessArmySetupProfile" load_steps=22 format=3 uid="uid://dvk3gd2ytb82h"]
+
+[ext_resource type="Script" uid="uid://bv2vxsebqarul" path="res://scripts/view/chess_army_setup_profile.gd" id="1"]
+[ext_resource type="Script" uid="uid://c340pr01kpmqt" path="res://scripts/view/chess_setup_cue.gd" id="1_qfngd"]
+[ext_resource type="Script" uid="uid://bd7bxvrx43bom" path="res://scripts/view/chess_setup_motion_profile.gd" id="2"]
+
+[sub_resource type="Resource" id="Cue1"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 7)
+hand_side = 1
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue2"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 6)
+hand_side = 1
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue3"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 5)
+hand_side = 1
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue4"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 4)
+hand_side = 1
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue5"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 7)
+hand_side = 1
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue6"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 6)
+hand_side = 1
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue7"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 5)
+hand_side = 1
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue8"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 4)
+hand_side = 1
+gap_before = 0.35
+
+[sub_resource type="Resource" id="Cue9"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 0)
+hand_side = 0
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue10"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 1)
+hand_side = 0
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue11"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 2)
+hand_side = 0
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue12"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(6, 3)
+hand_side = 0
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue13"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 0)
+hand_side = 0
+gap_before = 0.35
+
+[sub_resource type="Resource" id="Cue14"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 1)
+hand_side = 0
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue15"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 2)
+hand_side = 0
+gap_before = 0.08
+
+[sub_resource type="Resource" id="Cue16"]
+script = ExtResource("1_qfngd")
+display_coordinate = Vector2i(7, 3)
+hand_side = 0
+gap_before = 0.08
+
+[sub_resource type="Resource" id="LeftMotion"]
+script = ExtResource("2")
+pickup_delay = 0.06
+entry_duration = 0.2
+entry_departure_handle = Vector2(-90, -180)
+entry_arrival_handle = Vector2(70, 110)
+placement_hold = 0.01
+release_hold = 0.01
+retreat_duration = 0.15
+retreat_departure_handle = Vector2(60, 100)
+retreat_arrival_handle = Vector2(-80, -170)
+
+[sub_resource type="Resource" id="RightMotion"]
+script = ExtResource("2")
+pickup_delay = 0.06
+entry_duration = 0.2
+entry_departure_handle = Vector2(-90, -180)
+entry_arrival_handle = Vector2(70, 110)
+placement_hold = 0.01
+release_hold = 0.01
+retreat_duration = 0.15
+retreat_departure_handle = Vector2(60, 100)
+retreat_arrival_handle = Vector2(-80, -170)
+
+[resource]
+script = ExtResource("1")
+left_motion = SubResource("LeftMotion")
+right_motion = SubResource("RightMotion")
+cues = Array[ExtResource("1_qfngd")]([SubResource("Cue1"), SubResource("Cue2"), SubResource("Cue3"), SubResource("Cue4"), SubResource("Cue5"), SubResource("Cue6"), SubResource("Cue7"), SubResource("Cue8"), SubResource("Cue9"), SubResource("Cue10"), SubResource("Cue11"), SubResource("Cue12"), SubResource("Cue13"), SubResource("Cue14"), SubResource("Cue15"), SubResource("Cue16")])
+activating_hand = 1
+order_mode = 0

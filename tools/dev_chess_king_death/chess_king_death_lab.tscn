@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://34xue6scuybc"]
+
+[ext_resource type="Script" uid="uid://m3xd18mtau6n" path="res://tools/dev_chess_king_death/chess_king_death_lab.gd" id="1"]
+
+[node name="ChessKingDeathLab" type="Node2D"]
+script = ExtResource("1")

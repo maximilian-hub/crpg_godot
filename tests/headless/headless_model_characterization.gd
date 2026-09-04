@@ -178,6 +178,14 @@ func _test_headless_reaction_priority() -> void:
 	model.free()
 
 func _test_special_moves() -> void:
+	var skitter_model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(7, 4))
+	skitter_model.add_piece(arakne, arakne.coordinate)
+	_expect(Vector2i(7, 6) in arakne.get_legal_moves(), "Arakne can skitter two files from its home square without a rook")
+	_expect(await skitter_model.submit_move(arakne, Vector2i(7, 6)), "Arakne home-file skitter is accepted as an ordinary move")
+	_expect(skitter_model.board[7][6] == arakne, "Arakne home-file skitter moves only the King")
+	skitter_model.free()
+
 	var castle_model := _new_empty_model()
 	var king := ClassicKing.new("white", Vector2i(7, 4))
 	var rook := Rook.new("white", Vector2i(7, 7))

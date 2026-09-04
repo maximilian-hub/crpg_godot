@@ -28,6 +28,7 @@ var temporary_hands: Array[ChessHandRig] = []
 var permanent_hands: Array[ChessHandRig] = []
 var _generation := 0
 var _pending_setups := 0
+var opening_seed := 0
 
 
 func configure(
@@ -58,6 +59,8 @@ func play() -> void:
 		finish_immediately()
 		return
 	_generation += 1
+	if opening_seed == 0:
+		opening_seed = int(Time.get_ticks_usec() & 0x7fffffff)
 	var token := _generation
 	is_running = true
 	stage = Stage.SETUP
@@ -143,7 +146,7 @@ func _build_setup_for_army(color: String, profile: ChessArmyPresentationProfile,
 	var sequence := ChessArmySetupSequence.new()
 	add_child(sequence)
 	setup_sequences.append(sequence)
-	sequence.configure(profile.setup_profile.duplicate(true), board, left_hand, right_hand, _piece_views_by_coordinate(), seat)
+	sequence.configure(profile.setup_profile.duplicate(true), board, left_hand, right_hand, _piece_views_by_coordinate(), seat, opening_seed ^ color.hash())
 	sequence.set_playback_speed(1.0 / maxf(policy.duration_scale(), 0.01))
 	sequence.setup_completed.connect(func(): _on_setup_completed(token), CONNECT_ONE_SHOT)
 

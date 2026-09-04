@@ -10,6 +10,7 @@ func _ready() -> void:
 	var view: ChessBoardView = sandbox.get_node("ChessGame/CanvasLayer/ChessBoard")
 	var adapter: ChessPresentationAdapter = sandbox.get_node("ChessGame/ChessPresentationAdapter")
 	var failures: Array[String] = []
+	_check(not sandbox.game.play_opening_presentation and sandbox.game.opening_director == null, "sandbox skips army setup and King activation presentation", failures)
 	_check(view.far_hand_rig.seat == ChessHandRig.Seat.FAR and view.far_hand_rig.hand_style.resource_path.ends_with("hood_hand_style.tres"), "sandbox explicitly previews Hood in the far seat", failures)
 	_check(model != null and sandbox.editor.editor_enabled, "sandbox starts in Edit Mode", failures)
 	_check(model.capture_position().pieces.size() == 32, "sandbox starts at normal position", failures)

@@ -4,15 +4,20 @@ class_name ChessLabRuntimePublisher
 const AuraCatalog := preload("res://scripts/view/chess_king_aura_catalog.gd")
 
 const KING_RUNTIME_PATH := "res://assets/chess_king_first_pass.tres"
+const PLAYER_KING_RUNTIME_PATH := KING_RUNTIME_PATH
+const HOOD_KING_RUNTIME_PATH := "res://assets/chess_king_hood.tres"
 const AURA_RUNTIME_PATH := "res://assets/chess_king_auras.tres"
 const SETUP_RUNTIME_PATH := "res://assets/chess_setup_first_pass.tres"
+const PLAYER_SETUP_RUNTIME_PATH := "res://assets/chess_setup_player_early.tres"
+const HOOD_SETUP_RUNTIME_PATH := "res://assets/chess_setup_hood.tres"
 const BOARD_RUNTIME_PATH := "res://assets/boards/presentations/burgundy_marble_board.tres"
 const ENVIRONMENT_RUNTIME_PATH := "res://assets/boards/presentations/portable_walnut_environment.tres"
 
 
 static func publish_activation_profile(
 		activation_profile: ChessKingActivationProfile,
-		target_path := KING_RUNTIME_PATH
+		target_path := KING_RUNTIME_PATH,
+		choreography := -1
 	) -> Dictionary:
 	if activation_profile == null:
 		return _failure("An activation profile is required.")
@@ -22,10 +27,50 @@ static func publish_activation_profile(
 	if target.movement_profile == null:
 		return _failure("The runtime King profile has no magical movement profile to preserve.")
 	target.activation_profile = activation_profile.duplicate(true) as ChessKingActivationProfile
+	if choreography >= 0:
+		target.activation_choreography = choreography
 	var error := ResourceSaver.save(target, target_path)
 	if error != OK:
 		return _failure("Could not publish the King presentation (error %d)." % error)
 	return _success(target_path, "activation ritual")
+
+
+static func publish_death_profile(death_profile: Resource, target_path := PLAYER_KING_RUNTIME_PATH) -> Dictionary:
+	if death_profile == null:
+		return _failure("A King death profile is required.")
+	var target := ResourceLoader.load(target_path, "ChessKingPresentationProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+	if target == null:
+		return _failure("Could not load a King presentation profile from %s." % target_path)
+	var published_profile: Resource = death_profile.duplicate(true)
+	# Keep imported audio as an external project asset rather than embedding its
+	# byte stream into the runtime .tres.
+	published_profile.death_sound = death_profile.death_sound
+	target.death_profile = published_profile
+	var error := ResourceSaver.save(target, target_path)
+	if error != OK:
+		return _failure("Could not publish the King death profile (error %d)." % error)
+	return _success(target_path, "King death profile")
+
+
+static func publish_universal_movement_profile(movement_profile: Resource) -> Dictionary:
+	if movement_profile == null:
+		return _failure("A magical King movement profile is required.")
+	var targets: Array[ChessKingPresentationProfile] = []
+	for path in [PLAYER_KING_RUNTIME_PATH, HOOD_KING_RUNTIME_PATH]:
+		var target := ResourceLoader.load(path, "ChessKingPresentationProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+		if target == null:
+			return _failure("Could not load a King presentation profile from %s." % path)
+		targets.append(target)
+	for index in range(targets.size()):
+		targets[index].movement_profile = movement_profile.duplicate(true)
+		var path: String = [PLAYER_KING_RUNTIME_PATH, HOOD_KING_RUNTIME_PATH][index]
+		var error := ResourceSaver.save(targets[index], path)
+		if error != OK:
+			return _failure("Could not publish universal King movement to %s (error %d)." % [path, error])
+	return {
+		"ok": true,
+		"message": "Published universal King movement to Player Standard and Hood Decisive runtime assets.",
+	}
 
 
 static func publish_aura_profile(
@@ -88,6 +133,7 @@ static func publish_setup_profile(
 	target.right_motion = setup_profile.right_motion.duplicate(true) as ChessSetupMotionProfile
 	target.cues.assign(setup_profile.cues.map(func(cue: ChessSetupCue): return cue.duplicate(true)))
 	target.activating_hand = setup_profile.activating_hand
+	target.order_mode = setup_profile.order_mode
 	var error := ResourceSaver.save(target, target_path)
 	if error != OK:
 		return _failure("Could not publish the setup presentation (error %d)." % error)

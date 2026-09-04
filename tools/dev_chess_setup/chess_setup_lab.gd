@@ -12,6 +12,7 @@ const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const ActivationProfile := preload("res://scripts/view/chess_king_activation_profile.gd")
 const ActivationSequence := preload("res://scripts/view/chess_king_activation_sequence.gd")
+const HoodActivationSequence := preload("res://scripts/view/chess_hood_activation_sequence.gd")
 const Lightning := preload("res://scripts/view/chess_lightning_2d.gd")
 const STONE_SHADER := preload("res://effects/chess_stone_piece.gdshader")
 const SETUP_PRESET_DIRECTORY := "res://.cache/chess_setup_presets"
@@ -38,6 +39,9 @@ var playback_mode := PlaybackMode.SETUP_THEN_ACTIVATION
 var setup_selector: OptionButton
 var activation_selector: OptionButton
 var activating_hand_selector: OptionButton
+var order_mode_selector: OptionButton
+var publish_target_selector: OptionButton
+var preview_seed := 1337
 var playback_mode_selector: OptionButton
 var left_cue_list: ItemList
 var right_cue_list: ItemList
@@ -113,6 +117,18 @@ func _build_controls() -> void:
 		setup_profile.activating_hand = index
 		_rebuild_preview()
 	)
+	order_mode_selector = _add_option(controls, "Order Mode")
+	order_mode_selector.add_item("Authored")
+	order_mode_selector.add_item("Seeded random — King last")
+	order_mode_selector.select(setup_profile.order_mode)
+	order_mode_selector.item_selected.connect(func(index: int):
+		setup_profile.order_mode = index
+		_rebuild_preview())
+	var seed_row := HBoxContainer.new()
+	controls.add_child(seed_row)
+	_add_button(seed_row, "New Preview Seed", func():
+		preview_seed = int(Time.get_ticks_usec() & 0x7fffffff)
+		_rebuild_preview())
 	playback_mode_selector = _add_option(controls, "Preview Mode")
 	for label in ["Setup → Activation", "Setup Only", "Activation Only"]:
 		playback_mode_selector.add_item(label)
@@ -205,13 +221,16 @@ func _build_controls() -> void:
 	preset_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save_row.add_child(preset_name)
 	_add_button(save_row, "Save", _save_setup)
+	publish_target_selector = _add_option(controls, "Publish Target")
+	publish_target_selector.add_item("Early Player")
+	publish_target_selector.add_item("Hood Opponent")
 	var publish := _add_button(save_row, "Publish to Game", _request_publish_setup)
-	publish.tooltip_text = "Updates the shared setup used by both armies. The preview ritual is not published here."
+	publish.tooltip_text = "Updates the selected army's stable runtime setup asset."
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(status_label)
 	publish_confirmation = ConfirmationDialog.new()
-	publish_confirmation.dialog_text = "Publish the current setup to the shared game profile used by both armies?\n\nThe Activation Lab owns the Aura and ritual; this publishes setup motion and cue order only."
+	publish_confirmation.dialog_text = "Publish the current setup to the selected army target?\n\nThe Activation Lab owns the Aura and ritual; this publishes setup motion, order mode, and cues only."
 	publish_confirmation.confirmed.connect(_publish_setup)
 	add_child(publish_confirmation)
 	path_debug = Line2D.new()
@@ -247,7 +266,7 @@ func _rebuild_preview() -> void:
 	right_hand.set_board_sound_set(board.visual_style.interaction_sounds)
 	setup_sequence = ChessArmySetupSequence.new()
 	add_child(setup_sequence)
-	setup_sequence.configure(setup_profile, board, left_hand, right_hand, piece_views, preview_context.seat)
+	setup_sequence.configure(setup_profile, board, left_hand, right_hand, piece_views, preview_context.seat, preview_seed)
 	setup_sequence.cue_started.connect(func(cue: ChessSetupCue): phase_label.text = "Placing %s" % cue.label())
 	setup_sequence.setup_completed.connect(_on_setup_completed)
 	_prepare_activation()
@@ -305,14 +324,14 @@ func _prepare_activation() -> void:
 	hand_aura.profile = aura_profile
 	hand_aura.mode = activation_preset.aura_mode
 	board.add_child(hand_aura)
-	hand_aura.bind_targets(hand.get_aura_sprites())
+	hand.bind_aura(hand_aura)
 	var lightning := Lightning.new()
 	lightning.z_index = ChessHandRig.ACTIVE_PIECE_Z
 	board.add_child(lightning)
 	var anchor := Marker2D.new()
 	anchor.position = hand.get_connection_anchor_position()
 	hand.add_child(anchor)
-	activation_sequence = ActivationSequence.new()
+	activation_sequence = HoodActivationSequence.new() if activation_preset.choreography == ChessKingPresentationProfile.ActivationChoreography.HOOD_DECISIVE else ActivationSequence.new()
 	board.add_child(activation_sequence)
 	activation_nodes.append_array([king_aura, hand_aura, lightning, anchor, activation_sequence])
 	var offset := _activation_hover_offset(hand, activation_preset.activation_profile.hand_hover_offset)
@@ -501,6 +520,7 @@ func _load_selected_setup(index: int) -> void:
 		if loaded.activation_snapshot != null: activation_preset = loaded.activation_snapshot.duplicate(true)
 	_refresh_activation_presets(selected_activation_path)
 	activating_hand_selector.select(setup_profile.activating_hand)
+	order_mode_selector.select(setup_profile.order_mode)
 	preset_name.text = loaded.display_name
 	selected_cue = 0
 	_rebuild_preview()
@@ -536,7 +556,9 @@ func _request_publish_setup() -> void:
 	publish_confirmation.popup_centered()
 
 
-func _publish_setup(target_path := RuntimePublisher.SETUP_RUNTIME_PATH) -> Dictionary:
+func _publish_setup(target_path := "") -> Dictionary:
+	if target_path.is_empty():
+		target_path = RuntimePublisher.PLAYER_SETUP_RUNTIME_PATH if publish_target_selector.selected == 0 else RuntimePublisher.HOOD_SETUP_RUNTIME_PATH
 	var result: Dictionary = RuntimePublisher.publish_setup_profile(setup_profile, target_path)
 	status_label.text = result.message
 	return result

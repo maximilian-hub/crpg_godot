@@ -41,6 +41,18 @@ func _ready() -> void:
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER
 	lab._apply_preview_context()
 	_check(lab.activation_selector.selected == 0 and lab.activation_selector.get_item_text(0) == "Unsaved defaults", "Ritual selector explicitly distinguishes defaults from saved profiles")
+	var default_activation: Resource = lab.activation_profile.duplicate(true)
+	lab.choreography_selector.select(1)
+	lab._select_choreography(1)
+	var hood_runtime := ResourceLoader.load(RuntimePublisher.HOOD_KING_RUNTIME_PATH, "", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+	_check(lab.sequence.get_script().resource_path == "res://scripts/view/chess_hood_activation_sequence.gd" and is_equal_approx(lab.activation_profile.buildup_duration, hood_runtime.activation_profile.buildup_duration), "Hood Decisive selector loads and previews the actual tuned runtime choreography")
+	_check(lab.preview_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "Hood choreography selection also presents the Hood hand identity")
+	lab.choreography_selector.select(0)
+	lab._copy_properties(default_activation, lab.activation_profile)
+	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER
+	lab.loadout_selector.select(0)
+	lab.preview_context.apply_to_hand(lab.preview_hand)
+	lab._rebuild_sequence()
 	_check(lab.activation_profile.climax_hand_return_duration > lab.activation_profile.crackle_hand_return_duration, "Post-climax hand return defaults slower than ordinary crackle recovery")
 	var curve_rng := RandomNumberGenerator.new()
 	curve_rng.seed = 123
@@ -95,6 +107,12 @@ func _ready() -> void:
 	lab.sequence.elapsed = ritual_boundaries[2] + lab.activation_profile.response_duration * 0.5
 	lab.sequence._apply_visual_state()
 	_check(lab.hand_aura.particle_power > 0.0, "Hand particles begin ramping after the initial crackle")
+	_check(lab.king_aura.silhouette_fill > 0.0 and lab.preview_king.sprite.self_modulate.a == 0.0, "King whitening begins during response while the authored color remains dormant")
+	lab.sequence.elapsed = ritual_boundaries[4] - 0.001
+	lab.sequence._apply_visual_state()
+	_check(lab.king_aura.silhouette_fill > 0.99 and lab.stone_sprite.visible, "King reaches white before the climax begins dissolving its stone shell")
+	var king_overlay := lab.king_aura.bindings[0]["overlay"] as Sprite2D
+	_check(king_overlay.z_as_relative and king_overlay.z_index > lab.stone_sprite.z_index, "white activation overlay renders above the inert stone sprite in lab and runtime")
 
 	lab.sequence.restart(false)
 	var hover_position: Vector2 = lab.sequence.base_hand_position
@@ -245,7 +263,11 @@ func _ready() -> void:
 	_check(is_equal_approx(published_auras.find_entry(&"minotaur_king").aura_profile.square_density, 33.0), "Opt-in activation publishing preserves unrelated King Auras")
 	var player_presentation := load("res://assets/player_army_presentation.tres") as ChessArmyPresentationProfile
 	var opponent_presentation := load("res://assets/opponent_army_presentation.tres") as ChessArmyPresentationProfile
-	_check(player_presentation.king_presentation.resource_path == RuntimePublisher.KING_RUNTIME_PATH and opponent_presentation.king_presentation.resource_path == RuntimePublisher.KING_RUNTIME_PATH and player_presentation.king_presentation.aura_catalog.resource_path == RuntimePublisher.AURA_RUNTIME_PATH and opponent_presentation.king_presentation.aura_catalog.resource_path == RuntimePublisher.AURA_RUNTIME_PATH, "Both army loadouts consume the shared ritual and universal King Aura catalog")
+	var player_runtime := ResourceLoader.load(RuntimePublisher.PLAYER_KING_RUNTIME_PATH, "", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+	hood_runtime = ResourceLoader.load(RuntimePublisher.HOOD_KING_RUNTIME_PATH, "", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+	_check(player_presentation.king_presentation.resource_path == RuntimePublisher.PLAYER_KING_RUNTIME_PATH and player_runtime.activation_choreography == ChessKingPresentationProfile.ActivationChoreography.STANDARD_RITUAL, "player loadout consumes the independently published standard ritual")
+	_check(opponent_presentation.king_presentation.resource_path == RuntimePublisher.HOOD_KING_RUNTIME_PATH and hood_runtime.activation_choreography == ChessKingPresentationProfile.ActivationChoreography.HOOD_DECISIVE, "Hood loadout consumes its decisive choreography regardless of King identity")
+	_check(player_runtime.aura_catalog.resource_path == RuntimePublisher.AURA_RUNTIME_PATH and hood_runtime.aura_catalog.resource_path == RuntimePublisher.AURA_RUNTIME_PATH, "both ritual targets retain the universal King Aura catalog")
 
 	lab.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(aura_path))

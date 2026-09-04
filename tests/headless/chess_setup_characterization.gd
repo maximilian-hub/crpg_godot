@@ -83,6 +83,8 @@ func _ready() -> void:
 		motion.retreat_duration = 0.01
 	for cue in lab.setup_profile.cues:
 		cue.gap_before = 0.0
+	lab.setup_profile.order_mode = ChessArmySetupProfile.OrderMode.SEEDED_RANDOM_KING_LAST
+	lab.preview_seed = 2468
 	for property in ["approach_duration", "approach_settle_duration", "invocation_duration", "response_duration", "buildup_duration", "climax_duration", "afterimage_duration", "aura_release_duration", "climax_hand_return_duration", "post_climax_retreat_delay", "retreat_duration", "resolve_duration"]:
 		lab.activation_sequence.profile.set(property, 0.01)
 	lab.activation_sequence.profile.buildup_crackle_times = PackedFloat32Array()
@@ -90,10 +92,11 @@ func _ready() -> void:
 	lab.setup_sequence.set_playback_speed(4.0)
 	lab.activation_sequence.set_playback_speed(4.0)
 	var started_sides: Dictionary = {}
-	var observations := {"placed": 0}
+	var observations := {"placed": 0, "order": []}
 	lab.setup_sequence.cue_started.connect(func(cue): started_sides[cue.hand_side] = true)
 	lab.setup_sequence.piece_placed.connect(func(_cue, piece):
 		observations["placed"] = int(observations["placed"]) + 1
+		observations.order.append(piece.model.type)
 		_check(not piece.sprite.flip_h, "carried/released chess art remains unmirrored")
 	)
 	lab._play()
@@ -103,6 +106,7 @@ func _ready() -> void:
 		timeout -= get_process_delta_time()
 	_check(timeout > 0.0, "full two-hand setup chains into activation and completes")
 	_check(int(observations["placed"]) == 16 and started_sides.has(ChessSetupCue.HandSide.LEFT) and started_sides.has(ChessSetupCue.HandSide.RIGHT), "both independent tracks place every army piece exactly once")
+	_check(observations.order.back().ends_with("king"), "seeded setup holds the King until both non-King hand tracks have completed")
 	var correctly_placed := true
 	for cue in lab.setup_profile.cues:
 		var coordinate: Vector2i = lab.board.projection.get_model_coordinate(cue.display_coordinate)
@@ -170,7 +174,8 @@ func _ready() -> void:
 	_check(not invalid_result.ok and preserved_runtime.cues.size() == 16 and is_equal_approx(preserved_runtime.cues[0].gap_before, 0.73), "Invalid setup coverage is rejected without modifying the runtime target")
 	var player_presentation := load("res://assets/player_army_presentation.tres") as ChessArmyPresentationProfile
 	var opponent_presentation := load("res://assets/opponent_army_presentation.tres") as ChessArmyPresentationProfile
-	_check(player_presentation.setup_profile.resource_path == RuntimePublisher.SETUP_RUNTIME_PATH and opponent_presentation.setup_profile.resource_path == RuntimePublisher.SETUP_RUNTIME_PATH, "Both army loadouts consume the shared published setup presentation")
+	_check(player_presentation.setup_profile.resource_path == RuntimePublisher.PLAYER_SETUP_RUNTIME_PATH and player_presentation.setup_profile.order_mode == ChessArmySetupProfile.OrderMode.SEEDED_RANDOM_KING_LAST, "player loadout consumes the seeded King-last setup target")
+	_check(opponent_presentation.setup_profile.resource_path == RuntimePublisher.HOOD_SETUP_RUNTIME_PATH and opponent_presentation.setup_profile.order_mode == ChessArmySetupProfile.OrderMode.AUTHORED, "Hood loadout retains its independently published authored setup target")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(runtime_path))
 

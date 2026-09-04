@@ -45,6 +45,7 @@ func _ready() -> void:
 	var overlay := binding["overlay"] as Sprite2D
 	var emitter := binding["emitter"] as ChessSquareEmitter2D
 	_check(overlay.get_parent() == source and emitter.get_parent() == source, "overlay and square emitter inherit the source transform and depth band")
+	_check(overlay.z_as_relative and overlay.z_index == 1, "single-sprite silhouettes render above stone and palette overlays")
 	_check(overlay.texture == source.texture and overlay.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST, "overlay mirrors the source texture with nearest filtering")
 	_check(not emitter.opaque_points.is_empty(), "square flame caches opaque silhouette pixels")
 
@@ -66,6 +67,18 @@ func _ready() -> void:
 	aura.reset_effect()
 	_check(aura.active_particle_count() == 0, "reset clears residual motes")
 	_check(source.material == original_material and source.texture != null, "power cycling leaves source presentation unchanged")
+
+	var hand := preload("res://scenes/player_hand_rig.tscn").instantiate() as ChessHandRig
+	add_child(hand)
+	await get_tree().process_frame
+	var hand_aura := Aura.new() as ChessAura2D
+	hand_aura.profile = profile
+	add_child(hand_aura)
+	hand.bind_aura(hand_aura)
+	_check(hand_aura.bindings.all(func(item): return not (item["overlay"] as Sprite2D).z_as_relative and (item["overlay"] as Sprite2D).z_index < ChessHandRig.GRIP_BACK_Z), "layered hand silhouettes share one absolute layer beneath the complete hand")
+	_check(hand_aura.bindings.all(func(item): return not (item["emitter"] as Node2D).z_as_relative and (item["emitter"] as Node2D).z_index > ChessHandRig.ARM_FOREGROUND_Z), "layered hand particles remain on an independent upper effect layer")
+	hand_aura.clear_targets()
+	hand.queue_free()
 
 	await _test_lab_presets_and_selectors()
 

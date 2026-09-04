@@ -13,7 +13,7 @@
 [ext_resource type="Resource" uid="uid://hyuqx5axgyc" path="res://assets/chess_board_default_style.tres" id="12_board_style"]
 [ext_resource type="PackedScene" path="res://scenes/player_hand_rig.tscn" id="13_hand_rig"]
 [ext_resource type="Resource" uid="uid://d0mfkbmg22hl4" path="res://assets/arms/player/skeleton_hand_style.tres" id="14_hand_style"]
-[ext_resource type="Resource" path="res://assets/player_army_presentation.tres" id="15_player_presentation"]
+[ext_resource type="Resource" uid="uid://c6awk4axdemy3" path="res://assets/player_army_presentation.tres" id="15_player_presentation"]
 [ext_resource type="Resource" uid="uid://bn1bn30l1rhrs" path="res://assets/opponent_army_presentation.tres" id="16_opponent_presentation"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]

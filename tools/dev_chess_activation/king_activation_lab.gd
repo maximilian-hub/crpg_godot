@@ -11,6 +11,7 @@ const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
 const ActivationProfile := preload("res://scripts/view/chess_king_activation_profile.gd")
 const ActivationSequence := preload("res://scripts/view/chess_king_activation_sequence.gd")
+const HoodActivationSequence := preload("res://scripts/view/chess_hood_activation_sequence.gd")
 const Lightning := preload("res://scripts/view/chess_lightning_2d.gd")
 const AuraLabPreset := preload("res://tools/dev_chess_aura/chess_aura_lab_preset.gd")
 const ActivationPreset := preload("res://tools/dev_chess_activation/chess_activation_lab_preset.gd")
@@ -63,6 +64,9 @@ var retreat_path_debug: Line2D
 var preview_context := PreviewContext.new()
 var seat_selector: OptionButton
 var loadout_selector: OptionButton
+var choreography_selector: OptionButton
+var publish_target_selector: OptionButton
+var sequence_audio_nodes: Array[Node] = []
 
 
 func _ready() -> void:
@@ -120,7 +124,7 @@ func _build_stage() -> void:
 	hand_aura = Aura.new() as ChessAura2D
 	hand_aura.profile = aura_profile
 	add_child(hand_aura)
-	hand_aura.bind_targets(hand_sprites)
+	preview_hand.bind_aura(hand_aura)
 	lightning = Lightning.new()
 	# Back grip < lightning < front grip < arm/palm, so the
 	# energy appears to emerge from inside the hand instead of sitting atop it.
@@ -149,8 +153,9 @@ func _build_sequence() -> void:
 			player.stream = activation_sounds.get(cue)
 			player.volume_db = float(activation_sounds.get(&"volume_db"))
 		add_child(player)
+		sequence_audio_nodes.append(player)
 		players[cue] = player
-	sequence = ActivationSequence.new()
+	sequence = HoodActivationSequence.new() if choreography_selector.selected == ChessKingPresentationProfile.ActivationChoreography.HOOD_DECISIVE else ActivationSequence.new()
 	add_child(sequence)
 	sequence.configure(
 		activation_profile,
@@ -173,6 +178,28 @@ func _build_sequence() -> void:
 		pause_button.disabled = true
 	)
 	_refresh_hand_paths()
+
+
+func _rebuild_sequence() -> void:
+	if is_instance_valid(sequence): sequence.queue_free()
+	for node in sequence_audio_nodes:
+		if is_instance_valid(node): node.queue_free()
+	sequence_audio_nodes.clear()
+	_build_sequence()
+	_sync_profile_controls()
+	_refresh_playback_labels()
+
+
+func _select_choreography(index: int) -> void:
+	var runtime_path := RuntimePublisher.HOOD_KING_RUNTIME_PATH if index == ChessKingPresentationProfile.ActivationChoreography.HOOD_DECISIVE else RuntimePublisher.PLAYER_KING_RUNTIME_PATH
+	var runtime := ResourceLoader.load(runtime_path, "", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingPresentationProfile
+	if runtime != null and runtime.activation_profile != null:
+		_copy_properties(runtime.activation_profile, activation_profile)
+	var is_hood := index == ChessKingPresentationProfile.ActivationChoreography.HOOD_DECISIVE
+	loadout_selector.select(1 if is_hood else 0)
+	preview_context.loadout = PreviewContext.Loadout.OPPONENT if is_hood else PreviewContext.Loadout.PLAYER
+	preview_context.apply_to_hand(preview_hand)
+	_rebuild_sequence()
 
 
 func _build_controls() -> void:
@@ -201,6 +228,10 @@ func _build_controls() -> void:
 	loadout_selector.item_selected.connect(func(index: int):
 		preview_context.loadout = PreviewContext.Loadout.OPPONENT if index == 1 else PreviewContext.Loadout.PLAYER
 		_apply_preview_context())
+	choreography_selector = _add_option(controls, "Choreography")
+	choreography_selector.add_item("Player Standard")
+	choreography_selector.add_item("Hood Decisive")
+	choreography_selector.item_selected.connect(_select_choreography)
 	aura_selector = _add_option(controls, "Aura Profile")
 	aura_selector.item_selected.connect(_load_selected_aura)
 	activation_selector = _add_option(controls, "Ritual Profile")
@@ -316,6 +347,9 @@ func _build_controls() -> void:
 	publish_aura_checkbox.text = "Also publish selected King's Aura"
 	publish_aura_checkbox.tooltip_text = "When enabled, also replaces the selected King type's universal Aura for both armies."
 	controls.add_child(publish_aura_checkbox)
+	publish_target_selector = _add_option(controls, "Publish Target")
+	publish_target_selector.add_item("Player Standard")
+	publish_target_selector.add_item("Hood Decisive")
 	var save_row := HBoxContainer.new()
 	controls.add_child(save_row)
 	preset_name = LineEdit.new()
@@ -619,6 +653,7 @@ func _capture_activation(display_name: String) -> Resource:
 	result.aura_mode = selected_aura_mode
 	result.king_type_id = king_selector.get_item_metadata(king_selector.selected)
 	result.army_color = "black" if army_selector.selected == 1 else "white"
+	result.choreography = choreography_selector.selected
 	return result
 
 
@@ -640,11 +675,13 @@ func _request_publish_activation() -> void:
 	var aura_note := ""
 	if publish_aura_checkbox.button_pressed:
 		aura_note = "\n\nThe current Aura will also replace the universal %s Aura for both armies." % ChessPieceCatalog.get_definition(type_id).get("name", str(type_id))
-	publish_confirmation.dialog_text = "Publish the current activation ritual to the shared game profile?\n\nThe magical movement profile will be preserved.%s" % aura_note
+	publish_confirmation.dialog_text = "Publish the current activation ritual and choreography to the selected army target?\n\nThe magical movement and death profiles will be preserved.%s" % aura_note
 	publish_confirmation.popup_centered()
 
 
-func _publish_activation(target_path := RuntimePublisher.KING_RUNTIME_PATH, aura_target_path := RuntimePublisher.AURA_RUNTIME_PATH) -> Dictionary:
+func _publish_activation(target_path := "", aura_target_path := RuntimePublisher.AURA_RUNTIME_PATH) -> Dictionary:
+	if target_path.is_empty():
+		target_path = RuntimePublisher.PLAYER_KING_RUNTIME_PATH if publish_target_selector.selected == 0 else RuntimePublisher.HOOD_KING_RUNTIME_PATH
 	if publish_aura_checkbox.button_pressed:
 		var type_id: StringName = king_selector.get_item_metadata(king_selector.selected)
 		var validation_error := RuntimePublisher.validate_aura_profile(type_id, aura_profile)
@@ -652,7 +689,7 @@ func _publish_activation(target_path := RuntimePublisher.KING_RUNTIME_PATH, aura
 			var invalid_result := {"ok": false, "message": validation_error}
 			_set_status(invalid_result.message, true)
 			return invalid_result
-	var result: Dictionary = RuntimePublisher.publish_activation_profile(activation_profile, target_path)
+	var result: Dictionary = RuntimePublisher.publish_activation_profile(activation_profile, target_path, choreography_selector.selected)
 	if result.ok and publish_aura_checkbox.button_pressed:
 		var type_id: StringName = king_selector.get_item_metadata(king_selector.selected)
 		var aura_result: Dictionary = RuntimePublisher.publish_aura_profile(type_id, aura_profile, selected_aura_mode, aura_target_path)
@@ -701,6 +738,8 @@ func _load_selected_activation(index: int) -> void:
 	_select_aura_preset(selected_aura_path)
 	_select_king(resource.king_type_id)
 	army_selector.select(1 if resource.army_color == "black" else 0)
+	choreography_selector.select(resource.choreography)
+	_rebuild_sequence()
 	_update_king()
 	_sync_profile_controls()
 	preset_name.text = resource.display_name
@@ -761,7 +800,7 @@ func _apply_preview_context() -> void:
 	hand_aura.clear_targets()
 	preview_context.apply_to_hand(preview_hand)
 	hand_connection_anchor.position = preview_hand.get_connection_anchor_position()
-	hand_aura.bind_targets(preview_hand.get_aura_sprites())
+	preview_hand.bind_aura(hand_aura)
 	hand_aura.set_mode(selected_aura_mode)
 	hand_aura.set_silhouette_power(hand_silhouette)
 	hand_aura.set_particle_power(hand_particles)

@@ -1,6 +1,8 @@
 extends Node
 class_name ChessPresentationAdapter
 
+const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
+
 const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
 const KingMagicController = preload("res://scripts/view/chess_king_magic_controller.gd")
 const KingPresentationProfile = preload("res://scripts/view/chess_king_presentation_profile.gd")
@@ -36,6 +38,7 @@ var king_magic_controllers: Dictionary = {}
 var player_color := "white"
 var player_presentation: Resource
 var opponent_presentation: Resource
+var active_king_deaths: Array[Node] = []
 
 
 func _ready() -> void:
@@ -56,7 +59,7 @@ func _ready() -> void:
 	model.piece_recovered.connect(_on_piece_recovered)
 	model.ability_started.connect(_on_ability_started)
 	model.ability_effect_resolved.connect(_on_ability_effect_resolved)
-	model.battle_finished.connect(result_view.show_battle_result)
+	model.battle_finished.connect(_on_battle_finished)
 	controller.ability_targeting_started.connect(_on_ability_targeting_started)
 	controller.ability_targeting_ended.connect(_on_ability_targeting_ended)
 	controller.selection_piece_processing.connect(_on_selection_piece_processing)
@@ -174,6 +177,25 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		return
 
 	gate.hold()
+	if defender is KingPiece and is_instance_valid(defender_node):
+		var defender_magic := _get_king_magic(defender)
+		var death_profile: Resource = defender_magic.profile.death_profile if defender_magic != null else KingDeathProfile.new()
+		if defender_magic != null: defender_magic.disable_effects()
+		var death_effect := view.create_king_death_effect(defender_node, death_profile)
+		var death_contact := func(): death_effect.play()
+		if attacker is KingPiece:
+			var attacking_magic := _get_king_magic(attacker)
+			if attacking_magic != null:
+				await attacking_magic.play_attack(from, to, death_contact)
+			else:
+				await view.attack_piece_node(attacker_node, to, death_contact)
+		else:
+			await view.attack_piece_node_with_hand(attacker_node, from, to, death_contact)
+		if not death_effect.running and not death_effect.finished: death_effect.play()
+		if not death_effect.finished: await death_effect.completed
+		silently_removed_piece_views[defender] = true
+		gate.release()
+		return
 	if attacker is KingPiece:
 		var magic := _get_king_magic(attacker)
 		if magic != null and is_instance_valid(defender_node):
@@ -231,8 +253,11 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 	pending_attack_damage_visuals.erase(piece)
 	var piece_node: Node = piece_views.get(piece)
 	var magic: Node = king_magic_controllers.get(piece)
+	var death_profile: Resource = magic.profile.death_profile if piece is KingPiece and is_instance_valid(magic) else null
 	king_magic_controllers.erase(piece)
-	if is_instance_valid(magic): magic.queue_free()
+	if is_instance_valid(magic):
+		if piece is KingPiece: magic.disable_effects()
+		magic.queue_free()
 	piece_views.erase(piece)
 	necromancer_auras.erase(piece)
 	if is_instance_valid(piece_node):
@@ -243,7 +268,17 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 			silently_removed_piece_views.erase(piece)
 			view.remove_piece(piece_node)
 		else:
-			view.destroy_piece(piece_node)
+			var death_effect: Node = view.destroy_piece(piece_node, death_profile)
+			if is_instance_valid(death_effect):
+				active_king_deaths.append(death_effect)
+
+
+func _on_battle_finished(winner_color: String) -> void:
+	for effect in active_king_deaths:
+		if is_instance_valid(effect) and not effect.finished:
+			await effect.completed
+	active_king_deaths.clear()
+	result_view.show_battle_result(winner_color)
 
 
 func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void:
