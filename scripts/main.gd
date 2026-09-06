@@ -135,13 +135,16 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.player_color = "white"
 	active_battle.battle_presentation = resolved_presentation
-	battle_environment.set_meta("shake_overscan", Vector2(active_battle.screen_shake.maximum_combined_offset))
+	# @onready fields on the instantiated ChessGame are not populated until it
+	# enters the tree. The authored child is already available immediately.
+	var battle_screen_shake := active_battle.get_node("ScreenShake")
+	battle_environment.set_meta("shake_overscan", Vector2(battle_screen_shake.maximum_combined_offset))
 	_layout_battle_environment()
 	if encounter_profile != null and encounter_profile.opponent_presentation != null:
 		active_battle.opponent_presentation = encounter_profile.opponent_presentation
 	active_battle.opponent_hand_style = encounter_profile.opponent_hand_style if encounter_profile != null else null
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
-	active_battle.get_node("ScreenShake").offset_changed.connect(_on_battle_shake_offset_changed)
+	battle_screen_shake.offset_changed.connect(_on_battle_shake_offset_changed)
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	if battle_presentation_mode == BattlePresentationMode.FLUID_NATIVE:
 		active_content.add_child(active_battle)

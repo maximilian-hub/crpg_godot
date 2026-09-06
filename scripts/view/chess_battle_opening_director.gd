@@ -224,6 +224,8 @@ func _hide_all_pieces() -> void:
 func _reveal_all_pieces() -> void:
 	if adapter == null:
 		return
+	if board != null:
+		board.ensure_all_hand_placements()
 	for piece_view in adapter.piece_views.values():
 		if is_instance_valid(piece_view):
 			piece_view.visible = true

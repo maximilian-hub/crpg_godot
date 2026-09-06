@@ -1,11 +1,12 @@
 extends Resource
 class_name ChessSetupLabPreset
 
-const CURRENT_SCHEMA_VERSION := 1
+const CURRENT_SCHEMA_VERSION := 2
 
 @export var schema_version := CURRENT_SCHEMA_VERSION
 @export var display_name := ""
 @export var setup_profile: ChessArmySetupProfile
+@export var piece_placement: Resource
 @export var activation_preset_path := ""
 @export var activation_snapshot: Resource
 

@@ -15,7 +15,7 @@
 [ext_resource type="Resource" uid="uid://d0mfkbmg22hl4" path="res://assets/arms/player/skeleton_hand_style.tres" id="14_hand_style"]
 [ext_resource type="Resource" uid="uid://c6awk4axdemy3" path="res://assets/player_army_presentation.tres" id="15_player_presentation"]
 [ext_resource type="Resource" uid="uid://bn1bn30l1rhrs" path="res://assets/opponent_army_presentation.tres" id="16_opponent_presentation"]
-[ext_resource type="Script" path="res://scripts/view/chess_screen_shake.gd" id="17_screen_shake"]
+[ext_resource type="Script" uid="uid://dhg06o83mtgil" path="res://scripts/view/chess_screen_shake.gd" id="17_screen_shake"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
 bg_color = Color(0.1, 0.075, 0.14, 0.98)

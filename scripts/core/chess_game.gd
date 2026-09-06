@@ -38,6 +38,7 @@ var completed_player_result: String = ""
 var opening_director: ChessBattleOpeningDirector
 var _white_turn_released := false
 var _black_activation_barrier_started := false
+var presentation_seed := 0
 
 var opening_in_progress: bool:
 	get:
@@ -62,6 +63,9 @@ func _ready() -> void:
 		screen_shake.configure([canvas_layer], [battle_ui])
 	_apply_battle_presentation(board_view)
 	_apply_army_presentations(board_view)
+	presentation_seed = int(Time.get_ticks_usec() & 0x7fffffff) if presentation_seed == 0 else presentation_seed
+	if board_view != null:
+		board_view.set_piece_placement_seed(presentation_seed)
 	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter
 	if adapter != null:
 		adapter.configure_army_presentations(player_color, player_presentation, opponent_presentation)
@@ -87,7 +91,10 @@ func _ready() -> void:
 		opening_director.name = "BattleOpeningDirector"
 		add_child(opening_director)
 		opening_director.configure(model, board_view, adapter, adapter.presentation_policy, player_color, player_presentation, opponent_presentation)
+		opening_director.opening_seed = presentation_seed
 		await opening_director.play()
+	elif board_view != null:
+		board_view.ensure_all_hand_placements()
 	controller.is_input_locked = model.battle_over
 	_configure_participants(true)
 	_white_turn_released = true
@@ -192,6 +199,12 @@ func _apply_army_presentations(board_view: ChessBoardView) -> void:
 		return
 	var player_style: Resource = player_presentation.hand_style if player_presentation != null else player_hand_style
 	var opponent_style: Resource = opponent_presentation.hand_style if opponent_presentation != null else opponent_hand_style
+	var player_placement: Resource = player_presentation.piece_placement if player_presentation != null else null
+	var opponent_placement: Resource = opponent_presentation.piece_placement if opponent_presentation != null else null
+	if player_color == "white":
+		board_view.set_piece_placement_profiles(player_placement, opponent_placement)
+	else:
+		board_view.set_piece_placement_profiles(opponent_placement, player_placement)
 	if board_view.viewing_color == player_color:
 		board_view.set_hand_styles(player_style, opponent_style)
 	else:

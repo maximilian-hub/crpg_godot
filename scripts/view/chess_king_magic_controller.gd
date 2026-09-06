@@ -136,6 +136,7 @@ func _build_activation_sequence() -> void:
 func play_move(from: Vector2i, to: Vector2i) -> void:
 	await _begin_gesture(from, to)
 	king.coordinate = to
+	board.clear_piece_placement(king)
 	await _travel_king(board.grid_to_screen(to.x, to.y), profile.movement_profile.travel_duration)
 	board._update_piece_depth(king)
 	await _end_gesture()
@@ -144,6 +145,7 @@ func play_move(from: Vector2i, to: Vector2i) -> void:
 func play_capture(from: Vector2i, to: Vector2i, defender: PieceView) -> void:
 	await _begin_gesture(from, to)
 	king.coordinate = to
+	board.clear_piece_placement(king)
 	await _travel_with_knockoff(board.grid_to_screen(to.x, to.y), defender, from, to)
 	board._update_piece_depth(king)
 	await _end_gesture()
@@ -152,7 +154,9 @@ func play_capture(from: Vector2i, to: Vector2i, defender: PieceView) -> void:
 func play_attack(_from: Vector2i, target: Vector2i, contact_callback := Callable()) -> void:
 	await _begin_gesture(_from, target)
 	var origin := king.position
-	await _travel_king(board.grid_to_screen(target.x, target.y), profile.movement_profile.travel_duration)
+	var defender := board.get_piece_node(target) as Node2D
+	var target_position := defender.position if is_instance_valid(defender) else board.grid_to_screen(target.x, target.y)
+	await _travel_king(target_position, profile.movement_profile.travel_duration)
 	if contact_callback.is_valid(): contact_callback.call()
 	await _travel_king(origin, profile.movement_profile.attack_rebound_duration)
 	board._update_piece_depth(king)

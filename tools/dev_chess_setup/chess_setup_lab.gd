@@ -10,6 +10,7 @@ const SetupPreset := preload("res://tools/dev_chess_setup/chess_setup_lab_preset
 const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
 const Aura := preload("res://scripts/view/chess_aura_2d.gd")
 const AuraProfile := preload("res://scripts/view/chess_aura_profile.gd")
+const PlacementProfile := preload("res://scripts/view/chess_piece_placement_profile.gd")
 const ActivationProfile := preload("res://scripts/view/chess_king_activation_profile.gd")
 const ActivationSequence := preload("res://scripts/view/chess_king_activation_sequence.gd")
 const HoodActivationSequence := preload("res://scripts/view/chess_hood_activation_sequence.gd")
@@ -25,6 +26,7 @@ enum PlaybackMode { SETUP_THEN_ACTIVATION, SETUP_ONLY, ACTIVATION_ONLY }
 @onready var left_hand: ChessHandRig = $ChessBoard/LeftHandRig
 
 var setup_profile := ChessArmySetupProfile.new()
+var placement_profile: Resource = PlacementProfile.new()
 var setup_sequence: ChessArmySetupSequence
 var activation_preset: Resource
 var selected_activation_path := ""
@@ -65,6 +67,7 @@ func _ready() -> void:
 	get_viewport().canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	preview_context.apply_to_hand(left_hand, true)
 	preview_context.apply_to_hand(right_hand, false)
+	placement_profile = preview_context.army_presentation().piece_placement.duplicate(true)
 	left_hand.set_board_sound_set(board.visual_style.interaction_sounds)
 	right_hand.set_board_sound_set(board.visual_style.interaction_sounds)
 	left_hand.set_visual_mirrored(true)
@@ -104,6 +107,8 @@ func _build_controls() -> void:
 	for name in ["Player / Skeleton", "Opponent / Hood"]: loadout_selector.add_item(name)
 	loadout_selector.item_selected.connect(func(index: int):
 		preview_context.loadout = PreviewContext.Loadout.OPPONENT if index == 1 else PreviewContext.Loadout.PLAYER
+		placement_profile = preview_context.army_presentation().piece_placement.duplicate(true)
+		_sync_placement_controls()
 		_rebuild_preview())
 	setup_selector = _add_option(controls, "Setup Profile")
 	setup_selector.item_selected.connect(_load_selected_setup)
@@ -129,6 +134,33 @@ func _build_controls() -> void:
 	_add_button(seed_row, "New Preview Seed", func():
 		preview_seed = int(Time.get_ticks_usec() & 0x7fffffff)
 		_rebuild_preview())
+	var placement_title := Label.new()
+	placement_title.text = "Piece Placement"
+	controls.add_child(placement_title)
+	var placement_enabled := CheckButton.new()
+	placement_enabled.name = "PlacementEnabled"
+	placement_enabled.text = "Placement variation"
+	placement_enabled.button_pressed = placement_profile.enabled
+	placement_enabled.toggled.connect(func(value: bool):
+		placement_profile.enabled = value
+		_rebuild_preview())
+	controls.add_child(placement_enabled)
+	var placement_across := _add_spin(controls, "Across spread", 0.0, 24.0, 0.25, func(value: float):
+		placement_profile.max_across_error = value
+		_rebuild_preview())
+	placement_across.name = "PlacementAcross"
+	placement_across.set_value_no_signal(placement_profile.max_across_error)
+	var placement_depth := _add_spin(controls, "Depth spread", 0.0, 24.0, 0.25, func(value: float):
+		placement_profile.max_depth_error = value
+		_rebuild_preview())
+	placement_depth.name = "PlacementDepth"
+	placement_depth.set_value_no_signal(placement_profile.max_depth_error)
+	var placement_bias := _add_spin(controls, "Center bias", 0.25, 4.0, 0.05, func(value: float):
+		placement_profile.center_bias = value
+		_rebuild_preview())
+	placement_bias.name = "PlacementCenterBias"
+	placement_bias.set_value_no_signal(placement_profile.center_bias)
+	controls.add_child(HSeparator.new())
 	playback_mode_selector = _add_option(controls, "Preview Mode")
 	for label in ["Setup → Activation", "Setup Only", "Activation Only"]:
 		playback_mode_selector.add_item(label)
@@ -225,12 +257,12 @@ func _build_controls() -> void:
 	publish_target_selector.add_item("Early Player")
 	publish_target_selector.add_item("Hood Opponent")
 	var publish := _add_button(save_row, "Publish to Game", _request_publish_setup)
-	publish.tooltip_text = "Updates the selected army's stable runtime setup asset."
+	publish.tooltip_text = "Updates the selected army's setup and piece-placement assets."
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(status_label)
 	publish_confirmation = ConfirmationDialog.new()
-	publish_confirmation.dialog_text = "Publish the current setup to the selected army target?\n\nThe Activation Lab owns the Aura and ritual; this publishes setup motion, order mode, and cues only."
+	publish_confirmation.dialog_text = "Publish the current setup and piece placement variation to the selected army target?\n\nThe Activation Lab still owns the Aura and ritual."
 	publish_confirmation.confirmed.connect(_publish_setup)
 	add_child(publish_confirmation)
 	path_debug = Line2D.new()
@@ -249,6 +281,11 @@ func _rebuild_preview() -> void:
 	var king_type: StringName = activation_preset.king_type_id if activation_preset != null else &"classic_king"
 	var viewing_color := color if preview_context.seat == ChessHandRig.Seat.NEAR else ("black" if color == "white" else "white")
 	board.set_viewing_color(viewing_color)
+	board.set_piece_placement_seed(preview_seed)
+	board.set_piece_placement_profiles(
+		placement_profile if color == "white" else null,
+		placement_profile if color == "black" else null
+	)
 	var fixture := _make_standard_fixture(color, king_type)
 	var rendered: Dictionary
 	if board.board == null or board.board.is_empty():
@@ -377,8 +414,10 @@ func _play() -> void:
 
 func _restart() -> void:
 	if activation_sequence != null: activation_sequence.restart(false)
+	board.set_piece_placement_seed(preview_seed)
 	setup_sequence.restart(false)
 	if playback_mode == PlaybackMode.ACTIVATION_ONLY:
+		board.ensure_all_hand_placements()
 		for piece in piece_views.values():
 			if is_instance_valid(piece): piece.visible = true
 		phase_label.text = "Ready — activation only"
@@ -449,7 +488,8 @@ func _preview_selected_cue() -> void:
 	var coordinate := board.projection.get_model_coordinate(cue.display_coordinate)
 	var piece: Node2D = piece_views.get(coordinate)
 	var hand := left_hand if cue.hand_side == ChessSetupCue.HandSide.LEFT else right_hand
-	await hand.play_setup_placement(piece, board.grid_to_screen(coordinate.x, coordinate.y), board.get_world_scale(), setup_profile.motion_for(cue), board.get_piece_depth(coordinate))
+	var destination := board.roll_hand_placement(piece, coordinate)
+	await hand.play_setup_placement(piece, destination, board.get_world_scale(), setup_profile.motion_for(cue), board.get_piece_depth(coordinate))
 	phase_label.text = "Selected cue complete"
 
 
@@ -514,6 +554,7 @@ func _load_selected_setup(index: int) -> void:
 	var loaded := ResourceLoader.load(path, "ChessSetupLabPreset", ResourceLoader.CACHE_MODE_IGNORE)
 	if loaded == null or not loaded.is_supported(): return
 	setup_profile = loaded.setup_profile.duplicate(true)
+	placement_profile = loaded.piece_placement.duplicate(true) if loaded.piece_placement != null else preview_context.army_presentation().piece_placement.duplicate(true)
 	selected_activation_path = loaded.activation_preset_path
 	activation_preset = _load_activation(selected_activation_path)
 	if selected_activation_path.is_empty() or activation_preset.display_name == "Unsaved classic defaults":
@@ -521,6 +562,7 @@ func _load_selected_setup(index: int) -> void:
 	_refresh_activation_presets(selected_activation_path)
 	activating_hand_selector.select(setup_profile.activating_hand)
 	order_mode_selector.select(setup_profile.order_mode)
+	_sync_placement_controls()
 	preset_name.text = loaded.display_name
 	selected_cue = 0
 	_rebuild_preview()
@@ -537,6 +579,7 @@ func _save_setup() -> void:
 	var preset: Resource = SetupPreset.new()
 	preset.display_name = name
 	preset.setup_profile = setup_profile.duplicate(true)
+	preset.piece_placement = placement_profile.duplicate(true)
 	preset.activation_preset_path = selected_activation_path
 	preset.activation_snapshot = activation_preset.duplicate(true)
 	var path := "%s/%s.tres" % [SETUP_PRESET_DIRECTORY, stem]
@@ -553,6 +596,9 @@ func _request_publish_setup() -> void:
 	if not validation_error.is_empty():
 		status_label.text = validation_error
 		return
+	if placement_profile == null:
+		status_label.text = "A piece placement profile is required."
+		return
 	publish_confirmation.popup_centered()
 
 
@@ -560,8 +606,26 @@ func _publish_setup(target_path := "") -> Dictionary:
 	if target_path.is_empty():
 		target_path = RuntimePublisher.PLAYER_SETUP_RUNTIME_PATH if publish_target_selector.selected == 0 else RuntimePublisher.HOOD_SETUP_RUNTIME_PATH
 	var result: Dictionary = RuntimePublisher.publish_setup_profile(setup_profile, target_path)
+	if result.ok:
+		var placement_path: String = RuntimePublisher.PLAYER_PLACEMENT_RUNTIME_PATH if publish_target_selector.selected == 0 else RuntimePublisher.HOOD_PLACEMENT_RUNTIME_PATH
+		var placement_result: Dictionary = RuntimePublisher.publish_piece_placement_profile(placement_profile, placement_path)
+		if placement_result.ok:
+			result.message += "\n" + placement_result.message
+		else:
+			result = placement_result
 	status_label.text = result.message
 	return result
+
+
+func _sync_placement_controls() -> void:
+	var enabled := find_child("PlacementEnabled", true, false) as CheckButton
+	var across := find_child("PlacementAcross", true, false) as SpinBox
+	var depth := find_child("PlacementDepth", true, false) as SpinBox
+	var bias := find_child("PlacementCenterBias", true, false) as SpinBox
+	if enabled != null: enabled.set_pressed_no_signal(placement_profile.enabled)
+	if across != null: across.set_value_no_signal(placement_profile.max_across_error)
+	if depth != null: depth.set_value_no_signal(placement_profile.max_depth_error)
+	if bias != null: bias.set_value_no_signal(placement_profile.center_bias)
 
 
 func _discover(directory_path: String, expected_script: Script) -> Array[Dictionary]:

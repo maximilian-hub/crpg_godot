@@ -1,106 +1,106 @@
-[gd_resource type="Resource" script_class="ChessArmySetupProfile" load_steps=22 format=3 uid="uid://dvk3gd2ytb82h"]
+[gd_resource type="Resource" script_class="ChessArmySetupProfile" load_steps=22 format=3 uid="uid://glwu5tknuuoa"]
 
 [ext_resource type="Script" uid="uid://bv2vxsebqarul" path="res://scripts/view/chess_army_setup_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://c340pr01kpmqt" path="res://scripts/view/chess_setup_cue.gd" id="1_qfngd"]
 [ext_resource type="Script" uid="uid://bd7bxvrx43bom" path="res://scripts/view/chess_setup_motion_profile.gd" id="2"]
 
-[sub_resource type="Resource" id="Cue1"]
+[sub_resource type="Resource" id="Resource_sktdt"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 7)
 hand_side = 1
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue2"]
+[sub_resource type="Resource" id="Resource_g60fn"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 6)
 hand_side = 1
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue3"]
+[sub_resource type="Resource" id="Resource_4q8hj"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 5)
 hand_side = 1
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue4"]
+[sub_resource type="Resource" id="Resource_00skt"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 4)
 hand_side = 1
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue5"]
+[sub_resource type="Resource" id="Resource_q3ngm"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 7)
 hand_side = 1
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue6"]
+[sub_resource type="Resource" id="Resource_ax3x7"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 6)
 hand_side = 1
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue7"]
+[sub_resource type="Resource" id="Resource_kn3gh"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 5)
 hand_side = 1
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue8"]
+[sub_resource type="Resource" id="Resource_81hd8"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 4)
 hand_side = 1
 gap_before = 0.35
 
-[sub_resource type="Resource" id="Cue9"]
+[sub_resource type="Resource" id="Resource_7pm3r"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 0)
 hand_side = 0
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue10"]
+[sub_resource type="Resource" id="Resource_2djaw"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 1)
 hand_side = 0
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue11"]
+[sub_resource type="Resource" id="Resource_f4wqb"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 2)
 hand_side = 0
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue12"]
+[sub_resource type="Resource" id="Resource_4465p"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(6, 3)
 hand_side = 0
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue13"]
+[sub_resource type="Resource" id="Resource_oqfcv"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 0)
 hand_side = 0
 gap_before = 0.35
 
-[sub_resource type="Resource" id="Cue14"]
+[sub_resource type="Resource" id="Resource_cfrp7"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 1)
 hand_side = 0
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue15"]
+[sub_resource type="Resource" id="Resource_pwpb8"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 2)
 hand_side = 0
 gap_before = 0.08
 
-[sub_resource type="Resource" id="Cue16"]
+[sub_resource type="Resource" id="Resource_wc7ig"]
 script = ExtResource("1_qfngd")
 display_coordinate = Vector2i(7, 3)
 hand_side = 0
 gap_before = 0.08
 
-[sub_resource type="Resource" id="LeftMotion"]
+[sub_resource type="Resource" id="Resource_q0kx6"]
 script = ExtResource("2")
 pickup_delay = 0.06
 entry_duration = 0.2
@@ -112,7 +112,7 @@ retreat_duration = 0.15
 retreat_departure_handle = Vector2(60, 100)
 retreat_arrival_handle = Vector2(-80, -170)
 
-[sub_resource type="Resource" id="RightMotion"]
+[sub_resource type="Resource" id="Resource_u66k8"]
 script = ExtResource("2")
 pickup_delay = 0.06
 entry_duration = 0.2
@@ -126,8 +126,8 @@ retreat_arrival_handle = Vector2(-80, -170)
 
 [resource]
 script = ExtResource("1")
-left_motion = SubResource("LeftMotion")
-right_motion = SubResource("RightMotion")
-cues = Array[ExtResource("1_qfngd")]([SubResource("Cue1"), SubResource("Cue2"), SubResource("Cue3"), SubResource("Cue4"), SubResource("Cue5"), SubResource("Cue6"), SubResource("Cue7"), SubResource("Cue8"), SubResource("Cue9"), SubResource("Cue10"), SubResource("Cue11"), SubResource("Cue12"), SubResource("Cue13"), SubResource("Cue14"), SubResource("Cue15"), SubResource("Cue16")])
+left_motion = SubResource("Resource_q0kx6")
+right_motion = SubResource("Resource_u66k8")
+cues = Array[ExtResource("1_qfngd")]([SubResource("Resource_sktdt"), SubResource("Resource_g60fn"), SubResource("Resource_4q8hj"), SubResource("Resource_00skt"), SubResource("Resource_q3ngm"), SubResource("Resource_ax3x7"), SubResource("Resource_kn3gh"), SubResource("Resource_81hd8"), SubResource("Resource_7pm3r"), SubResource("Resource_2djaw"), SubResource("Resource_f4wqb"), SubResource("Resource_4465p"), SubResource("Resource_oqfcv"), SubResource("Resource_cfrp7"), SubResource("Resource_pwpb8"), SubResource("Resource_wc7ig")])
 activating_hand = 1
 order_mode = 0

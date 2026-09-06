@@ -1,12 +1,14 @@
-[gd_resource type="Resource" script_class="ChessArmyPresentationProfile" load_steps=5 format=3 uid="uid://bn1bn30l1rhrs"]
+[gd_resource type="Resource" script_class="ChessArmyPresentationProfile" load_steps=6 format=3 uid="uid://bn1bn30l1rhrs"]
 
 [ext_resource type="Script" uid="uid://n5b0qmockonk" path="res://scripts/view/chess_army_presentation_profile.gd" id="1"]
 [ext_resource type="Resource" uid="uid://decf0w417gdm" path="res://assets/arms/opponent/hood_hand_style.tres" id="2"]
 [ext_resource type="Resource" path="res://assets/chess_king_hood.tres" id="3"]
 [ext_resource type="Resource" path="res://assets/chess_setup_hood.tres" id="4"]
+[ext_resource type="Resource" path="res://assets/chess_piece_placement_hood.tres" id="5"]
 
 [resource]
 script = ExtResource("1")
 hand_style = ExtResource("2")
 setup_profile = ExtResource("4")
 king_presentation = ExtResource("3")
+piece_placement = ExtResource("5")

@@ -108,9 +108,10 @@ func _run_track(side: int, token: int) -> void:
 			continue
 		cue_started.emit(cue)
 		var hand := left_hand if side == ChessSetupCue.HandSide.LEFT else right_hand
+		var destination := board_view.roll_hand_placement(piece, model_coordinate)
 		await hand.play_setup_placement(
 			piece,
-			board_view.grid_to_screen(model_coordinate.x, model_coordinate.y),
+			destination,
 			board_view.get_world_scale(),
 			profile.motion_for(cue),
 			board_view.get_piece_depth(model_coordinate)
@@ -166,7 +167,8 @@ func _run_single_cue(cue: ChessSetupCue, token: int) -> void:
 		return
 	cue_started.emit(cue)
 	var hand := left_hand if cue.hand_side == ChessSetupCue.HandSide.LEFT else right_hand
-	await hand.play_setup_placement(piece, board_view.grid_to_screen(model_coordinate.x, model_coordinate.y), board_view.get_world_scale(), profile.motion_for(cue), board_view.get_piece_depth(model_coordinate))
+	var destination := board_view.roll_hand_placement(piece, model_coordinate)
+	await hand.play_setup_placement(piece, destination, board_view.get_world_scale(), profile.motion_for(cue), board_view.get_piece_depth(model_coordinate))
 	if token == _generation:
 		piece_placed.emit(cue, piece)
 

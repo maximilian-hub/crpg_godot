@@ -75,6 +75,10 @@ var piece_scene = preload("res://scenes/piece.tscn")
 var board: Array
 var projection := ChessBoardProjection.new()
 var animation_duration_scale := 1.0
+var piece_placement_profiles := {"white": null, "black": null}
+var _piece_placement_offsets: Dictionary = {}
+var _piece_placement_randoms: Dictionary = {}
+var _piece_placement_seed := 1
 var hp_bar_scene = preload("res://ui/hp_bar.tscn")
 var stun_stars_scene = preload("res://effects/stun_stars.tscn")
 var explosion_scene = preload("res://effects/explosion.tscn")
@@ -170,6 +174,7 @@ func rebuild_board(model_board: Array) -> Dictionary:
 
 	var preserve_squares := _squares_match_board(model_board)
 	board = model_board
+	_prune_piece_placement_offsets(model_board)
 	_configure_projection()
 	_layout_board_body()
 	if preserve_squares:
@@ -186,6 +191,16 @@ func rebuild_board(model_board: Array) -> Dictionary:
 		for col in range(board[row].size()):
 			draw_square(row, col)
 	return _draw_pieces()
+
+func _prune_piece_placement_offsets(model_board: Array) -> void:
+	var living := {}
+	for row in model_board:
+		for piece in row:
+			if piece != null:
+				living[piece] = true
+	for piece in _piece_placement_offsets.keys():
+		if not living.has(piece):
+			_piece_placement_offsets.erase(piece)
 
 func _squares_match_board(model_board: Array) -> bool:
 	var expected_count := 0
@@ -217,7 +232,7 @@ func _layout_board() -> void:
 		square.set_color(get_square_color(square.coordinate.x, square.coordinate.y))
 		square.set_surface_visible(not _uses_material_surface())
 	for piece in $Pieces.get_children():
-		piece.position = grid_to_screen(piece.coordinate.x, piece.coordinate.y)
+		piece.position = get_piece_rest_position(piece, piece.coordinate)
 		piece.scale = Vector2.ONE * get_world_scale()
 		_update_piece_depth(piece)
 
@@ -233,6 +248,72 @@ func set_hand_styles(near_style: Resource, far_style: Resource) -> void:
 	set_player_hand_style(near_style)
 	if is_instance_valid(far_hand_rig):
 		far_hand_rig.set_hand_style(far_style)
+
+func set_piece_placement_profiles(white_profile: Resource, black_profile: Resource) -> void:
+	piece_placement_profiles.white = white_profile
+	piece_placement_profiles.black = black_profile
+
+func set_piece_placement_seed(seed: int) -> void:
+	_piece_placement_seed = seed if seed != 0 else 1
+	_piece_placement_randoms.clear()
+	for color in ["white", "black"]:
+		var random := RandomNumberGenerator.new()
+		random.seed = _piece_placement_seed ^ color.hash()
+		_piece_placement_randoms[color] = random
+
+func roll_hand_placement(piece_node: Node2D, coordinate: Vector2i) -> Vector2:
+	if not is_instance_valid(piece_node):
+		return grid_to_screen(coordinate.x, coordinate.y)
+	var piece_model: ModelPiece = piece_node.get("model")
+	var color := piece_model.color if piece_model != null else "white"
+	var profile: Resource = piece_placement_profiles.get(color) as Resource
+	var reference_offset := Vector2.ZERO
+	if profile != null:
+		var random: RandomNumberGenerator = _placement_random(color)
+		reference_offset = profile.sample_reference_offset(random)
+	if piece_model != null:
+		_piece_placement_offsets[piece_model] = reference_offset
+	return _piece_rest_position_from_offset(coordinate, reference_offset)
+
+func ensure_hand_placement(piece_node: Node2D, coordinate: Vector2i) -> Vector2:
+	var piece_model: ModelPiece = piece_node.get("model") if is_instance_valid(piece_node) else null
+	if piece_model != null and _piece_placement_offsets.has(piece_model):
+		return get_piece_rest_position(piece_node, coordinate)
+	return roll_hand_placement(piece_node, coordinate)
+
+func clear_piece_placement(piece_node: Node2D) -> void:
+	if not is_instance_valid(piece_node):
+		return
+	var piece_model: ModelPiece = piece_node.get("model")
+	if piece_model != null:
+		_piece_placement_offsets[piece_model] = Vector2.ZERO
+
+func ensure_all_hand_placements() -> void:
+	for piece_node in $Pieces.get_children():
+		piece_node.position = ensure_hand_placement(piece_node, piece_node.coordinate)
+		_update_piece_depth(piece_node)
+
+func get_piece_rest_position(piece_node: Node2D, coordinate: Vector2i) -> Vector2:
+	var piece_model: ModelPiece = piece_node.get("model") if is_instance_valid(piece_node) else null
+	var reference_offset: Vector2 = _piece_placement_offsets.get(piece_model, Vector2.ZERO)
+	return _piece_rest_position_from_offset(coordinate, reference_offset)
+
+func _placement_random(color: String) -> RandomNumberGenerator:
+	if not _piece_placement_randoms.has(color):
+		set_piece_placement_seed(_piece_placement_seed)
+	return _piece_placement_randoms[color]
+
+func _piece_rest_position_from_offset(coordinate: Vector2i, reference_offset: Vector2) -> Vector2:
+	var anchor := grid_to_screen(coordinate.x, coordinate.y)
+	if reference_offset.is_zero_approx():
+		return anchor
+	var polygon := projection.get_cell_polygon(coordinate)
+	var across := ((polygon[1] - polygon[0]) + (polygon[2] - polygon[3])).normalized()
+	var depth := ((polygon[3] - polygon[0]) + (polygon[2] - polygon[1])).normalized()
+	# Stored components follow the model's +file/+rank axes. A Black-side view
+	# reverses both on screen, preserving the piece's physical board location.
+	var orientation := -1.0 if viewing_color == "black" else 1.0
+	return (anchor + (across * reference_offset.x + depth * reference_offset.y) * get_world_scale() * orientation).round()
 
 func get_hand_rig_for_color(color: String) -> ChessHandRig:
 	return near_hand_rig if color == viewing_color or not is_instance_valid(far_hand_rig) else far_hand_rig
@@ -350,10 +431,9 @@ func draw_piece(piece_data: ModelPiece) -> Node:
 	var pieces = $Pieces
 	var row = piece_data.coordinate.x
 	var col = piece_data.coordinate.y
-	var pos = grid_to_screen(row, col)
 	var piece = piece_scene.instantiate()
-	piece.position = pos
 	piece.set_model(piece_data)
+	piece.position = get_piece_rest_position(piece, Vector2i(row, col))
 	piece.set_grip_anchor_debug_visible(show_piece_grip_anchors)
 	piece.scale = Vector2.ONE * get_world_scale()
 	piece.coordinate = Vector2i(row, col)
@@ -453,14 +533,17 @@ func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 		return
 
 	piece_node.coordinate = to
+	clear_piece_placement(piece_node)
 	_update_piece_depth(piece_node)
-	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
+	await _tween_piece_to(piece_node, get_piece_rest_position(piece_node, to))
 
-func snap_piece_node(piece_node: Node, to: Vector2i) -> void:
+func snap_piece_node(piece_node: Node, to: Vector2i, hand_placed := true) -> void:
 	if not is_instance_valid(piece_node):
 		return
 	piece_node.coordinate = to
-	piece_node.position = grid_to_screen(to.x, to.y)
+	piece_node.position = roll_hand_placement(piece_node, to) if hand_placed else grid_to_screen(to.x, to.y)
+	if not hand_placed:
+		clear_piece_placement(piece_node)
 	_update_piece_depth(piece_node)
 
 func move_piece_node_with_player_hand(
@@ -485,12 +568,14 @@ func move_piece_node_with_hand(
 		printerr("move_piece_node_with_hand: Invalid piece node.")
 		return
 	var hand_rig := _get_piece_hand_rig(piece_node)
+	var destination := roll_hand_placement(piece_node, to)
 	if not is_instance_valid(hand_rig) or not hand_rig.can_animate():
-		await move_piece_node(piece_node, to)
+		piece_node.coordinate = to
+		_update_piece_depth(piece_node)
+		await _tween_piece_to(piece_node, destination)
 		return
 
 	piece_node.coordinate = to
-	var destination := grid_to_screen(to.x, to.y)
 	var destination_z_index := get_piece_depth(to)
 	var carry_path := carry_path_override if not carry_path_override.is_empty() else get_player_hand_carry_path(piece_node, from, to)
 	await hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path, enter_from_offscreen, retreat_offscreen, destination_z_index)
@@ -503,12 +588,14 @@ func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from
 	if not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
 		return false
 	var hand_rig := _get_piece_hand_rig(attacker_node)
+	var destination := roll_hand_placement(attacker_node, to)
 	if not is_instance_valid(hand_rig) or not hand_rig.can_animate():
-		await move_piece_node(attacker_node, to)
+		attacker_node.coordinate = to
+		_update_piece_depth(attacker_node)
+		await _tween_piece_to(attacker_node, destination)
 		return false
 
 	attacker_node.coordinate = to
-	var destination := grid_to_screen(to.x, to.y)
 	var destination_z_index := get_piece_depth(to)
 	var carried_offscreen: bool = await hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale(), destination_z_index)
 	_update_piece_depth(attacker_node)
@@ -559,7 +646,9 @@ func attack_piece_node(piece_node: Node, to: Vector2i, contact_callback: Callabl
 		return
 
 	var original_position: Vector2 = piece_node.position
-	await _tween_piece_to(piece_node, grid_to_screen(to.x, to.y))
+	var defender := get_piece_node(to) as Node2D
+	var target_position := defender.position if is_instance_valid(defender) else grid_to_screen(to.x, to.y)
+	await _tween_piece_to(piece_node, target_position)
 	if contact_callback.is_valid():
 		contact_callback.call()
 	await _tween_piece_to(piece_node, original_position)
@@ -576,7 +665,9 @@ func attack_piece_node_with_hand(piece_node: Node, from: Vector2i, to: Vector2i,
 		await attack_piece_node(piece_node, to, contact_callback)
 		return
 
-	await hand_rig.play_piece_attack(piece_node, grid_to_screen(to.x, to.y), get_world_scale(), contact_callback, get_piece_depth(from))
+	var defender := get_piece_node(to) as Node2D
+	var target_position := defender.position if is_instance_valid(defender) else grid_to_screen(to.x, to.y)
+	await hand_rig.play_piece_attack(piece_node, target_position, get_world_scale(), contact_callback, get_piece_depth(from))
 	_update_piece_depth(piece_node)
 
 func _tween_piece_to(piece_node: Node, target_position: Vector2) -> void:
@@ -614,6 +705,10 @@ func destroy_piece(piece: Node, king_death_profile: Resource = null, screen_shak
 
 ## Disappear a sprite.
 func remove_piece(piece: Node):
+	if is_instance_valid(piece):
+		var piece_model: ModelPiece = piece.get("model")
+		if piece_model != null:
+			_piece_placement_offsets.erase(piece_model)
 	piece.queue_free()
 
 

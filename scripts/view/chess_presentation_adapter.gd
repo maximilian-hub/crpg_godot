@@ -156,7 +156,7 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		printerr("Presentation has no visual node for ", piece.type, " at ", to)
 		return
 	if not presentation_policy.should_hold_completion_gate():
-		view.snap_piece_node(piece_node, to)
+		view.snap_piece_node(piece_node, to, not (piece is KingPiece))
 		return
 
 	gate.hold()
@@ -178,7 +178,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 	if not is_instance_valid(attacker_node):
 		return
 	if not presentation_policy.should_hold_completion_gate():
-		view.snap_piece_node(attacker_node, to)
+		view.snap_piece_node(attacker_node, to, not (attacker is KingPiece))
 		return
 
 	gate.hold()

@@ -9,6 +9,8 @@ extends Node
 
 const CHESS_GAME_SCENE := preload("res://scenes/chess_game.tscn")
 const HOOD_HAND_STYLE := preload("res://assets/arms/opponent/hood_hand_style.tres")
+const PIECE_PLACEMENT_PROFILE := preload("res://scripts/view/chess_piece_placement_profile.gd")
+const SETUP_LAB_SCRIPT := preload("res://tools/dev_chess_setup/chess_setup_lab.gd")
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -31,6 +33,7 @@ func _ready() -> void:
 func _run_suite() -> void:
 	await _test_default_initialization_and_normal_move()
 	await _test_player_hand_move_presentation()
+	await _test_seeded_piece_placement_variation()
 	await _test_player_hand_castling_presentation()
 	await _test_player_hand_capture_presentation()
 	await _test_surrounded_knight_depth_presentation()
@@ -46,6 +49,31 @@ func _run_suite() -> void:
 	await _test_rage_priority_before_raise_dead()
 	await _test_raise_dead_selection_resume()
 	await _test_battle_completion()
+
+
+func _test_seeded_piece_placement_variation() -> void:
+	var context := await _create_game()
+	var view: ChessBoardView = context.view
+	var pawn: ModelPiece = context.model.board[6][0]
+	var pawn_view: PieceView = context.adapter.get_piece_view(pawn)
+	var profile: Resource = PIECE_PLACEMENT_PROFILE.new()
+	profile.max_across_error = 6.0
+	profile.max_depth_error = 4.0
+	profile.center_bias = 1.0
+	view.set_piece_placement_profiles(profile, null)
+	view.set_piece_placement_seed(4242)
+	var first := view.roll_hand_placement(pawn_view, pawn.coordinate)
+	var first_offset: Vector2 = view._piece_placement_offsets[pawn]
+	view.set_piece_placement_seed(4242)
+	var repeated := view.roll_hand_placement(pawn_view, pawn.coordinate)
+	_expect(first == repeated, "a fixed presentation seed reproduces a hand placement")
+	_expect(absf(first_offset.x) <= 6.0 and absf(first_offset.y) <= 4.0, "sampled placement remains inside its authored across/depth limits")
+	pawn_view.position = first
+	view._layout_board()
+	_expect(pawn_view.position == view.get_piece_rest_position(pawn_view, pawn.coordinate), "board relayout preserves a piece's stored placement offset")
+	view.set_viewing_color("black")
+	_expect(pawn_view.position == view.get_piece_rest_position(pawn_view, pawn.coordinate), "perspective changes reproject stored placement in physical board space")
+	await _destroy_game(context.game)
 
 
 func _test_player_hand_move_presentation() -> void:
@@ -148,7 +176,7 @@ func _test_player_hand_move_presentation() -> void:
 	var expected_rest_position: Vector2 = rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)
 	_expect(not rig.visible and not rig.is_animating and rig.position.is_equal_approx(expected_rest_position), "player hand retreats to its durable lower-right rest position")
 	_expect(rig.position.x > rig.get_viewport_rect().size.x and rig.position.y > rig.get_viewport_rect().size.y, "player hand rests fully beyond the viewport's right and bottom edges")
-	_expect(pawn_view.position == view.grid_to_screen(4, 0) and pawn_view.coordinate == Vector2i(4, 0), "hand-carried piece lands exactly on its projected destination")
+	_expect(pawn_view.position == view.get_piece_rest_position(pawn_view, Vector2i(4, 0)) and pawn_view.coordinate == Vector2i(4, 0), "hand-carried piece lands at its stored varied destination")
 	_expect(model.current_turn == "black" and not model.action_in_progress, "hand animation completes before the player move changes turns")
 
 	await _destroy_game(context.game)
@@ -246,7 +274,7 @@ func _test_player_hand_capture_presentation() -> void:
 					"capture withdrawal keeps all three hand layers in the closed pose"
 				)
 				var moving_view: Node2D = context.adapter.get_piece_view(rook)
-				_expect(moving_view.get_parent() == context.view.get_node("Pieces") and moving_view.position == context.view.grid_to_screen(5, 0), "attacker is released onto the board before the closed hand withdraws")
+				_expect(moving_view.get_parent() == context.view.get_node("Pieces") and moving_view.position == context.view.get_piece_rest_position(moving_view, Vector2i(5, 0)), "attacker is released at its varied resting position before the closed hand withdraws")
 	)
 	rig.captured_piece_grabbed.connect(
 		func(piece: Node2D):
@@ -275,7 +303,7 @@ func _test_player_hand_capture_presentation() -> void:
 	_expect(observation["grips_aligned"], "capture swipe stacks attacker and defender grip anchors at pickup")
 	_expect(observation.get("clack_vfx", false), "ordinary capture pickup emits the shared clack burst without duplicating its existing sound")
 	_expect(is_equal_approx(rad_to_deg(rig.get_node("CapturedPiecePivot").rotation), rig.captured_piece_rotation_degrees), "captured piece finishes at its configured carry angle")
-	_expect(model.board[5][0] == rook and rook_view.position == context.view.grid_to_screen(5, 0), "hand-carried attacker occupies the captured piece's square")
+	_expect(model.board[5][0] == rook and rook_view.position == context.view.get_piece_rest_position(rook_view, Vector2i(5, 0)), "hand-carried attacker occupies the captured piece's square at its varied resting position")
 	_expect(removal_timeline == ["hand_finished", "defender_destroyed"], "captured defender is destroyed only after the hand retreats offscreen")
 	_expect(context.adapter.get_piece_view(bishop) == null and not is_instance_valid(bishop_view), "captured defender is silently removed after leaving the viewport")
 	_expect(_count_children_named(context.view, &"Explosion") == 0, "hand-carried defender does not spawn a capture explosion")

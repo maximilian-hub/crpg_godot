@@ -12,6 +12,8 @@ func _ready() -> void:
 	add_child(lab)
 	await get_tree().process_frame
 	_check(lab.setup_profile.cues.size() == 16, "default setup authors all sixteen army placements")
+	_check(lab.placement_profile != null and lab.placement_profile.enabled, "Setup Lab loads the selected army's placement profile")
+	_check(lab.find_child("PlacementAcross", true, false) != null and lab.find_child("PlacementDepth", true, false) != null, "Setup Lab exposes placement spread controls")
 	_check(lab.left_cue_list.item_count == 8 and lab.right_cue_list.item_count == 8, "Setup Lab presents the two independent hand orders as visible eight-piece lanes")
 	_check(int(lab.left_cue_list.get_item_metadata(0)) == 0 and int(lab.right_cue_list.get_item_metadata(0)) == 8, "Cue lane rows retain stable mappings to the compatible flat cue resource")
 	_check(lab.left_cue_list.get_item_text(0).ends_with("a_rook") and lab.right_cue_list.get_item_text(0).ends_with("h_rook"), "Every setup cue label begins with its chess file, not only pawns")
@@ -111,8 +113,8 @@ func _ready() -> void:
 	for cue in lab.setup_profile.cues:
 		var coordinate: Vector2i = lab.board.projection.get_model_coordinate(cue.display_coordinate)
 		var piece: PieceView = lab.piece_views.get(coordinate)
-		correctly_placed = correctly_placed and piece.visible and piece.position == lab.board.grid_to_screen(coordinate.x, coordinate.y) and piece.z_index == lab.board.get_piece_depth(coordinate)
-	_check(correctly_placed, "released pieces finish at exact board anchors and board depth")
+		correctly_placed = correctly_placed and piece.visible and piece.position == lab.board.get_piece_rest_position(piece, coordinate) and piece.z_index == lab.board.get_piece_depth(coordinate)
+	_check(correctly_placed, "released pieces finish at their stored varied destinations and board depth")
 	var selected_hand: ChessHandRig = lab.left_hand if lab.setup_profile.activating_hand == ChessArmySetupProfile.ActivatingHand.LEFT else lab.right_hand
 	_check(lab.activation_sequence.hand_root == selected_hand, "explicit activating-hand selection wires the requested rig")
 	_check(not lab.stone_sprite.visible and is_equal_approx(lab.activation_sequence.king_sprite.self_modulate.a, 1.0), "activation resolves the placed stone king into authored army art")
@@ -152,11 +154,12 @@ func _ready() -> void:
 	var preset: Resource = SetupPreset.new()
 	preset.display_name = "Setup Round Trip"
 	preset.setup_profile = lab.setup_profile.duplicate(true)
+	preset.piece_placement = lab.placement_profile.duplicate(true)
 	preset.activation_snapshot = lab.activation_preset.duplicate(true)
 	var path := "user://chess_setup_characterization.tres"
 	_check(ResourceSaver.save(preset, path) == OK, "setup preset fixture saves")
 	var loaded := ResourceLoader.load(path, "ChessSetupLabPreset", ResourceLoader.CACHE_MODE_IGNORE)
-	_check(loaded != null and loaded.is_supported() and loaded.setup_profile.cues.size() == 16 and is_equal_approx(loaded.setup_profile.cues[0].motion_override.entry_duration, 1.23) and loaded.activation_snapshot != null, "setup preset round-trips cue order, overrides, and activation fallback")
+	_check(loaded != null and loaded.is_supported() and loaded.setup_profile.cues.size() == 16 and is_equal_approx(loaded.setup_profile.cues[0].motion_override.entry_duration, 1.23) and loaded.piece_placement != null and loaded.activation_snapshot != null, "setup preset round-trips cue order, placement variation, overrides, and activation fallback")
 
 	var runtime_path := "user://chess_setup_publish_characterization.tres"
 	var runtime_seed := ChessArmySetupProfile.new()
@@ -172,12 +175,18 @@ func _ready() -> void:
 	var invalid_result: Dictionary = RuntimePublisher.publish_setup_profile(invalid_setup, runtime_path)
 	var preserved_runtime := ResourceLoader.load(runtime_path, "ChessArmySetupProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessArmySetupProfile
 	_check(not invalid_result.ok and preserved_runtime.cues.size() == 16 and is_equal_approx(preserved_runtime.cues[0].gap_before, 0.73), "Invalid setup coverage is rejected without modifying the runtime target")
+	var placement_runtime_path := "user://chess_piece_placement_publish_characterization.tres"
+	var placement_result: Dictionary = RuntimePublisher.publish_piece_placement_profile(lab.placement_profile, placement_runtime_path)
+	var published_placement := ResourceLoader.load(placement_runtime_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	_check(placement_result.ok and published_placement != null and is_equal_approx(published_placement.max_across_error, lab.placement_profile.max_across_error), "Piece placement publishes independently from setup choreography")
 	var player_presentation := load("res://assets/player_army_presentation.tres") as ChessArmyPresentationProfile
 	var opponent_presentation := load("res://assets/opponent_army_presentation.tres") as ChessArmyPresentationProfile
 	_check(player_presentation.setup_profile.resource_path == RuntimePublisher.PLAYER_SETUP_RUNTIME_PATH and player_presentation.setup_profile.order_mode == ChessArmySetupProfile.OrderMode.SEEDED_RANDOM_KING_LAST, "player loadout consumes the seeded King-last setup target")
 	_check(opponent_presentation.setup_profile.resource_path == RuntimePublisher.HOOD_SETUP_RUNTIME_PATH and opponent_presentation.setup_profile.order_mode == ChessArmySetupProfile.OrderMode.AUTHORED, "Hood loadout retains its independently published authored setup target")
+	_check(player_presentation.piece_placement.resource_path == RuntimePublisher.PLAYER_PLACEMENT_RUNTIME_PATH and opponent_presentation.piece_placement.resource_path == RuntimePublisher.HOOD_PLACEMENT_RUNTIME_PATH, "army loadouts consume independent character-owned placement targets")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(runtime_path))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(placement_runtime_path))
 
 	lab.queue_free()
 	if failures == 0:

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ChessPiecePlacementProfile" load_steps=2 format=3 uid="uid://dsqxm66k1ca6x"]
+
+[ext_resource type="Script" uid="uid://df3w21swdjrfl" path="res://scripts/view/chess_piece_placement_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+enabled = true
+max_across_error = 3.0
+max_depth_error = 2.0
+center_bias = 1.5

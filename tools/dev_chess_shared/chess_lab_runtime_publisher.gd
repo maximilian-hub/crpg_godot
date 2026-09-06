@@ -11,6 +11,8 @@ const AURA_RUNTIME_PATH := "res://assets/chess_king_auras.tres"
 const SETUP_RUNTIME_PATH := "res://assets/chess_setup_first_pass.tres"
 const PLAYER_SETUP_RUNTIME_PATH := "res://assets/chess_setup_player_early.tres"
 const HOOD_SETUP_RUNTIME_PATH := "res://assets/chess_setup_hood.tres"
+const PLAYER_PLACEMENT_RUNTIME_PATH := "res://assets/chess_piece_placement_player.tres"
+const HOOD_PLACEMENT_RUNTIME_PATH := "res://assets/chess_piece_placement_hood.tres"
 const BOARD_RUNTIME_PATH := "res://assets/boards/presentations/burgundy_marble_board.tres"
 const ENVIRONMENT_RUNTIME_PATH := "res://assets/boards/presentations/portable_walnut_environment.tres"
 
@@ -135,6 +137,16 @@ static func publish_setup_profile(
 	if error != OK:
 		return _failure("Could not publish the setup presentation (error %d)." % error)
 	return _success(target_path)
+
+
+static func publish_piece_placement_profile(profile: Resource, target_path: String) -> Dictionary:
+	if profile == null:
+		return _failure("A piece placement profile is required.")
+	var published := profile.duplicate(true) as Resource
+	var error := ResourceSaver.save(published, target_path)
+	if error != OK:
+		return _failure("Could not publish piece placement variation (error %d)." % error)
+	return _success(target_path, "piece placement variation")
 
 
 static func publish_battle_presentation(
