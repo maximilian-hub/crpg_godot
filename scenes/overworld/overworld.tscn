@@ -94,6 +94,7 @@ position = Vector2(104, 120)
 collision_layer = 2
 script = ExtResource("4_player")
 step_duration = 0.34
+turn_in_place_duration = 0.14
 
 [node name="Body" type="AnimatedSprite2D" parent="YSortedWorld/Player"]
 texture_filter = 1
