@@ -29,6 +29,7 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var result_view: BattleResultView
 @export var presentation_policy: Resource
 @export var king_death_profile: Resource = DEFAULT_KING_DEATH_PROFILE
+@export var screen_shake: Node
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -185,7 +186,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		var defender_magic := _get_king_magic(defender)
 		var death_profile: Resource = king_death_profile if king_death_profile != null else KingDeathProfile.new()
 		if defender_magic != null: defender_magic.disable_effects()
-		var death_effect := view.create_king_death_effect(defender_node, death_profile)
+		var death_effect := view.create_king_death_effect(defender_node, death_profile, screen_shake)
 		var death_contact := func():
 			# Lethal captures bypass ModelPiece.take_damage(), so reproduce the
 			# ordinary hit feedback explicitly at physical contact. The splatter
@@ -281,7 +282,7 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 			silently_removed_piece_views.erase(piece)
 			view.remove_piece(piece_node)
 		else:
-			var death_effect: Node = view.destroy_piece(piece_node, death_profile)
+			var death_effect: Node = view.destroy_piece(piece_node, death_profile, screen_shake)
 			if is_instance_valid(death_effect):
 				active_king_deaths.append(death_effect)
 

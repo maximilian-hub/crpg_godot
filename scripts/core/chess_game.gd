@@ -25,6 +25,7 @@ enum ControlMode {
 @onready var controller: ChessBoardController = $ChessController
 @onready var white_cpu_player: ChessCpuPlayer = $WhiteCpuPlayer
 @onready var black_cpu_player: ChessCpuPlayer = $BlackCpuPlayer
+@onready var screen_shake: Node = $ScreenShake
 @export_enum("white", "black") var player_color: String = "white"
 @export var control_mode: ControlMode = ControlMode.CPU_VS_CPU
 @export var player_hand_style: Resource
@@ -55,6 +56,10 @@ func _ready() -> void:
 	if opponent_presentation == null:
 		opponent_presentation = DEFAULT_OPPONENT_PRESENTATION
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
+	var canvas_layer := get_node_or_null("CanvasLayer") as CanvasLayer
+	var battle_ui := get_node_or_null("UI") as Control
+	if screen_shake != null:
+		screen_shake.configure([canvas_layer], [battle_ui])
 	_apply_battle_presentation(board_view)
 	_apply_army_presentations(board_view)
 	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter

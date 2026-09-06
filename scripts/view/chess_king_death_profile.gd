@@ -1,6 +1,8 @@
 extends Resource
 class_name ChessKingDeathProfile
 
+const ScreenShakeProfile := preload("res://scripts/view/chess_screen_shake_profile.gd")
+
 @export_range(1, 8, 1) var red_blink_count := 3
 @export_range(0.01, 1.0, 0.01) var blink_on_duration := 0.08
 @export_range(0.01, 1.0, 0.01) var blink_off_duration := 0.06
@@ -25,6 +27,8 @@ class_name ChessKingDeathProfile
 @export_range(0.02, 1.0, 0.01) var discharge_marker_lifetime := 0.14
 ## Higher values concentrate more markers near the beginning of the discharge.
 @export_range(0.1, 8.0, 0.1) var discharge_falloff_exponent := 2.0
+@export_group("Screen Shake")
+@export var screen_shake: Resource = ScreenShakeProfile.new()
 @export_group("")
 ## Deprecated serialized timings retained for older saved profiles.
 @export_storage var stone_hold_duration := 0.18

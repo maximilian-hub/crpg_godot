@@ -2,11 +2,14 @@ extends Node2D
 
 const PIECE_SCENE := preload("res://scenes/piece.tscn")
 const GAME_SCENE := preload("res://scenes/chess_game.tscn")
+const BOARD_BODY_SCENE := preload("res://scenes/board_body.tscn")
 const DeathEffect := preload("res://scripts/view/chess_king_death_effect.gd")
 const DeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
 const DeathPreset := preload("res://tools/dev_chess_king_death/chess_king_death_lab_preset.gd")
 const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
+const ScreenShake := preload("res://scripts/view/chess_screen_shake.gd")
 const PRESET_DIRECTORY := "res://.cache/chess_king_death_presets"
+const PREVIEW_KING_COORDINATE := Vector2i(4, 4)
 
 var profile: Resource
 var preview_piece: PieceView
@@ -18,24 +21,47 @@ var preset_name: LineEdit
 var sound_label: Label
 var status_label: Label
 var file_dialog: FileDialog
+var preview_world: Node2D
+var screen_shake: Node
+var shake_toggle: CheckButton
+var projection := ChessBoardProjection.new()
+var board_style: ChessBoardVisualStyle
+var environment_style: ChessEnvironmentVisualStyle
+var environment_surface: ChessEnvironmentSurface
+var board_body: BoardBodyView
+var fallback_background: ColorRect
 
 
 func _ready() -> void:
 	get_viewport().canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	profile = _runtime_profile()
+	fallback_background = ColorRect.new()
+	fallback_background.name = "FallbackBackground"
+	fallback_background.color = Color("15131a")
+	fallback_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fallback_background.z_index = -1000
+	fallback_background.z_as_relative = false
+	add_child(fallback_background)
+	preview_world = Node2D.new()
+	preview_world.name = "PreviewWorld"
+	add_child(preview_world)
+	board_style = ResourceLoader.load(RuntimePublisher.BOARD_RUNTIME_PATH, "ChessBoardVisualStyle") as ChessBoardVisualStyle
+	environment_style = ResourceLoader.load(RuntimePublisher.ENVIRONMENT_RUNTIME_PATH, "ChessEnvironmentVisualStyle") as ChessEnvironmentVisualStyle
+	environment_surface = ChessEnvironmentSurface.new()
+	environment_surface.name = "EnvironmentSurface"
+	preview_world.add_child(environment_surface)
+	board_body = BOARD_BODY_SCENE.instantiate() as BoardBodyView
+	board_body.name = "BoardBody"
+	preview_world.add_child(board_body)
+	screen_shake = ScreenShake.new()
+	screen_shake.name = "ScreenShake"
+	add_child(screen_shake)
+	screen_shake.configure([], [preview_world])
+	get_viewport().size_changed.connect(_refresh_preview_presentation)
+	_refresh_preview_presentation()
 	_build_controls()
 	_refresh_presets()
 	_rebuild_piece()
-	queue_redraw()
-
-
-func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color("15131a"))
-	var size := 32
-	for row in range(int(ceil(get_viewport_rect().size.y / size))):
-		for column in range(int(ceil(get_viewport_rect().size.x / size))):
-			var color := Color("312936") if (row + column) % 2 == 0 else Color("211d29")
-			draw_rect(Rect2(Vector2(column, row) * size, Vector2.ONE * size), color)
 
 
 func _build_controls() -> void:
@@ -83,6 +109,18 @@ func _build_controls() -> void:
 	_spin(controls, &"discharge_duration", "Discharge duration", 0.05, 4.0, 0.05)
 	_spin(controls, &"discharge_marker_lifetime", "Marker lifetime", 0.02, 1.0, 0.01)
 	_spin(controls, &"discharge_falloff_exponent", "Discharge falloff", 0.1, 8.0, 0.1)
+	shake_toggle = CheckButton.new()
+	shake_toggle.text = "Screen shake"
+	shake_toggle.button_pressed = profile.screen_shake.enabled
+	shake_toggle.toggled.connect(func(enabled): profile.screen_shake.enabled = enabled)
+	shake_toggle.name = "ShakeEnabled"
+	controls.add_child(shake_toggle)
+	_shake_spin(controls, &"duration", "Shake duration", 0.01, 3.0, 0.01)
+	_shake_spin(controls, &"horizontal_pixels", "Shake horizontal pixels", 0, 64, 1)
+	_shake_spin(controls, &"vertical_pixels", "Shake vertical pixels", 0, 64, 1)
+	_shake_spin(controls, &"initial_kick_multiplier", "Initial kick strength", 0.25, 4.0, 0.05)
+	_shake_spin(controls, &"step_interval", "Shake frame time", 0.01, 0.25, 0.005)
+	_shake_spin(controls, &"falloff_exponent", "Shake falloff", 0.1, 8.0, 0.1)
 	_spin(controls, &"checker_size", "Checker size", 1, 64, 1)
 	_spin(controls, &"sound_volume_db", "Sound volume", -40, 6, 0.5)
 	sound_label = Label.new()
@@ -120,8 +158,8 @@ func _play() -> void:
 	_rebuild_piece()
 	active_effect = DeathEffect.new()
 	active_effect.position = preview_piece.position
-	add_child(active_effect)
-	active_effect.configure(preview_piece, profile, _in_game_world_scale())
+	preview_world.add_child(active_effect)
+	active_effect.configure(preview_piece, profile, _in_game_world_scale(), screen_shake)
 	active_effect.play()
 	status_label.text = "Playing death preview…"
 	await active_effect.completed
@@ -129,24 +167,33 @@ func _play() -> void:
 
 
 func _rebuild_piece() -> void:
+	if is_instance_valid(screen_shake): screen_shake.cancel_all()
 	if is_instance_valid(active_effect): active_effect.queue_free()
 	if is_instance_valid(preview_piece): preview_piece.queue_free()
 	preview_piece = PIECE_SCENE.instantiate() as PieceView
 	var type_id: StringName = king_selector.get_item_metadata(king_selector.selected) if king_selector != null and king_selector.item_count > 0 else &"minotaur_king"
 	var color := "black" if army_selector != null and army_selector.selected == 1 else "white"
-	preview_piece.set_model(ChessPieceCatalog.create_piece(type_id, color, Vector2i.ZERO))
-	preview_piece.position = get_viewport_rect().size * Vector2(0.64, 0.55)
+	preview_piece.set_model(ChessPieceCatalog.create_piece(type_id, color, PREVIEW_KING_COORDINATE))
+	preview_piece.coordinate = PREVIEW_KING_COORDINATE
+	preview_piece.position = projection.get_piece_ground_anchor(PREVIEW_KING_COORDINATE, board_style.piece_forward_bias)
 	preview_piece.scale = Vector2.ONE * _in_game_world_scale()
-	preview_piece.z_index = 20
-	add_child(preview_piece)
+	preview_piece.z_index = projection.get_display_coordinate(PREVIEW_KING_COORDINATE).x * ChessBoardView.BOARD_DEPTH_STRIDE
+	preview_world.add_child(preview_piece)
 
 
 func _in_game_world_scale() -> float:
-	# Read the shipping scene's authored layout values rather than maintaining a
-	# second approximation of its projection in this lab.
+	return ChessBoardView.calculate_world_scale(projection.get_near_edge_width())
+
+
+func _refresh_preview_presentation() -> void:
+	if not is_instance_valid(board_body) or board_style == null or environment_style == null:
+		return
+	fallback_background.position = Vector2.ZERO
+	fallback_background.size = get_viewport_rect().size
+	# Read shipping layout values from the battle scene so lab framing cannot
+	# silently drift away from the live board.
 	var game := GAME_SCENE.instantiate()
 	var reference_board := game.get_node("CanvasLayer/ChessBoard") as ChessBoardView
-	var projection := ChessBoardProjection.new()
 	projection.configure(
 		get_viewport_rect().size,
 		8,
@@ -159,7 +206,15 @@ func _in_game_world_scale() -> float:
 		reference_board.vertical_center_ratio
 	)
 	game.free()
-	return ChessBoardView.calculate_world_scale(projection.get_near_edge_width())
+	var overscan := Vector2(screen_shake.maximum_combined_offset) if is_instance_valid(screen_shake) else Vector2(24, 18)
+	environment_surface.configure(get_viewport_rect().size, environment_style, overscan)
+	board_body.configure(projection.get_board_outline(), projection.get_presentation_scale(), board_style)
+	var surface := board_body.get_node("MaterialSurface") as MeshInstance2D
+	surface.configure(projection, board_style)
+	if is_instance_valid(preview_piece):
+		preview_piece.position = projection.get_piece_ground_anchor(PREVIEW_KING_COORDINATE, board_style.piece_forward_bias)
+		preview_piece.scale = Vector2.ONE * _in_game_world_scale()
+		preview_piece.z_index = projection.get_display_coordinate(PREVIEW_KING_COORDINATE).x * ChessBoardView.BOARD_DEPTH_STRIDE
 
 
 func _select_sound(path: String) -> void:
@@ -255,8 +310,33 @@ func _spin(parent: Control, property: StringName, label_text: String, minimum: f
 
 func _sync_controls() -> void:
 	for node in find_children("*", "SpinBox", true, false):
-		if profile.get(node.name) != null: node.set_value_no_signal(float(profile.get(node.name)))
+		var property_name := String(node.name)
+		if property_name.begins_with("shake_"):
+			property_name = property_name.trim_prefix("shake_")
+			if profile.screen_shake.get(property_name) != null:
+				node.set_value_no_signal(float(profile.screen_shake.get(property_name)))
+		elif profile.get(node.name) != null:
+			node.set_value_no_signal(float(profile.get(node.name)))
+	if shake_toggle != null: shake_toggle.set_pressed_no_signal(profile.screen_shake.enabled)
 	_sync_sound_label()
+
+
+func _shake_spin(parent: Control, property: StringName, label_text: String, minimum: float, maximum: float, step: float) -> void:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size.x = 170
+	row.add_child(label)
+	var spin := SpinBox.new()
+	spin.name = "shake_" + String(property)
+	spin.min_value = minimum
+	spin.max_value = maximum
+	spin.step = step
+	spin.value = float(profile.screen_shake.get(property))
+	spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spin.value_changed.connect(func(value): profile.screen_shake.set(property, int(value) if step >= 1.0 else value))
+	row.add_child(spin)
 
 
 func _option(parent: Control, label_text: String, entries: Array) -> OptionButton:

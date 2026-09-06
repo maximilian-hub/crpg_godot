@@ -33,6 +33,7 @@ var overworld_dialogue_layer: CanvasLayer = null
 var battle_environment: ChessEnvironmentSurface = null
 var battle_frame: SubViewportContainer = null
 var battle_viewport: SubViewport = null
+var battle_shake_offset := Vector2.ZERO
 
 func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
@@ -134,10 +135,13 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.player_color = "white"
 	active_battle.battle_presentation = resolved_presentation
+	battle_environment.set_meta("shake_overscan", Vector2(active_battle.screen_shake.maximum_combined_offset))
+	_layout_battle_environment()
 	if encounter_profile != null and encounter_profile.opponent_presentation != null:
 		active_battle.opponent_presentation = encounter_profile.opponent_presentation
 	active_battle.opponent_hand_style = encounter_profile.opponent_hand_style if encounter_profile != null else null
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
+	active_battle.get_node("ScreenShake").offset_changed.connect(_on_battle_shake_offset_changed)
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	if battle_presentation_mode == BattlePresentationMode.FLUID_NATIVE:
 		active_content.add_child(active_battle)
@@ -151,10 +155,12 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	is_transitioning = false
 
 func _create_battle_environment(style: ChessEnvironmentVisualStyle) -> void:
+	battle_shake_offset = Vector2.ZERO
 	battle_environment = ChessEnvironmentSurface.new()
 	battle_environment.name = "BattleEnvironment"
 	active_content.add_child(battle_environment)
 	battle_environment.set_meta("environment_style", style)
+	battle_environment.set_meta("shake_overscan", Vector2(24, 18))
 	_layout_battle_environment()
 
 
@@ -163,7 +169,22 @@ func _layout_battle_environment() -> void:
 		return
 	var style := battle_environment.get_meta("environment_style", null) as ChessEnvironmentVisualStyle
 	if style != null:
-		battle_environment.configure(get_viewport().get_visible_rect().size, style)
+		var viewport_size := get_viewport().get_visible_rect().size
+		var overscan: Vector2 = battle_environment.get_meta("shake_overscan", Vector2(24, 18))
+		battle_environment.configure(viewport_size, style, overscan)
+		battle_environment.position = viewport_size * 0.5 + _battle_shake_display_offset()
+
+
+func _on_battle_shake_offset_changed(logical_offset: Vector2) -> void:
+	battle_shake_offset = logical_offset.round()
+	if is_instance_valid(battle_environment):
+		battle_environment.position = get_viewport().get_visible_rect().size * 0.5 + _battle_shake_display_offset()
+
+
+func _battle_shake_display_offset() -> Vector2:
+	if battle_presentation_mode == BattlePresentationMode.FIXED_LOGICAL and is_instance_valid(battle_frame):
+		return battle_shake_offset * float(battle_frame.stretch_shrink)
+	return battle_shake_offset
 
 
 func _resolve_battle_presentation(encounter_profile: ChessEncounterProfile) -> ChessBattlePresentationProfile:
@@ -235,6 +256,7 @@ func _clear_active_content() -> void:
 	battle_environment = null
 	battle_frame = null
 	battle_viewport = null
+	battle_shake_offset = Vector2.ZERO
 	overworld_frame = null
 	overworld_viewport = null
 	if is_instance_valid(overworld_dialogue_layer):

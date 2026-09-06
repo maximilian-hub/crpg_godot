@@ -20,6 +20,7 @@ func _ready() -> void:
 	var adapter: ChessPresentationAdapter = game.get_node("ChessPresentationAdapter")
 	var view: ChessBoardView = game.get_node("CanvasLayer/ChessBoard")
 	_check(adapter.king_death_profile.resource_path == "res://assets/chess_king_death.tres", "runtime resolves one universal King death profile independently of army activation choreography")
+	_check(adapter.king_death_profile.screen_shake != null and adapter.screen_shake == game.get_node("ScreenShake"), "runtime King death carries a shake profile and routes it through the battle-wide controller")
 	var white_king: KingPiece = model.get_king("white")
 	var black_king: KingPiece = model.get_king("black")
 	var white_magic: ChessKingMagicController = adapter.king_magic_controllers[white_king]
@@ -165,6 +166,7 @@ func _ready() -> void:
 	await adapter._on_piece_capture_committed(lethal_attacker, black_king, lethal_attacker.coordinate, black_king.coordinate, black_king.coordinate, lethal_gate)
 	_check(lethal_attacker_view.position.is_equal_approx(lethal_origin), "lethal King capture reuses the long-range attack slam and returns the attacker to its original square")
 	_check(lethal_hit_feedback.count == 1, "lethal King impact preserves the ordinary blood splatter and hurt-sound feedback")
+	game.screen_shake.cancel_all()
 
 	var death_piece := preload("res://scenes/piece.tscn").instantiate() as PieceView
 	death_piece.set_model(ClassicKing.new("black", Vector2i.ZERO))
@@ -186,13 +188,17 @@ func _ready() -> void:
 	death_profile.discharge_duration = 0.2
 	death_profile.discharge_marker_lifetime = 0.08
 	death_profile.discharge_falloff_exponent = 2.0
+	death_profile.screen_shake.duration = 0.2
 	var expected_death_origin := death_piece.sprite.global_position
-	var death_effect := view.create_king_death_effect(death_piece, death_profile)
+	var shake_requests_before: int = game.screen_shake.request_serial
+	var death_effect := view.create_king_death_effect(death_piece, death_profile, game.screen_shake)
 	_check(death_effect.global_position.is_equal_approx(expected_death_origin), "King death circles share the activation climax beam's sprite-center target")
 	death_effect.play()
 	await get_tree().create_timer(0.02).timeout
 	_check(death_piece.sprite.material is ShaderMaterial and (death_piece.sprite.material as ShaderMaterial).shader.resource_path == "res://effects/chess_king_death_flash.gdshader", "King death red-on interval uses the dedicated visible flash material")
+	_check(game.screen_shake.request_serial == shake_requests_before, "fatal-hit blinking does not trigger the death-burst screen shake early")
 	await get_tree().create_timer(0.085).timeout
+	_check(game.screen_shake.request_serial == shake_requests_before + 1, "death sound, circles, discharge, and one screen-shake request begin on the same death burst")
 	_check(death_effect.rift_circles.size() == 8, "King death emits exactly eight radial rift circles")
 	_check((death_effect.rift_circles[0].material as ShaderMaterial).shader.resource_path == "res://effects/chess_lightning_rift.gdshader", "King death circles reveal the stationary chessboard-rift pattern")
 	_check(death_effect.spawned_discharge_count >= 1 and not death_effect.discharge_markers.is_empty() and not (death_effect.discharge_markers[0].marker as ChessLightning2D).impact_paths.is_empty(), "King death begins successive activation-style hit markers over the King at the death beat")

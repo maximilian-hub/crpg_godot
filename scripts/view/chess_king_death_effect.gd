@@ -29,12 +29,14 @@ var discharge_elapsed := 0.0
 var discharge_budget := 0.0
 var discharge_markers: Array[Dictionary] = []
 var spawned_discharge_count := 0
+var screen_shake: Node
 
 
-func configure(piece_view: PieceView, death_profile: Resource, scale_factor: float) -> void:
+func configure(piece_view: PieceView, death_profile: Resource, scale_factor: float, shake_controller: Node = null) -> void:
 	piece = piece_view
 	profile = death_profile if death_profile != null else DeathProfile.new()
 	world_scale = maxf(scale_factor, 0.01)
+	screen_shake = shake_controller
 	tremor_rng.seed = 8301
 	discharge_rng.seed = 9407
 	# Activation climax beams use king_sprite.global_position as their canonical
@@ -65,6 +67,8 @@ func play() -> void:
 			await _wait(profile.blink_off_duration)
 	# The final blink remains red during the authored pre-death tension hold.
 	await _wait(profile.pre_death_hold_duration)
+	if is_instance_valid(screen_shake):
+		screen_shake.play(profile.screen_shake)
 	_play_sound()
 	var rift_travel_duration := _spawn_rift_circles()
 	discharge_active = true

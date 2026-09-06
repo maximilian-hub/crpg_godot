@@ -515,12 +515,12 @@ func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from
 	return carried_offscreen
 
 
-func create_king_death_effect(piece: PieceView, profile: Resource) -> Node:
+func create_king_death_effect(piece: PieceView, profile: Resource, screen_shake: Node = null) -> Node:
 	var effect := KingDeathEffect.new()
 	effect.position = piece.position
 	effect.z_index = BOARD_EFFECT_Z
 	add_child(effect)
-	effect.configure(piece, profile, get_world_scale())
+	effect.configure(piece, profile, get_world_scale(), screen_shake)
 	return effect
 
 func get_player_hand_carry_path(piece_node: Node, from: Vector2i, to: Vector2i) -> StringName:
@@ -600,9 +600,9 @@ func get_piece_at(coord: Vector2i) -> Node:
 	return null
 
 ## Destroy a sprite with a visual effect.
-func destroy_piece(piece: Node, king_death_profile: Resource = null):
+func destroy_piece(piece: Node, king_death_profile: Resource = null, screen_shake: Node = null):
 	if piece is PieceView and piece.model is KingPiece:
-		var death := create_king_death_effect(piece, king_death_profile if king_death_profile != null else KingDeathProfile.new())
+		var death := create_king_death_effect(piece, king_death_profile if king_death_profile != null else KingDeathProfile.new(), screen_shake)
 		death.play()
 		return death
 	var effect_position: Vector2 = piece.position

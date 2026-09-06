@@ -15,7 +15,7 @@ func _ready() -> void:
 	z_index = -100
 
 
-func configure(viewport_size: Vector2, style: ChessEnvironmentVisualStyle) -> void:
+func configure(viewport_size: Vector2, style: ChessEnvironmentVisualStyle, overscan := Vector2.ZERO) -> void:
 	visible = style != null
 	if style == null:
 		mesh = null
@@ -24,12 +24,16 @@ func configure(viewport_size: Vector2, style: ChessEnvironmentVisualStyle) -> vo
 	if quad == null:
 		quad = QuadMesh.new()
 		mesh = quad
-	quad.size = viewport_size
+	quad.size = viewport_size + overscan * 2.0
 	position = viewport_size * 0.5
 	surface_material.set_shader_parameter("flat_color", style.flat_color)
 	surface_material.set_shader_parameter("surface_texture", style.surface_texture)
 	surface_material.set_shader_parameter("use_texture", style.texture_enabled and style.surface_texture != null)
 	surface_material.set_shader_parameter("texture_scale", style.texture_scale)
+	surface_material.set_shader_parameter("overscan_uv_scale", Vector2(
+		quad.size.x / maxf(viewport_size.x, 1.0),
+		quad.size.y / maxf(viewport_size.y, 1.0)
+	))
 	surface_material.set_shader_parameter("texture_strength", style.texture_strength)
 	surface_material.set_shader_parameter("brightness", style.brightness)
 	surface_material.set_shader_parameter("tint", style.tint)

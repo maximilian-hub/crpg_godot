@@ -210,7 +210,7 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_battle != null, "battle transition creates a chess game")
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as ChessEnvironmentSurface
 	var environment_quad := battle_environment.mesh as QuadMesh
-	_check(environment_quad != null and environment_quad.size == main.get_viewport().get_visible_rect().size, "battle environment fills native window space")
+	_check(environment_quad != null and environment_quad.size == main.get_viewport().get_visible_rect().size + Vector2(48, 36), "battle environment overscans native window space for maximum screen shake")
 	_check(main.get_node("Background").z_index < battle_environment.z_index, "battle environment renders above Main's emergency flat background")
 	_check(main.active_battle.battle_presentation == GameFlow.DEFAULT_BATTLE_PRESENTATION and battle_board_style(main).material_surface_enabled, "battles without an override use the promoted marble-and-walnut presentation")
 	_check(main.battle_frame == null and main.battle_viewport == null, "fluid battle does not create a fixed-resolution frame")
@@ -228,6 +228,11 @@ func _test_main_starts_in_overworld() -> void:
 	_check(not main.active_battle.white_cpu_player.is_enabled and main.active_battle.black_cpu_player.is_enabled, "current NPC battle assigns the CPU to Black")
 	_check(main.active_battle.opponent_hand_style == forest_profile.opponent_hand_style, "NPC encounter applies its opponent hand before battle startup")
 	_check(main.active_battle.opponent_presentation == forest_profile.opponent_presentation, "NPC encounter applies its opponent setup, activation, and king-magic loadout")
+	var battle_canvas := main.active_battle.get_node("CanvasLayer") as CanvasLayer
+	var battle_ui_root := main.active_battle.get_node("UI") as Control
+	main.active_battle.screen_shake._apply_offset(Vector2(4, -3))
+	_check(battle_canvas.offset == Vector2(4, -3) and battle_ui_root.position == Vector2(4, -3) and battle_environment.position == main.get_viewport().get_visible_rect().size * 0.5 + Vector2(4, -3), "fluid battle shake keeps environment, board layers, and combat UI locked to one whole-pixel offset")
+	main.active_battle.screen_shake.cancel_all()
 	_check(battle_board.far_hand_rig.seat == ChessHandRig.Seat.FAR and battle_board.far_hand_rig.hand_style == forest_profile.opponent_hand_style, "forest challenger uses the animated Hood rig in the far seat")
 	_check(battle_board.far_hand_rig.can_animate(), "forest challenger does not fall back to piece-only sliding")
 	var controller := main.active_battle.get_node("ChessController") as ChessBoardController
@@ -274,7 +279,10 @@ func _test_main_starts_in_overworld() -> void:
 	var fixed_board := fixed_main.active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	_check(fixed_main.active_battle.get_parent() == fixed_viewport, "fixed comparison mode retains the logical battle viewport")
 	var fixed_environment_quad := fixed_main.battle_environment.mesh as QuadMesh
-	_check(fixed_environment_quad != null and fixed_environment_quad.size == fixed_main.get_viewport().get_visible_rect().size, "fixed comparison mode keeps the environment outside and across the full battle viewport")
+	_check(fixed_environment_quad != null and fixed_environment_quad.size == fixed_main.get_viewport().get_visible_rect().size + Vector2(48, 36), "fixed comparison mode keeps an overscanned environment outside the logical battle viewport")
+	fixed_main.active_battle.screen_shake._apply_offset(Vector2(2, -1))
+	_check(fixed_main.battle_environment.position == fixed_main.get_viewport().get_visible_rect().size * 0.5 + Vector2(2, -1) * fixed_frame.stretch_shrink, "fixed-logical shake scales the external environment offset with the presented viewport")
+	fixed_main.active_battle.screen_shake.cancel_all()
 	_check(fixed_viewport.physics_object_picking, "fixed comparison viewport retains square picking")
 	_check(not fixed_board.scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
 	_check(fixed_main.active_battle.opponent_presentation != null and fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile uses the scene's default opponent presentation")
