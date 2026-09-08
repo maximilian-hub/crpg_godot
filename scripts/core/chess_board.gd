@@ -590,6 +590,35 @@ func move_piece_node_with_hand(
 func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i) -> bool:
 	return await capture_piece_node_with_hand(attacker_node, defender_node, from, to)
 
+
+func remove_promoting_pawn_with_hand(pawn_node: Node2D) -> void:
+	if not is_instance_valid(pawn_node):
+		return
+	var hand_rig := _get_piece_hand_rig(pawn_node)
+	if not is_instance_valid(hand_rig) or not hand_rig.can_animate():
+		pawn_node.visible = false
+		return
+	await hand_rig.play_promotion_departure(pawn_node, get_world_scale())
+
+
+func place_promoted_piece_with_hand(queen_node: Node2D, destination: Vector2i) -> void:
+	if not is_instance_valid(queen_node):
+		return
+	var hand_rig := _get_piece_hand_rig(queen_node)
+	var destination_position := get_piece_rest_position(queen_node, destination)
+	var destination_depth := get_piece_depth(destination)
+	if not is_instance_valid(hand_rig) or not hand_rig.can_animate():
+		queen_node.position = destination_position
+		queen_node.z_index = destination_depth
+		queen_node.visible = true
+		return
+	await hand_rig.play_promotion_arrival(
+		queen_node,
+		destination_position,
+		get_world_scale(),
+		destination_depth
+	)
+
 func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i) -> bool:
 	if not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
 		return false

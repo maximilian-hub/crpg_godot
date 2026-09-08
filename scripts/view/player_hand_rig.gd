@@ -519,6 +519,100 @@ func play_piece_move(
 		move_animation_finished.emit()
 
 
+## Carries a pawn directly from its pre-move board position to the unseen supply.
+## Promotion then resumes with play_promotion_arrival without an intermediate
+## placement on the terminal-rank square.
+func play_promotion_departure(pawn_node: Node2D, world_scale: float) -> void:
+	if not can_animate() or not is_instance_valid(pawn_node):
+		return
+	is_animating = true
+	var effective_hand_scale := world_scale * art_scale_multiplier
+	scale = Vector2.ONE * effective_hand_scale
+	_apply_pose(false)
+	pose_changed.emit(&"open")
+
+	var pawn_parent := pawn_node.get_parent()
+	var pawn_scale := pawn_node.scale
+	var pawn_z := pawn_node.z_index
+	var pawn_contact := _piece_grip_position(pawn_node)
+	var rest := _offscreen_rest_position(effective_hand_scale)
+	position = rest
+	_set_grounded_depth(pawn_z)
+	visible = true
+	await _tween_approach_position(pawn_contact, approach_duration, world_scale)
+	pawn_node.reparent(piece_slot, true)
+	pawn_node.z_index = 0
+	piece_grabbed.emit(pawn_node)
+	_apply_pose(true)
+	pose_changed.emit(&"closed")
+	_play_hand_sound(SOUND_GRAB)
+	await _wait(grasp_hold_duration)
+
+	# Remove the pawn to the unseen supply, then audibly release it.
+	_set_elevated_depth()
+	await _tween_position(rest, retreat_duration)
+	visible = false
+	_apply_pose(false)
+	pose_changed.emit(&"open")
+	pawn_node.reparent(pawn_parent, true)
+	pawn_node.scale = pawn_scale
+	pawn_node.visible = false
+	piece_released.emit(pawn_node)
+	_play_hand_sound(SOUND_RELEASE)
+	await _wait(release_hold_duration)
+	is_animating = false
+	move_animation_finished.emit()
+
+
+## Picks up the promoted piece at the unseen supply and places it on its square.
+func play_promotion_arrival(
+	queen_node: Node2D,
+	destination: Vector2,
+	world_scale: float,
+	final_piece_z_index: int
+) -> void:
+	if not can_animate() or not is_instance_valid(queen_node):
+		return
+	is_animating = true
+	var effective_hand_scale := world_scale * art_scale_multiplier
+	scale = Vector2.ONE * effective_hand_scale
+	var rest := _offscreen_rest_position(effective_hand_scale)
+	queen_node.position = destination
+	queen_node.visible = true
+	var queen_parent := queen_node.get_parent()
+	var queen_scale := queen_node.scale
+	var queen_contact := _piece_grip_position(queen_node)
+	position = queen_contact
+	queen_node.reparent(piece_slot, true)
+	queen_node.z_index = 0
+	position = rest
+	piece_grabbed.emit(queen_node)
+	_apply_pose(true)
+	pose_changed.emit(&"closed")
+	_play_hand_sound(SOUND_GRAB)
+	await _wait(grasp_hold_duration)
+	visible = true
+	await _tween_approach_position(queen_contact, approach_duration, world_scale)
+	_set_grounded_depth(final_piece_z_index)
+	_play_board_sound(SOUND_PLACE)
+	await _wait(release_hold_duration)
+	_apply_pose(false)
+	pose_changed.emit(&"open")
+	queen_node.reparent(queen_parent, true)
+	queen_node.scale = queen_scale
+	queen_node.position = destination
+	queen_node.z_index = final_piece_z_index
+	queen_node.visible = true
+	piece_released.emit(queen_node)
+	_play_hand_sound(SOUND_RELEASE)
+	await _wait(release_hold_duration)
+	_set_elevated_depth()
+	await _tween_position(rest, retreat_duration)
+	visible = false
+	is_animating = false
+	move_animation_finished.emit()
+
+
 func play_piece_capture(
 	attacker_node: Node2D,
 	defender_node: Node2D,

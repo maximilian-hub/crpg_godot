@@ -48,6 +48,7 @@ var player_presentation: Resource
 var opponent_presentation: Resource
 var active_king_deaths: Array[Node] = []
 var pending_projectile_defeats: Dictionary = {}
+var presented_promotions: Dictionary = {}
 
 
 func _ready() -> void:
@@ -61,6 +62,7 @@ func _ready() -> void:
 	model.piece_move_committed.connect(_on_piece_move_committed)
 	model.piece_capture_committed.connect(_on_piece_capture_committed)
 	model.piece_attack_committed.connect(_on_piece_attack_committed)
+	model.piece_promotion_committed.connect(_on_piece_promotion_committed)
 	model.piece_destroyed.connect(_on_piece_destroyed)
 	model.piece_transformed.connect(_on_piece_transformed)
 	model.piece_damaged.connect(_on_piece_damaged)
@@ -166,6 +168,10 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		return
 
 	gate.hold()
+	if piece.type == "pawn" and (to.x == 0 or to.x == model.board.size() - 1):
+		await view.remove_promoting_pawn_with_hand(piece_node)
+		gate.release()
+		return
 	if piece is KingPiece:
 		var magic := _get_king_magic(piece)
 		if magic != null:
@@ -306,6 +312,8 @@ func _on_battle_finished(winner_color: String) -> void:
 
 
 func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void:
+	if presented_promotions.erase(new_piece):
+		return
 	var old_node: Node = piece_views.get(old_piece)
 	piece_views.erase(old_piece)
 	var old_magic: Node = king_magic_controllers.get(old_piece)
@@ -314,6 +322,32 @@ func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void
 	if is_instance_valid(old_node):
 		view.remove_piece(old_node)
 	_register_piece(new_piece, view.draw_piece(new_piece))
+
+
+func _on_piece_promotion_committed(old_piece: ModelPiece, new_piece: ModelPiece, gate: CompletionGate) -> void:
+	var old_node := get_piece_view(old_piece) as Node2D
+	if not is_instance_valid(old_node):
+		return
+	if not presentation_policy.should_hold_completion_gate():
+		return
+
+	gate.hold()
+	var new_node := view.draw_piece(new_piece) as Node2D
+	if not is_instance_valid(new_node):
+		gate.release()
+		return
+	new_node.visible = false
+	_register_piece(new_piece, new_node)
+	presented_promotions[new_piece] = true
+	# A quiet terminal-rank move already carried its pawn offscreen. A capture
+	# must first finish its capture choreography, so remove that pawn here.
+	if old_node.visible:
+		await view.remove_promoting_pawn_with_hand(old_node)
+	await view.place_promoted_piece_with_hand(new_node, new_piece.coordinate)
+	piece_views.erase(old_piece)
+	if is_instance_valid(old_node):
+		view.remove_piece(old_node)
+	gate.release()
 
 
 func _on_piece_damaged(piece: ModelPiece, _amount: int, current_hp: int, _max_hp: int) -> void:

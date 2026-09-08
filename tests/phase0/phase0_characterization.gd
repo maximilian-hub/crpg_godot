@@ -37,6 +37,7 @@ func _run_suite() -> void:
 	await _test_player_hand_move_presentation()
 	await _test_seeded_piece_placement_variation()
 	await _test_player_hand_castling_presentation()
+	await _test_player_hand_promotion_presentation()
 	await _test_player_hand_capture_presentation()
 	await _test_surrounded_knight_depth_presentation()
 	await _test_ai_configuration_and_turns()
@@ -221,6 +222,39 @@ func _test_player_hand_castling_presentation() -> void:
 	_expect(not observation["visible_after_king_release"] and observation["completion_count"] == 1, "castling never attaches the king to the hand rig")
 	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)), "castling retreats after the magical king gesture and ordinary rook move")
 	_expect(model.board[7][6] == king and model.board[7][5] == rook, "magical castling lands both pieces on their final squares")
+
+	await _destroy_game(context.game)
+
+
+func _test_player_hand_promotion_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var adapter: ChessPresentationAdapter = context.adapter
+	var view: ChessBoardView = context.view
+	var rig: ChessHandRig = view.player_hand_rig
+	var pawn := Pawn.new("white", Vector2i(1, 0))
+	_reset_battle(model, controller, [pawn])
+	rig.approach_duration = 0.01
+	rig.grasp_hold_duration = 0.01
+	rig.carry_duration = 0.01
+	rig.release_hold_duration = 0.01
+	rig.retreat_duration = 0.01
+
+	var grabbed_types: Array[String] = []
+	var released_types: Array[String] = []
+	rig.piece_grabbed.connect(func(piece_node: Node2D): grabbed_types.append(piece_node.model.type))
+	rig.piece_released.connect(func(piece_node: Node2D): released_types.append(piece_node.model.type))
+
+	controller.select_piece(pawn)
+	await controller._on_square_clicked(Vector2i(0, 0))
+	var queen: ModelPiece = model.board[0][0]
+	var queen_view := adapter.get_piece_view(queen) as Node2D
+	_expect(queen is Queen and is_instance_valid(queen_view) and queen_view.visible, "promotion leaves a visible Queen on the destination square")
+	_expect(grabbed_types == ["pawn", "queen"], "promotion carries the pawn directly offscreen before grabbing its Queen replacement")
+	_expect(released_types == ["pawn", "queen"], "promotion releases the pawn offscreen and releases the Queen on the board")
+	_expect(not rig.visible and not rig.is_animating, "the promotion exchange finishes before the hand becomes idle")
+	_expect(model.current_turn == "black" and not model.action_in_progress, "the promotion exchange finishes before the turn changes")
 
 	await _destroy_game(context.game)
 

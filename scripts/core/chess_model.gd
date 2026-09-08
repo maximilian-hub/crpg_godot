@@ -28,6 +28,7 @@ signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, completion: CompletionGate)
 signal piece_attack_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_promotion_committed(old_piece: ModelPiece, new_piece: ModelPiece, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
 signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: int)
 signal piece_stunned(piece: ModelPiece, duration: int)
@@ -519,7 +520,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 
 		# Normal pawn promotion also resolves before the action ends.
 		if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
-			promotion_check(piece)
+			await promotion_check(piece)
 
 ## Commits a lethal capture while leaving presentation time to carry both views.
 func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: Vector2i, captured_at: Vector2i) -> void:
@@ -544,7 +545,7 @@ func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: V
 		destroy_piece(piece, true)
 		return
 	if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
-		promotion_check(piece)
+		await promotion_check(piece)
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -574,7 +575,7 @@ func switch_turn():
 	print("switching turns.")
 	emit_signal("turn_changed", current_turn)
 		
-func promotion_check(piece: ModelPiece):
+func promotion_check(piece: ModelPiece) -> void:
 	if piece.type != "pawn": return
 	
 	var board_height = board.size()
@@ -583,7 +584,7 @@ func promotion_check(piece: ModelPiece):
 
 	var promotion_rank = white_back_rank if piece.color == "black" else black_back_rank
 	if piece.coordinate.x == promotion_rank: # TODO: Implement player choice for promotion (Queen, Rook, Bishop, Knight)
-		transform_piece(piece, "queen")
+		await transform_piece(piece, "queen", true)
 
 func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	last_move = {
@@ -845,7 +846,7 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 	
 	unregister_piece(piece)
 
-func transform_piece(piece: ModelPiece, transformed_type: String):
+func transform_piece(piece: ModelPiece, transformed_type: String, present_promotion := false) -> void:
 	if not is_instance_valid(piece):
 		printerr("transform_piece: Invalid piece instance provided.")
 		return
@@ -858,6 +859,11 @@ func transform_piece(piece: ModelPiece, transformed_type: String):
 		var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
 		inject_dependencies(transformed_piece)
 		board[r][c] = transformed_piece # Overwrite the old piece reference in the model
+		if present_promotion:
+			var completion := CompletionGate.new()
+			piece_promotion_committed.emit(piece, transformed_piece, completion)
+			completion.close()
+			await completion.wait_until_released()
 		piece_transformed.emit(piece, transformed_piece)
 		
 		# Optional: Disconnect signals from the old piece if necessary,
