@@ -15,6 +15,7 @@ const PLAYER_PLACEMENT_RUNTIME_PATH := "res://assets/chess_piece_placement_playe
 const HOOD_PLACEMENT_RUNTIME_PATH := "res://assets/chess_piece_placement_hood.tres"
 const BOARD_RUNTIME_PATH := "res://assets/boards/presentations/burgundy_marble_board.tres"
 const ENVIRONMENT_RUNTIME_PATH := "res://assets/boards/presentations/portable_walnut_environment.tres"
+const ABILITY_PRESENTATIONS_RUNTIME_PATH := "res://assets/chess_ability_presentations.tres"
 
 
 static func publish_activation_profile(
@@ -147,6 +148,19 @@ static func publish_piece_placement_profile(profile: Resource, target_path: Stri
 	if error != OK:
 		return _failure("Could not publish piece placement variation (error %d)." % error)
 	return _success(target_path, "piece placement variation")
+
+static func publish_projectile_profile(piece_type_id: StringName, ability_id: StringName, profile: Resource, target_path := ABILITY_PRESENTATIONS_RUNTIME_PATH) -> Dictionary:
+	return publish_special_move_profile(piece_type_id, ability_id, profile, target_path)
+
+static func publish_special_move_profile(piece_type_id: StringName, ability_id: StringName, profile: Resource, target_path := ABILITY_PRESENTATIONS_RUNTIME_PATH) -> Dictionary:
+	if profile == null:
+		return _failure("A special-move profile is required.")
+	var catalog = ResourceLoader.load(target_path, "ChessAbilityPresentationCatalog", ResourceLoader.CACHE_MODE_IGNORE)
+	if catalog == null:
+		return _failure("Could not load the ability presentation catalog.")
+	catalog.upsert(piece_type_id, ability_id, profile)
+	var error := ResourceSaver.save(catalog, target_path)
+	return _success(target_path, "%s special move" % ability_id) if error == OK else _failure("Could not publish special-move profile (error %d)." % error)
 
 
 static func publish_battle_presentation(

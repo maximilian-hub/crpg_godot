@@ -2,6 +2,8 @@
 extends Node
 class_name ChessBoardModel
 
+const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_ability_presentation_context.gd")
+
 ## Serves as the Model layer of our chess games.
 # You may notice a lack of Checking; this is intentional.
 # We believe that if you don't see that your King is threatened,
@@ -31,6 +33,7 @@ signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: in
 signal piece_stunned(piece: ModelPiece, duration: int)
 signal piece_recovered(piece: ModelPiece)
 signal ability_started(piece: KingPiece, ability_name: String, completion: CompletionGate)
+signal targeted_ability_committed(context)
 signal ability_effect_resolved(piece: KingPiece, ability_name: String, affected_coords: Array)
 signal reaction_selection_requested(calling_piece: ModelPiece, action_type: String, targets: Array)
 signal reaction_selection_resolved(calling_piece: ModelPiece, action_type: String, target: Vector2i)
@@ -461,7 +464,16 @@ func perform_active_ability(king: KingPiece, target: Vector2i):
 	if not begin_action(king.color):
 		return
 
+	var target_piece: ModelPiece = board[target.x][target.y] if is_in_bounds(target.x, target.y) else null
+	var presentation = TargetedAbilityContext.new(
+		king, king.get_active_ability_id(), king.get_active_ability_name(), target, target_piece
+	)
+	targeted_ability_committed.emit(presentation)
+	presentation.close_claims()
+	await presentation.wait_for_impact()
 	await king.active_target_selected(target)
+	presentation.report_effect()
+	await presentation.wait_for_aftermath()
 	await continue_action_resolution()
 
 func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:

@@ -2,6 +2,7 @@ extends KingPiece
 class_name ArakneKing
 
 const ACTIVE_ABILITY_NAME: String = "Spike Burst"
+const ACTIVE_ABILITY_ID: StringName = &"spike_burst"
 const PASSIVE_ABILITY_NAME: String = "Skittering Steps"
 const ACTIVE_ABILITY_COOLDOWN: int = 1
 const SPIKE_BURST_DAMAGE: int = 1
@@ -20,6 +21,7 @@ func _init(color: String, coord: Vector2i):
 	self.current_hp = self.max_hp
 	self.base_cooldown = ACTIVE_ABILITY_COOLDOWN
 	self.active_ability_name = ACTIVE_ABILITY_NAME
+	self.active_ability_id = ACTIVE_ABILITY_ID
 	self.passive_ability_name = PASSIVE_ABILITY_NAME
 
 

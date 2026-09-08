@@ -3,6 +3,9 @@ class_name ChessPresentationAdapter
 
 const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
 const DEFAULT_KING_DEATH_PROFILE := preload("res://assets/chess_king_death.tres")
+const DEFAULT_ABILITY_PRESENTATIONS := preload("res://assets/chess_ability_presentations.tres")
+const SpecialMoveDirector := preload("res://scripts/view/chess_special_move_director.gd")
+const SpecialMoveProfile := preload("res://scripts/view/chess_special_move_presentation_profile.gd")
 
 const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
 const KingMagicController = preload("res://scripts/view/chess_king_magic_controller.gd")
@@ -30,6 +33,7 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var presentation_policy: Resource
 @export var king_death_profile: Resource = DEFAULT_KING_DEATH_PROFILE
 @export var screen_shake: Node
+@export var ability_presentations: Resource = DEFAULT_ABILITY_PRESENTATIONS
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -43,6 +47,7 @@ var player_color := "white"
 var player_presentation: Resource
 var opponent_presentation: Resource
 var active_king_deaths: Array[Node] = []
+var pending_projectile_defeats: Dictionary = {}
 
 
 func _ready() -> void:
@@ -62,6 +67,7 @@ func _ready() -> void:
 	model.piece_stunned.connect(_on_piece_stunned)
 	model.piece_recovered.connect(_on_piece_recovered)
 	model.ability_started.connect(_on_ability_started)
+	model.targeted_ability_committed.connect(_on_targeted_ability_committed)
 	model.ability_effect_resolved.connect(_on_ability_effect_resolved)
 	model.battle_finished.connect(_on_battle_finished)
 	controller.ability_targeting_started.connect(_on_ability_targeting_started)
@@ -270,6 +276,10 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 		magic.queue_free()
 	piece_views.erase(piece)
 	necromancer_auras.erase(piece)
+	if pending_projectile_defeats.has(piece) and not (piece is KingPiece):
+		# The projectile sequence owns this already-defeated view until its
+		# ballistic flight has completely cleared the viewport.
+		return
 	if is_instance_valid(piece_node):
 		if not presentation_policy.should_animate():
 			view.remove_piece(piece_node)
@@ -351,6 +361,53 @@ func _on_ability_started(piece: KingPiece, ability_name: String, gate: Completio
 		gate.hold()
 		await view.start_minotaur_rage_intro(piece_node)
 		gate.release()
+
+
+func _on_targeted_ability_committed(context) -> void:
+	if not presentation_policy.should_hold_completion_gate() or ability_presentations == null:
+		return
+	var profile: Resource = ability_presentations.find_profile(context.source.get_position_type_id(), context.ability_id)
+	var source_view := get_piece_view(context.source) as PieceView
+	var target_view := get_piece_view(context.target_piece) as PieceView
+	if profile == null or not is_instance_valid(source_view) or not is_instance_valid(target_view):
+		return
+	context.claim()
+	if not (context.target_piece is KingPiece):
+		pending_projectile_defeats[context.target_piece] = target_view
+	_play_targeted_projectile(context, source_view, target_view, profile)
+
+
+func _play_targeted_projectile(context, source_view: PieceView, target_view: PieceView, profile: Resource) -> void:
+	var sequence_profile: ChessSpecialMovePresentationProfile
+	if profile is ChessSpecialMovePresentationProfile:
+		sequence_profile = profile
+	else:
+		# Existing projectile-only assets remain playable while being republished.
+		sequence_profile = SpecialMoveProfile.new()
+		sequence_profile.cry_duration = 0.0
+		sequence_profile.wiggle_blink_count = 0
+		sequence_profile.projectile_count = 1
+		sequence_profile.projectile_profile = profile
+	var director: ChessSpecialMoveDirector = SpecialMoveDirector.new()
+	director.name = "ChessSpecialMoveDirector"
+	view.add_child(director)
+	director.configure(view, source_view, target_view, sequence_profile, presentation_policy.duration_scale(), int(model.position_revision) ^ context_seed(source_view.position, target_view.position))
+	await director.play_until_gameplay_impact()
+	context.mark_impact()
+	await context.wait_for_effect()
+	await director.play_aftermath(context.target_defeated, context.target_is_king)
+	if context.target_defeated and not context.target_is_king:
+		pending_projectile_defeats.erase(context.target_piece)
+		if is_instance_valid(target_view):
+			view.remove_piece(target_view)
+	else:
+		pending_projectile_defeats.erase(context.target_piece)
+	director.queue_free()
+	context.finish_aftermath()
+
+
+func context_seed(source: Vector2, target: Vector2) -> int:
+	return int(source.x * 31.0 + source.y * 131.0 + target.x * 521.0 + target.y * 977.0)
 
 
 func _on_ability_effect_resolved(piece: KingPiece, ability_name: String, affected_coords: Array) -> void:

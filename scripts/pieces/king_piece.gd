@@ -18,6 +18,7 @@ signal cooldown_ready(king: KingPiece)
 var current_cooldown: int = base_cooldown
 
 var active_ability_name: String = "Active Ability" 
+var active_ability_id: StringName = &"active_ability"
 var passive_ability_name: String = "Passive Ability"
 
 
@@ -86,6 +87,9 @@ func _on_turn_changed(current_turn: String):
 func get_active_ability_name() -> String:
 	# Subclasses should override this or set the active_ability_name property.
 	return active_ability_name
+
+func get_active_ability_id() -> StringName:
+	return active_ability_id
 
 ## Whether this King implementation provides a player-selectable active ability.
 func has_active_ability() -> bool:

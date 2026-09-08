@@ -13,6 +13,7 @@ func _init(color: String, coord: Vector2i):
 	self.current_hp = self.max_hp
 	self.base_cooldown = 4
 	self.active_ability_name = "Charge"
+	self.active_ability_id = &"charge"
 	self.passive_ability_name = "Retaliating Rage"
 
 func get_active_ability_targets() -> Array:

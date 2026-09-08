@@ -11,6 +11,8 @@ const CHESS_GAME_SCENE := preload("res://scenes/chess_game.tscn")
 const HOOD_HAND_STYLE := preload("res://assets/arms/opponent/hood_hand_style.tres")
 const PIECE_PLACEMENT_PROFILE := preload("res://scripts/view/chess_piece_placement_profile.gd")
 const SETUP_LAB_SCRIPT := preload("res://tools/dev_chess_setup/chess_setup_lab.gd")
+const PROJECTILE_LAB_SCRIPT := preload("res://tools/dev_chess_projectile/chess_projectile_lab.gd")
+const SPECIAL_MOVE_DIRECTOR := preload("res://scripts/view/chess_special_move_director.gd")
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -41,6 +43,7 @@ func _run_suite() -> void:
 	await _test_black_view_hand_presentation()
 	await _test_nonlethal_attack_presentation()
 	await _test_arakne_spike_burst()
+	await _test_arakne_spike_burst_lethal_knockoff()
 	await _test_minotaur_charge_survivor_landing()
 	await _test_minotaur_rage_barrier()
 	await _test_active_bone_pawn_summon_presentation()
@@ -639,15 +642,61 @@ func _test_arakne_spike_burst() -> void:
 	var arakne := ArakneKing.new("white", Vector2i(4, 4))
 	var target := MinotaurKing.new("black", Vector2i(3, 3))
 	_reset_battle(model, context.controller, [arakne, target])
+	var spike_profile := context.adapter.ability_presentations.find_profile(&"arakne_king", &"spike_burst") as ChessSpecialMovePresentationProfile
+	var original_shot_interval := spike_profile.shot_interval
+	spike_profile.shot_interval = 0.01
+	var presentation_observation := {"committed_before_damage": false, "projectile_present_at_damage": false, "landed": 0, "damage_after_final": false, "max_in_flight": 0, "procedural_impact": false, "final_sound": &""}
+	context.view.child_entered_tree.connect(func(child: Node):
+		if child.get_script() == SPECIAL_MOVE_DIRECTOR:
+			child.projectile_landed.connect(func(_index: int, _final: bool): presentation_observation.landed += 1)
+			child.projectile_launched.connect(func(_index: int, _final: bool): presentation_observation.max_in_flight = maxi(presentation_observation.max_in_flight, context.view.find_children("*", "ChessProjectileEffect", true, false).size()))
+			child.final_impact_sound_selected.connect(func(cue: StringName): presentation_observation.final_sound = cue))
+	model.targeted_ability_committed.connect(func(ability_context):
+		presentation_observation.committed_before_damage = target.current_hp == target.max_hp and ability_context.ability_id == ArakneKing.ACTIVE_ABILITY_ID)
+	model.piece_damaged.connect(func(piece, _amount, _hp, _max_hp):
+		if piece == target:
+			presentation_observation.projectile_present_at_damage = not context.view.find_children("*", "ChessProjectileEffect", true, false).is_empty()
+			presentation_observation.damage_after_final = presentation_observation.landed == 3
+			presentation_observation.procedural_impact = _count_children_named(context.view, &"ChessCaptureClackEffect") >= 1)
 
 	var targets := arakne.get_active_ability_targets()
 	_expect(Vector2i(3, 3) in targets, "Spike Burst targets an adjacent enemy")
 	await model.perform_active_ability(arakne, Vector2i(3, 3))
 	_expect(target.current_hp == target.max_hp - ArakneKing.SPIKE_BURST_DAMAGE, "Spike Burst applies its configured damage")
+	_expect(presentation_observation.committed_before_damage and presentation_observation.projectile_present_at_damage, "Spike Burst commits presentation before damage and reveals damage at projectile impact")
+	_expect(presentation_observation.landed == 3 and presentation_observation.damage_after_final, "Spike Burst presents three impacts and applies gameplay damage only after the final spike lands")
+	_expect(presentation_observation.max_in_flight >= 2, "Spike Burst launches on its authored cadence while earlier spikes remain in flight")
+	_expect(presentation_observation.procedural_impact and context.view.find_children("SpecialMoveHitMarker", "ChessLightning2D", true, false).is_empty(), "Spike Burst uses the procedural clack without layering chess-lightning markers")
+	_expect(presentation_observation.final_sound == &"spike_hit", "nonlethal Spike Burst uses its ordinary spike-hit sound on the final impact")
 	_expect(arakne.current_cooldown == ArakneKing.ACTIVE_ABILITY_COOLDOWN, "Spike Burst resets Arakne cooldown")
 	_expect(model.current_turn == "black", "Spike Burst consumes White's action")
 	_expect(not model.action_in_progress, "Spike Burst finishes its action")
+	spike_profile.shot_interval = original_shot_interval
 
+	await _destroy_game(context.game)
+
+
+func _test_arakne_spike_burst_lethal_knockoff() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	var target := Pawn.new("black", Vector2i(3, 3))
+	var black_king := ChessPieceCatalog.create_piece(&"king", "black", Vector2i(0, 0)) as KingPiece
+	_reset_battle(model, context.controller, [arakne, target, black_king])
+	var target_view := context.adapter.get_piece_view(target) as PieceView
+	var observation := {"landed": 0, "destroyed_after_final": false, "final_sound": &""}
+	context.view.child_entered_tree.connect(func(child: Node):
+		if child.get_script() == SPECIAL_MOVE_DIRECTOR:
+			child.projectile_landed.connect(func(_index: int, _final: bool): observation.landed += 1)
+			child.final_impact_sound_selected.connect(func(cue: StringName): observation.final_sound = cue))
+	model.piece_destroyed.connect(func(piece: ModelPiece):
+		if piece == target:
+			observation.destroyed_after_final = observation.landed == 3)
+	await model.perform_active_ability(arakne, target.coordinate)
+	await get_tree().process_frame
+	_expect(model.board[3][3] == null and observation.destroyed_after_final, "lethal Spike Burst removes an ordinary target only after its third impact")
+	_expect(observation.final_sound == &"capture_clack", "lethal Spike Burst uses the board's default clack when its final impact destroys an ordinary piece")
+	_expect(not is_instance_valid(target_view) and model.current_turn == "black" and not model.action_in_progress, "lethal Spike Burst completes its knockoff aftermath before advancing the turn")
 	await _destroy_game(context.game)
 
 

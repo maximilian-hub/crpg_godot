@@ -362,19 +362,25 @@ func spawn_capture_clack(piece_node: Node2D, play_sound := true) -> Node2D:
 	else:
 		effect.position = piece_node.position
 	effect.configure(get_world_scale())
-	if play_sound and visual_style != null and visual_style.interaction_sounds != null:
-		var sounds: ChessBoardSoundSet = visual_style.interaction_sounds
-		if sounds.default_capture_pickup != null:
-			var player := AudioStreamPlayer.new()
-			player.name = "MagicalCaptureSound"
-			player.bus = &"SFX"
-			player.stream = sounds.default_capture_pickup
-			player.volume_db = sounds.volume_db
-			player.pitch_scale = randf_range(1.0 - sounds.pitch_variation, 1.0 + sounds.pitch_variation)
-			add_child(player)
-			player.finished.connect(player.queue_free)
-			player.play()
+	if play_sound:
+		play_default_capture_clack_sound()
 	return effect
+
+func play_default_capture_clack_sound() -> void:
+	if visual_style == null or visual_style.interaction_sounds == null:
+		return
+	var sounds: ChessBoardSoundSet = visual_style.interaction_sounds
+	if sounds.default_capture_pickup == null:
+		return
+	var player := AudioStreamPlayer.new()
+	player.name = "MagicalCaptureSound"
+	player.bus = &"SFX"
+	player.stream = sounds.default_capture_pickup
+	player.volume_db = sounds.volume_db
+	player.pitch_scale = randf_range(1.0 - sounds.pitch_variation, 1.0 + sounds.pitch_variation)
+	add_child(player)
+	player.finished.connect(player.queue_free)
+	player.play()
 
 func _connect_visual_style() -> void:
 	if visual_style != null and not visual_style.changed.is_connected(_on_visual_style_changed):

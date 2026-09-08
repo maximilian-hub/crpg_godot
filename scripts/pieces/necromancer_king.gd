@@ -11,6 +11,7 @@ func _init(color: String, coord: Vector2i):
 	self.current_hp = self.max_hp
 	self.base_cooldown = 2
 	self.active_ability_name = "Summon Bone Pawn"
+	self.active_ability_id = &"summon_bone_pawn"
 	self.passive_ability_name = "Raise Dead"
 
 func get_active_ability_targets() -> Array:
