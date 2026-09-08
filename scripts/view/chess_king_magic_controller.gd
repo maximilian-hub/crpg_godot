@@ -7,6 +7,7 @@ const KingPresentationProfile = preload("res://scripts/view/chess_king_presentat
 const PresentationTransform = preload("res://scripts/view/chess_presentation_transform.gd")
 const STONE_SHADER := preload("res://effects/chess_stone_piece.gdshader")
 const HoodActivationSequence := preload("res://scripts/view/chess_hood_activation_sequence.gd")
+const CooldownPresentation := preload("res://scripts/view/chess_king_cooldown_presentation.gd")
 
 ## Runtime owner for one King's persistent aura and self-propelled actions.
 var board: ChessBoardView
@@ -21,6 +22,7 @@ var activation_sequence: ChessKingActivationSequence
 var lightning: ChessLightning2D
 var connection_anchor: Marker2D
 var stone_sprite: Sprite2D
+var cooldown_presentation: ChessKingCooldownPresentation
 var running := false
 var rng := RandomNumberGenerator.new()
 var _gesture_direction := Vector2.RIGHT
@@ -32,7 +34,7 @@ signal king_move_released()
 signal hand_gesture_completed()
 
 
-func configure(board_view: ChessBoardView, hand_rig: ChessHandRig, king_view: PieceView, king_profile: Resource, king_type_id: StringName = &"classic_king") -> void:
+func configure(board_view: ChessBoardView, hand_rig: ChessHandRig, king_view: PieceView, king_profile: Resource, king_type_id: StringName = &"classic_king", cooldown_profile: Resource = null) -> void:
 	board = board_view
 	hand = hand_rig
 	king = king_view
@@ -43,6 +45,7 @@ func configure(board_view: ChessBoardView, hand_rig: ChessHandRig, king_view: Pi
 	resolved_aura_mode = aura_entry.aura_mode if aura_entry != null else profile.aura_mode
 	rng.randomize()
 	_build_effects()
+	_build_cooldown_presentation(cooldown_profile)
 
 
 func _build_effects() -> void:
@@ -63,6 +66,32 @@ func _build_effects() -> void:
 		hand_aura.set_power(0.0)
 
 
+func _build_cooldown_presentation(cooldown_profile: Resource) -> void:
+	cooldown_presentation = CooldownPresentation.new()
+	add_child(cooldown_presentation)
+	cooldown_presentation.configure(
+		board, king, king_aura, cooldown_profile, resolved_aura_profile, king.model.current_cooldown,
+		{
+			"silhouette": profile.activation_profile.resting_aura_power,
+			"particles": profile.activation_profile.resting_particle_power,
+			"density": profile.activation_profile.resting_density_multiplier,
+			"speed": profile.activation_profile.resting_speed_multiplier,
+		}
+	)
+
+
+func set_cooldown(value: int, animate := true) -> void:
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_cooldown(value, animate)
+
+
+func set_selected(value: bool) -> void:
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_selected(value)
+
+
+func set_targeting(value: bool) -> void:
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_targeting(value)
+
+
 func refresh_geometry() -> void:
 	if activation_sequence == null or activation_sequence.running or not is_instance_valid(hand) or not is_instance_valid(king):
 		return
@@ -78,6 +107,7 @@ func refresh_geometry() -> void:
 
 
 func prepare_for_activation() -> void:
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_awakened(false)
 	if not is_instance_valid(hand) or not hand.can_animate():
 		return
 	if activation_sequence == null:
@@ -94,16 +124,23 @@ func play_activation(playback_speed := 1.0) -> void:
 		_build_activation_sequence()
 	refresh_geometry()
 	activation_sequence.set_playback_speed(playback_speed)
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(true)
 	running = true
 	activation_sequence.play()
 	await activation_sequence.activation_completed
 	running = false
+	if is_instance_valid(cooldown_presentation):
+		cooldown_presentation.set_awakened(true)
+		cooldown_presentation.set_aura_suppressed(false)
 
 
 func finish_activation_immediately() -> void:
 	if activation_sequence != null and activation_sequence.running:
 		activation_sequence.complete_immediately()
 	running = false
+	if is_instance_valid(cooldown_presentation):
+		cooldown_presentation.set_awakened(true)
+		cooldown_presentation.set_aura_suppressed(false)
 
 
 func _build_activation_sequence() -> void:
@@ -165,6 +202,7 @@ func play_attack(_from: Vector2i, target: Vector2i, contact_callback := Callable
 
 func _begin_gesture(from: Vector2i, to: Vector2i) -> void:
 	running = true
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(true)
 	var move: Resource = profile.movement_profile
 	if is_instance_valid(hand) and hand.can_animate():
 		var effective_scale := board.get_world_scale() * hand.art_scale_multiplier
@@ -209,6 +247,7 @@ func _end_gesture() -> void:
 	if move.settle_duration > 0.0:
 		await get_tree().create_timer(move.settle_duration * board.animation_duration_scale).timeout
 	running = false
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(false)
 
 
 func _start_unified_hand_gesture(lock: Vector2, swipe_end: Vector2, rest: Vector2) -> void:
@@ -307,6 +346,9 @@ func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i,
 
 
 func disable_effects() -> void:
+	if is_instance_valid(cooldown_presentation):
+		cooldown_presentation.shutdown()
+		cooldown_presentation.set_awakened(false)
 	if is_instance_valid(king_aura): king_aura.set_power(0.0)
 	if is_instance_valid(hand_aura): hand_aura.set_power(0.0)
 

@@ -16,6 +16,7 @@ const HOOD_PLACEMENT_RUNTIME_PATH := "res://assets/chess_piece_placement_hood.tr
 const BOARD_RUNTIME_PATH := "res://assets/boards/presentations/burgundy_marble_board.tres"
 const ENVIRONMENT_RUNTIME_PATH := "res://assets/boards/presentations/portable_walnut_environment.tres"
 const ABILITY_PRESENTATIONS_RUNTIME_PATH := "res://assets/chess_ability_presentations.tres"
+const COOLDOWN_PRESENTATION_RUNTIME_PATH := "res://assets/chess_king_cooldown_presentation.tres"
 
 
 static func publish_activation_profile(
@@ -161,6 +162,17 @@ static func publish_special_move_profile(piece_type_id: StringName, ability_id: 
 	catalog.upsert(piece_type_id, ability_id, profile)
 	var error := ResourceSaver.save(catalog, target_path)
 	return _success(target_path, "%s special move" % ability_id) if error == OK else _failure("Could not publish special-move profile (error %d)." % error)
+
+
+static func publish_cooldown_presentation(profile: Resource, target_path := COOLDOWN_PRESENTATION_RUNTIME_PATH) -> Dictionary:
+	if profile == null:
+		return _failure("A King cooldown presentation profile is required.")
+	var target := ResourceLoader.load(target_path, "ChessKingCooldownPresentationProfile", ResourceLoader.CACHE_MODE_IGNORE) as ChessKingCooldownPresentationProfile
+	if target == null:
+		target = ChessKingCooldownPresentationProfile.new()
+	_copy_storage_properties(profile, target)
+	var error := ResourceSaver.save(target, target_path)
+	return _success(target_path, "universal King cooldown presentation") if error == OK else _failure("Could not publish King cooldown presentation (error %d)." % error)
 
 
 static func publish_battle_presentation(

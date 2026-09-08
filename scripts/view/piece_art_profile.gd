@@ -12,6 +12,9 @@ class_name PieceArtProfile
 @export_range(1.0, 256.0, 1.0) var display_height := 64.0
 ## Position at which a hand should hold the piece, relative to its ground origin.
 @export var grip_anchor := Vector2.ZERO
+## Optional screen-space adjustments from the shared body anchor for unusual silhouettes.
+@export var cooldown_anchor_offset := Vector2.ZERO
+@export var selection_orb_offset := Vector2.ZERO
 
 
 func texture_for_color(color: String) -> Texture2D:

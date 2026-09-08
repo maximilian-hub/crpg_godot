@@ -4,6 +4,7 @@ class_name ChessPresentationAdapter
 const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
 const DEFAULT_KING_DEATH_PROFILE := preload("res://assets/chess_king_death.tres")
 const DEFAULT_ABILITY_PRESENTATIONS := preload("res://assets/chess_ability_presentations.tres")
+const DEFAULT_COOLDOWN_PRESENTATION := preload("res://assets/chess_king_cooldown_presentation.tres")
 const SpecialMoveDirector := preload("res://scripts/view/chess_special_move_director.gd")
 const SpecialMoveProfile := preload("res://scripts/view/chess_special_move_presentation_profile.gd")
 
@@ -34,6 +35,7 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var king_death_profile: Resource = DEFAULT_KING_DEATH_PROFILE
 @export var screen_shake: Node
 @export var ability_presentations: Resource = DEFAULT_ABILITY_PRESENTATIONS
+@export var cooldown_presentation_profile: Resource = DEFAULT_COOLDOWN_PRESENTATION
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -78,6 +80,7 @@ func _ready() -> void:
 	controller.selection_piece_processed.connect(_on_selection_piece_processed)
 	controller.selection_targets_changed.connect(_on_selection_targets_changed)
 	controller.selection_cleared.connect(_on_selection_cleared)
+	controller.piece_selected.connect(_on_piece_selected)
 	controller.ordinary_move_submission_started.connect(_on_ordinary_move_submission_started)
 	controller.ordinary_move_submission_finished.connect(_on_ordinary_move_submission_finished)
 	view.square_selected.connect(controller._on_square_clicked)
@@ -450,6 +453,8 @@ func _on_ability_effect_resolved(piece: KingPiece, ability_name: String, affecte
 
 
 func _on_ability_targeting_started(king: KingPiece, _ability_name: String, _targets: Array) -> void:
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic): magic.set_targeting(true)
 	view.clear_highlights()
 	view.show_legal_moves(_targets)
 	view.flash_screen()
@@ -461,6 +466,8 @@ func _on_ability_targeting_started(king: KingPiece, _ability_name: String, _targ
 
 
 func _on_ability_targeting_ended(king: KingPiece, _ability_name: String, reason: String) -> void:
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic): magic.set_targeting(false)
 	view.clear_highlights()
 	var piece_node: Node = get_piece_view(king)
 	if king is MinotaurKing and is_instance_valid(piece_node):
@@ -488,6 +495,14 @@ func _on_selection_targets_changed(targets: Array) -> void:
 
 func _on_selection_cleared() -> void:
 	view.clear_highlights()
+	for magic in king_magic_controllers.values():
+		if is_instance_valid(magic): magic.set_selected(false)
+
+
+func _on_piece_selected(piece: ModelPiece) -> void:
+	for registered_piece in king_magic_controllers:
+		var magic: Node = king_magic_controllers[registered_piece]
+		if is_instance_valid(magic): magic.set_selected(registered_piece == piece)
 
 
 func _show_necromancer_aura(piece: NecromancerKing) -> void:
@@ -539,7 +554,7 @@ func _register_king_magic(piece: KingPiece, piece_node: PieceView) -> void:
 		king_profile.ensure_defaults()
 	var magic := KingMagicController.new()
 	view.add_child(magic)
-	magic.configure(view, view.get_hand_rig_for_color(piece.color), piece_node, king_profile, piece.get_position_type_id())
+	magic.configure(view, view.get_hand_rig_for_color(piece.color), piece_node, king_profile, piece.get_position_type_id(), cooldown_presentation_profile)
 	king_magic_controllers[piece] = magic
 
 
@@ -569,10 +584,14 @@ func _play_unpowered_king_move(piece_node: PieceView, to: Vector2i) -> void:
 
 func _on_cooldown_changed(king: KingPiece, new_cooldown: int) -> void:
 	view.update_cooldown_display(king, new_cooldown)
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic): magic.set_cooldown(new_cooldown, true)
 
 
 func _on_cooldown_ready(king: KingPiece) -> void:
 	view.ready_cooldown_display(king)
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic): magic.set_cooldown(0, true)
 
 func set_presentation_speed(speed: int) -> void:
 	presentation_policy.speed = speed

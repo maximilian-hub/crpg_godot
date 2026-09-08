@@ -22,6 +22,7 @@ signal ability_targeting_started(king: KingPiece, ability_name: String, targets:
 signal ability_targeting_ended(king: KingPiece, ability_name: String, reason: String)
 signal selection_targets_changed(targets: Array)
 signal selection_cleared()
+signal piece_selected(piece: ModelPiece)
 signal ordinary_move_submission_started(piece: ModelPiece, target: Vector2i)
 signal ordinary_move_submission_finished(piece: ModelPiece, target: Vector2i, accepted: bool)
 
@@ -59,6 +60,10 @@ func _on_square_clicked(coord: Vector2i):
 			select_piece(piece)
 		return
 
+	if piece == selected_piece and piece is KingPiece and piece.current_cooldown == 0 and piece.has_active_ability():
+		select_active_ability(piece.color)
+		return
+
 	if coord in legal_moves:
 		deselect_piece()
 		ordinary_move_submission_started.emit(temp_selected_piece, coord)
@@ -91,6 +96,7 @@ func select_piece(piece: ModelPiece):
 		selected_piece = piece
 		legal_moves = _get_primary_targets(ChessPrimaryAction.Kind.MOVE, selected_piece)
 		selection_targets_changed.emit(legal_moves)
+		piece_selected.emit(piece)
 
 func deselect_piece():
 	selection_cleared.emit()

@@ -38,6 +38,7 @@ func _run_suite() -> void:
 	await _test_seeded_piece_placement_variation()
 	await _test_player_hand_castling_presentation()
 	await _test_player_hand_promotion_presentation()
+	await _test_diegetic_king_cooldown_presentation()
 	await _test_player_hand_capture_presentation()
 	await _test_surrounded_knight_depth_presentation()
 	await _test_ai_configuration_and_turns()
@@ -255,6 +256,63 @@ func _test_player_hand_promotion_presentation() -> void:
 	_expect(released_types == ["pawn", "queen"], "promotion releases the pawn offscreen and releases the Queen on the board")
 	_expect(not rig.visible and not rig.is_animating, "the promotion exchange finishes before the hand becomes idle")
 	_expect(model.current_turn == "black" and not model.action_in_progress, "the promotion exchange finishes before the turn changes")
+
+	await _destroy_game(context.game)
+
+
+func _test_diegetic_king_cooldown_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var adapter: ChessPresentationAdapter = context.adapter
+	var board: ChessBoardView = context.view
+	var king := ArakneKing.new("white", Vector2i(4, 4))
+	var target := Pawn.new("black", Vector2i(3, 4))
+	king.set_cooldown(3)
+	_reset_battle(model, controller, [king, target])
+	var magic := adapter.get_king_magic_controller("white")
+	var cooldown: ChessKingCooldownPresentation = magic.cooldown_presentation
+	_expect(cooldown.authoritative_count == 3 and cooldown.active_mote_count() == 3 and cooldown.absorbing_mote_count() == 0, "an initialized cooldown constructs its dormant motes without fake transitions")
+	var first_mote := cooldown.motes[0] as ChessCooldownMote2D
+	var expected_white := Color(1.0, 1.0, 1.0, cooldown.profile.mote_opacity)
+	var expected_charged := first_mote.color
+	expected_charged.a *= cooldown.profile.mote_opacity
+	_expect(first_mote.modulate.is_equal_approx(expected_white), "orbiting cooldown motes remain white")
+	first_mote.set_visual_charge(1.0)
+	_expect(first_mote.modulate.is_equal_approx(expected_charged), "a fully charged absorbing mote reaches the King aura color")
+	first_mote.set_visual_charge(0.0)
+
+	king.set_cooldown(2)
+	_expect(cooldown.authoritative_count == 2 and cooldown.active_mote_count() == 2 and cooldown.absorbing_mote_count() == 1, "a cooldown reduction immediately reconciles its authoritative count and begins one absorption")
+	king.set_cooldown(0)
+	_expect(cooldown.authoritative_count == 0 and cooldown.absorbing_mote_count() > 0 and is_equal_approx(magic.king_aura.particle_power, cooldown.resting_particles), "direct reduction to zero keeps the aura resting while motes are still absorbing")
+	for _frame in range(120):
+		if cooldown.absorbing_mote_count() == 0:
+			break
+		await get_tree().process_frame
+	_expect(cooldown.absorbing_mote_count() == 0 and magic.king_aura.particle_power >= cooldown.profile.ready_particle_power, "the ready aura begins when the final mote reaches the King")
+	king.set_cooldown(5)
+	king.set_cooldown(2)
+	king.set_cooldown(4)
+	_expect(cooldown.active_mote_count() == 4, "rapid overlapping cooldown changes reconcile immediately to the newest count")
+
+	king.set_cooldown(0)
+	await controller._on_square_clicked(king.coordinate)
+	_expect(controller.selected_piece == king and cooldown.absorbing_mote_count() > 0 and cooldown.selection_orb.visible, "a model-ready King remains selectable and shows its orb while the aura awaits final mote absorption")
+	await controller._on_square_clicked(king.coordinate)
+	_expect(controller.active_ability_selected and controller.active_king == king and not cooldown.selection_orb.visible, "clicking the selected King's square again enters existing ability targeting")
+	controller.deselect_active_ability(true)
+	_expect(king.current_cooldown == 0, "opening and cancelling ability targeting does not consume the ability")
+
+	king.set_cooldown(3)
+	var king_view := adapter.get_piece_view(king) as PieceView
+	var mote := cooldown.motes[0] as ChessCooldownMote2D
+	var old_mote_position := mote.position
+	king_view.position += Vector2(180.0, -80.0)
+	await get_tree().process_frame
+	_expect(mote.position.distance_to(old_mote_position) < 100.0, "motes trail a moving King instead of inheriting its transform rigidly")
+	for _frame in range(180): await get_tree().process_frame
+	_expect(mote.position.distance_to(cooldown._desired_position(mote)) < 24.0, "trailing motes catch up and settle near their moving orbit targets")
 
 	await _destroy_game(context.game)
 

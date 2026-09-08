@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="ChessKingCooldownPresentationProfile" load_steps=2 format=3 uid="uid://b4gu6nkbs77jb"]
+
+[ext_resource type="Script" uid="uid://de1c7gvf6ro5j" path="res://scripts/view/chess_king_cooldown_presentation_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+mote_size = 4.0
+mote_opacity = 0.78
+anchor_offset = Vector2(0, -15)
+orbit_radius = Vector2(10, 2)
+orbit_speed = 1.0
+hover_amplitude = 1.5
+hover_frequency = 0.05
+hover_variation = 0.22
+motes_per_ring = 8
+ring_spacing = 16.0
+follow_base_speed = 100.0
+follow_distance_gain = 20.0
+follow_max_speed = 1200.0
+follow_acceleration = 900.0
+arrival_smoothing = 40.0
+formation_angular_smoothing = 5.0
+release_duration = 0.55
+absorption_duration = 0.48
+absorption_stagger = 0.1
+absorption_curve_strength = 0.72
+absorption_outward_distance = 62.0
+pulse_scale = 1.055
+pulse_duration = 0.24
+ready_silhouette_power = 0.58
+ready_particle_power = 1.0
+ready_density_multiplier = 1.0
+ready_speed_multiplier = 2.0
+ready_brightening_intensity = 0.5
+ready_brightening_period = 2.0
+ready_brightening_fraction = 1.0
+selection_orb_offset = Vector2(0, 10)
+selection_orb_size = 13.0
+selection_orb_opacity = 0.68
+selection_orb_speed = 1.15
+charge_volume_db = -18.0
+absorption_volume_db = -16.0
+completion_volume_db = -12.0
+selection_volume_db = -18.0
