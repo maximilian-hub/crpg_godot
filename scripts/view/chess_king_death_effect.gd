@@ -3,6 +3,7 @@ class_name ChessKingDeathEffect
 
 signal completed()
 signal result_ready_for_display()
+signal death_beat_reached()
 
 const STONE_SHADER := preload("res://effects/chess_stone_piece.gdshader")
 const RIFT_SHADER := preload("res://effects/chess_lightning_rift.gdshader")
@@ -67,6 +68,7 @@ func play() -> void:
 			await _wait(profile.blink_off_duration)
 	# The final blink remains red during the authored pre-death tension hold.
 	await _wait(profile.pre_death_hold_duration)
+	death_beat_reached.emit()
 	if is_instance_valid(screen_shake):
 		screen_shake.play(profile.screen_shake)
 	_play_sound()

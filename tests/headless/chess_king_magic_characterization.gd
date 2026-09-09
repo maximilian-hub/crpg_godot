@@ -160,14 +160,23 @@ func _ready() -> void:
 	var lethal_attacker: ModelPiece = model.board[7][0]
 	var lethal_attacker_view := adapter.get_piece_view(lethal_attacker) as PieceView
 	var lethal_origin := lethal_attacker_view.position
-	var lethal_hit_feedback := {"count": 0}
+	black_magic.cooldown_presentation.sync_immediate(3)
+	var lethal_hit_feedback := {"count": 0, "motes_at_grab": -1, "death_beats": 0}
 	view.child_entered_tree.connect(func(child: Node):
-		if child.name == "BloodSplatter": lethal_hit_feedback.count += 1)
+		if child.name == "BloodSplatter": lethal_hit_feedback.count += 1
+		if child is ChessKingDeathEffect:
+			child.death_beat_reached.connect(func(): lethal_hit_feedback.death_beats += 1, CONNECT_ONE_SHOT))
+	view.near_hand_rig.piece_grabbed.connect(func(piece: Node2D):
+		if piece == lethal_attacker_view:
+			lethal_hit_feedback.motes_at_grab = black_magic.cooldown_presentation.active_mote_count()
+	, CONNECT_ONE_SHOT)
 	view.near_hand_rig.animation_duration_scale = 0.02
 	var lethal_gate := CompletionGate.new()
 	await adapter._on_piece_capture_committed(lethal_attacker, black_king, lethal_attacker.coordinate, black_king.coordinate, black_king.coordinate, lethal_gate)
 	_check(lethal_attacker_view.position.is_equal_approx(lethal_origin), "lethal King capture reuses the long-range attack slam and returns the attacker to its original square")
 	_check(lethal_hit_feedback.count == 1, "lethal King impact preserves the ordinary blood splatter and hurt-sound feedback")
+	_check(lethal_hit_feedback.motes_at_grab == 3, "defending King cooldown motes remain visible while the attacking hand grabs its piece")
+	_check(lethal_hit_feedback.death_beats == 1 and black_magic.cooldown_presentation.motes.is_empty(), "the death beat fires once and dismisses the defending King's cooldown motes")
 	game.screen_shake.cancel_all()
 
 	var death_piece := preload("res://scenes/piece.tscn").instantiate() as PieceView
@@ -194,13 +203,17 @@ func _ready() -> void:
 	var expected_death_origin := death_piece.sprite.global_position
 	var shake_requests_before: int = game.screen_shake.request_serial
 	var death_effect := view.create_king_death_effect(death_piece, death_profile, game.screen_shake)
+	var death_beat_observation := {"count": 0}
+	death_effect.death_beat_reached.connect(func(): death_beat_observation.count += 1)
 	_check(death_effect.global_position.is_equal_approx(expected_death_origin), "King death circles share the activation climax beam's sprite-center target")
 	death_effect.play()
 	await get_tree().create_timer(0.02).timeout
 	_check(death_piece.sprite.material is ShaderMaterial and (death_piece.sprite.material as ShaderMaterial).shader.resource_path == "res://effects/chess_king_death_flash.gdshader", "King death red-on interval uses the dedicated visible flash material")
 	_check(game.screen_shake.request_serial == shake_requests_before, "fatal-hit blinking does not trigger the death-burst screen shake early")
+	_check(death_beat_observation.count == 0, "fatal-hit blinking does not publish the death beat early")
 	await get_tree().create_timer(0.085).timeout
 	_check(game.screen_shake.request_serial == shake_requests_before + 1, "death sound, circles, discharge, and one screen-shake request begin on the same death burst")
+	_check(death_beat_observation.count == 1, "King death publishes exactly one beat alongside the death burst")
 	_check(death_effect.rift_circles.size() == 8, "King death emits exactly eight radial rift circles")
 	_check((death_effect.rift_circles[0].material as ShaderMaterial).shader.resource_path == "res://effects/chess_lightning_rift.gdshader", "King death circles reveal the stationary chessboard-rift pattern")
 	_check(death_effect.spawned_discharge_count >= 1 and not death_effect.discharge_markers.is_empty() and not (death_effect.discharge_markers[0].marker as ChessLightning2D).impact_paths.is_empty(), "King death begins successive activation-style hit markers over the King at the death beat")

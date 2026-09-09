@@ -200,8 +200,9 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 	if defender is KingPiece and is_instance_valid(defender_node):
 		var defender_magic := _get_king_magic(defender)
 		var death_profile: Resource = king_death_profile if king_death_profile != null else KingDeathProfile.new()
-		if defender_magic != null: defender_magic.disable_effects()
 		var death_effect := view.create_king_death_effect(defender_node, death_profile, screen_shake)
+		if is_instance_valid(defender_magic):
+			death_effect.death_beat_reached.connect(defender_magic.disable_effects, CONNECT_ONE_SHOT)
 		var death_contact := func():
 			# Lethal captures bypass ModelPiece.take_damage(), so reproduce the
 			# ordinary hit feedback explicitly at physical contact. The splatter
