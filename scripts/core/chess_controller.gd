@@ -30,6 +30,8 @@ func _ready():
 	model.action_started.connect(_on_action_started)
 	model.action_finished.connect(_on_action_finished)
 	model.action_cancelled.connect(_on_action_cancelled)
+	model.forced_pass_sequence_started.connect(_on_forced_pass_sequence_started)
+	model.forced_pass_sequence_finished.connect(_on_forced_pass_sequence_finished)
 	model.battle_finished.connect(_on_battle_finished)
 	model.board_rebuilt.connect(_on_board_rebuilt)
 	model.reaction_selection_requested.connect(_on_reaction_selection_requested)
@@ -233,6 +235,14 @@ func _on_action_finished() -> void:
 
 func _on_action_cancelled() -> void:
 	is_input_locked = false
+
+
+func _on_forced_pass_sequence_started() -> void:
+	is_input_locked = true
+
+
+func _on_forced_pass_sequence_finished() -> void:
+	is_input_locked = model.battle_over
 
 func _on_battle_finished(_winner_color: String) -> void:
 	lock_after_battle()

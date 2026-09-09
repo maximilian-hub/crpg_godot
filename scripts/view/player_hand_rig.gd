@@ -18,6 +18,7 @@ const SOUND_GRAB := &"grab"
 const SOUND_CAPTURE_PICKUP := &"capture_pickup"
 const SOUND_PLACE := &"place"
 const SOUND_RELEASE := &"release"
+const HAND_AURA_START_SOUND := preload("res://assets/audio/chess/aura/hand_aura_start.wav")
 enum Seat { NEAR, FAR }
 enum DepthState { GROUNDED, ELEVATED }
 ## Absolute board-canvas interaction stack above ordinary pieces (0-70).
@@ -112,6 +113,8 @@ var fallback_motion := ChessHandMotionProfile.new()
 var magical_foreground_active := false
 var magical_foreground_owner: Object
 var _pre_magic_depths: Dictionary = {}
+var bound_aura: ChessAura2D
+var aura_start_sound := AudioStreamPlayer.new()
 
 
 func _motion() -> ChessHandMotionProfile:
@@ -192,6 +195,9 @@ func _ready() -> void:
 	arm_foreground_sprite.z_index = ARM_FOREGROUND_Z
 	_set_elevated_depth()
 	_apply_pose(false)
+	aura_start_sound.name = "AuraStartSound"
+	aura_start_sound.stream = HAND_AURA_START_SOUND
+	add_child(aura_start_sound)
 
 
 func _set_grounded_depth(base_depth: int) -> void:
@@ -301,8 +307,18 @@ func get_aura_sprites() -> Array[Sprite2D]:
 
 
 func bind_aura(aura: ChessAura2D) -> void:
-	if is_instance_valid(aura):
-		aura.bind_layered_targets(get_aura_sprites(), GRIP_BACK_Z - 1, ARM_FOREGROUND_Z + 1)
+	if is_instance_valid(bound_aura) and bound_aura.silhouette_appeared.is_connected(_play_aura_start_sound):
+		bound_aura.silhouette_appeared.disconnect(_play_aura_start_sound)
+	bound_aura = aura
+	if not is_instance_valid(bound_aura):
+		return
+	bound_aura.silhouette_appeared.connect(_play_aura_start_sound)
+	bound_aura.bind_layered_targets(get_aura_sprites(), GRIP_BACK_Z - 1, ARM_FOREGROUND_Z + 1)
+
+
+func _play_aura_start_sound() -> void:
+	if is_instance_valid(aura_start_sound) and aura_start_sound.stream != null:
+		aura_start_sound.play()
 
 
 func get_connection_anchor_position() -> Vector2:

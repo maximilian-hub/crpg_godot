@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://bkx5254cqlhhy"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://bg5f5sf6slrvs"]
 
 [ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
@@ -6,14 +6,14 @@
 [ext_resource type="Script" uid="uid://bfnd1ky31ginl" path="res://scripts/view/chess_magical_move_profile.gd" id="4"]
 [ext_resource type="Resource" uid="uid://csre3s1oq46ch" path="res://assets/chess_king_auras.tres" id="5"]
 
-[sub_resource type="Resource" id="Activation"]
+[sub_resource type="Resource" id="Resource_et52m"]
 script = ExtResource("3")
 hand_hover_offset = Vector2(250, -300)
 approach_duration = 0.55
 approach_settle_duration = 0.1
 approach_departure_handle = Vector2(-140, -180)
 approach_arrival_handle = Vector2(120, 180)
-invocation_duration = 2.0
+invocation_duration = 0.8
 response_duration = 1.0
 buildup_duration = 2.5
 climax_duration = 1.0
@@ -121,6 +121,6 @@ script = ExtResource("1")
 aura_profile = SubResource("Aura")
 aura_mode = 2
 aura_catalog = ExtResource("5")
-activation_profile = SubResource("Activation")
+activation_profile = SubResource("Resource_et52m")
 movement_profile = SubResource("Resource_18jf6")
 activation_choreography = 0

@@ -1,0 +1,205 @@
+DIALOGUE PRESENTATION INTENT
+============================
+
+Purpose
+-------
+
+This document records the current aesthetic goals, technical concerns, and
+recommended direction for the game's dialogue presentation. It is design intent,
+not a claim that the described system has already been implemented.
+
+
+Aesthetic Direction
+-------------------
+
+The target lies between:
+
+* The simple, highly readable dialogue borders of Pokemon Crystal, which suggest
+  a physical object with very little visual information.
+* The carved, weighty, made-of-stone interfaces found in DOOM and many classic
+  MS-DOS role-playing games.
+
+The result should feel physical and materially grounded without becoming so
+detailed that it competes with dialogue text. The frame should communicate
+stone, age, weight, and craftsmanship through economical pixel-art cues.
+
+A promising visual recipe is:
+
+* A heavy charcoal outer edge or shadow, biased slightly down and right.
+* A compact mid-gray stone face.
+* A light upper/left bevel and dark lower/right bevel.
+* A near-black inner keyline separating the frame from the text well.
+* A dark, visually quiet center behind the text.
+* Restrained cracks, chips, rivets, runes, skulls, or squared stone joints,
+  concentrated in corners rather than repeated conspicuously along every edge.
+* A small physical continue indicator, such as a stone chip, rune, or arrow.
+
+Readability should remain closer to Pokemon Crystal than to a dense ornamental
+RPG interface. Stone detail is subordinate to text.
+
+
+Asset Authoring
+---------------
+
+Pixelorama is an appropriate authoring tool, but the primary asset should not be
+one complete dialogue box at a fixed size. Author a modular nine-slice frame:
+
+    corner | top edge    | corner
+    -------+-------------+-------
+    left   | center fill | right
+    edge   |             | edge
+    -------+-------------+-------
+    corner | bottom edge | corner
+
+Godot should assemble this as a StyleBoxTexture on a PanelContainer, or through
+an equivalent nine-patch treatment. Corners remain fixed while edges and the
+center tile or stretch as appropriate.
+
+Good starting experiments are 8x8- or 12x12-pixel corner regions inside a small
+24x24-, 36x36-, or 48x48-pixel source texture. Recognizable details should live
+in corners or separate ornaments. Repeating edges should remain quiet enough
+that tiling is not obvious.
+
+The initial art pass should be grayscale. Border thickness, padding, tiling, and
+text readability should be proven before final color and decorative detail.
+
+
+Shared Dialogue Architecture
+----------------------------
+
+Overworld and chess battle dialogue should use one semantic dialogue system,
+not separate implementations. Both contexts will need the same underlying
+behavior:
+
+* Speaker identity and optional portrait.
+* Paginated text.
+* Continue prompts.
+* Choices and selection state.
+* Input locking and advancement.
+* Placement that avoids important action.
+* Dialogue lifecycle signals for game flow and presentation.
+
+A reusable DialogueView should contain approximately:
+
+    DialogueView
+      SafeArea
+        DialoguePanel
+          PortraitSlot
+          SpeakerName
+          DialogueText
+          ContinueIndicator
+          ChoiceList
+
+Dialogue data should provide content, speaker, portrait, choices, and preferred
+placement. A presentation skin should provide the frame, typography, colors,
+sounds, ornaments, and animation.
+
+Begin with one shared visual skin in both overworld and battle. If the contexts
+later need more identity, use compatible DialogueSkin resources rather than
+forking the dialogue system. A battle variant may add heavier side ornaments,
+King aura colors, or portrait plaques while retaining the same visual language.
+
+Useful placement modes may eventually include:
+
+* BOTTOM for ordinary overworld conversation.
+* TOP when a lower panel would hide important action.
+* BATTLE_NEAR and BATTLE_FAR for dialogue associated with either side of the
+  chess table.
+* CENTER for announcements or supernatural speech.
+
+These modes are prospective and should be added only as actual dialogue staging
+requires them.
+
+
+Pixel Scale and Window Behavior
+-------------------------------
+
+Dialogue should have its own UI pixel grid. It should not strictly inherit the
+overworld's world-pixel scale, because the overworld uses an integer-scaled
+square viewport while battles may use fluid native presentation. Binding the UI
+to either world would make its apparent scale inconsistent across contexts.
+
+The current prototype reparents the overworld DialogueLayer into the outer
+viewport and sizes its labels using the overworld integer scale. This is useful
+for the prototype but should not become the permanent dialogue architecture.
+
+A recommended starting reference is a 320x180 logical UI grid. Choose one
+integer UI scale from window height, then derive the available logical dimensions
+from the actual window size:
+
+    ui_scale = max(1, floor(window_height / 180.0))
+    logical_size = floor(window_size / ui_scale)
+
+The complete dialogue root should use that uniform integer scale and nearest
+texture filtering. Dialogue layout should operate in logical integer coordinates.
+The UI should not be forced into a fixed 16:9 subviewport; its logical safe area
+should expand to reflect the real window aspect ratio.
+
+Responsive layout rules should include:
+
+* Anchor the panel to a logical safe area rather than directly to world content.
+* Give ordinary dialogue a maximum logical width and center it on wide screens.
+* Reduce panel width on narrow screens while preserving integer border pixels.
+* Keep border positions, padding, font sizes, and ornaments on integer logical
+  coordinates.
+* Absorb leftover physical pixels in outer margins rather than stretching UI
+  pixels non-uniformly.
+* Permit top/bottom or speaker-relative placement so mid-match dialogue does not
+  unnecessarily obscure the chessboard.
+
+Integer scale transitions cannot be eliminated while preserving crisp pixels.
+They should occur at deliberate UI breakpoints independent of overworld and
+battle scaling. A future accessibility option may increase the chosen UI scale
+without changing either game world's scale.
+
+
+Typography
+----------
+
+Use a bitmap font designed for the dialogue UI grid rather than scaling an
+overworld label opportunistically. Initial targets for a 320x180 logical grid:
+
+* Body glyphs approximately 8-10 logical pixels tall.
+* Two or three lines of dialogue per page.
+* At least 5-7 logical pixels of padding inside the inner border.
+* Speaker names distinguished through color or a small physical nameplate rather
+  than a radically different type treatment.
+
+Font evaluation must include punctuation, apostrophes, numbers, mixed case,
+long proper names, and multiline wrapping. Choice lists must be tested early,
+not added after the ordinary text box has been finalized.
+
+
+Recommended Prototyping Sequence
+--------------------------------
+
+1. Build a dedicated Dialogue Lab scene with controls for panel dimensions,
+   integer UI scale, text length, line count, portrait presence, choices, skin,
+   and placement.
+2. Create a plain grayscale nine-slice frame in Pixelorama.
+3. Test the frame and bitmap font at 960x540, 1280x720, 1366x768, 1920x1080,
+   ultrawide, and narrow-window proportions.
+4. Exercise long dialogue, punctuation, speaker names, pagination, and choice
+   lists before adding ornamental detail.
+5. Finish the stone texture, palette, corner motifs, and continue indicator only
+   after layout behavior is stable.
+6. Move dialogue presentation ownership out of the overworld scene and into a
+   persistent top-level presenter that can also host battle dialogue.
+
+
+Open Design Questions
+---------------------
+
+The following decisions remain intentionally unresolved:
+
+* The final source dimensions and border thickness of the nine-slice art.
+* The exact bitmap font and body glyph height.
+* Whether overworld and battle ultimately use identical skins or closely related
+  variants.
+* Whether portraits are standard, contextual, or reserved for important scenes.
+* The precise panel height and number of dialogue lines per page.
+* How aggressively battle dialogue should reposition itself around chess action.
+* Whether UI-scale accessibility options ship in the first dialogue-system pass.
+
+These should be answered through the Dialogue Lab and representative content,
+not by committing prematurely to a single finished box illustration.

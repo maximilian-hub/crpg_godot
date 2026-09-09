@@ -1,6 +1,8 @@
 extends Node
 class_name ChessAura2D
 
+signal silhouette_appeared()
+
 enum AuraMode { SILHOUETTE, SQUARE_FLAME, HYBRID }
 
 const AURA_SHADER := preload("res://effects/chess_aura_overlay.gdshader")
@@ -103,11 +105,14 @@ func set_layer_z(silhouette_z: int, particle_z: int) -> void:
 
 
 func set_silhouette_power(value: float) -> void:
+	var was_visible := silhouette_power > 0.0
 	silhouette_power = clampf(value, 0.0, 1.0)
 	for binding in bindings:
 		var material: ShaderMaterial = binding["material"]
 		material.set_shader_parameter("power", silhouette_power)
 	_sync_combined_power()
+	if not was_visible and silhouette_power > 0.0:
+		silhouette_appeared.emit()
 
 
 func set_particle_power(value: float) -> void:

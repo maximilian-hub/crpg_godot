@@ -77,6 +77,15 @@ func _ready() -> void:
 	hand.bind_aura(hand_aura)
 	_check(hand_aura.bindings.all(func(item): return not (item["overlay"] as Sprite2D).z_as_relative and (item["overlay"] as Sprite2D).z_index < ChessHandRig.GRIP_BACK_Z), "layered hand silhouettes share one absolute layer beneath the complete hand")
 	_check(hand_aura.bindings.all(func(item): return not (item["emitter"] as Node2D).z_as_relative and (item["emitter"] as Node2D).z_index > ChessHandRig.ARM_FOREGROUND_Z), "layered hand particles remain on an independent upper effect layer")
+	var aura_observation := {"appearances": 0}
+	hand_aura.silhouette_appeared.connect(func(): aura_observation.appearances += 1)
+	hand_aura.set_silhouette_power(0.5)
+	hand_aura.set_silhouette_power(1.0)
+	_check(aura_observation.appearances == 1, "silhouette appearance emits only on the transition away from zero power")
+	_check(hand.aura_start_sound.playing and hand.aura_start_sound.stream.resource_path == "res://assets/audio/chess/aura/hand_aura_start.wav", "a hand plays its universal start sound when its silhouette aura appears")
+	hand_aura.set_silhouette_power(0.0)
+	hand_aura.set_silhouette_power(0.5)
+	_check(aura_observation.appearances == 2, "a hand aura can replay its start sound after fully disappearing")
 	hand_aura.clear_targets()
 	hand.queue_free()
 

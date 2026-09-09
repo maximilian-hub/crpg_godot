@@ -8,7 +8,8 @@ func _ready() -> void:
 	await _test_authoritative_primary_actions()
 	await _test_cpu_capture_and_tie_breaking()
 	await _test_cpu_active_ability()
-	await _test_cpu_with_no_legal_action()
+	await _test_forced_pass_with_no_legal_action()
+	await _test_forced_pass_deadlock_draw()
 	await _test_cpu_owned_reaction()
 	await _test_human_owned_reaction_is_untouched()
 	await _test_two_cpu_turns()
@@ -82,8 +83,10 @@ func _test_cpu_active_ability() -> void:
 	var model := _new_empty_model()
 	var arakne := ArakneKing.new("white", Vector2i(4, 4))
 	var pawn := Pawn.new("black", Vector2i(3, 3))
+	var black_king := ClassicKing.new("black", Vector2i(0, 0))
 	model.add_piece(arakne, arakne.coordinate)
 	model.add_piece(pawn, pawn.coordinate)
+	model.add_piece(black_king, black_king.coordinate)
 	var cpu := _add_cpu(model, "white", true)
 	await _wait_frames(3)
 	_expect(model.board[3][3] == null, "CPU active ability resolves its target")
@@ -92,15 +95,36 @@ func _test_cpu_active_ability() -> void:
 	model.free()
 
 
-func _test_cpu_with_no_legal_action() -> void:
+func _test_forced_pass_with_no_legal_action() -> void:
 	var model := _new_empty_model()
 	model.current_turn = "black"
-	var action_count := {"value": 0}
-	model.action_started.connect(func(_color: String): action_count["value"] += 1)
-	var cpu := _add_cpu(model, "black", true)
-	await _wait_frames(4)
-	_expect(action_count["value"] == 0 and model.current_turn == "black", "CPU with no legal action stops without submitting or retrying")
-	cpu.queue_free()
+	model.forced_pass_delay_seconds = 0.0
+	var minotaur := MinotaurKing.new("black", Vector2i(0, 0))
+	var rook := Rook.new("white", Vector2i(7, 0))
+	model.add_piece(minotaur, minotaur.coordinate)
+	model.add_piece(rook, rook.coordinate)
+	minotaur.stun(2)
+	var passed_colors: Array[String] = []
+	model.turn_passed.connect(func(color: String, _count: int): passed_colors.append(color))
+	await model.resolve_unplayable_turns()
+	_expect(passed_colors == ["black"] and model.current_turn == "white" and not model.battle_over, "a color with no legal primary action automatically passes to its playable opponent")
+	model.free()
+
+
+func _test_forced_pass_deadlock_draw() -> void:
+	var model := _new_empty_model()
+	model.forced_pass_delay_seconds = 0.0
+	var white_king := ClassicKing.new("white", Vector2i(7, 7))
+	var black_king := ClassicKing.new("black", Vector2i(0, 0))
+	model.add_piece(white_king, white_king.coordinate)
+	model.add_piece(black_king, black_king.coordinate)
+	white_king.stun(99)
+	black_king.stun(99)
+	var passed_colors: Array[String] = []
+	model.turn_passed.connect(func(color: String, _count: int): passed_colors.append(color))
+	await model.resolve_unplayable_turns()
+	_expect(passed_colors == ["white", "black", "white", "black", "white", "black"], "a stable two-sided deadlock completes three ordered pass cycles")
+	_expect(model.battle_over and model.battle_result == "draw" and not model.forced_pass_in_progress, "six consecutive forced passes complete the battle as a draw")
 	model.free()
 
 

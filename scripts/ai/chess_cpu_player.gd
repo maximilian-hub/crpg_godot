@@ -28,6 +28,7 @@ func _ready() -> void:
 		return
 	model.action_finished.connect(_on_action_finished)
 	model.action_cancelled.connect(_on_action_cancelled)
+	model.forced_pass_sequence_finished.connect(_on_forced_pass_sequence_finished)
 	model.reaction_selection_requested.connect(_on_reaction_selection_requested)
 	model.battle_finished.connect(_on_battle_finished)
 
@@ -234,6 +235,10 @@ func _on_action_finished() -> void:
 
 
 func _on_action_cancelled() -> void:
+	_schedule_primary_action()
+
+
+func _on_forced_pass_sequence_finished() -> void:
 	_schedule_primary_action()
 
 

@@ -95,6 +95,7 @@ func _ready() -> void:
 		await opening_director.play()
 	elif board_view != null:
 		board_view.ensure_all_hand_placements()
+	await model.resolve_unplayable_turns()
 	controller.is_input_locked = model.battle_over
 	_configure_participants(true)
 	_white_turn_released = true
@@ -145,6 +146,8 @@ func _on_board_rebuilt(_board: Array) -> void:
 			opening_completed.emit()
 	if not model.battle_over:
 		completed_player_result = ""
+		if not opening_pending:
+			model.resolve_unplayable_turns()
 		return
 	if model.battle_result == "draw":
 		completed_player_result = "draw"

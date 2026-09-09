@@ -162,6 +162,7 @@ mouse_filter = 2
 script = ExtResource("7_qi3br")
 
 [node name="WhitePlayerUIContainer" type="MarginContainer" parent="UI"]
+visible = false
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -183,6 +184,7 @@ text = "\"Ability Name\"
 CD: 4 turns"
 
 [node name="BlackPlayerUIContainer" type="MarginContainer" parent="UI"]
+visible = false
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0

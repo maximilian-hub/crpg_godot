@@ -235,7 +235,8 @@ func _test_player_hand_promotion_presentation() -> void:
 	var view: ChessBoardView = context.view
 	var rig: ChessHandRig = view.player_hand_rig
 	var pawn := Pawn.new("white", Vector2i(1, 0))
-	_reset_battle(model, controller, [pawn])
+	var black_king := ClassicKing.new("black", Vector2i(7, 7))
+	_reset_battle(model, controller, [pawn, black_king])
 	rig.approach_duration = 0.01
 	rig.grasp_hold_duration = 0.01
 	rig.carry_duration = 0.01
@@ -807,7 +808,7 @@ func _test_minotaur_charge_survivor_landing() -> void:
 	_expect(model.board[4][3] == charging_minotaur and charging_minotaur.coordinate == Vector2i(4, 3), "composed Charge ends adjacent to its surviving target")
 	_expect(charging_view.coordinate == Vector2i(4, 3), "Charge presentation updates the Minotaur View coordinate")
 	_expect(charging_view.position.is_equal_approx(context.view.grid_to_screen(4, 3)), "Charge presentation finishes on the adjacent square")
-	_expect(model.current_turn == "black" and not model.action_in_progress, "surviving Charge landing completes before turn change")
+	_expect(model.current_turn == "white" and not model.action_in_progress, "a surviving stunned sole King automatically passes after the composed Charge lands")
 	await _destroy_game(context.game)
 
 

@@ -19,6 +19,9 @@ signal piece_destroyed(piece: ModelPiece)
 signal action_started(owner_color: String)
 signal action_finished()
 signal action_cancelled()
+signal forced_pass_sequence_started()
+signal turn_passed(skipped_color: String, consecutive_passes: int)
+signal forced_pass_sequence_finished()
 signal battle_finished(winner_color: String)
 signal board_initialized(board: Array)
 signal board_rebuilt(board: Array)
@@ -53,6 +56,11 @@ var position_revision: int = 0
 # current_turn does not change until the action and reaction queue are finished.
 var action_in_progress: bool = false
 var action_owner_color: String = ""
+var forced_pass_in_progress := false
+var consecutive_forced_passes := 0
+var forced_pass_delay_seconds := 0.5
+
+const MAX_CONSECUTIVE_FORCED_PASSES := 6
 
 const MAJOR_MINOR_BASE_TYPES = ["knight", "rook", "bishop", "queen"]
 
@@ -79,7 +87,7 @@ func initialize_battle() -> bool:
 	return true
 
 func is_settled() -> bool:
-	return not action_in_progress and pending_reaction.is_empty() and selection_queue.is_empty()
+	return not action_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and selection_queue.is_empty()
 
 func capture_position() -> ChessPosition:
 	var position := ChessPosition.new()
@@ -152,6 +160,8 @@ func load_position(position: ChessPosition) -> bool:
 	selection_sequence = 0
 	action_in_progress = false
 	action_owner_color = ""
+	forced_pass_in_progress = false
+	consecutive_forced_passes = 0
 	is_initialized = true
 	position_revision += 1
 	board_rebuilt.emit(board)
@@ -318,7 +328,15 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 ## Command methods remain the final authority and revalidate their inputs.
 func get_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 	var actions: Array[ChessPrimaryAction] = []
-	if color != current_turn or battle_over or action_in_progress or has_pending_reaction():
+	if color != current_turn or battle_over or action_in_progress or forced_pass_in_progress or has_pending_reaction():
+		return actions
+	return _collect_legal_primary_actions(color)
+
+
+## Rule-only action enumeration used while the public command surface is locked.
+func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
+	var actions: Array[ChessPrimaryAction] = []
+	if color != current_turn or battle_over:
 		return actions
 
 	for row in board:
@@ -341,6 +359,10 @@ func get_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 
 	return actions
 
+
+func has_legal_primary_action(color: String) -> bool:
+	return not _collect_legal_primary_actions(color).is_empty()
+
 ### A player's move.
 ## Handles special moves, normal moves, and ends the turn.
 ## For simply moving a piece in the model, see actually_move_piece()
@@ -358,6 +380,7 @@ func begin_action(owner_color: String) -> bool:
 
 	action_in_progress = true
 	action_owner_color = owner_color
+	consecutive_forced_passes = 0
 	print("ACTION START — ", action_owner_color)
 	action_started.emit(action_owner_color)
 	return true
@@ -365,6 +388,7 @@ func begin_action(owner_color: String) -> bool:
 func cancel_action() -> void:
 	action_in_progress = false
 	action_owner_color = ""
+	consecutive_forced_passes = 0
 	action_cancelled.emit()
 
 func finish_action() -> void:
@@ -380,9 +404,47 @@ func finish_action() -> void:
 	action_in_progress = false
 	action_owner_color = ""
 	switch_turn()
-	action_finished.emit()
 	position_revision += 1
+	await resolve_unplayable_turns()
+	if battle_over:
+		return
+	action_finished.emit()
 	settled_action_completed.emit()
+
+
+## Advances past colors that cannot submit any primary command. Turn-entry
+## signal handlers run before each action check, so stun and cooldown recovery
+## can preserve a turn as soon as either makes an action available.
+func resolve_unplayable_turns() -> bool:
+	if battle_over or action_in_progress or has_pending_reaction() or not selection_queue.is_empty() or forced_pass_in_progress:
+		return false
+	if has_legal_primary_action(current_turn):
+		consecutive_forced_passes = 0
+		return false
+
+	var passed_any := false
+	forced_pass_in_progress = true
+	forced_pass_sequence_started.emit()
+	while not battle_over and not has_legal_primary_action(current_turn):
+		passed_any = true
+		var skipped_color := current_turn
+		consecutive_forced_passes += 1
+		print("TURN PASSED — ", skipped_color, " has no legal actions (", consecutive_forced_passes, "/", MAX_CONSECUTIVE_FORCED_PASSES, ")")
+		turn_passed.emit(skipped_color, consecutive_forced_passes)
+		if forced_pass_delay_seconds > 0.0 and is_inside_tree():
+			await get_tree().create_timer(forced_pass_delay_seconds).timeout
+		if consecutive_forced_passes >= MAX_CONSECUTIVE_FORCED_PASSES:
+			forced_pass_in_progress = false
+			complete_draw()
+			forced_pass_sequence_finished.emit()
+			return true
+		switch_turn()
+		position_revision += 1
+
+	consecutive_forced_passes = 0
+	forced_pass_in_progress = false
+	forced_pass_sequence_finished.emit()
+	return passed_any
 
 func has_defeated_king() -> bool:
 	return not defeated_king_colors.is_empty()
@@ -403,6 +465,7 @@ func complete_battle() -> void:
 	pending_reaction.clear()
 	action_in_progress = false
 	action_owner_color = ""
+	forced_pass_in_progress = false
 
 	if white_defeated and black_defeated:
 		battle_result = "draw"
@@ -412,6 +475,22 @@ func complete_battle() -> void:
 		battle_result = "white"
 
 	print("BATTLE FINISHED — ", battle_result)
+	battle_finished.emit(battle_result)
+	position_revision += 1
+	settled_action_completed.emit()
+
+
+func complete_draw() -> void:
+	if battle_over:
+		return
+	battle_over = true
+	selection_queue.clear()
+	pending_reaction.clear()
+	action_in_progress = false
+	action_owner_color = ""
+	forced_pass_in_progress = false
+	battle_result = "draw"
+	print("BATTLE FINISHED — draw (six consecutive forced passes)")
 	battle_finished.emit(battle_result)
 	position_revision += 1
 	settled_action_completed.emit()
@@ -963,7 +1042,7 @@ func continue_action_resolution() -> void:
 		reaction_selection_requested.emit(calling_piece, action_type, targets.duplicate())
 		return
 
-	finish_action()
+	await finish_action()
 
 func has_pending_reaction() -> bool:
 	return not pending_reaction.is_empty()

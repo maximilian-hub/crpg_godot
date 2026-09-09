@@ -18,6 +18,8 @@ func _run() -> void:
 	_test_completion_gate_contract()
 	_test_stun_timer_saturates_at_zero()
 	await _test_initialization_and_move()
+	await _test_forced_pass_after_action()
+	await _test_turn_entry_recovery_prevents_pass()
 	await _test_nonlethal_combat()
 	await _test_special_moves()
 	await _test_minotaur_charge_landing()
@@ -66,6 +68,38 @@ func _test_initialization_and_move() -> void:
 	_expect(model.board[4][0] == pawn and model.current_turn == "black", "headless move resolves state and turn")
 	_expect(not model.action_in_progress, "unobserved movement gate completes immediately")
 	_expect(not (await model.submit_move(pawn, Vector2i(3, 0))), "wrong-turn command is rejected")
+	model.free()
+
+
+func _test_forced_pass_after_action() -> void:
+	var model := _new_empty_model()
+	model.forced_pass_delay_seconds = 0.0
+	var rook := Rook.new("white", Vector2i(7, 0))
+	var minotaur := MinotaurKing.new("black", Vector2i(0, 0))
+	model.add_piece(rook, rook.coordinate)
+	model.add_piece(minotaur, minotaur.coordinate)
+	minotaur.stun(2)
+	var passed_colors: Array[String] = []
+	model.turn_passed.connect(func(color: String, _count: int): passed_colors.append(color))
+	_expect(await model.submit_move(rook, Vector2i(6, 0)), "a legal action resolves before forced-pass evaluation")
+	_expect(minotaur.stunned and minotaur.stun_timer == 1, "turn-entry stun countdown runs before checking the incoming color's actions")
+	_expect(passed_colors == ["black"] and model.current_turn == "white", "a still-stunned sole King passes back to the playable opponent")
+	model.free()
+
+
+func _test_turn_entry_recovery_prevents_pass() -> void:
+	var model := _new_empty_model()
+	model.forced_pass_delay_seconds = 0.0
+	var rook := Rook.new("white", Vector2i(7, 0))
+	var minotaur := MinotaurKing.new("black", Vector2i(0, 0))
+	model.add_piece(rook, rook.coordinate)
+	model.add_piece(minotaur, minotaur.coordinate)
+	minotaur.stun(1)
+	var pass_count := {"value": 0}
+	model.turn_passed.connect(func(_color: String, _count: int): pass_count.value += 1)
+	await model.submit_move(rook, Vector2i(6, 0))
+	_expect(not minotaur.stunned and minotaur.stun_timer == 0, "a one-turn stun recovers on the incoming turn")
+	_expect(model.current_turn == "black" and pass_count.value == 0, "recovery that restores a legal action preserves the incoming turn")
 	model.free()
 
 func _test_nonlethal_combat() -> void:
@@ -229,7 +263,7 @@ func _test_minotaur_charge_landing() -> void:
 	_expect(defending_minotaur.current_hp == defending_minotaur.max_hp - 2, "Charge damages the surviving king")
 	_expect(surviving_model.board[4][4] == defending_minotaur, "surviving Charge target keeps its square")
 	_expect(surviving_model.board[4][3] == charging_minotaur and charging_minotaur.coordinate == Vector2i(4, 3), "Charge lands adjacent to a surviving target")
-	_expect(not surviving_model.action_in_progress and surviving_model.current_turn == "black", "adjacent Charge landing completes the action")
+	_expect(not surviving_model.action_in_progress and surviving_model.current_turn == "white", "a surviving stunned sole King automatically passes after Charge completes")
 	surviving_model.free()
 
 	var lethal_model := _new_empty_model()
