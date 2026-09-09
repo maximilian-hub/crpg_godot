@@ -100,9 +100,11 @@ func refresh_geometry() -> void:
 	activation_sequence.base_hand_position = king.position + PresentationTransform.king_hover_offset(
 		activation_sequence.profile.hand_hover_offset,
 		hand.seat,
-		hand.visual_mirrored
+		hand.visual_mirrored,
+		board.get_world_scale()
 	)
 	activation_sequence.hand_rest_position = hand._offscreen_rest_position(effective_scale)
+	activation_sequence.hand_motion_scale = board.get_world_scale()
 	activation_sequence.mirror_hand_motion = hand.visual_mirrored != (hand.seat == ChessHandRig.Seat.FAR)
 
 
@@ -162,10 +164,10 @@ func _build_activation_sequence() -> void:
 	add_child(activation_sequence)
 	var effective_scale := board.get_world_scale() * hand.art_scale_multiplier
 	hand.scale = Vector2.ONE * effective_scale
-	hand.position = king.position + PresentationTransform.king_hover_offset(profile.activation_profile.hand_hover_offset, hand.seat, hand.visual_mirrored)
+	hand.position = king.position + PresentationTransform.king_hover_offset(profile.activation_profile.hand_hover_offset, hand.seat, hand.visual_mirrored, board.get_world_scale())
 	activation_sequence.configure(
 		profile.activation_profile.duplicate(true), hand, connection_anchor, king.sprite, stone_sprite,
-		hand_aura, king_aura, lightning, {}, hand._offscreen_rest_position(effective_scale), 1.0,
+		hand_aura, king_aura, lightning, {}, hand._offscreen_rest_position(effective_scale), board.get_world_scale(),
 		hand.visual_mirrored != (hand.seat == ChessHandRig.Seat.FAR)
 	)
 
@@ -213,7 +215,7 @@ func _begin_gesture(from: Vector2i, to: Vector2i) -> void:
 			hand_aura.set_layer_z(ChessHandRig.MAGIC_AURA_Z, ChessHandRig.MAGIC_AURA_Z)
 		hand.visible = true
 		hand.position = hand._offscreen_rest_position(effective_scale)
-		var base_hover := king.position + PresentationTransform.king_hover_offset(move.hand_hover_offset, hand.seat)
+		var base_hover := king.position + PresentationTransform.king_hover_offset(move.hand_hover_offset, hand.seat, false, board.get_world_scale())
 		var points := gesture_points(
 			board.grid_to_screen(from.x, from.y), board.grid_to_screen(to.x, to.y), base_hover,
 			move.gesture_corridor_clearance * board.get_world_scale(), move.gesture_sweep_distance * board.get_world_scale()
@@ -228,7 +230,7 @@ func _begin_gesture(from: Vector2i, to: Vector2i) -> void:
 	if move.gesture_lock_duration > 0.0:
 		await get_tree().create_timer(move.gesture_lock_duration * board.animation_duration_scale).timeout
 	if is_instance_valid(hand) and hand.can_animate():
-		var base_hover := king.position + PresentationTransform.king_hover_offset(move.hand_hover_offset, hand.seat)
+		var base_hover := king.position + PresentationTransform.king_hover_offset(move.hand_hover_offset, hand.seat, false, board.get_world_scale())
 		var points := gesture_points(board.grid_to_screen(from.x, from.y), board.grid_to_screen(to.x, to.y), base_hover, move.gesture_corridor_clearance * board.get_world_scale(), move.gesture_sweep_distance * board.get_world_scale())
 		_start_unified_hand_gesture(points[0], points[1], hand._offscreen_rest_position(board.get_world_scale() * hand.art_scale_multiplier))
 		_start_king_move_delay(move.king_move_delay)

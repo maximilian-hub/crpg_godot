@@ -371,7 +371,7 @@ func _prepare_activation() -> void:
 	activation_sequence = HoodActivationSequence.new() if activation_preset.choreography == ChessKingPresentationProfile.ActivationChoreography.HOOD_DECISIVE else ActivationSequence.new()
 	board.add_child(activation_sequence)
 	activation_nodes.append_array([king_aura, hand_aura, lightning, anchor, activation_sequence])
-	var offset := _activation_hover_offset(hand, activation_preset.activation_profile.hand_hover_offset)
+	var offset := _activation_hover_offset(hand, activation_preset.activation_profile.hand_hover_offset, board.get_world_scale())
 	var hover_position := king_view.position + offset
 	hand.position = hover_position
 	hand.scale = Vector2.ONE * board.get_world_scale() * hand.art_scale_multiplier
@@ -387,7 +387,7 @@ func _prepare_activation() -> void:
 		lightning,
 		{},
 		rest_position,
-		1.0,
+		board.get_world_scale(),
 		hand.visual_mirrored != (preview_context.seat == ChessHandRig.Seat.FAR)
 	)
 	activation_sequence.phase_changed.connect(func(_phase: int): phase_label.text = "Activation: %s" % activation_sequence.phase_name())
@@ -446,13 +446,13 @@ func _refresh_activation_hand_geometry() -> void:
 	var king_view: PieceView = piece_views.get(king_coordinate)
 	if not is_instance_valid(hand) or not is_instance_valid(king_view):
 		return
-	var offset := _activation_hover_offset(hand, activation_sequence.profile.hand_hover_offset)
 	var world_scale := board.get_world_scale()
+	var offset := _activation_hover_offset(hand, activation_sequence.profile.hand_hover_offset, world_scale)
 	var effective_hand_scale := world_scale * hand.art_scale_multiplier
 	hand.scale = Vector2.ONE * effective_hand_scale
 	activation_sequence.base_hand_position = king_view.position + offset
 	activation_sequence.hand_rest_position = hand._setup_rest_position(effective_hand_scale)
-	activation_sequence.hand_motion_scale = 1.0
+	activation_sequence.hand_motion_scale = world_scale
 	activation_sequence.mirror_hand_motion = hand.visual_mirrored != (preview_context.seat == ChessHandRig.Seat.FAR)
 	if activation_sequence.current_phase == activation_sequence.Phase.RESET:
 		hand.position = activation_sequence.hand_rest_position
@@ -464,8 +464,8 @@ func _activation_king_coordinate() -> Vector2i:
 	return board.projection.get_model_coordinate(authored)
 
 
-func _activation_hover_offset(hand: ChessHandRig, authored: Vector2) -> Vector2:
-	var offset := preview_context.hover_offset(authored)
+func _activation_hover_offset(hand: ChessHandRig, authored: Vector2, world_scale := 1.0) -> Vector2:
+	var offset := preview_context.hover_offset(authored, world_scale)
 	if hand.visual_mirrored: offset.x *= -1.0
 	return offset
 

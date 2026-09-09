@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://bg5f5sf6slrvs"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://giqocf033p2j"]
 
 [ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
@@ -8,7 +8,7 @@
 
 [sub_resource type="Resource" id="Resource_et52m"]
 script = ExtResource("3")
-hand_hover_offset = Vector2(250, -300)
+hand_hover_offset = Vector2(50, -100)
 approach_duration = 0.55
 approach_settle_duration = 0.1
 approach_departure_handle = Vector2(-140, -180)

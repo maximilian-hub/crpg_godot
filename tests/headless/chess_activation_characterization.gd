@@ -22,8 +22,11 @@ func _ready() -> void:
 	saved_aura.aura_mode = ChessAura2D.AuraMode.SQUARE_FLAME
 	_check(ResourceSaver.save(saved_aura, aura_path) == OK, "Aura Lab preset fixture saves")
 
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1920, 1080)
+	add_child(viewport)
 	var lab = LAB_SCENE.instantiate()
-	add_child(lab)
+	viewport.add_child(lab)
 	await get_tree().process_frame
 	_check(not lab.sequence.running and lab.sequence.current_phase == lab.sequence.Phase.RESET and is_zero_approx(lab.sequence.elapsed), "Activation Lab opens paused on the inert reset frame")
 	_check(not lab.preview_hand.visible and lab.preview_hand.position == lab.sequence.hand_rest_position, "Activation reset hides the hand at its off-board rest position")
@@ -34,12 +37,22 @@ func _ready() -> void:
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.OPPONENT
 	lab._apply_preview_context()
 	_check(lab.preview_hand.seat == ChessHandRig.Seat.FAR and lab.preview_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "Activation Lab previews the production far-seat Hood rig")
-	var expected_far_hover: Vector2 = lab.preview_king.position + Vector2(-lab.activation_profile.hand_hover_offset.x, lab.activation_profile.hand_hover_offset.y)
+	var expected_far_hover: Vector2 = lab.preview_king.position + Vector2(-lab.activation_profile.hand_hover_offset.x, lab.activation_profile.hand_hover_offset.y) * lab.preview_world_scale
 	_check(lab.sequence.base_hand_position == expected_far_hover and lab.sequence.base_hand_position != near_hover, "Activation Lab mirrors the far hover horizontally while preserving screen-up elevation")
+	_check(is_equal_approx(lab.sequence.hand_motion_scale, lab.preview_world_scale), "Activation Lab applies the same preview scale to its authored motion curves")
 	_check(lab.sequence.hand_rest_position.x < 0.0 and lab.sequence.hand_rest_position.y < 0.0 and lab.sequence.mirror_hand_motion, "far activation rests upper-left and uses seat-aware motion handles")
 	lab.preview_context.seat = ChessHandRig.Seat.NEAR
 	lab.preview_context.loadout = lab.PreviewContext.Loadout.PLAYER
 	lab._apply_preview_context()
+	var debug_midpoint: Vector2 = lab.approach_path_debug.points[16]
+	var sequence_midpoint: Vector2 = lab.sequence._hand_curve_position(
+		lab.sequence.hand_rest_position,
+		lab.sequence.base_hand_position,
+		lab.activation_profile.approach_departure_handle,
+		lab.activation_profile.approach_arrival_handle,
+		0.5
+	)
+	_check(debug_midpoint.is_equal_approx(sequence_midpoint), "Activation Lab debug path uses the same proportional curve geometry as playback")
 	_check(lab.activation_selector.selected == 0 and lab.activation_selector.get_item_text(0) == "Unsaved defaults", "Ritual selector explicitly distinguishes defaults from saved profiles")
 	var default_activation: Resource = lab.activation_profile.duplicate(true)
 	lab.choreography_selector.select(1)
@@ -136,7 +149,8 @@ func _ready() -> void:
 	lab.sequence._fire_crackle(99)
 	var crackle_position: Vector2 = lab.preview_hand.position
 	_check(crackle_position != hover_position, "A crackle blinks the hand toward the King Piece")
-	_check(crackle_position == crackle_position.round(), "Lightning hand motion remains pixel-aligned")
+	var crackle_displacement: Vector2 = crackle_position - hover_position
+	_check(crackle_displacement == crackle_displacement.round(), "Lightning hand impulses remain pixel-aligned relative to the proportionally scaled hover")
 	var sampled_target_a: Vector2 = lab.sequence._king_target_for_seed(1234)
 	var sampled_target_b: Vector2 = lab.sequence._king_target_for_seed(1235)
 	_check(not lab.sequence.king_target_points.is_empty() and sampled_target_a == lab.sequence._king_target_for_seed(1234), "King impact targets sample opaque pixels deterministically")
@@ -281,7 +295,20 @@ func _ready() -> void:
 	_check(opponent_presentation.king_presentation.resource_path == RuntimePublisher.HOOD_KING_RUNTIME_PATH and hood_runtime.activation_choreography == ChessKingPresentationProfile.ActivationChoreography.HOOD_DECISIVE, "Hood loadout consumes its decisive choreography regardless of King identity")
 	_check(player_runtime.aura_catalog.resource_path == RuntimePublisher.AURA_RUNTIME_PATH and hood_runtime.aura_catalog.resource_path == RuntimePublisher.AURA_RUNTIME_PATH, "both ritual targets retain the universal King Aura catalog")
 
+	lab._refresh_hand_paths()
+	var large_hover_displacement: Vector2 = lab.sequence.base_hand_position - lab.preview_king.position
+	var large_motion_scale: float = lab.sequence.hand_motion_scale
+	lab.sequence.current_phase = lab.sequence.Phase.INVOCATION
+	lab.sequence.elapsed = lab.activation_profile.approach_duration + lab.activation_profile.approach_settle_duration
+	lab.sequence.running = true
+	viewport.size = Vector2i(960, 540)
+	await get_tree().process_frame
+	var small_hover_displacement: Vector2 = lab.sequence.base_hand_position - lab.preview_king.position
+	_check(small_hover_displacement.is_equal_approx(large_hover_displacement * 0.5) and is_equal_approx(lab.sequence.hand_motion_scale, large_motion_scale * 0.5), "Activation Lab resizes hover and curve geometry in proportion to its preview")
+	_check(lab.sequence.running and lab.sequence.current_phase == lab.sequence.Phase.INVOCATION, "resizing during activation updates live geometry without restarting playback")
+
 	lab.queue_free()
+	viewport.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(aura_path))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(activation_path))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(runtime_path))

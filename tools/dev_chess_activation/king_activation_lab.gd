@@ -67,6 +67,7 @@ var loadout_selector: OptionButton
 var choreography_selector: OptionButton
 var publish_target_selector: OptionButton
 var sequence_audio_nodes: Array[Node] = []
+var preview_world_scale := 1.0
 
 
 func _ready() -> void:
@@ -137,9 +138,9 @@ func _build_stage() -> void:
 func _layout_scale() -> void:
 	var viewport_size := get_viewport_rect().size
 	var near_edge := minf(viewport_size.y, viewport_size.x * 0.72)
-	var board_scale := ChessBoardView.calculate_world_scale(near_edge)
-	preview_king.scale = Vector2.ONE * board_scale
-	preview_hand.scale = Vector2.ONE * board_scale * preview_hand.art_scale_multiplier
+	preview_world_scale = ChessBoardView.calculate_world_scale(near_edge)
+	preview_king.scale = Vector2.ONE * preview_world_scale
+	preview_hand.scale = Vector2.ONE * preview_world_scale * preview_hand.art_scale_multiplier
 	_refresh_hand_paths()
 
 
@@ -168,7 +169,7 @@ func _build_sequence() -> void:
 		lightning,
 		players,
 		_activation_rest_position(),
-		1.0,
+		preview_world_scale,
 		false
 	)
 	sequence.phase_changed.connect(func(_phase: int): _refresh_playback_labels())
@@ -791,7 +792,7 @@ func _activation_rest_position() -> Vector2:
 
 
 func _hover_position() -> Vector2:
-	return preview_king.position + preview_context.hover_offset(activation_profile.hand_hover_offset)
+	return preview_king.position + preview_context.hover_offset(activation_profile.hand_hover_offset, preview_world_scale)
 
 
 func _apply_preview_context() -> void:
@@ -827,6 +828,7 @@ func _refresh_hand_paths() -> void:
 	if not is_instance_valid(approach_path_debug) or not is_instance_valid(retreat_path_debug): return
 	if sequence != null:
 		sequence.hand_rest_position = _activation_rest_position()
+		sequence.hand_motion_scale = preview_world_scale
 		sequence.mirror_hand_motion = preview_context.seat == ChessHandRig.Seat.FAR
 	var rest := _activation_rest_position()
 	var hover := _hover_position()
@@ -842,8 +844,8 @@ func _refresh_hand_paths() -> void:
 func _sample_hand_path(start: Vector2, finish: Vector2, departure: Vector2, arrival: Vector2) -> PackedVector2Array:
 	var points := PackedVector2Array()
 	var mirror := -1.0 if preview_context.seat == ChessHandRig.Seat.FAR else 1.0
-	var control_a := start + Vector2(departure.x * mirror, departure.y)
-	var control_b := finish + Vector2(arrival.x * mirror, arrival.y)
+	var control_a := start + Vector2(departure.x * mirror, departure.y) * preview_world_scale
+	var control_b := finish + Vector2(arrival.x * mirror, arrival.y) * preview_world_scale
 	for index in range(33):
 		points.append(start.bezier_interpolate(control_a, control_b, finish, index / 32.0))
 	return points

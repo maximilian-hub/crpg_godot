@@ -27,8 +27,8 @@ func hand_style() -> ChessHandStyle:
 	return army_presentation().hand_style
 
 
-func hover_offset(authored: Vector2) -> Vector2:
-	return ChessPresentationTransform.king_hover_offset(authored, seat)
+func hover_offset(authored: Vector2, world_scale := 1.0) -> Vector2:
+	return ChessPresentationTransform.king_hover_offset(authored, seat, false, world_scale)
 
 
 func apply_to_hand(hand: ChessHandRig, visual_mirrored := false) -> void:

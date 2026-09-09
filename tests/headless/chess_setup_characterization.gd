@@ -50,8 +50,9 @@ func _ready() -> void:
 	var activation_direction := -1.0 if activation_hand.visual_mirrored else 1.0
 	var expected_offset: Vector2 = lab.activation_sequence.profile.hand_hover_offset
 	expected_offset.x *= activation_direction
+	expected_offset *= lab.board.get_world_scale()
 	var expected_rest := activation_hand._setup_rest_position(lab.board.get_world_scale() * activation_hand.art_scale_multiplier)
-	_check(lab.activation_sequence.base_hand_position == king_view.position + expected_offset and lab.activation_sequence.hand_rest_position == expected_rest and activation_hand.position == expected_rest, "Setup Lab refreshes activation hover/rest endpoints from the final board layout")
+	_check(lab.activation_sequence.base_hand_position == king_view.position + expected_offset and lab.activation_sequence.hand_rest_position == expected_rest and activation_hand.position == expected_rest and is_equal_approx(lab.activation_sequence.hand_motion_scale, lab.board.get_world_scale()), "Setup Lab refreshes proportional activation geometry from the final board layout")
 
 	lab.setup_profile.left_motion.pickup_delay = 0.21
 	lab.setup_profile.right_motion.pickup_delay = 0.47

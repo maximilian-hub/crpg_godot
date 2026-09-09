@@ -218,7 +218,7 @@ func _refresh_hand_path() -> void:
 	var world_scale := board.get_world_scale()
 	var effective_scale := world_scale * hand.art_scale_multiplier
 	var king_position := board.grid_to_screen(CENTER.x, CENTER.y)
-	var base_hover := king_position + ChessPresentationTransform.king_hover_offset(profile.hand_hover_offset, hand.seat)
+	var base_hover := king_position + ChessPresentationTransform.king_hover_offset(profile.hand_hover_offset, hand.seat, false, world_scale)
 	var gesture := ChessKingMagicController.gesture_points(
 		king_position,
 		board.grid_to_screen(selected_destination.x, selected_destination.y),

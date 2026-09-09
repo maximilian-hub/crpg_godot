@@ -32,6 +32,7 @@ func _ready() -> void:
 	var authored := Vector2(150, -180)
 	_check(ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.NEAR) == authored and ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.FAR) == Vector2(-150, -180), "far hover mirrors horizontally while preserving screen-up elevation")
 	_check(ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.NEAR, true) == Vector2(-150, -180) and ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.FAR, true) == Vector2(150, -180), "left-hand activation combines hand mirroring with the far-seat horizontal reflection")
+	_check(ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.NEAR, false, 0.5) == Vector2(75, -90) and ChessPresentationTransform.king_hover_offset(authored, ChessHandRig.Seat.FAR, true, 0.5) == Vector2(75, -90), "hover displacement scales with the projected board after seat and hand mirroring")
 
 	var grabbed_kings: Array[Node2D] = []
 	view.near_hand_rig.piece_grabbed.connect(func(piece: Node2D):
@@ -141,6 +142,7 @@ func _ready() -> void:
 	_make_activation_fast(black_magic)
 	await black_magic.play_activation()
 	_check(not black_magic.hand.visible and black_magic.hand.position == black_magic.activation_sequence.hand_rest_position, "far-seat full activation uses its transformed hover and returns offscreen")
+	_check(is_equal_approx(black_magic.activation_sequence.hand_motion_scale, view.get_world_scale()), "shipping activation scales its authored approach and retreat curves with the board")
 	_check(black_magic.king_aura.silhouette_power >= black_magic.profile.activation_profile.resting_aura_power and black_magic.king_aura.particle_power >= black_magic.cooldown_presentation.profile.ready_particle_power, "full activation transitions a ready King from ritual effects into its augmented persistent aura")
 	_check(black_magic.activation_sequence.get_script().resource_path == "res://scripts/view/chess_hood_activation_sequence.gd", "opponent army identity selects the Hood decisive choreography independent of King type")
 

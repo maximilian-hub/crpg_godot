@@ -33,6 +33,8 @@ func _ready() -> void:
 		if square.coordinate == Vector2i(3, 3): selected_square = square
 	_check(selected_square != null and selected_square.get_node("Highlight").visible, "selected destination remains visibly highlighted", failures)
 	_check(lab.approach_path.points.size() == 2 and lab.swipe_path.points.size() == 2 and lab.retreat_path.points.size() > 12, "lab previews the complete approach, straight swipe, rounded turn, and tangent retreat path", failures)
+	var expected_hover: Vector2 = lab.board.grid_to_screen(4, 4) + ChessPresentationTransform.king_hover_offset(lab.profile.hand_hover_offset, lab.board.near_hand_rig.seat, false, lab.board.get_world_scale())
+	_check(lab.approach_path.points[1].is_equal_approx(expected_hover), "movement lab scales its authored hover displacement with the projected board", failures)
 	var swipe_delta: Vector2 = lab.swipe_path.points[1] - lab.swipe_path.points[0]
 	var move_delta: Vector2 = lab.board.grid_to_screen(3, 3) - lab.board.grid_to_screen(4, 4)
 	_check(absf(swipe_delta.normalized().cross(move_delta.normalized())) < 0.001, "path preview aligns its straight swipe with the selected board direction", failures)
@@ -78,7 +80,7 @@ func _ready() -> void:
 	lab.queue_free()
 	await get_tree().process_frame
 	if failures.is_empty():
-		print("CHESS KING MOVEMENT LAB CHARACTERIZATION: PASS (19 checks)")
+		print("CHESS KING MOVEMENT LAB CHARACTERIZATION: PASS (20 checks)")
 		get_tree().quit(0)
 	else:
 		for failure in failures: push_error(failure)
