@@ -244,7 +244,11 @@ func _test_special_moves() -> void:
 	var rook := Rook.new("white", Vector2i(7, 7))
 	castle_model.add_piece(king, king.coordinate)
 	castle_model.add_piece(rook, rook.coordinate)
+	var castle_events := {"compound": 0, "ordinary": 0}
+	castle_model.piece_castling_committed.connect(func(_king: KingPiece, _rook: ModelPiece, _king_from: Vector2i, _king_to: Vector2i, _rook_from: Vector2i, _rook_to: Vector2i, _gate: CompletionGate): castle_events.compound += 1)
+	castle_model.piece_move_committed.connect(func(_piece: ModelPiece, _from: Vector2i, _to: Vector2i, _gate: CompletionGate): castle_events.ordinary += 1)
 	_expect(await castle_model.submit_move(king, Vector2i(7, 6)), "headless castling command is accepted")
+	_expect(castle_events.compound == 1 and castle_events.ordinary == 0, "castling publishes one atomic compound event instead of two ordinary moves")
 	_expect(castle_model.board[7][6] == king and castle_model.board[7][5] == rook, "castling places the king and rook on their destination squares")
 	castle_model.free()
 

@@ -62,6 +62,7 @@ func _ready() -> void:
 	model.piece_added.connect(_on_piece_added)
 	model.piece_summoned.connect(_on_piece_summoned)
 	model.piece_move_committed.connect(_on_piece_move_committed)
+	model.piece_castling_committed.connect(_on_piece_castling_committed)
 	model.piece_capture_committed.connect(_on_piece_capture_committed)
 	model.piece_attack_committed.connect(_on_piece_attack_committed)
 	model.piece_promotion_committed.connect(_on_piece_promotion_committed)
@@ -184,6 +185,33 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		gate.release()
 		return
 	await view.move_piece_node_with_hand(piece_node, from, to)
+	gate.release()
+
+
+func _on_piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, gate: CompletionGate) -> void:
+	var king_node := get_piece_view(king) as PieceView
+	var rook_node := get_piece_view(rook) as PieceView
+	if not is_instance_valid(king_node) or not is_instance_valid(rook_node):
+		return
+	if not presentation_policy.should_hold_completion_gate():
+		view.snap_piece_node(rook_node, rook_to)
+		view.snap_piece_node(king_node, king_to, false)
+		return
+
+	gate.hold()
+	var magic := _get_king_magic(king) as ChessKingMagicController
+	var hand := view.get_hand_rig_for_color(rook.color)
+	var continue_hand_visit := (
+		is_instance_valid(magic)
+		and is_instance_valid(hand)
+		and hand.can_animate()
+		and magic.hand == hand
+	)
+	await view.move_piece_node_with_hand(rook_node, rook_from, rook_to, true, not continue_hand_visit, ChessHandRig.CARRY_PATH_SLIDE)
+	if is_instance_valid(magic):
+		await magic.play_move(king_from, king_to, continue_hand_visit)
+	else:
+		await _play_unpowered_king_move(king_node, king_to)
 	gate.release()
 
 

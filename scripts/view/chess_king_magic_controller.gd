@@ -29,6 +29,7 @@ var _gesture_direction := Vector2.RIGHT
 var _hand_gesture_running := false
 var _command_reached := false
 var _king_move_released := false
+var _finishing_compound_hand_move := false
 signal hand_command_reached()
 signal king_move_released()
 signal hand_gesture_completed()
@@ -172,8 +173,9 @@ func _build_activation_sequence() -> void:
 	)
 
 
-func play_move(from: Vector2i, to: Vector2i) -> void:
-	await _begin_gesture(from, to)
+func play_move(from: Vector2i, to: Vector2i, continue_from_current_hand := false) -> void:
+	_finishing_compound_hand_move = continue_from_current_hand
+	await _begin_gesture(from, to, continue_from_current_hand)
 	king.coordinate = to
 	board.clear_piece_placement(king)
 	await _travel_king(board.grid_to_screen(to.x, to.y), profile.movement_profile.travel_duration)
@@ -202,7 +204,7 @@ func play_attack(_from: Vector2i, target: Vector2i, contact_callback := Callable
 	await _end_gesture()
 
 
-func _begin_gesture(from: Vector2i, to: Vector2i) -> void:
+func _begin_gesture(from: Vector2i, to: Vector2i, continue_from_current_hand := false) -> void:
 	running = true
 	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(true)
 	var move: Resource = profile.movement_profile
@@ -214,7 +216,8 @@ func _begin_gesture(from: Vector2i, to: Vector2i) -> void:
 		if is_instance_valid(hand_aura):
 			hand_aura.set_layer_z(ChessHandRig.MAGIC_AURA_Z, ChessHandRig.MAGIC_AURA_Z)
 		hand.visible = true
-		hand.position = hand._offscreen_rest_position(effective_scale)
+		if not continue_from_current_hand:
+			hand.position = hand._offscreen_rest_position(effective_scale)
 		var base_hover := king.position + PresentationTransform.king_hover_offset(move.hand_hover_offset, hand.seat, false, board.get_world_scale())
 		var points := gesture_points(
 			board.grid_to_screen(from.x, from.y), board.grid_to_screen(to.x, to.y), base_hover,
@@ -248,6 +251,9 @@ func _end_gesture() -> void:
 		await hand_gesture_completed
 	if move.settle_duration > 0.0:
 		await get_tree().create_timer(move.settle_duration * board.animation_duration_scale).timeout
+	if _finishing_compound_hand_move and is_instance_valid(hand):
+		hand.finish_compound_move()
+	_finishing_compound_hand_move = false
 	running = false
 	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(false)
 

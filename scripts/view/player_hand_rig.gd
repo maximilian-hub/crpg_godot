@@ -535,6 +535,16 @@ func play_piece_move(
 		move_animation_finished.emit()
 
 
+## Completes a hand visit deliberately held open by the first beat of a
+## compound move. The following presentation owns the actual retreat.
+func finish_compound_move() -> void:
+	if not is_animating:
+		return
+	visible = false
+	is_animating = false
+	move_animation_finished.emit()
+
+
 ## Carries a pawn directly from its pre-move board position to the unseen supply.
 ## Promotion then resumes with play_promotion_arrival without an intermediate
 ## placement on the terminal-rank square.

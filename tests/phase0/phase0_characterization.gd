@@ -204,25 +204,28 @@ func _test_player_hand_castling_presentation() -> void:
 	rig.release_hold_duration = 0.01
 	rig.retreat_duration = 0.01
 
-	var moved_types: Array[String] = []
 	var carry_paths: Array[StringName] = []
-	var observation := {"visible_after_king_release": false, "completion_count": 0}
-	model.piece_move_committed.connect(func(piece: ModelPiece, _from: Vector2i, _to: Vector2i, _gate: CompletionGate): moved_types.append(piece.type))
+	var observation := {"castle_commits": 0, "rook_released": false, "hand_visible_after_rook": false, "rook_released_before_king": false, "completion_count": 0}
+	model.piece_castling_committed.connect(func(_king: KingPiece, _rook: ModelPiece, _king_from: Vector2i, _king_to: Vector2i, _rook_from: Vector2i, _rook_to: Vector2i, _gate: CompletionGate): observation.castle_commits += 1)
 	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
 	rig.piece_released.connect(
 		func(piece_node: Node2D):
-			if piece_node.model == king:
-				observation["visible_after_king_release"] = rig.visible
+			if piece_node.model == rook:
+				observation.rook_released = true
+				observation.hand_visible_after_rook = rig.visible
 	)
+	var magic := context.adapter.king_magic_controllers[king] as ChessKingMagicController
+	magic.king_move_released.connect(func(): observation.rook_released_before_king = observation.rook_released, CONNECT_ONE_SHOT)
 	rig.move_animation_finished.connect(func(): observation["completion_count"] += 1)
 
 	controller.select_piece(king)
 	await controller._on_square_clicked(Vector2i(7, 6))
 
-	_expect(moved_types == ["king", "rook"], "castling presents the king before the rook")
+	_expect(observation.castle_commits == 1, "castling commits one atomic compound presentation")
 	_expect(carry_paths == [&"slide"], "castling moves the king magically and hand-carries only the rook")
-	_expect(not observation["visible_after_king_release"] and observation["completion_count"] == 1, "castling never attaches the king to the hand rig")
-	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)), "castling retreats after the magical king gesture and ordinary rook move")
+	_expect(observation.rook_released and observation.hand_visible_after_rook and observation.rook_released_before_king, "castling places the rook first and keeps its hand on-board for the King gesture")
+	_expect(observation.completion_count == 1, "the combined rook placement and magical King gesture complete as one hand visit")
+	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(view.get_world_scale() * rig.art_scale_multiplier)), "castling retreats only after the magical King gesture")
 	_expect(model.board[7][6] == king and model.board[7][5] == rook, "magical castling lands both pieces on their final squares")
 
 	await _destroy_game(context.game)

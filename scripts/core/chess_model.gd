@@ -29,6 +29,7 @@ signal settled_action_completed()
 signal piece_added(piece: ModelPiece)
 signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, completion: CompletionGate)
 signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, completion: CompletionGate)
 signal piece_attack_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_promotion_committed(old_piece: ModelPiece, new_piece: ModelPiece, completion: CompletionGate)
@@ -680,13 +681,22 @@ func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
 	if not can_castle_move(king, from, to) or not is_instance_valid(rook):
 		printerr("handle_castling: Castling state changed before the move could be committed.")
 		return
-	# Present castling in the order the hand performs it: place the king first,
-	# then carry the rook over it into the adjacent square.
-	await actually_move_piece(king, to)
-	if is_instance_valid(rook) and board[rook_from.x][rook_from.y] == rook and board[to.x][to.y] == king:
-		await actually_move_piece(rook, rook_to)
-	else:
-		printerr("handle_castling: The rook or king changed while presenting castling.")
+
+	# Castling is one atomic model transition. Its dedicated presentation event
+	# may perform the physical rook placement before moving the King without
+	# exposing either intermediate arrangement as authoritative board state.
+	board[from.x][from.y] = null
+	board[rook_from.x][rook_from.y] = null
+	board[rook_to.x][rook_to.y] = rook
+	board[to.x][to.y] = king
+	king.coordinate = to
+	rook.coordinate = rook_to
+	king.has_moved = true
+	rook.has_moved = true
+	var completion := CompletionGate.new()
+	piece_castling_committed.emit(king, rook, from, to, rook_from, rook_to, completion)
+	completion.close()
+	await completion.wait_until_released()
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row := from.x
