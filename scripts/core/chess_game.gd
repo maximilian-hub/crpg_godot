@@ -34,6 +34,9 @@ enum ControlMode {
 @export var opponent_presentation: Resource
 @export var battle_presentation: ChessBattlePresentationProfile
 @export var play_opening_presentation := true
+## Games that skip the opening normally begin with the same small placement
+## variation the hands would have produced. Editor-oriented scenes can disable it.
+@export var apply_initial_piece_placement_variation := true
 var completed_player_result: String = ""
 var opening_director: ChessBattleOpeningDirector
 var _white_turn_released := false
@@ -93,7 +96,7 @@ func _ready() -> void:
 		opening_director.configure(model, board_view, adapter, adapter.presentation_policy, player_color, player_presentation, opponent_presentation)
 		opening_director.opening_seed = presentation_seed
 		await opening_director.play()
-	elif board_view != null:
+	elif board_view != null and apply_initial_piece_placement_variation:
 		board_view.ensure_all_hand_placements()
 	await model.resolve_unplayable_turns()
 	controller.is_input_locked = model.battle_over

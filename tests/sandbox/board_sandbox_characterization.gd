@@ -14,6 +14,13 @@ func _ready() -> void:
 	_check(view.far_hand_rig.seat == ChessHandRig.Seat.FAR and view.far_hand_rig.hand_style.resource_path.ends_with("hood_hand_style.tres"), "sandbox explicitly previews Hood in the far seat", failures)
 	_check(model != null and sandbox.editor.editor_enabled, "sandbox starts in Edit Mode", failures)
 	_check(model.capture_position().pieces.size() == 32, "sandbox starts at normal position", failures)
+	var starting_pieces_aligned := true
+	for row in model.board:
+		for piece in row:
+			if piece != null:
+				var piece_view := adapter.get_piece_view(piece) as PieceView
+				starting_pieces_aligned = starting_pieces_aligned and piece_view.position.is_equal_approx(view.grid_to_screen(piece.coordinate.x, piece.coordinate.y))
+	_check(starting_pieces_aligned, "sandbox starts every piece perfectly aligned to its board square", failures)
 	_check(view.scale_world_with_projection, "sandbox inherits projection-scaled piece presentation", failures)
 	_check(is_equal_approx(view.viewport_height_width_ratio, 1.0), "sandbox inherits fluid board height ratio", failures)
 	_check(is_equal_approx(view.viewport_width_cap_ratio, 0.72), "sandbox inherits fluid board width cap", failures)
@@ -104,6 +111,8 @@ func _ready() -> void:
 	sandbox.interaction._on_square_pressed(Vector2i(6, 0))
 	await get_tree().process_frame
 	_check(model.board[6][0] == null and sandbox.piece_palette.delete_item.selected_state, "Delete tool removes a clicked piece through editor mutation", failures)
+	var unaffected_rook := view.get_piece_node(Vector2i(7, 0)) as PieceView
+	_check(unaffected_rook.position.is_equal_approx(view.grid_to_screen(7, 0)), "an editor rebuild leaves unaffected pieces aligned without a first-edit position pop", failures)
 	_press_key(sandbox, KEY_LEFT)
 	_check(model.board[6][0] != null, "Left Arrow performs Undo", failures)
 	_press_key(sandbox, KEY_RIGHT)

@@ -13,6 +13,7 @@ script = ExtResource("1")
 control_mode = 2
 opponent_hand_style = ExtResource("5_hood_hand")
 play_opening_presentation = false
+apply_initial_piece_placement_variation = false
 
 [node name="BoardEditorController" type="Node" parent="."]
 script = ExtResource("3")
