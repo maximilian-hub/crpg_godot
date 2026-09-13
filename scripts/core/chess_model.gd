@@ -262,7 +262,7 @@ func inject_dependencies(piece: ModelPiece):
 		connect("piece_destroyed", death_callback)
 	if piece is KingPiece:
 		var king_piece: KingPiece = piece
-		king_piece.set_cooldown(king_piece.current_cooldown)
+		king_piece.announce_cooldown_state()
 
 func unregister_piece(piece: ModelPiece) -> void:
 	if not is_instance_valid(piece):
@@ -350,7 +350,7 @@ func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 
 			if piece is KingPiece:
 				var king := piece as KingPiece
-				if king.current_cooldown == 0 and king.has_active_ability():
+				if king.is_active_ability_ready() and king.has_active_ability():
 					for target in king.get_active_ability_targets():
 						actions.append(ChessPrimaryAction.new(
 							ChessPrimaryAction.Kind.ACTIVE_ABILITY,
@@ -560,7 +560,7 @@ func perform_active_ability(king: KingPiece, target: Vector2i):
 func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
 	if not is_piece_active(king) or king.color != current_turn or king.stunned:
 		return false
-	if action_in_progress or battle_over or king.current_cooldown > 0:
+	if action_in_progress or battle_over or not king.is_active_ability_ready():
 		return false
 	if target not in king.get_active_ability_targets():
 		return false

@@ -11,6 +11,7 @@ class_name ChessPieceState
 @export var stunned: bool = false
 @export var stun_timer: int = 0
 @export var current_cooldown: int = 0
+@export var cooldown_reset_pending: bool = false
 @export var custom_state: Dictionary = {}
 
 func copy() -> ChessPieceState:
@@ -25,5 +26,6 @@ func copy() -> ChessPieceState:
 	result.stunned = stunned
 	result.stun_timer = stun_timer
 	result.current_cooldown = current_cooldown
+	result.cooldown_reset_pending = cooldown_reset_pending
 	result.custom_state = custom_state.duplicate(true)
 	return result

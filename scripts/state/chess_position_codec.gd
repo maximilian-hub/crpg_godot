@@ -14,6 +14,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 			"attack_power": piece.attack_power, "has_moved": piece.has_moved,
 			"stunned": piece.stunned, "stun_timer": piece.stun_timer,
 			"current_cooldown": piece.current_cooldown,
+			"cooldown_reset_pending": piece.cooldown_reset_pending,
 			"custom": piece.custom_state.duplicate(true),
 		})
 	var last = null
@@ -92,6 +93,7 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 		piece.stunned = bool(raw.get("stunned", false))
 		piece.stun_timer = int(raw.get("stun_timer", 0))
 		piece.current_cooldown = int(raw.get("current_cooldown", 0))
+		piece.cooldown_reset_pending = bool(raw.get("cooldown_reset_pending", false))
 		var custom = raw.get("custom", {})
 		piece.custom_state = custom.duplicate(true) if custom is Dictionary else {}
 		position.pieces.append(piece)

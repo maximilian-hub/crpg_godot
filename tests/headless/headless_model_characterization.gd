@@ -18,6 +18,7 @@ func _run() -> void:
 	_test_completion_gate_contract()
 	_test_stun_timer_saturates_at_zero()
 	await _test_initialization_and_move()
+	await _test_active_ability_cooldown_counts_full_turns()
 	await _test_forced_pass_after_action()
 	await _test_turn_entry_recovery_prevents_pass()
 	await _test_nonlethal_combat()
@@ -87,6 +88,41 @@ func _test_initialization_and_move() -> void:
 	_expect(model.board[4][0] == pawn and model.current_turn == "black", "headless move resolves state and turn")
 	_expect(not model.action_in_progress, "unobserved movement gate completes immediately")
 	_expect(not (await model.submit_move(pawn, Vector2i(3, 0))), "wrong-turn command is rejected")
+	model.free()
+
+
+func _test_active_ability_cooldown_counts_full_turns() -> void:
+	var model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	var target := ClassicKing.new("black", Vector2i(3, 3))
+	target.max_hp = 10
+	target.current_hp = 10
+	model.add_piece(arakne, arakne.coordinate)
+	model.add_piece(target, target.coordinate)
+	_expect(await model.submit_active_ability(arakne, target.coordinate), "ready active ability is accepted before cooldown starts")
+	_expect(arakne.current_cooldown == 0 and arakne.cooldown_reset_pending and model.current_turn == "black", "ability use schedules recharge without immediately emitting cooldown")
+	var restored_model := ChessBoardModel.new()
+	restored_model.initialize_battle()
+	_expect(restored_model.load_position(model.capture_position()), "a position with scheduled recharge reloads successfully")
+	var restored_arakne := restored_model.get_king("white") as ArakneKing
+	_expect(restored_arakne != null and restored_arakne.cooldown_reset_pending and not restored_arakne.is_active_ability_ready(), "position reload preserves scheduled recharge as unavailable")
+	restored_model.free()
+	model.switch_turn()
+	_expect(arakne.current_cooldown == 1 and not arakne.cooldown_reset_pending and model.current_turn == "white", "the next King turn emits the configured cooldown without decrementing it")
+	_expect(not (await model.submit_active_ability(arakne, target.coordinate)), "an emitted cooldown blocks the active ability for that complete turn")
+	model.switch_turn()
+	model.switch_turn()
+	_expect(arakne.current_cooldown == 0 and model.current_turn == "white", "the following King turn decrements cooldown 1 to ready")
+	arakne.base_cooldown = 2
+	_expect(await model.submit_active_ability(arakne, target.coordinate), "active ability is usable again on the turn after its full cooldown turn")
+	model.switch_turn()
+	_expect(arakne.current_cooldown == 2, "a longer configured cooldown begins at its authored count")
+	model.switch_turn()
+	model.switch_turn()
+	_expect(arakne.current_cooldown == 1, "cooldown 2 remains unavailable after its first complete cooldown turn")
+	model.switch_turn()
+	model.switch_turn()
+	_expect(arakne.current_cooldown == 0, "cooldown 2 becomes ready after two complete cooldown turns")
 	model.free()
 
 

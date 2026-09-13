@@ -56,7 +56,7 @@ func has_active_ability() -> bool:
 ## Executes Charge, but the Model's action resolver owns turn completion.
 func active_target_selected(coord: Vector2i):
 	await charge(coord)
-	reset_cooldown()
+	schedule_cooldown()
 
 func charge(coord: Vector2i):
 	var target_piece: ModelPiece = model.board[coord.x][coord.y]

@@ -43,7 +43,7 @@ static func update_piece_state(source: ChessPosition, at: Vector2i, values: Dict
 	var piece := _find_at(next, at)
 	if piece == null:
 		return {"position": null, "errors": ["No piece at %s." % at]}
-	for property in ["max_hp", "current_hp", "attack_power", "has_moved", "stunned", "stun_timer", "current_cooldown"]:
+	for property in ["max_hp", "current_hp", "attack_power", "has_moved", "stunned", "stun_timer", "current_cooldown", "cooldown_reset_pending"]:
 		if values.has(property):
 			piece.set(property, values[property])
 	_reset_derived_state(next)

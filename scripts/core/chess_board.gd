@@ -955,3 +955,8 @@ func ready_cooldown_display(king: KingPiece):
 	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
 	var ready_text = "%s Ready!" % king.get_active_ability_name() # Changed from "!!!"
 	button.text = ready_text
+
+## Shows that a spent ability is waiting to begin its visible cooldown.
+func pending_cooldown_display(king: KingPiece):
+	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
+	button.text = "%s Recharging…" % king.get_active_ability_name()

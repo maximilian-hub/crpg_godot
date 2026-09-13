@@ -9,13 +9,17 @@ class_name KingPiece
 signal cooldown_changed(king: KingPiece, new_cooldown: int)
 ## Emitted when the cooldown reaches 0 (ability is ready).
 signal cooldown_ready(king: KingPiece)
+## Emitted after an ability is spent but before its cooldown begins next turn.
+signal cooldown_scheduled(king: KingPiece)
 
 ## The base number of turns for the active ability cooldown.
 ## Subclasses should override this in their _init or set it directly.
 @export var base_cooldown: int = 4 # Default value, override in specific Kings
 
-## The current remaining turns for the cooldown. 0 means ready.
+## Remaining active cooldown turns. Readiness also requires no pending reset.
 var current_cooldown: int = base_cooldown
+## A spent ability schedules its visible cooldown for the King's next turn.
+var cooldown_reset_pending := false
 
 var active_ability_name: String = "Active Ability" 
 var active_ability_id: StringName = &"active_ability"
@@ -58,6 +62,7 @@ func get_legal_moves() -> Array:
 
 ## Sets the current cooldown and emits the appropriate signal.
 func set_cooldown(value: int):
+	cooldown_reset_pending = false
 	current_cooldown = max(0, value) # Ensure cooldown doesn't go below 0
 	if current_cooldown > 0:
 
@@ -65,21 +70,45 @@ func set_cooldown(value: int):
 	else:
 		emit_signal("cooldown_ready", self)
 
-## Resets the cooldown to its base value. Usually called after using the ability.
+## Immediately resets cooldown state. Active abilities use schedule_cooldown().
 func reset_cooldown():
 	set_cooldown(base_cooldown)
 
-## Decrements the cooldown by one turn. Usually called at the start of the King's turn.
+## Schedules recharge without showing motes until this King's next turn begins.
+func schedule_cooldown() -> void:
+	current_cooldown = 0
+	cooldown_reset_pending = base_cooldown > 0
+	if cooldown_reset_pending:
+		cooldown_scheduled.emit(self)
+	else:
+		cooldown_ready.emit(self)
+
+func is_active_ability_ready() -> bool:
+	return current_cooldown == 0 and not cooldown_reset_pending
+
+func announce_cooldown_state() -> void:
+	if cooldown_reset_pending:
+		cooldown_scheduled.emit(self)
+	elif current_cooldown > 0:
+		cooldown_changed.emit(self, current_cooldown)
+	else:
+		cooldown_ready.emit(self)
+
+## Decrements the cooldown at the beginning of this King's turn.
 func decrement_cooldown():
 	if current_cooldown > 0:
 		set_cooldown(current_cooldown - 1)
 
-## Called automatically when the turn changes (connected in ChessModel.inject_dependencies).
-## Handles decrementing stun AND ability cooldowns.
+## A newly scheduled recharge emits its motes on the first turn entry; existing
+## cooldowns begin absorbing a mote on each later turn entry.
 func _on_turn_changed(current_turn: String):
 	super._on_turn_changed(current_turn)
-	if current_turn == color:
-		decrement_cooldown()
+	if current_turn != color:
+		return
+	if cooldown_reset_pending:
+		set_cooldown(base_cooldown)
+		return
+	decrement_cooldown()
 
 # --- Virtual Methods (to be overridden by subclasses) ---
 

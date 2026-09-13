@@ -767,9 +767,18 @@ func _test_arakne_spike_burst() -> void:
 	_expect(presentation_observation.procedural_impact and context.view.find_children("SpecialMoveHitMarker", "ChessLightning2D", true, false).is_empty(), "Spike Burst uses the procedural clack without layering chess-lightning markers")
 	_expect(presentation_observation.splatter_present_at_damage, "Spike Burst damage to a multi-HP piece presents blood splatter at impact")
 	_expect(presentation_observation.final_sound == &"spike_hit", "nonlethal Spike Burst uses its ordinary spike-hit sound on the final impact")
-	_expect(arakne.current_cooldown == ArakneKing.ACTIVE_ABILITY_COOLDOWN, "Spike Burst resets Arakne cooldown")
+	var arakne_magic: ChessKingMagicController = context.adapter.get_king_magic_controller("white")
+	var arakne_cooldown: ChessKingCooldownPresentation = arakne_magic.cooldown_presentation
+	_expect(arakne.current_cooldown == 0 and arakne.cooldown_reset_pending, "Spike Burst schedules its cooldown for Arakne's next turn")
+	_expect(arakne_cooldown.active_mote_count() == 0 and arakne_cooldown.recharge_pending and is_equal_approx(arakne_magic.king_aura.particle_power, arakne_cooldown.resting_particles), "a scheduled cooldown is dormant without motes or ready aura treatment")
+	_expect(context.view.white_cooldown_button.text == "Spike Burst Recharging…", "a scheduled cooldown does not label the spent ability Ready")
 	_expect(model.current_turn == "black", "Spike Burst consumes White's action")
 	_expect(not model.action_in_progress, "Spike Burst finishes its action")
+	model.switch_turn()
+	_expect(arakne.current_cooldown == ArakneKing.ACTIVE_ABILITY_COOLDOWN and not arakne.cooldown_reset_pending and arakne_cooldown.active_mote_count() == ArakneKing.ACTIVE_ABILITY_COOLDOWN, "Arakne's next turn emits the configured cooldown motes without absorbing one")
+	model.switch_turn()
+	model.switch_turn()
+	_expect(arakne.current_cooldown == 0 and arakne_cooldown.absorbing_mote_count() == 1, "Arakne's following turn begins the first cooldown mote absorption")
 	spike_profile.shot_interval = original_shot_interval
 
 	await _destroy_game(context.game)

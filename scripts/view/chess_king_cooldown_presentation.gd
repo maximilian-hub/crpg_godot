@@ -25,6 +25,7 @@ var resting_speed := 1.0
 var pulse_tween: Tween
 var pulse_base_scale := Vector2.ONE
 var has_active_ability := true
+var recharge_pending := false
 var charge_player := AudioStreamPlayer.new()
 var absorption_player := AudioStreamPlayer.new()
 var completion_player := AudioStreamPlayer.new()
@@ -53,6 +54,7 @@ func configure(board_view: ChessBoardView, king_view: PieceView, king_aura: Ches
 
 
 func sync_immediate(count: int) -> void:
+	recharge_pending = false
 	authoritative_count = maxi(count, 0)
 	_clear_motes()
 	for index in range(authoritative_count):
@@ -67,6 +69,7 @@ func sync_immediate(count: int) -> void:
 
 
 func set_cooldown(count: int, animate := true) -> void:
+	recharge_pending = false
 	var previous := authoritative_count
 	authoritative_count = maxi(count, 0)
 	if not animate:
@@ -75,6 +78,14 @@ func set_cooldown(count: int, animate := true) -> void:
 	_reconcile_motes()
 	if authoritative_count < previous:
 		_play(charge_player, profile.charge_sound, profile.charge_volume_db)
+	_apply_visibility_and_aura()
+
+
+func set_recharge_pending(value: bool) -> void:
+	recharge_pending = value
+	if recharge_pending:
+		authoritative_count = 0
+		_clear_motes()
 	_apply_visibility_and_aura()
 
 
@@ -144,7 +155,7 @@ func _process(delta: float) -> void:
 	selection_orb.duration_scale = board.animation_duration_scale
 	_update_motes(scaled_delta)
 	_update_orb_position()
-	if has_active_ability and authoritative_count == 0 and not aura_suppressed:
+	if has_active_ability and authoritative_count == 0 and not recharge_pending and not aura_suppressed:
 		_apply_persistent_aura()
 
 
@@ -309,7 +320,7 @@ func _update_orb_position() -> void:
 
 func _update_orb() -> void:
 	if not is_instance_valid(selection_orb): return
-	selection_orb.visible = is_instance_valid(king) and awakened and has_active_ability and authoritative_count == 0 and selected and not targeting
+	selection_orb.visible = is_instance_valid(king) and awakened and has_active_ability and authoritative_count == 0 and not recharge_pending and selected and not targeting
 	_update_orb_position()
 
 
@@ -326,7 +337,7 @@ func _apply_persistent_aura() -> void:
 		return
 	# The model becomes ready as soon as its count reaches zero, but the aura's
 	# presentation beat belongs to the final mote making contact with the King.
-	if authoritative_count > 0 or _has_absorbing_motes() or not has_active_ability:
+	if recharge_pending or authoritative_count > 0 or _has_absorbing_motes() or not has_active_ability:
 		aura.set_silhouette_power(resting_silhouette)
 		aura.set_particle_power(resting_particles)
 		aura.set_runtime_multipliers(resting_density, resting_speed)

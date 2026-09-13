@@ -77,4 +77,4 @@ func active_target_selected(coord: Vector2i) -> void:
 		return
 
 	await target_piece.take_damage(SPIKE_BURST_DAMAGE)
-	reset_cooldown()
+	schedule_cooldown()

@@ -58,10 +58,16 @@ func _test_round_trip_and_mutations() -> void:
 
 func _test_codec() -> void:
 	var position := ChessPositionPresets.debug_layout()
+	for piece in position.pieces:
+		if String(piece.type_id).ends_with("king"):
+			piece.current_cooldown = 0
+			piece.cooldown_reset_pending = true
+			break
 	var text := ChessPositionCodec.to_json(position)
 	var decoded := ChessPositionCodec.from_json(text)
 	_expect(decoded.errors.is_empty(), "position JSON decodes")
 	_expect(decoded.position.pieces.size() == position.pieces.size(), "position JSON round-trips pieces")
+	_expect(decoded.position.pieces.any(func(piece): return piece.cooldown_reset_pending), "position JSON preserves a scheduled cooldown reset")
 	_expect(ChessPositionCodec.from_json("nope").position == null, "malformed JSON is rejected")
 
 func _test_history() -> void:

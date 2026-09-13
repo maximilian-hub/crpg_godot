@@ -593,7 +593,11 @@ func _register_piece(piece: ModelPiece, piece_node: Node) -> void:
 			king.cooldown_changed.connect(_on_cooldown_changed)
 		if not king.cooldown_ready.is_connected(_on_cooldown_ready):
 			king.cooldown_ready.connect(_on_cooldown_ready)
-		if king.current_cooldown > 0:
+		if not king.cooldown_scheduled.is_connected(_on_cooldown_scheduled):
+			king.cooldown_scheduled.connect(_on_cooldown_scheduled)
+		if king.cooldown_reset_pending:
+			_on_cooldown_scheduled(king)
+		elif king.current_cooldown > 0:
 			_on_cooldown_changed(king, king.current_cooldown)
 		else:
 			_on_cooldown_ready(king)
@@ -648,6 +652,12 @@ func _on_cooldown_ready(king: KingPiece) -> void:
 	view.ready_cooldown_display(king)
 	var magic := _get_king_magic(king)
 	if is_instance_valid(magic): magic.set_cooldown(0, true)
+
+
+func _on_cooldown_scheduled(king: KingPiece) -> void:
+	view.pending_cooldown_display(king)
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic): magic.set_cooldown_pending(true)
 
 func set_presentation_speed(speed: int) -> void:
 	presentation_policy.speed = speed

@@ -24,7 +24,7 @@ func has_active_ability() -> bool:
 ## The Model's action resolver finishes the action after all reactions resolve.
 func active_target_selected(target: Vector2i):
 	await summon_bone_pawn(target)
-	reset_cooldown()
+	schedule_cooldown()
 
 func summon_bone_pawn(target: Vector2i):
 	var new_pawn := BonePawn.new(self.color, target)

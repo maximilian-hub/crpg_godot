@@ -62,7 +62,7 @@ func _on_square_clicked(coord: Vector2i):
 			select_piece(piece)
 		return
 
-	if piece == selected_piece and piece is KingPiece and piece.current_cooldown == 0 and piece.has_active_ability():
+	if piece == selected_piece and piece is KingPiece and piece.is_active_ability_ready() and piece.has_active_ability():
 		select_active_ability(piece.color)
 		return
 
@@ -147,7 +147,7 @@ func select_active_ability(color: String):
 	if active_king.stunned:
 		active_king = null
 		return
-	if active_king.current_cooldown > 0:
+	if not active_king.is_active_ability_ready():
 		active_king = null
 		return
 

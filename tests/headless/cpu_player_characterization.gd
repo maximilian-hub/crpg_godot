@@ -90,7 +90,7 @@ func _test_cpu_active_ability() -> void:
 	var cpu := _add_cpu(model, "white", true)
 	await _wait_frames(3)
 	_expect(model.board[3][3] == null, "CPU active ability resolves its target")
-	_expect(arakne.coordinate == Vector2i(4, 4) and arakne.current_cooldown > 0, "CPU used the active ability rather than a normal capture")
+	_expect(arakne.coordinate == Vector2i(4, 4) and arakne.cooldown_reset_pending, "CPU used the active ability and scheduled its recharge rather than making a normal capture")
 	cpu.queue_free()
 	model.free()
 
