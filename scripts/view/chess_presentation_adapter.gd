@@ -207,7 +207,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 			# Lethal captures bypass ModelPiece.take_damage(), so reproduce the
 			# ordinary hit feedback explicitly at physical contact. The splatter
 			# scene owns the universal hurt sound as well as the blood animation.
-			view.spawn_splatter(defender_node)
+			_present_damage_splatter(defender, defender_node)
 			death_effect.play()
 		if attacker is KingPiece:
 			var attacking_magic := _get_king_magic(attacker)
@@ -280,10 +280,8 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 	var piece_node: Node = piece_views.get(piece)
 	var magic: Node = king_magic_controllers.get(piece)
 	var death_profile: Resource = king_death_profile if piece is KingPiece else null
+	var magic_cleanup_deferred := false
 	king_magic_controllers.erase(piece)
-	if is_instance_valid(magic):
-		if piece is KingPiece: magic.disable_effects()
-		magic.queue_free()
 	piece_views.erase(piece)
 	necromancer_auras.erase(piece)
 	if pending_projectile_defeats.has(piece) and not (piece is KingPiece):
@@ -293,8 +291,7 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 	if is_instance_valid(piece_node):
 		if not presentation_policy.should_animate():
 			view.remove_piece(piece_node)
-			return
-		if persistent_king_corpses.has(piece):
+		elif persistent_king_corpses.has(piece):
 			# The model no longer owns this piece, but its awakened body remains as
 			# inert stone presentation until the board is rebuilt or battle exits.
 			persistent_king_corpses.erase(piece)
@@ -302,9 +299,26 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 			silently_removed_piece_views.erase(piece)
 			view.remove_piece(piece_node)
 		else:
-			var death_effect: Node = view.destroy_piece(piece_node, death_profile, screen_shake)
+			var death_effect: Node
+			if piece is KingPiece:
+				death_effect = view.create_king_death_effect(piece_node, death_profile, screen_shake)
+				if is_instance_valid(magic):
+					death_effect.death_beat_reached.connect(func(): _dispose_king_magic(magic), CONNECT_ONE_SHOT)
+					magic_cleanup_deferred = true
+				death_effect.play()
+			else:
+				death_effect = view.destroy_piece(piece_node, death_profile, screen_shake)
 			if is_instance_valid(death_effect):
 				active_king_deaths.append(death_effect)
+	if is_instance_valid(magic) and not magic_cleanup_deferred:
+		_dispose_king_magic(magic)
+
+
+func _dispose_king_magic(magic: Node) -> void:
+	if not is_instance_valid(magic):
+		return
+	magic.disable_effects()
+	magic.queue_free()
 
 
 func _on_battle_finished(winner_color: String) -> void:
@@ -372,9 +386,22 @@ func _flush_pending_attack_damage(piece: ModelPiece) -> void:
 
 func _present_piece_damage(piece: ModelPiece, current_hp: int) -> void:
 	var piece_node: Node = get_piece_view(piece)
-	if is_instance_valid(piece_node):
-		view.spawn_splatter(piece_node)
-		piece_node.update_hp(current_hp)
+	if not is_instance_valid(piece_node) or not should_present_damage_feedback(piece):
+		return
+	_present_damage_splatter(piece, piece_node)
+	piece_node.update_hp(current_hp)
+
+
+static func should_present_damage_feedback(piece: ModelPiece) -> bool:
+	return piece != null and (piece.is_king or piece.max_hp > 1)
+
+
+func _present_damage_splatter(piece: ModelPiece, piece_node: Node2D = null) -> void:
+	if not should_present_damage_feedback(piece):
+		return
+	var resolved_view := piece_node if is_instance_valid(piece_node) else get_piece_view(piece) as Node2D
+	if is_instance_valid(resolved_view):
+		view.spawn_splatter(resolved_view)
 
 
 func _on_piece_stunned(piece: ModelPiece, _duration: int) -> void:

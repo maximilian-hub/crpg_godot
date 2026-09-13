@@ -46,6 +46,7 @@ func _run_suite() -> void:
 	await _test_nonlethal_attack_presentation()
 	await _test_arakne_spike_burst()
 	await _test_arakne_spike_burst_lethal_knockoff()
+	await _test_arakne_spike_burst_lethal_king()
 	await _test_minotaur_charge_survivor_landing()
 	await _test_minotaur_rage_barrier()
 	await _test_active_bone_pawn_summon_presentation()
@@ -738,7 +739,7 @@ func _test_arakne_spike_burst() -> void:
 	var spike_profile := context.adapter.ability_presentations.find_profile(&"arakne_king", &"spike_burst") as ChessSpecialMovePresentationProfile
 	var original_shot_interval := spike_profile.shot_interval
 	spike_profile.shot_interval = 0.01
-	var presentation_observation := {"committed_before_damage": false, "projectile_present_at_damage": false, "landed": 0, "damage_after_final": false, "max_in_flight": 0, "procedural_impact": false, "final_sound": &""}
+	var presentation_observation := {"committed_before_damage": false, "projectile_present_at_damage": false, "landed": 0, "damage_after_final": false, "max_in_flight": 0, "procedural_impact": false, "final_sound": &"", "splatter_present_at_damage": false}
 	context.view.child_entered_tree.connect(func(child: Node):
 		if child.get_script() == SPECIAL_MOVE_DIRECTOR:
 			child.projectile_landed.connect(func(_index: int, _final: bool): presentation_observation.landed += 1)
@@ -750,7 +751,8 @@ func _test_arakne_spike_burst() -> void:
 		if piece == target:
 			presentation_observation.projectile_present_at_damage = not context.view.find_children("*", "ChessProjectileEffect", true, false).is_empty()
 			presentation_observation.damage_after_final = presentation_observation.landed == 3
-			presentation_observation.procedural_impact = _count_children_named(context.view, &"ChessCaptureClackEffect") >= 1)
+			presentation_observation.procedural_impact = _count_children_named(context.view, &"ChessCaptureClackEffect") >= 1
+			presentation_observation.splatter_present_at_damage = _count_children_named(context.view, &"BloodSplatter") >= 1)
 
 	var targets := arakne.get_active_ability_targets()
 	_expect(Vector2i(3, 3) in targets, "Spike Burst targets an adjacent enemy")
@@ -760,6 +762,7 @@ func _test_arakne_spike_burst() -> void:
 	_expect(presentation_observation.landed == 3 and presentation_observation.damage_after_final, "Spike Burst presents three impacts and applies gameplay damage only after the final spike lands")
 	_expect(presentation_observation.max_in_flight >= 2, "Spike Burst launches on its authored cadence while earlier spikes remain in flight")
 	_expect(presentation_observation.procedural_impact and context.view.find_children("SpecialMoveHitMarker", "ChessLightning2D", true, false).is_empty(), "Spike Burst uses the procedural clack without layering chess-lightning markers")
+	_expect(presentation_observation.splatter_present_at_damage, "Spike Burst damage to a multi-HP piece presents blood splatter at impact")
 	_expect(presentation_observation.final_sound == &"spike_hit", "nonlethal Spike Burst uses its ordinary spike-hit sound on the final impact")
 	_expect(arakne.current_cooldown == ArakneKing.ACTIVE_ABILITY_COOLDOWN, "Spike Burst resets Arakne cooldown")
 	_expect(model.current_turn == "black", "Spike Burst consumes White's action")
@@ -777,8 +780,9 @@ func _test_arakne_spike_burst_lethal_knockoff() -> void:
 	var black_king := ChessPieceCatalog.create_piece(&"king", "black", Vector2i(0, 0)) as KingPiece
 	_reset_battle(model, context.controller, [arakne, target, black_king])
 	var target_view := context.adapter.get_piece_view(target) as PieceView
-	var observation := {"landed": 0, "destroyed_after_final": false, "final_sound": &""}
+	var observation := {"landed": 0, "destroyed_after_final": false, "final_sound": &"", "splatter_count": 0}
 	context.view.child_entered_tree.connect(func(child: Node):
+		if child.name == "BloodSplatter": observation.splatter_count += 1
 		if child.get_script() == SPECIAL_MOVE_DIRECTOR:
 			child.projectile_landed.connect(func(_index: int, _final: bool): observation.landed += 1)
 			child.final_impact_sound_selected.connect(func(cue: StringName): observation.final_sound = cue))
@@ -788,8 +792,57 @@ func _test_arakne_spike_burst_lethal_knockoff() -> void:
 	await model.perform_active_ability(arakne, target.coordinate)
 	await get_tree().process_frame
 	_expect(model.board[3][3] == null and observation.destroyed_after_final, "lethal Spike Burst removes an ordinary target only after its third impact")
+	_expect(observation.splatter_count == 0, "lethal Spike Burst knocks off a one-HP non-King without blood splatter")
 	_expect(observation.final_sound == &"capture_clack", "lethal Spike Burst uses the board's default clack when its final impact destroys an ordinary piece")
 	_expect(not is_instance_valid(target_view) and model.current_turn == "black" and not model.action_in_progress, "lethal Spike Burst completes its knockoff aftermath before advancing the turn")
+	await _destroy_game(context.game)
+
+
+func _test_arakne_spike_burst_lethal_king() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	var target := ClassicKing.new("black", Vector2i(3, 3))
+	var durable_non_king := Pawn.new("black", Vector2i(2, 2))
+	durable_non_king.max_hp = 2
+	durable_non_king.current_hp = 2
+	_expect(
+		not ChessPresentationAdapter.should_present_damage_feedback(Pawn.new("black", Vector2i.ZERO))
+		and ChessPresentationAdapter.should_present_damage_feedback(durable_non_king)
+		and ChessPresentationAdapter.should_present_damage_feedback(target),
+		"damage feedback policy covers multi-HP pieces and all Kings but excludes one-HP non-Kings"
+	)
+	_reset_battle(model, context.controller, [arakne, target])
+	var target_view := context.adapter.get_piece_view(target) as PieceView
+	var target_magic := context.adapter.king_magic_controllers[target] as ChessKingMagicController
+	target_magic.cooldown_presentation.sync_immediate(3)
+	var death_profile: Resource = context.adapter.king_death_profile.duplicate(true)
+	death_profile.death_sound = null
+	death_profile.red_blink_count = 1
+	death_profile.blink_on_duration = 0.01
+	death_profile.blink_off_duration = 0.01
+	death_profile.pre_death_hold_duration = 0.01
+	death_profile.stone_fade_duration = 0.02
+	death_profile.tremor_slowdown_duration = 0.01
+	death_profile.result_delay = 0.03
+	death_profile.rift_speed = 10000.0
+	context.adapter.king_death_profile = death_profile
+	var observation := {"splatter_count": 0, "splatter_before_death": false, "motes_before_beat": 0, "death_effect": null}
+	context.view.child_entered_tree.connect(func(child: Node):
+		if child.name == "BloodSplatter":
+			observation.splatter_count += 1
+		elif child is ChessKingDeathEffect:
+			observation.splatter_before_death = observation.splatter_count == 1
+			observation.death_effect = child
+			child.death_beat_reached.connect(func(): observation.motes_before_beat = target_magic.cooldown_presentation.active_mote_count(), CONNECT_ONE_SHOT))
+	await model.perform_active_ability(arakne, target.coordinate)
+	var death_effect := observation.death_effect as ChessKingDeathEffect
+	if is_instance_valid(death_effect) and not death_effect.finished:
+		await death_effect.completed
+	await get_tree().process_frame
+	_expect(observation.splatter_count == 1 and observation.splatter_before_death, "lethal Spike Burst presents one blood splatter before King death begins")
+	_expect(observation.motes_before_beat == 3 and not is_instance_valid(target_magic), "projectile-fatal King motes persist until the shared death beat")
+	_expect(is_instance_valid(target_view) and target_view.sprite.material is ShaderMaterial and (target_view.sprite.material as ShaderMaterial).shader.resource_path == "res://effects/chess_stone_piece.gdshader", "lethal Spike Burst completes the normal King stone-death transition")
 	await _destroy_game(context.game)
 
 

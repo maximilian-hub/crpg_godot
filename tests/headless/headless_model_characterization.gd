@@ -21,6 +21,7 @@ func _run() -> void:
 	await _test_forced_pass_after_action()
 	await _test_turn_entry_recovery_prevents_pass()
 	await _test_nonlethal_combat()
+	await _test_lethal_damage_event_order()
 	await _test_special_moves()
 	await _test_minotaur_charge_landing()
 	await _test_headless_rage()
@@ -56,6 +57,24 @@ func _test_stun_timer_saturates_at_zero() -> void:
 	_expect(not pawn.stunned and pawn.stun_timer == 0, "stun recovery stops exactly at zero")
 	pawn.decrement_stun_timer()
 	_expect(pawn.stun_timer == 0, "recovered stun timer remains saturated at zero")
+	model.free()
+
+func _test_lethal_damage_event_order() -> void:
+	var model := _new_empty_model()
+	var pawn := Pawn.new("white", Vector2i(4, 4))
+	model.add_piece(pawn, pawn.coordinate)
+	var events: Array[String] = []
+	var observation := {"lethal_hp": 1}
+	model.piece_damaged.connect(func(piece: ModelPiece, _amount: int, current_hp: int, _max_hp: int):
+		if piece == pawn:
+			events.append("damaged")
+			observation.lethal_hp = current_hp)
+	model.piece_destroyed.connect(func(piece: ModelPiece):
+		if piece == pawn:
+			events.append("destroyed"))
+	await pawn.take_damage(1)
+	_expect(events == ["damaged", "destroyed"] and observation.lethal_hp <= 0, "lethal damage emits its damage event before destruction")
+	_expect(model.board[4][4] == null, "lethal damage still removes the defeated piece")
 	model.free()
 
 func _test_initialization_and_move() -> void:

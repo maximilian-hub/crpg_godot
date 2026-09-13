@@ -72,12 +72,12 @@ func get_legal_moves() -> Array:
 
 func take_damage(damage: int = 1):
 	current_hp -= damage
-	var destroyed = current_hp <= 0
-	
-	if destroyed:
-		model.destroy_piece(self, true) 
-	else:
-		model.piece_damaged.emit(self, damage, current_hp, max_hp)
+	# Damage presentation belongs to the hit regardless of whether the piece
+	# survives it. Emit while the model and its PieceView are still registered so
+	# listeners can present the impact before destruction begins.
+	model.piece_damaged.emit(self, damage, current_hp, max_hp)
+	if current_hp <= 0:
+		model.destroy_piece(self, true)
 		
 func is_enemy(other: ModelPiece) -> bool:
 	return color != other.color
