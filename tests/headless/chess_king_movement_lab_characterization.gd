@@ -10,6 +10,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check(lab.board.get_world_scale() > 0.0 and lab.model.get_king("white").coordinate == Vector2i(4, 4), "lab uses the shipping board projection and centers its King", failures)
+	_check(lab.seat_selector.selected == 0 and lab.board.viewing_color == "white" and lab.board.get_hand_rig_for_color("white") == lab.board.near_hand_rig, "lab defaults to the genuine near-side hand rig", failures)
+	_check(lab.board.near_hand_rig.hand_style.resource_path.ends_with("skeleton_hand_style.tres"), "near-side previews automatically use the Skeleton arm", failures)
 	_check(lab.playback_speed_selector.selected == 0 and is_equal_approx(lab.board.animation_duration_scale, 1.0), "lab defaults to Normal playback speed", failures)
 	lab.playback_speed_selector.select(2)
 	lab._set_playback_speed(2)
@@ -42,6 +44,16 @@ func _ready() -> void:
 	lab.profile.gesture_sweep_distance += 40.0
 	lab._refresh_hand_path()
 	_check(lab.swipe_path.points[0].is_equal_approx(original_lock) and lab.swipe_path.points[1].distance_to(original_lock) > swipe_delta.length(), "swipe-length tuning moves only the preview endpoint and preserves its lock position", failures)
+	var preserved_destination: Vector2i = lab.selected_destination
+	lab.seat_selector.select(1)
+	lab._set_preview_seat(1)
+	var far_hand: ChessHandRig = lab.board.get_hand_rig_for_color("white")
+	_check(lab.board.viewing_color == "black" and far_hand == lab.board.far_hand_rig and far_hand.seat == ChessHandRig.Seat.FAR, "Far selects the genuine far-side rig for the white King", failures)
+	_check(far_hand.hand_style.resource_path.ends_with("hood_hand_style.tres"), "far-side previews automatically use the Hood arm", failures)
+	var expected_far_hover: Vector2 = lab.board.grid_to_screen(4, 4) + ChessPresentationTransform.king_hover_offset(lab.profile.hand_hover_offset, ChessHandRig.Seat.FAR, false, lab.board.get_world_scale())
+	_check(lab.approach_path.points[1].is_equal_approx(expected_far_hover), "far-side path preview uses the mirrored King hover offset", failures)
+	_check(lab.approach_path.points[0].is_equal_approx(far_hand._offscreen_rest_position(lab.board.get_world_scale() * far_hand.art_scale_multiplier)), "far-side path preview begins at the far rig's off-board rest point", failures)
+	_check(lab.selected_destination == preserved_destination, "changing preview seat preserves the selected destination", failures)
 	lab.profile.hand_approach_duration = 0.01
 	lab.profile.gesture_lock_duration = 0.0
 	lab.profile.gesture_duration = 0.02
@@ -49,7 +61,7 @@ func _ready() -> void:
 	lab.profile.travel_duration = 0.01
 	lab.profile.settle_duration = 0.0
 	await lab._play()
-	_check(lab.selected_destination == Vector2i(3, 3) and not lab.playing, "move playback completes without clearing the selected destination", failures)
+	_check(lab.selected_destination == Vector2i(3, 3) and not lab.playing and lab.board.get_hand_rig_for_color("white") == lab.board.far_hand_rig, "far-side move playback completes without clearing the selected destination or reverting the hand rig", failures)
 	lab.capture_mode = true
 	lab.profile.knockoff_horizontal_speed = 100000.0
 	lab.profile.knockoff_upward_speed = 0.0
@@ -69,18 +81,21 @@ func _ready() -> void:
 	lab._play()
 	var capture_magic: ChessKingMagicController = lab.adapter.get_king_magic_controller("white")
 	capture_magic.capture_impact.connect(func(defender: PieceView):
-		foreground_at_impact.active = lab.board.near_hand_rig.magical_foreground_active
-		foreground_at_impact.effective_rear_z = lab.board.near_hand_rig.z_index + lab.board.near_hand_rig.grip_back_sprite.z_index
+		foreground_at_impact.active = lab.board.far_hand_rig.magical_foreground_active
+		foreground_at_impact.effective_rear_z = lab.board.far_hand_rig.z_index + lab.board.far_hand_rig.grip_back_sprite.z_index
 		foreground_at_impact.defender_z = defender.z_index
 	, CONNECT_ONE_SHOT)
 	while lab.playing:
 		await get_tree().process_frame
 	_check(foreground_at_impact.active and foreground_at_impact.effective_rear_z > foreground_at_impact.defender_z, "rebuilt lab controller retains ownership of the full foreground hand stack through capture impact", failures)
 	_check(lab.selected_destination == Vector2i(3, 3) and not lab.playing, "capture playback also remains replayable in the chosen direction", failures)
+	lab.seat_selector.select(0)
+	lab._set_preview_seat(0)
+	_check(lab.board.viewing_color == "white" and lab.board.get_hand_rig_for_color("white") == lab.board.near_hand_rig and lab.board.near_hand_rig.hand_style.resource_path.ends_with("skeleton_hand_style.tres"), "switching back to Near restores the near rig and Skeleton arm", failures)
 	lab.queue_free()
 	await get_tree().process_frame
 	if failures.is_empty():
-		print("CHESS KING MOVEMENT LAB CHARACTERIZATION: PASS (20 checks)")
+		print("CHESS KING MOVEMENT LAB CHARACTERIZATION: PASS (28 checks)")
 		get_tree().quit(0)
 	else:
 		for failure in failures: push_error(failure)

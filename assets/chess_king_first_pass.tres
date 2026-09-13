@@ -1,10 +1,10 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://giqocf033p2j"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3]
 
-[ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
-[ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
-[ext_resource type="Script" uid="uid://bjplfx6h5sa57" path="res://scripts/view/chess_king_activation_profile.gd" id="3"]
-[ext_resource type="Script" uid="uid://bfnd1ky31ginl" path="res://scripts/view/chess_magical_move_profile.gd" id="4"]
-[ext_resource type="Resource" uid="uid://csre3s1oq46ch" path="res://assets/chess_king_auras.tres" id="5"]
+[ext_resource type="Script" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/view/chess_aura_profile.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/view/chess_king_activation_profile.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/view/chess_magical_move_profile.gd" id="4"]
+[ext_resource type="Resource" path="res://assets/chess_king_auras.tres" id="5"]
 
 [sub_resource type="Resource" id="Resource_et52m"]
 script = ExtResource("3")
@@ -82,10 +82,10 @@ random_seed = 1701
 
 [sub_resource type="Resource" id="Resource_18jf6"]
 script = ExtResource("4")
-hand_hover_offset = Vector2(150, -180)
+hand_hover_offset = Vector2(80, -50)
 gesture_corridor_clearance = 96.0
 gesture_sweep_distance = 93.0
-gesture_lock_duration = 0.3
+gesture_lock_duration = 0.4
 gesture_curve_bend = 0.0
 gesture_exit_momentum = 110.0
 hand_approach_duration = 0.3
@@ -93,14 +93,14 @@ invocation_duration = 0.25
 settle_duration = 0.1
 hand_retreat_duration = 0.33
 gesture_duration = 0.6
-king_move_delay = 0.3
-gesture_launch_speed = 0.5
-gesture_turn_speed = 0.15
-gesture_exit_speed = 2.0
+king_move_delay = 0.25
+gesture_launch_speed = 0.25
+gesture_turn_speed = 0.05
+gesture_exit_speed = 0.5
 gesture_curve_forward_reach = 225.0
-gesture_minimum_turn_radius = 48.0
+gesture_minimum_turn_radius = 60.0
 travel_duration = 0.2
-lift_height = 34.0
+lift_height = 0.0
 hand_silhouette_power = 0.45
 hand_particle_power = 0.2
 king_silhouette_power = 0.65

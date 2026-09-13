@@ -2,6 +2,7 @@ extends Node2D
 
 const GAME_SCENE := preload("res://scenes/chess_game.tscn")
 const RuntimePublisher := preload("res://tools/dev_chess_shared/chess_lab_runtime_publisher.gd")
+const PreviewContext := preload("res://tools/dev_chess_shared/chess_lab_preview_context.gd")
 const PresentationPolicy := preload("res://scripts/view/chess_presentation_policy.gd")
 const CENTER := Vector2i(4, 4)
 
@@ -16,6 +17,7 @@ var playing := false
 var status_label: Label
 var destination_label: Label
 var play_button: Button
+var seat_selector: OptionButton
 var playback_speed_selector: OptionButton
 var path_preview_toggle: CheckButton
 var knockoff_path_preview_toggle: CheckButton
@@ -24,6 +26,7 @@ var approach_path: Line2D
 var swipe_path: Line2D
 var retreat_path: Line2D
 var knockoff_path: Line2D
+var preview_context := PreviewContext.new()
 
 
 func _ready() -> void:
@@ -77,6 +80,9 @@ func _build_controls() -> void:
 	instructions.text = "Click any square adjacent to the King to choose a direction. The selection remains after playback."
 	instructions.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(instructions)
+	seat_selector = _option(controls, "Seat", ["Near / Skeleton", "Far / Hood"])
+	seat_selector.name = "SeatSelector"
+	seat_selector.item_selected.connect(_set_preview_seat)
 	var king_selector := _option(controls, "King", [])
 	for type_id in ChessPieceCatalog.get_palette_type_ids(&"king"):
 		king_selector.add_item(ChessPieceCatalog.get_definition(type_id).get("name", str(type_id)))
@@ -147,9 +153,26 @@ func _rebuild_fixture() -> void:
 		var defender := ChessPieceCatalog.create_piece(&"pawn", "black", selected_destination)
 		position.pieces.append(defender.capture_piece_state())
 	model.load_position(position)
+	_apply_preview_hand()
 	_bind_live_profile()
 	_highlight_selection()
 	_refresh_hand_path()
+
+
+func _set_preview_seat(index: int) -> void:
+	preview_context.seat = ChessHandRig.Seat.FAR if index == 1 else ChessHandRig.Seat.NEAR
+	preview_context.loadout = PreviewContext.Loadout.OPPONENT if index == 1 else PreviewContext.Loadout.PLAYER
+	game.set_viewing_color("black" if index == 1 else "white")
+	_apply_preview_hand()
+	_bind_live_profile()
+	_highlight_selection()
+	_refresh_hand_path()
+
+
+func _apply_preview_hand() -> void:
+	var hand := board.get_hand_rig_for_color("white") if board != null else null
+	if hand != null:
+		preview_context.apply_to_hand(hand)
 
 
 func _bind_live_profile() -> void:
@@ -271,6 +294,7 @@ func _play() -> void:
 	_rebuild_fixture()
 	playing = true
 	play_button.disabled = true
+	seat_selector.disabled = true
 	status_label.text = "Playing %s…" % ("capture" if capture_mode else "move")
 	var king := model.get_king("white")
 	var magic := adapter.get_king_magic_controller("white")
@@ -278,6 +302,7 @@ func _play() -> void:
 		status_label.text = "Could not construct the King movement preview."
 		playing = false
 		play_button.disabled = false
+		seat_selector.disabled = false
 		return
 	var defender: PieceView = adapter.get_piece_view(model.board[selected_destination.x][selected_destination.y]) as PieceView if capture_mode else null
 	if capture_mode:
@@ -287,6 +312,7 @@ func _play() -> void:
 	status_label.text = "Preview complete. Press Play to repeat the same direction."
 	playing = false
 	play_button.disabled = false
+	seat_selector.disabled = false
 
 
 func _publish() -> void:
