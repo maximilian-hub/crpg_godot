@@ -335,13 +335,18 @@ func _test_arakne_staged_skitter_presentation() -> void:
 	magic.profile.movement_profile.gesture_lock_duration = 0.0
 	magic.profile.movement_profile.gesture_duration = 0.01
 	magic.profile.movement_profile.king_move_delay = 0.0
-	magic.profile.movement_profile.travel_duration = 0.01
+	magic.profile.movement_profile.travel_duration = 0.15
 	magic.profile.movement_profile.settle_duration = 0.0
 	var placeholder_sound := AudioStreamWAV.new()
 	context.adapter.arakne_skitter_sound = placeholder_sound
 	var landed_view_coordinates: Array[Vector2i] = []
 	var gesture_commands := {"count": 0}
+	var skitter_visual := {"started": false, "scale_delta": 0.0, "rotation_delta": 0.0}
+	var arakne_view := context.adapter.get_piece_view(arakne) as PieceView
+	var authored_scale := arakne_view.scale
+	var authored_rotation := arakne_view.rotation
 	magic.hand_command_reached.connect(func(): gesture_commands.count += 1)
+	model.skitter_step_started.connect(func(_piece, _from, _to): skitter_visual.started = true)
 	model.piece_landed.connect(func(piece, _from, _to, _gate):
 		if piece == arakne:
 			var piece_view := context.adapter.get_piece_view(piece) as PieceView
@@ -349,9 +354,16 @@ func _test_arakne_staged_skitter_presentation() -> void:
 	controller.select_piece(arakne)
 	await controller._on_square_clicked(Vector2i(4, 5))
 	_expect(controller.legal_moves == arakne.get_skitter_destinations(Vector2i(4, 5)) and Vector2i(4, 5) not in controller.legal_moves, "Skitter staging presents only second-step destination highlights")
-	await controller._on_square_clicked(Vector2i(3, 6))
+	controller._on_square_clicked(Vector2i(3, 6))
+	while model.action_in_progress:
+		if skitter_visual.started:
+			skitter_visual.scale_delta = maxf(skitter_visual.scale_delta, arakne_view.scale.distance_to(authored_scale))
+			skitter_visual.rotation_delta = maxf(skitter_visual.rotation_delta, absf(arakne_view.rotation - authored_rotation))
+		await get_tree().process_frame
 	_expect(landed_view_coordinates == [Vector2i(4, 5), Vector2i(3, 6)], "Skitter completes and presents its intermediate landing before its final landing")
 	_expect(gesture_commands.count == 1, "one magical hand swipe commands both Skitter movement steps")
+	_expect(skitter_visual.scale_delta > 0.01 and skitter_visual.rotation_delta > 0.005, "the gesture-free second step visibly squashes and twitches during its zigzag burst")
+	_expect(arakne_view.scale.is_equal_approx(authored_scale) and is_equal_approx(arakne_view.rotation, authored_rotation), "Skitter restores Arakne's authored transform after the burst")
 	_expect(context.adapter.skitter_sound_player.stream == placeholder_sound, "Skitter's second step invokes its optional presentation sound hook")
 	_expect(model.board[3][6] == arakne and not model.action_in_progress, "presented Skitter resolves as one completed action at its final square")
 	await _destroy_game(context.game)

@@ -30,6 +30,12 @@ var _hand_gesture_running := false
 var _command_reached := false
 var _king_move_released := false
 var _finishing_compound_hand_move := false
+const SKITTER_DURATION_SCALE := 0.68
+const SKITTER_ZIGZAG_AMPLITUDE := 5.0
+const SKITTER_ZIGZAG_CYCLES := 2.0
+const SKITTER_SQUASH_AMOUNT := 0.08
+const SKITTER_SQUASH_CYCLES := 3.0
+const SKITTER_ROTATION_DEGREES := 2.0
 signal hand_command_reached()
 signal king_move_released()
 signal hand_gesture_completed()
@@ -197,7 +203,10 @@ func play_followup_move(to: Vector2i) -> void:
 	king_aura.set_particle_power(move.king_particle_power)
 	king.coordinate = to
 	board.clear_piece_placement(king)
-	await _travel_king(board.grid_to_screen(to.x, to.y), move.travel_duration)
+	await _travel_skitter_king(
+		board.grid_to_screen(to.x, to.y),
+		move.travel_duration * SKITTER_DURATION_SCALE
+	)
 	board._update_piece_depth(king)
 	king_aura.set_silhouette_power(profile.activation_profile.resting_aura_power)
 	king_aura.set_particle_power(profile.activation_profile.resting_particle_power)
@@ -331,6 +340,32 @@ func _travel_king(target: Vector2, duration: float) -> void:
 	tween.tween_method(func(progress: float): king.position = _arc(start, target, progress, profile.movement_profile.lift_height), 0.0, 1.0, duration * board.animation_duration_scale).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
 	king.position = target
+	king.z_index = original_z
+
+
+func _travel_skitter_king(target: Vector2, duration: float) -> void:
+	var start := king.position
+	var authored_scale := king.scale
+	var authored_rotation := king.rotation
+	var original_z := king.z_index
+	var direction := (target - start).normalized()
+	var perpendicular := Vector2(-direction.y, direction.x)
+	var amplitude := SKITTER_ZIGZAG_AMPLITUDE * board.get_world_scale()
+	king.z_index = ChessHandRig.ACTIVE_PIECE_Z
+	var tween := create_tween()
+	tween.tween_method(func(progress: float):
+		var eased := smoothstep(0.0, 1.0, progress)
+		var envelope := sin(PI * progress)
+		var zigzag := sin(TAU * SKITTER_ZIGZAG_CYCLES * progress) * envelope
+		var scuttle := sin(TAU * SKITTER_SQUASH_CYCLES * progress) * envelope
+		king.position = start.lerp(target, eased) + perpendicular * amplitude * zigzag
+		king.scale = authored_scale * Vector2(1.0 + SKITTER_SQUASH_AMOUNT * scuttle, 1.0 - SKITTER_SQUASH_AMOUNT * scuttle)
+		king.rotation = authored_rotation + deg_to_rad(SKITTER_ROTATION_DEGREES) * zigzag
+	, 0.0, 1.0, maxf(duration, 0.01) * board.animation_duration_scale)
+	await tween.finished
+	king.position = target
+	king.scale = authored_scale
+	king.rotation = authored_rotation
 	king.z_index = original_z
 
 
