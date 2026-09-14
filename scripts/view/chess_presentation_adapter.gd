@@ -36,6 +36,8 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var screen_shake: Node
 @export var ability_presentations: Resource = DEFAULT_ABILITY_PRESENTATIONS
 @export var cooldown_presentation_profile: Resource = DEFAULT_COOLDOWN_PRESENTATION
+@export var arakne_skitter_sound: AudioStream
+@export_range(-80.0, 24.0, 0.1) var arakne_skitter_volume_db := 0.0
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -51,9 +53,14 @@ var opponent_presentation: Resource
 var active_king_deaths: Array[Node] = []
 var pending_projectile_defeats: Dictionary = {}
 var presented_promotions: Dictionary = {}
+var skitter_sound_player := AudioStreamPlayer.new()
+var pending_skitter_steps: Dictionary = {}
 
 
 func _ready() -> void:
+	skitter_sound_player.name = "ArakneSkitterSound"
+	skitter_sound_player.bus = &"SFX"
+	add_child(skitter_sound_player)
 	if presentation_policy == null:
 		presentation_policy = PresentationPolicy.new()
 	_apply_presentation_policy()
@@ -62,6 +69,7 @@ func _ready() -> void:
 	model.piece_added.connect(_on_piece_added)
 	model.piece_summoned.connect(_on_piece_summoned)
 	model.piece_move_committed.connect(_on_piece_move_committed)
+	model.skitter_step_started.connect(_on_skitter_step_started)
 	model.piece_castling_committed.connect(_on_piece_castling_committed)
 	model.piece_capture_committed.connect(_on_piece_capture_committed)
 	model.piece_attack_committed.connect(_on_piece_attack_committed)
@@ -169,6 +177,7 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		return
 	if not presentation_policy.should_hold_completion_gate():
 		view.snap_piece_node(piece_node, to, not (piece is KingPiece))
+		pending_skitter_steps.erase(piece)
 		return
 
 	gate.hold()
@@ -177,15 +186,28 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		gate.release()
 		return
 	if piece is KingPiece:
+		var is_skitter_followup := pending_skitter_steps.erase(piece)
 		var magic := _get_king_magic(piece)
 		if magic != null:
-			await magic.play_move(from, to)
+			if is_skitter_followup:
+				await magic.play_followup_move(to)
+			else:
+				await magic.play_move(from, to)
 		else:
 			await _play_unpowered_king_move(piece_node, to)
 		gate.release()
 		return
 	await view.move_piece_node_with_hand(piece_node, from, to)
 	gate.release()
+
+
+func _on_skitter_step_started(piece: ArakneKing, _from: Vector2i, _to: Vector2i) -> void:
+	pending_skitter_steps[piece] = true
+	if arakne_skitter_sound == null:
+		return
+	skitter_sound_player.stream = arakne_skitter_sound
+	skitter_sound_player.volume_db = arakne_skitter_volume_db
+	skitter_sound_player.play()
 
 
 func _on_piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, gate: CompletionGate) -> void:

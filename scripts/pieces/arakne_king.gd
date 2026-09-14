@@ -25,29 +25,46 @@ func _init(color: String, coord: Vector2i):
 	self.passive_ability_name = PASSIVE_ABILITY_NAME
 
 
-## In addition to normal King movement, Arakne can move diagonally from an
-## adjacent empty square. The intermediate and destination squares must be empty.
-##
-## Only genuinely adjacent squares can begin a skitter. This deliberately avoids
-## treating a castling destination from super.get_legal_moves() as the first step.
+## Initial selection exposes only ordinary King destinations. Empty adjacent
+## destinations may then branch into a second, non-capturing diagonal step.
 func get_legal_moves() -> Array:
-	var standard_moves: Array = super.get_legal_moves()
-	var all_moves: Array = standard_moves.duplicate()
+	return super.get_legal_moves()
 
-	for intermediate_coord in model.get_adjacent_squares(coordinate):
-		if model.board[intermediate_coord.x][intermediate_coord.y] != null:
+
+func get_skitter_destinations(intermediate: Vector2i) -> Array[Vector2i]:
+	var destinations: Array[Vector2i] = []
+	for offset in DIAGONAL_OFFSETS:
+		var destination: Vector2i = intermediate + Vector2i(offset)
+		if not model.is_in_bounds(destination.x, destination.y):
 			continue
+		var occupant: ModelPiece = model.board[destination.x][destination.y]
+		# Before the path begins, Arakne still occupies its origin. Treat that
+		# square as a legal return destination; it is empty after step one lands.
+		if occupant == null or occupant == self:
+			destinations.append(destination)
+	return destinations
 
-		for offset in DIAGONAL_OFFSETS:
-			var skitter_coord: Vector2i = intermediate_coord + offset
-			if not model.is_in_bounds(skitter_coord.x, skitter_coord.y):
-				continue
-			if model.board[skitter_coord.x][skitter_coord.y] != null:
-				continue
-			if skitter_coord not in all_moves:
-				all_moves.append(skitter_coord)
 
-	return all_moves
+func can_begin_skitter(intermediate: Vector2i) -> bool:
+	var delta := intermediate - coordinate
+	return (
+		absi(delta.x) <= 1
+		and absi(delta.y) <= 1
+		and delta != Vector2i.ZERO
+		and model.is_in_bounds(intermediate.x, intermediate.y)
+		and model.board[intermediate.x][intermediate.y] == null
+	)
+
+
+func get_legal_move_paths() -> Array:
+	var paths: Array = []
+	for intermediate: Vector2i in get_legal_moves():
+		paths.append([intermediate])
+		if not can_begin_skitter(intermediate):
+			continue
+		for destination in get_skitter_destinations(intermediate):
+			paths.append([intermediate, destination])
+	return paths
 
 
 ## Spike Burst can target one adjacent enemy piece.

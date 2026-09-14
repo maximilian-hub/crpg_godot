@@ -187,6 +187,24 @@ func play_move(from: Vector2i, to: Vector2i, continue_from_current_hand := false
 	await _end_gesture()
 
 
+## Continues an already-commanded compound move without summoning or swiping
+## the hand a second time.
+func play_followup_move(to: Vector2i) -> void:
+	running = true
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(true)
+	var move: Resource = profile.movement_profile
+	king_aura.set_silhouette_power(move.king_silhouette_power)
+	king_aura.set_particle_power(move.king_particle_power)
+	king.coordinate = to
+	board.clear_piece_placement(king)
+	await _travel_king(board.grid_to_screen(to.x, to.y), move.travel_duration)
+	board._update_piece_depth(king)
+	king_aura.set_silhouette_power(profile.activation_profile.resting_aura_power)
+	king_aura.set_particle_power(profile.activation_profile.resting_particle_power)
+	running = false
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(false)
+
+
 func play_capture(from: Vector2i, to: Vector2i, defender: PieceView) -> void:
 	await _begin_gesture(from, to)
 	king.coordinate = to

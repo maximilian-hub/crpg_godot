@@ -66,6 +66,7 @@ func think():
 	thought.piece_coordinate = action.piece.coordinate
 	thought.piece_type_id = action.piece.get_position_type_id()
 	thought.target = action.target
+	thought.path.assign(action.path)
 	thought.score = _score_primary_action(action)
 	last_thought = thought
 	thought_changed.emit(last_thought)
@@ -85,7 +86,7 @@ func execute_thought() -> bool:
 		return false
 	var matching: ChessPrimaryAction = null
 	for action in model.get_legal_primary_actions(controlled_color):
-		if action.kind == last_thought.action_kind and action.target == last_thought.target and action.piece.coordinate == last_thought.piece_coordinate and action.piece.get_position_type_id() == last_thought.piece_type_id:
+		if action.kind == last_thought.action_kind and action.target == last_thought.target and action.path == last_thought.path and action.piece.coordinate == last_thought.piece_coordinate and action.piece.get_position_type_id() == last_thought.piece_type_id:
 			matching = action
 			break
 	clear_thought()
@@ -93,7 +94,10 @@ func execute_thought() -> bool:
 		return false
 	var accepted: bool
 	if matching.kind == ChessPrimaryAction.Kind.MOVE:
-		accepted = await model.submit_move(matching.piece, matching.target)
+		if matching.path.size() > 1:
+			accepted = await model.submit_move_path(matching.piece, matching.path)
+		else:
+			accepted = await model.submit_move(matching.piece, matching.target)
 	else:
 		accepted = await model.submit_active_ability(matching.piece as KingPiece, matching.target)
 	if accepted and execution_mode == ExecutionMode.MANUAL:
@@ -146,7 +150,22 @@ func _score_primary_action(action: ChessPrimaryAction) -> float:
 		score += _get_piece_value(target_piece)
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		score += 0.25
+	elif action.kind == ChessPrimaryAction.Kind.MOVE:
+		score += _score_movement_path(action.piece, action.path)
 	return score
+
+
+## Future terrain evaluators can override or extend this without collapsing
+## routes that share a destination but cross different intermediate squares.
+func _score_movement_path(piece: ModelPiece, path: Array[Vector2i]) -> float:
+	var score := 0.0
+	for step in path:
+		score += _score_landing(piece, step)
+	return score
+
+
+func _score_landing(_piece: ModelPiece, _coordinate: Vector2i) -> float:
+	return 0.0
 
 
 func _get_target_piece(action: ChessPrimaryAction) -> ModelPiece:

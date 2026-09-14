@@ -11,6 +11,8 @@ var active_king: KingPiece = null
 var active_piece: ModelPiece = null
 var last_active_piece: ModelPiece = null
 var legal_moves: Array = []
+var skitter_intermediate := Vector2i(-1, -1)
+var skitter_destinations: Array[Vector2i] = []
 var is_input_locked: bool = false
 var active_ability_selected: bool = false
 var non_move_selection_mode: bool = false
@@ -56,6 +58,9 @@ func _on_square_clicked(coord: Vector2i):
 	if active_ability_selected:
 		await _handle_active_ability_selected_click(coord)
 		return
+	if skitter_intermediate != Vector2i(-1, -1):
+		await _handle_skitter_destination_click(coord)
+		return
 
 	if selected_piece == null:
 		if piece and piece.color == model.current_turn and is_player_controlled(piece.color):
@@ -67,6 +72,16 @@ func _on_square_clicked(coord: Vector2i):
 		return
 
 	if coord in legal_moves:
+		if temp_selected_piece is ArakneKing and piece == null:
+			var arakne := temp_selected_piece as ArakneKing
+			if arakne.can_begin_skitter(coord):
+				var destinations := arakne.get_skitter_destinations(coord)
+				if not destinations.is_empty():
+					skitter_intermediate = coord
+					skitter_destinations.assign(destinations)
+					legal_moves.assign(destinations)
+					selection_targets_changed.emit(legal_moves)
+					return
 		deselect_piece()
 		ordinary_move_submission_started.emit(temp_selected_piece, coord)
 		var accepted := await model.submit_move(temp_selected_piece, coord)
@@ -95,6 +110,7 @@ func _handle_active_ability_selected_click(coord: Vector2i):
 
 func select_piece(piece: ModelPiece):
 	if piece.stunned == false and is_player_controlled(piece.color):
+		_clear_skitter_selection()
 		selected_piece = piece
 		legal_moves = _get_primary_targets(ChessPrimaryAction.Kind.MOVE, selected_piece)
 		selection_targets_changed.emit(legal_moves)
@@ -104,6 +120,33 @@ func deselect_piece():
 	selection_cleared.emit()
 	selected_piece = null
 	legal_moves.clear()
+	_clear_skitter_selection()
+
+
+func _handle_skitter_destination_click(coord: Vector2i) -> void:
+	var arakne := selected_piece as ArakneKing
+	if not is_instance_valid(arakne):
+		deselect_piece()
+		return
+	var intermediate := skitter_intermediate
+	if coord != intermediate and coord not in skitter_destinations:
+		deselect_piece()
+		return
+	var final_target := coord
+	deselect_piece()
+	ordinary_move_submission_started.emit(arakne, final_target)
+	var accepted: bool
+	if final_target == intermediate:
+		accepted = await model.submit_move(arakne, intermediate)
+	else:
+		var path: Array[Vector2i] = [intermediate, final_target]
+		accepted = await model.submit_move_path(arakne, path)
+	ordinary_move_submission_finished.emit(arakne, final_target, accepted)
+
+
+func _clear_skitter_selection() -> void:
+	skitter_intermediate = Vector2i(-1, -1)
+	skitter_destinations.clear()
 
 func _on_white_active_button_pressed() -> void:
 	if model.battle_over:
@@ -166,6 +209,7 @@ func _on_board_rebuilt(_board: Array) -> void:
 	active_piece = null
 	last_active_piece = null
 	legal_moves.clear()
+	_clear_skitter_selection()
 	active_ability_selected = false
 	non_move_selection_mode = false
 	is_input_locked = model.battle_over
@@ -175,6 +219,8 @@ func is_player_controlled(color: String) -> bool:
 	return color in player_controlled_colors
 
 func _get_primary_targets(kind: ChessPrimaryAction.Kind, piece: ModelPiece) -> Array:
+	if kind == ChessPrimaryAction.Kind.MOVE and piece is ArakneKing:
+		return piece.get_legal_moves()
 	var targets: Array = []
 	for action in model.get_legal_primary_actions(model.current_turn):
 		if action.kind == kind and action.piece == piece:

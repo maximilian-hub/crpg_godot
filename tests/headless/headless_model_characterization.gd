@@ -23,6 +23,7 @@ func _run() -> void:
 	await _test_turn_entry_recovery_prevents_pass()
 	await _test_nonlethal_combat()
 	await _test_lethal_damage_event_order()
+	await _test_arakne_staged_controller_selection()
 	await _test_special_moves()
 	await _test_minotaur_charge_landing()
 	await _test_headless_rage()
@@ -266,14 +267,89 @@ func _test_headless_reaction_priority() -> void:
 	await model.submit_reaction_selection(target)
 	model.free()
 
+func _test_arakne_staged_controller_selection() -> void:
+	var model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	model.add_piece(arakne, arakne.coordinate)
+	model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	var controller := ChessBoardController.new()
+	controller.model = model
+	add_child(controller)
+	controller.select_piece(arakne)
+	_expect(Vector2i(4, 6) not in controller.legal_moves and Vector2i(4, 5) in controller.legal_moves, "initial Arakne selection shows ordinary King moves but not remote skitter endpoints")
+	await controller._on_square_clicked(Vector2i(4, 5))
+	var expected_skitter := arakne.get_skitter_destinations(Vector2i(4, 5))
+	_expect(controller.skitter_intermediate == Vector2i(4, 5) and controller.legal_moves == expected_skitter, "choosing an empty first step replaces initial highlights with only its skitter destinations")
+	_expect(Vector2i(4, 5) not in controller.legal_moves, "the unhighlighted intermediate remains a separate confirmation target")
+	await controller._on_square_clicked(Vector2i(4, 3))
+	_expect(controller.selected_piece == null and controller.skitter_intermediate == Vector2i(-1, -1), "clicking another initial King square cancels staged Skitter selection")
+	controller.select_piece(arakne)
+	await controller._on_square_clicked(Vector2i(4, 5))
+	await controller._on_square_clicked(Vector2i(4, 5))
+	_expect(arakne.coordinate == Vector2i(4, 5) and model.current_turn == "black", "clicking the intermediate again confirms a one-square move")
+	controller.queue_free()
+	model.free()
+
+	var blocked_model := _new_empty_model()
+	var blocked_arakne := ArakneKing.new("white", Vector2i(4, 4))
+	blocked_model.add_piece(blocked_arakne, blocked_arakne.coordinate)
+	blocked_model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	for blocker_coord in [Vector2i(3, 4), Vector2i(3, 6), Vector2i(5, 4), Vector2i(5, 6)]:
+		blocked_model.add_piece(Pawn.new("white", blocker_coord), blocker_coord)
+	var blocked_controller := ChessBoardController.new()
+	blocked_controller.model = blocked_model
+	add_child(blocked_controller)
+	blocked_controller.select_piece(blocked_arakne)
+	await blocked_controller._on_square_clicked(Vector2i(4, 5))
+	_expect(blocked_arakne.coordinate == Vector2i(4, 5) and blocked_controller.skitter_intermediate == Vector2i(-1, -1), "an empty first square with no skitter options moves immediately")
+	blocked_controller.queue_free()
+	blocked_model.free()
+
+
 func _test_special_moves() -> void:
 	var skitter_model := _new_empty_model()
-	var arakne := ArakneKing.new("white", Vector2i(7, 4))
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
 	skitter_model.add_piece(arakne, arakne.coordinate)
-	_expect(Vector2i(7, 6) in arakne.get_legal_moves(), "Arakne can skitter two files from its home square without a rook")
-	_expect(await skitter_model.submit_move(arakne, Vector2i(7, 6)), "Arakne home-file skitter is accepted as an ordinary move")
-	_expect(skitter_model.board[7][6] == arakne, "Arakne home-file skitter moves only the King")
+	var shared_destination := Vector2i(4, 6)
+	_expect(shared_destination not in arakne.get_legal_moves(), "Arakne no longer exposes remote skitter endpoints as ordinary King moves")
+	_expect(not (await skitter_model.submit_move(arakne, shared_destination)), "remote Skitter endpoints cannot bypass path selection through ordinary move submission")
+	var shared_paths: Array = []
+	for action in skitter_model.get_legal_primary_actions("white"):
+		if action.kind == ChessPrimaryAction.Kind.MOVE and action.target == shared_destination:
+			shared_paths.append(action.path)
+	_expect(shared_paths.size() == 2 and shared_paths[0] != shared_paths[1], "same-destination skitter routes remain distinct path-aware actions")
+	var movement_events: Array[Vector2i] = []
+	var skitter_events := {"count": 0}
+	skitter_model.piece_move_committed.connect(func(_piece, _from, to, _gate): movement_events.append(to))
+	skitter_model.skitter_step_started.connect(func(_piece, _from, _to): skitter_events.count += 1)
+	var selected_path: Array[Vector2i] = []
+	selected_path.assign(shared_paths[0])
+	_expect(await skitter_model.submit_move_path(arakne, selected_path), "Arakne accepts an exact legal two-step path")
+	_expect(movement_events == selected_path and skitter_events.count == 1 and skitter_model.board[shared_destination.x][shared_destination.y] == arakne, "Skitter commits both landings in order and marks only its second step")
 	skitter_model.free()
+
+	var return_model := _new_empty_model()
+	var returning_arakne := ArakneKing.new("white", Vector2i(4, 4))
+	return_model.add_piece(returning_arakne, returning_arakne.coordinate)
+	var return_path: Array[Vector2i] = [Vector2i(3, 5), Vector2i(4, 4)]
+	_expect(return_path in returning_arakne.get_legal_move_paths(), "Skitter may intentionally return to Arakne's occupied origin")
+	_expect(await return_model.submit_move_path(returning_arakne, return_path), "the model accepts a legal return-to-origin Skitter path")
+	_expect(returning_arakne.coordinate == Vector2i(4, 4) and return_model.last_move.get("from") == return_model.last_move.get("to"), "returning Skitter resolves both landings and records its actual origin destination")
+	return_model.free()
+
+	var interrupted_model := _new_empty_model()
+	var interrupted_arakne := ArakneKing.new("white", Vector2i(4, 4))
+	interrupted_model.add_piece(interrupted_arakne, interrupted_arakne.coordinate)
+	var interrupted_path: Array[Vector2i] = [Vector2i(4, 5), Vector2i(3, 6)]
+	var interrupted_skitter_events := {"count": 0}
+	interrupted_model.piece_landed.connect(func(piece, _from, to, _gate):
+		if piece == interrupted_arakne and to == interrupted_path[0]:
+			piece.stunned = true)
+	interrupted_model.skitter_step_started.connect(func(_piece, _from, _to): interrupted_skitter_events.count += 1)
+	_expect(await interrupted_model.submit_move_path(interrupted_arakne, interrupted_path), "a legal path remains an accepted action when its first landing has consequences")
+	_expect(interrupted_arakne.coordinate == interrupted_path[0] and interrupted_skitter_events.count == 0, "an intermediate landing consequence can stop Skitter before step two")
+	_expect(interrupted_model.last_move.from == Vector2i(4, 4) and interrupted_model.last_move.to == interrupted_path[0], "an interrupted Skitter records its actual final landing")
+	interrupted_model.free()
 
 	var castle_model := _new_empty_model()
 	var king := ClassicKing.new("white", Vector2i(7, 4))

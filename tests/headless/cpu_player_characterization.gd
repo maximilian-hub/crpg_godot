@@ -7,6 +7,7 @@ var checks: int = 0
 func _ready() -> void:
 	await _test_authoritative_primary_actions()
 	await _test_cpu_capture_and_tie_breaking()
+	await _test_cpu_preserves_skitter_path_identity()
 	await _test_cpu_active_ability()
 	await _test_forced_pass_with_no_legal_action()
 	await _test_forced_pass_deadlock_draw()
@@ -91,6 +92,40 @@ func _test_cpu_active_ability() -> void:
 	await _wait_frames(3)
 	_expect(model.board[3][3] == null, "CPU active ability resolves its target")
 	_expect(arakne.coordinate == Vector2i(4, 4) and arakne.cooldown_reset_pending, "CPU used the active ability and scheduled its recharge rather than making a normal capture")
+	cpu.queue_free()
+	model.free()
+
+
+func _test_cpu_preserves_skitter_path_identity() -> void:
+	var model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	arakne.set_cooldown(1)
+	model.add_piece(arakne, arakne.coordinate)
+	model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	var shared_destination := Vector2i(4, 6)
+	var candidates: Array[ChessPrimaryAction] = []
+	for action in model.get_legal_primary_actions("white"):
+		if action.kind == ChessPrimaryAction.Kind.MOVE and action.target == shared_destination:
+			candidates.append(action)
+	_expect(candidates.size() == 2 and candidates[0].path != candidates[1].path, "CPU receives same-destination Skitter routes as distinct candidates")
+	var cpu := _add_cpu(model, "white", false)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	var selected := cpu.choose_primary_action(candidates)
+	var thought := ChessAiThought.new()
+	thought.model_revision = model.position_revision
+	thought.color = "white"
+	thought.action_kind = selected.kind
+	thought.piece_coordinate = arakne.coordinate
+	thought.piece_type_id = arakne.get_position_type_id()
+	thought.target = selected.target
+	thought.path.assign(selected.path)
+	cpu.last_thought = thought
+	var landings: Array[Vector2i] = []
+	model.piece_landed.connect(func(piece, _from, to, _gate):
+		if piece == arakne:
+			landings.append(to))
+	_expect(await cpu.execute_thought(), "CPU executes a path-aware Skitter thought")
+	_expect(landings == selected.path, "CPU executes the exact intermediate route retained by its thought")
 	cpu.queue_free()
 	model.free()
 

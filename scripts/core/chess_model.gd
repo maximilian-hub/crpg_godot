@@ -29,6 +29,8 @@ signal settled_action_completed()
 signal piece_added(piece: ModelPiece)
 signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
 signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_landed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal skitter_step_started(piece: ArakneKing, from: Vector2i, to: Vector2i)
 signal piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, completion: CompletionGate)
 signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, completion: CompletionGate)
 signal piece_attack_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
@@ -345,8 +347,11 @@ func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 			if piece == null or piece.color != color or piece.stunned or not is_piece_active(piece):
 				continue
 
-			for target in get_legal_moves(piece):
-				actions.append(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, target))
+			for raw_path in piece.get_legal_move_paths():
+				var path: Array[Vector2i] = []
+				path.assign(raw_path)
+				if not path.is_empty():
+					actions.append(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, path.back(), path))
 
 			if piece is KingPiece:
 				var king := piece as KingPiece
@@ -537,6 +542,46 @@ func submit_move(piece: ModelPiece, to: Vector2i) -> bool:
 	await move_piece(piece, to)
 	return true
 
+
+func submit_move_path(piece: ModelPiece, path: Array[Vector2i]) -> bool:
+	if not is_piece_active(piece) or piece.color != current_turn or piece.stunned:
+		return false
+	if action_in_progress or battle_over or path.size() != 2:
+		return false
+	var legal := false
+	for action in get_legal_primary_actions(current_turn):
+		if action.kind == ChessPrimaryAction.Kind.MOVE and action.piece == piece and action.path == path:
+			legal = true
+			break
+	if not legal:
+		return false
+	await move_piece_path(piece, path)
+	return true
+
+
+func move_piece_path(piece: ModelPiece, path: Array[Vector2i]) -> void:
+	if not piece is ArakneKing or path.size() != 2 or not begin_action(piece.color):
+		return
+	var arakne := piece as ArakneKing
+	var origin := arakne.coordinate
+	var intermediate := path[0]
+	var destination := path[1]
+	await actually_move_piece(arakne, intermediate)
+	var final_landing := intermediate
+	if (
+		is_piece_active(arakne)
+		and not battle_over
+		and not arakne.stunned
+		and arakne.coordinate == intermediate
+		and destination in arakne.get_skitter_destinations(intermediate)
+	):
+		skitter_step_started.emit(arakne, intermediate, destination)
+		await actually_move_piece(arakne, destination)
+		if arakne.coordinate == destination:
+			final_landing = destination
+	update_last_move(arakne, origin, final_landing)
+	await continue_action_resolution()
+
 ## Entry point for a king's active ability.
 func perform_active_ability(king: KingPiece, target: Vector2i):
 	if not is_instance_valid(king):
@@ -592,6 +637,13 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		completion.close()
 		await completion.wait_until_released()
 		print("Animation finished for piece: ", piece.type)
+
+		var landing_completion := CompletionGate.new()
+		piece_landed.emit(piece, from, to, landing_completion)
+		landing_completion.close()
+		await landing_completion.wait_until_released()
+		if not is_piece_active(piece) or piece.coordinate != to:
+			return
 
 		# Bone Pawns expire inside the action that moved them, before reactions drain.
 		if piece is BonePawn and piece._on_dead_row():

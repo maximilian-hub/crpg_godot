@@ -7,4 +7,5 @@ var action_kind: ChessPrimaryAction.Kind
 var piece_coordinate: Vector2i
 var piece_type_id: StringName
 var target: Vector2i
+var path: Array[Vector2i] = []
 var score: float

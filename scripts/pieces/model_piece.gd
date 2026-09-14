@@ -72,6 +72,14 @@ func restore_custom_state(_state: Dictionary) -> void:
 func get_legal_moves() -> Array:
 	return []
 
+## Ordered landing paths for legal movement actions. Most pieces have one
+## landing; multi-step pieces override this without flattening route identity.
+func get_legal_move_paths() -> Array:
+	var paths: Array = []
+	for destination in get_legal_moves():
+		paths.append([destination])
+	return paths
+
 func take_damage(damage: int = 1):
 	current_hp -= damage
 	# Damage presentation belongs to the hit regardless of whether the piece

@@ -39,6 +39,7 @@ func _run_suite() -> void:
 	await _test_player_hand_castling_presentation()
 	await _test_player_hand_promotion_presentation()
 	await _test_diegetic_king_cooldown_presentation()
+	await _test_arakne_staged_skitter_presentation()
 	await _test_player_hand_capture_presentation()
 	await _test_surrounded_knight_depth_presentation()
 	await _test_ai_configuration_and_turns()
@@ -319,6 +320,40 @@ func _test_diegetic_king_cooldown_presentation() -> void:
 	for _frame in range(180): await get_tree().process_frame
 	_expect(mote.position.distance_to(cooldown._desired_position(mote)) < 24.0, "trailing motes catch up and settle near their moving orbit targets")
 
+	await _destroy_game(context.game)
+
+
+func _test_arakne_staged_skitter_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var controller: ChessBoardController = context.controller
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	var black_king := ClassicKing.new("black", Vector2i(0, 0))
+	_reset_battle(model, controller, [arakne, black_king])
+	var magic: ChessKingMagicController = context.adapter.get_king_magic_controller("white")
+	magic.profile.movement_profile.hand_approach_duration = 0.01
+	magic.profile.movement_profile.gesture_lock_duration = 0.0
+	magic.profile.movement_profile.gesture_duration = 0.01
+	magic.profile.movement_profile.king_move_delay = 0.0
+	magic.profile.movement_profile.travel_duration = 0.01
+	magic.profile.movement_profile.settle_duration = 0.0
+	var placeholder_sound := AudioStreamWAV.new()
+	context.adapter.arakne_skitter_sound = placeholder_sound
+	var landed_view_coordinates: Array[Vector2i] = []
+	var gesture_commands := {"count": 0}
+	magic.hand_command_reached.connect(func(): gesture_commands.count += 1)
+	model.piece_landed.connect(func(piece, _from, _to, _gate):
+		if piece == arakne:
+			var piece_view := context.adapter.get_piece_view(piece) as PieceView
+			landed_view_coordinates.append(piece_view.coordinate))
+	controller.select_piece(arakne)
+	await controller._on_square_clicked(Vector2i(4, 5))
+	_expect(controller.legal_moves == arakne.get_skitter_destinations(Vector2i(4, 5)) and Vector2i(4, 5) not in controller.legal_moves, "Skitter staging presents only second-step destination highlights")
+	await controller._on_square_clicked(Vector2i(3, 6))
+	_expect(landed_view_coordinates == [Vector2i(4, 5), Vector2i(3, 6)], "Skitter completes and presents its intermediate landing before its final landing")
+	_expect(gesture_commands.count == 1, "one magical hand swipe commands both Skitter movement steps")
+	_expect(context.adapter.skitter_sound_player.stream == placeholder_sound, "Skitter's second step invokes its optional presentation sound hook")
+	_expect(model.board[3][6] == arakne and not model.action_in_progress, "presented Skitter resolves as one completed action at its final square")
 	await _destroy_game(context.game)
 
 
