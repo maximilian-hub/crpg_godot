@@ -4,10 +4,11 @@ class_name DialogueView
 enum Placement { BOTTOM, TOP, CENTER, BATTLE_NEAR, BATTLE_FAR }
 
 const REFERENCE_HEIGHT := 180
-const MAX_PANEL_WIDTH := 304
-const PANEL_HEIGHT := 58
+const MAX_PRESENTATION_WIDTH := 304
 const OUTER_MARGIN := 8
-const PORTRAIT_SIZE := 48
+const DEFAULT_SKIN := preload("res://assets/ui/dialogue/dialogue_skin_provisional.tres")
+
+@export var skin: Resource = DEFAULT_SKIN
 
 var placement := Placement.BOTTOM
 var content_stage: Control
@@ -15,17 +16,21 @@ var dialogue_panel: Panel
 var portrait_panel: Panel
 var portrait_texture: TextureRect
 var empty_portrait: Control
+var empty_portrait_texture: TextureRect
 var speaker_plate: Panel
 var speaker_label: Label
 var dialogue_text: RichTextLabel
+var text_interior: TextureRect
 var choice_label: Label
 var continue_indicator: Label
+var continue_indicator_texture: TextureRect
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_view()
+	_apply_skin()
 	get_viewport().size_changed.connect(_layout_from_viewport)
 	_layout_from_viewport()
 
@@ -39,7 +44,16 @@ func configure(speaker: String, identified: bool, text: String, portrait: Textur
 	empty_portrait.visible = portrait == null
 	choice_label.text = "   ".join(choices)
 	choice_label.visible = not choices.is_empty()
-	continue_indicator.visible = choices.is_empty()
+	continue_indicator.visible = choices.is_empty() and skin.continue_indicator_texture == null
+	continue_indicator_texture.visible = choices.is_empty() and skin.continue_indicator_texture != null
+
+
+func set_skin(value: Resource) -> void:
+	skin = value if value != null else DEFAULT_SKIN
+	_ensure_built()
+	_apply_skin()
+	if is_inside_tree():
+		_layout_from_viewport()
 
 
 func set_placement(value: Placement) -> void:
@@ -50,43 +64,51 @@ func set_placement(value: Placement) -> void:
 
 func apply_window_size(window_size: Vector2i) -> void:
 	_ensure_built()
-	var layout := calculate_layout(window_size, placement)
+	var layout := calculate_layout(window_size, placement, skin)
 	content_stage.position = Vector2.ZERO
 	content_stage.size = Vector2(layout.logical_size)
 	content_stage.scale = Vector2.ONE * layout.ui_scale
-	dialogue_panel.position = layout.panel_rect.position
-	dialogue_panel.size = layout.panel_rect.size
-	_layout_panel_contents(layout.panel_rect.size)
+	portrait_panel.position = layout.portrait_rect.position
+	portrait_panel.size = layout.portrait_rect.size
+	dialogue_panel.position = layout.text_rect.position
+	dialogue_panel.size = layout.text_rect.size
+	_layout_panel_contents()
 
 
-static func calculate_layout(window_size: Vector2i, requested_placement: Placement = Placement.BOTTOM) -> Dictionary:
+static func calculate_layout(window_size: Vector2i, requested_placement: Placement = Placement.BOTTOM, requested_skin: Resource = null) -> Dictionary:
+	var active_skin: Resource = requested_skin if requested_skin != null else DEFAULT_SKIN
 	var safe_window := Vector2i(maxi(1, window_size.x), maxi(1, window_size.y))
 	var ui_scale := maxi(1, floori(float(safe_window.y) / REFERENCE_HEIGHT))
 	var logical_size := Vector2i(
 		maxi(1, floori(float(safe_window.x) / ui_scale)),
 		maxi(1, floori(float(safe_window.y) / ui_scale))
 	)
-	var panel_width := mini(MAX_PANEL_WIDTH, maxi(1, logical_size.x - OUTER_MARGIN * 2))
-	var panel_height := mini(PANEL_HEIGHT, maxi(1, logical_size.y - OUTER_MARGIN * 2))
-	var panel_x := floori((logical_size.x - panel_width) * 0.5)
-	var panel_y := logical_size.y - panel_height - OUTER_MARGIN
+	var group_width := mini(MAX_PRESENTATION_WIDTH, maxi(1, logical_size.x - OUTER_MARGIN * 2))
+	var group_height := mini(active_skin.panel_height, maxi(1, logical_size.y - OUTER_MARGIN * 2))
+	var portrait_width := mini(group_width, maxi(1, roundi(group_height * active_skin.portrait_aspect_ratio)))
+	var text_width := maxi(1, group_width - portrait_width + active_skin.panel_join_overlap)
+	var group_x := floori((logical_size.x - group_width) * 0.5)
+	var group_y := logical_size.y - group_height - OUTER_MARGIN
 	match requested_placement:
 		Placement.TOP, Placement.BATTLE_FAR:
-			panel_y = OUTER_MARGIN
+			group_y = OUTER_MARGIN
 		Placement.CENTER:
-			panel_y = floori((logical_size.y - panel_height) * 0.5)
+			group_y = floori((logical_size.y - group_height) * 0.5)
 		Placement.BOTTOM, Placement.BATTLE_NEAR:
 			pass
 	return {
 		"ui_scale": ui_scale,
 		"logical_size": logical_size,
-		"panel_rect": Rect2i(panel_x, panel_y, panel_width, panel_height),
+		"group_rect": Rect2i(group_x, group_y, group_width, group_height),
+		"portrait_rect": Rect2i(group_x, group_y, portrait_width, group_height),
+		"text_rect": Rect2i(group_x + portrait_width - active_skin.panel_join_overlap, group_y, text_width, group_height),
 	}
 
 
 func _ensure_built() -> void:
 	if content_stage == null:
 		_build_view()
+		_apply_skin()
 
 
 func _build_view() -> void:
@@ -97,103 +119,126 @@ func _build_view() -> void:
 	content_stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(content_stage)
 
-	dialogue_panel = Panel.new()
-	dialogue_panel.name = "DialoguePanel"
-	dialogue_panel.add_theme_stylebox_override("panel", _box(Color("17191d"), Color("899097"), 2, 2))
-	content_stage.add_child(dialogue_panel)
-
 	portrait_panel = Panel.new()
 	portrait_panel.name = "PortraitPanel"
-	portrait_panel.add_theme_stylebox_override("panel", _box(Color("292d32"), Color("a8afb5"), 2, 1))
-	dialogue_panel.add_child(portrait_panel)
-
+	content_stage.add_child(portrait_panel)
 	portrait_texture = TextureRect.new()
 	portrait_texture.name = "PortraitTexture"
 	portrait_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait_texture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	portrait_panel.add_child(portrait_texture)
-
 	empty_portrait = Control.new()
 	empty_portrait.name = "EmptyPortrait"
 	portrait_panel.add_child(empty_portrait)
+	empty_portrait_texture = TextureRect.new()
+	empty_portrait_texture.name = "EmptyPortraitTexture"
+	empty_portrait_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	empty_portrait_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	empty_portrait_texture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	empty_portrait.add_child(empty_portrait_texture)
 	var silhouette := Label.new()
 	silhouette.name = "Silhouette"
 	silhouette.text = "?"
 	silhouette.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	silhouette.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	silhouette.modulate = Color("6f757b")
-	silhouette.add_theme_font_size_override("font_size", 26)
-	silhouette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	empty_portrait.add_child(silhouette)
 
+	dialogue_panel = Panel.new()
+	dialogue_panel.name = "TextPanel"
+	content_stage.add_child(dialogue_panel)
+	text_interior = TextureRect.new()
+	text_interior.name = "TextInterior"
+	text_interior.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	text_interior.stretch_mode = TextureRect.STRETCH_TILE
+	text_interior.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	text_interior.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dialogue_panel.add_child(text_interior)
 	dialogue_text = RichTextLabel.new()
 	dialogue_text.name = "DialogueText"
 	dialogue_text.fit_content = false
 	dialogue_text.scroll_active = false
 	dialogue_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	dialogue_text.add_theme_font_size_override("normal_font_size", 8)
-	dialogue_text.add_theme_color_override("default_color", Color("f0eee8"))
 	dialogue_panel.add_child(dialogue_text)
-
 	choice_label = Label.new()
 	choice_label.name = "ChoiceList"
 	choice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	choice_label.add_theme_font_size_override("font_size", 7)
-	choice_label.modulate = Color("d8c590")
 	dialogue_panel.add_child(choice_label)
-
 	continue_indicator = Label.new()
 	continue_indicator.name = "ContinueIndicator"
 	continue_indicator.text = "▼"
 	continue_indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	continue_indicator.add_theme_font_size_override("font_size", 7)
 	dialogue_panel.add_child(continue_indicator)
+	continue_indicator_texture = TextureRect.new()
+	continue_indicator_texture.name = "ContinueIndicatorTexture"
+	continue_indicator_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	continue_indicator_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	continue_indicator_texture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	dialogue_panel.add_child(continue_indicator_texture)
 
 	speaker_plate = Panel.new()
 	speaker_plate.name = "SpeakerPlate"
-	speaker_plate.add_theme_stylebox_override("panel", _box(Color("b6b9b8"), Color("555b61"), 1, 1))
-	dialogue_panel.add_child(speaker_plate)
+	content_stage.add_child(speaker_plate)
 	speaker_label = Label.new()
 	speaker_label.name = "SpeakerLabel"
 	speaker_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	speaker_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	speaker_label.add_theme_font_size_override("font_size", 8)
-	speaker_label.add_theme_color_override("font_color", Color("191b1e"))
 	speaker_plate.add_child(speaker_label)
+
+
+func _apply_skin() -> void:
+	if skin == null:
+		skin = DEFAULT_SKIN
+	dialogue_panel.add_theme_stylebox_override("panel", skin.text_panel_style)
+	portrait_panel.add_theme_stylebox_override("panel", skin.portrait_panel_style)
+	speaker_plate.add_theme_stylebox_override("panel", skin.name_plate_style)
+	text_interior.texture = skin.text_interior_texture
+	text_interior.visible = skin.text_interior_texture != null
+	empty_portrait_texture.texture = skin.empty_portrait_texture
+	empty_portrait_texture.visible = skin.empty_portrait_texture != null
+	continue_indicator_texture.texture = skin.continue_indicator_texture
+	if skin.body_font != null:
+		dialogue_text.add_theme_font_override("normal_font", skin.body_font)
+	if skin.name_font != null:
+		speaker_label.add_theme_font_override("font", skin.name_font)
+	dialogue_text.add_theme_font_size_override("normal_font_size", skin.body_font_size)
+	dialogue_text.add_theme_color_override("default_color", skin.body_color)
+	speaker_label.add_theme_font_size_override("font_size", skin.name_font_size)
+	speaker_label.add_theme_color_override("font_color", skin.name_color)
+	choice_label.add_theme_font_size_override("font_size", skin.choice_font_size)
+	choice_label.modulate = skin.choice_color
+	var silhouette := empty_portrait.get_node("Silhouette") as Label
+	silhouette.visible = skin.empty_portrait_texture == null
+	silhouette.modulate = skin.empty_portrait_color
+	silhouette.add_theme_font_size_override("font_size", 26)
 
 
 func _layout_from_viewport() -> void:
 	apply_window_size(Vector2i(get_viewport_rect().size))
 
 
-func _layout_panel_contents(panel_size: Vector2) -> void:
-	var portrait_side := minf(PORTRAIT_SIZE, panel_size.y - 8.0)
-	portrait_panel.position = Vector2(4, 4)
-	portrait_panel.size = Vector2(portrait_side, portrait_side)
-	portrait_texture.position = Vector2(2, 2)
-	portrait_texture.size = portrait_panel.size - Vector2(4, 4)
-	empty_portrait.position = Vector2(2, 2)
-	empty_portrait.size = portrait_panel.size - Vector2(4, 4)
+func _layout_panel_contents() -> void:
+	var portrait_padding := float(skin.portrait_inner_padding)
+	portrait_texture.position = Vector2.ONE * portrait_padding
+	portrait_texture.size = portrait_panel.size - Vector2.ONE * portrait_padding * 2.0
+	empty_portrait.position = Vector2.ONE * portrait_padding
+	empty_portrait.size = portrait_panel.size - Vector2.ONE * portrait_padding * 2.0
+	empty_portrait_texture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	(empty_portrait.get_node("Silhouette") as Label).set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	var text_left := portrait_panel.position.x + portrait_panel.size.x + 6.0
-	var text_width := maxf(1.0, panel_size.x - text_left - 6.0)
-	speaker_plate.position = Vector2(text_left - 2.0, -5.0)
-	speaker_plate.size = Vector2(minf(92.0, text_width + 2.0), 13.0)
+	var padding := float(skin.panel_inner_padding)
+	text_interior.position = Vector2.ONE * padding
+	text_interior.size = dialogue_panel.size - Vector2.ONE * padding * 2.0
+	dialogue_text.position = Vector2(padding, padding + 2.0)
+	dialogue_text.size = Vector2(maxf(1.0, dialogue_panel.size.x - padding * 2.0), maxf(1.0, dialogue_panel.size.y - padding * 2.0 - 12.0))
+	choice_label.position = Vector2(padding, dialogue_panel.size.y - padding - 9.0)
+	choice_label.size = Vector2(maxf(1.0, dialogue_panel.size.x - padding * 2.0 - 12.0), 9.0)
+	continue_indicator.position = Vector2(dialogue_panel.size.x - padding - 9.0, dialogue_panel.size.y - padding - 9.0)
+	continue_indicator.size = Vector2(9, 9)
+	continue_indicator_texture.position = continue_indicator.position
+	continue_indicator_texture.size = continue_indicator.size
+
+	speaker_plate.position = dialogue_panel.position + Vector2(skin.name_plate_offset)
+	speaker_plate.size = Vector2(skin.name_plate_size)
 	speaker_label.position = Vector2(5, 0)
 	speaker_label.size = speaker_plate.size - Vector2(10, 0)
-	dialogue_text.position = Vector2(text_left, 10)
-	dialogue_text.size = Vector2(text_width, maxf(1.0, panel_size.y - 24.0))
-	choice_label.position = Vector2(text_left, panel_size.y - 13.0)
-	choice_label.size = Vector2(text_width - 14.0, 10.0)
-	continue_indicator.position = Vector2(panel_size.x - 14.0, panel_size.y - 13.0)
-	continue_indicator.size = Vector2(10, 10)
-
-
-func _box(fill: Color, border: Color, border_width: int, corner_radius: int) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = fill
-	style.border_color = border
-	style.set_border_width_all(border_width)
-	style.set_corner_radius_all(corner_radius)
-	return style

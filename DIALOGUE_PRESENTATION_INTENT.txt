@@ -94,13 +94,16 @@ Dialogue data should provide content, speaker, portrait, choices, and preferred
 placement. A presentation skin should provide the frame, typography, colors,
 sounds, ornaments, and animation.
 
-The ordinary dialogue layout should reserve a bordered portrait panel on the
-left and place a left-justified text well to its right. The portrait panel should
-always remain visible. A dedicated empty-state asset will eventually fill it for
-off-screen, unknown, or otherwise unpictured speakers so absence does not look
-like a missing asset. A small nameplate should overlap the upper-left border like
-a physical plaque and display the current speaker's known name, or "???" when
-the speaker has not been identified.
+The ordinary dialogue layout should use connected, equal-height portrait and
+text panels rather than placing the portrait inside a larger enclosing box. The
+bordered portrait panel remains visible on the left and the left-justified text
+panel meets it at a shared seam. Portrait assets use the 3:4 aspect ratio
+established by the 96x128 hood test portrait. A dedicated empty-state asset will
+eventually fill the portrait panel for off-screen, unknown, or otherwise
+unpictured speakers so absence does not look like a missing asset. A small
+nameplate should sit on top of and slightly overlap the text panel's upper-left
+border like a physical plaque. It displays the current speaker's known name, or
+"???" when the speaker has not been identified.
 
 Portrait selection belongs to authored dialogue data rather than to the view.
 A character may have multiple expression portraits, and the selected expression
@@ -149,9 +152,16 @@ later need more identity, use compatible DialogueSkin resources rather than
 forking the dialogue system. A battle variant may add heavier side ornaments,
 King aura colors, or portrait plaques while retaining the same visual language.
 
+DialogueSkin should expose independently replaceable StyleBox resources for the
+text panel, portrait panel, and name plaque. Asset-backed StyleBoxTextures can
+therefore replace provisional StyleBoxFlat frames without changing view
+structure. The text interior, empty portrait, continue indicator, and fonts
+should likewise be replaceable skin assets, while spacing and proportions remain
+logical integer values.
+
 Useful placement modes may eventually include:
 
-* BOTTOM for ordinary overworld conversation.
+* BOTTOM for ordinary overworld conversation. This is the approved default.
 * TOP when a lower panel would hide important action.
 * BATTLE_NEAR and BATTLE_FAR for dialogue associated with either side of the
   chess table.

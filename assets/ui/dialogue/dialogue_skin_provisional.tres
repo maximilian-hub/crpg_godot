@@ -1,0 +1,55 @@
+[gd_resource type="Resource" script_class="DialogueSkin" load_steps=5 format=3 uid="uid://cx87ll542jthv"]
+
+[ext_resource type="Script" path="res://scripts/ui/dialogue_skin.gd" id="1_skin"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_plate"]
+bg_color = Color(0.713726, 0.72549, 0.721569, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.333333, 0.356863, 0.380392, 1)
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_right = 1
+corner_radius_bottom_left = 1
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_portrait"]
+bg_color = Color(0.160784, 0.176471, 0.196078, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.658824, 0.686275, 0.709804, 1)
+corner_radius_top_left = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_text"]
+bg_color = Color(0.0901961, 0.0980392, 0.113725, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.537255, 0.564706, 0.592157, 1)
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+
+[resource]
+script = ExtResource("1_skin")
+text_panel_style = SubResource("StyleBox_text")
+portrait_panel_style = SubResource("StyleBox_portrait")
+name_plate_style = SubResource("StyleBox_plate")
+portrait_aspect_ratio = 0.75
+panel_height = 64
+panel_join_overlap = 2
+panel_inner_padding = 5
+portrait_inner_padding = 2
+name_plate_offset = Vector2i(4, -9)
+name_plate_size = Vector2i(92, 14)
+body_font_size = 8
+name_font_size = 8
+choice_font_size = 7
+body_color = Color(0.941176, 0.933333, 0.909804, 1)
+name_color = Color(0.0980392, 0.105882, 0.117647, 1)
+choice_color = Color(0.847059, 0.772549, 0.564706, 1)
+empty_portrait_color = Color(0.435294, 0.458824, 0.482353, 1)

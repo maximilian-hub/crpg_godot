@@ -2,7 +2,7 @@ extends Node
 
 const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
 const DialogueViewScript := preload("res://scripts/ui/dialogue_view.gd")
-const HOOD_PLACEHOLDER := preload("res://assets/overworld/characters/hood/hood_down_0001.png")
+const HOOD_PLACEHOLDER := preload("res://assets/ui/portraits/hood_test_portrait.png")
 
 var dialogue_view
 var portrait_selector: OptionButton
