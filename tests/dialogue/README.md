@@ -5,6 +5,7 @@ Run the static dialogue-view checks with:
 ```sh
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_view_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_parser_characterization.tscn
+"/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_reveal_characterization.tscn
 ```
 
 Open `res://tools/dev_dialogue/dialogue_lab.tscn` in Godot to review the layout.
@@ -20,5 +21,7 @@ empty portrait, and continue indicator, plus fonts and logical spacing values.
 
 The lab parses `res://content/dialogue/hood_authoring_demo.dialogue`. Page and
 portrait-state selectors demonstrate ordered pages and expression events without
-simulating progressive reveal. See `docs/dialogue_authoring_format.md` for the
-grammar and visible-character indexing rules.
+coupling them to gameplay. Reveal controls provide play/pause, restart, one
+character stepping, immediate completion, two-stage confirm, player-speed
+scaling, and instant text. See `docs/dialogue_authoring_format.md` for the
+grammar, speed spans, and visible-character indexing rules.

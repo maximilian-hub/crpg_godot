@@ -24,6 +24,8 @@ var text_interior: TextureRect
 var choice_label: Label
 var continue_indicator: Label
 var continue_indicator_texture: TextureRect
+var page_has_choices := false
+var page_is_complete := true
 
 
 func _ready() -> void:
@@ -43,15 +45,22 @@ func configure(speaker: String, identified: bool, text: String, portrait: Textur
 	portrait_texture.visible = portrait != null
 	empty_portrait.visible = portrait == null
 	choice_label.text = "   ".join(choices)
-	choice_label.visible = not choices.is_empty()
-	continue_indicator.visible = choices.is_empty() and skin.continue_indicator_texture == null
-	continue_indicator_texture.visible = choices.is_empty() and skin.continue_indicator_texture != null
+	page_has_choices = not choices.is_empty()
+	set_page_complete(true)
+
+
+func set_page_complete(value: bool) -> void:
+	page_is_complete = value
+	choice_label.visible = value and page_has_choices
+	continue_indicator.visible = value and not page_has_choices and skin.continue_indicator_texture == null
+	continue_indicator_texture.visible = value and not page_has_choices and skin.continue_indicator_texture != null
 
 
 func set_skin(value: Resource) -> void:
 	skin = value if value != null else DEFAULT_SKIN
 	_ensure_built()
 	_apply_skin()
+	set_page_complete(page_is_complete)
 	if is_inside_tree():
 		_layout_from_viewport()
 

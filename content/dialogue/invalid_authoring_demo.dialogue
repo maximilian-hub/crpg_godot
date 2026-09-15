@@ -4,3 +4,5 @@
 @page name="Nameless" known=perhaps portrait=none typo=value
 This has an [unknown=tag] and an [portrait=none] event.
 @choice text="Missing target"
+@page speaker=test name="Broken timing" portrait=none
+[speed=0]Never visible correctly.[/speed][/speed]

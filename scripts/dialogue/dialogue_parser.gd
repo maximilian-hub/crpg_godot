@@ -132,6 +132,7 @@ static func _finalize_page(page: DialoguePage, body_lines: PackedStringArray, re
 	var parsed := _parse_inline_events(raw_text, result, source_name, page_line)
 	page.text = parsed.text
 	page.events = parsed.events
+	page.character_speed_multipliers = parsed.character_speed_multipliers
 	if page.text.is_empty():
 		_add_error(result, source_name, page_line, "page requires visible text")
 
@@ -139,16 +140,22 @@ static func _finalize_page(page: DialoguePage, body_lines: PackedStringArray, re
 static func _parse_inline_events(raw_text: String, result: DialogueParseResult, source_name: String, page_line: int) -> Dictionary:
 	var visible_text := ""
 	var events: Array[DialogueEvent] = []
+	var speeds := PackedFloat32Array()
+	var speed_stack: Array[float] = [1.0]
 	var cursor := 0
 	while cursor < raw_text.length():
 		if raw_text[cursor] != "[":
 			visible_text += raw_text[cursor]
+			speeds.append(speed_stack[-1])
 			cursor += 1
 			continue
 		var closing := raw_text.find("]", cursor + 1)
 		if closing < 0:
 			_add_error(result, source_name, page_line, "unclosed inline tag")
-			visible_text += raw_text.substr(cursor)
+			var remainder := raw_text.substr(cursor)
+			visible_text += remainder
+			for _character in remainder:
+				speeds.append(speed_stack[-1])
 			break
 		var tag := raw_text.substr(cursor + 1, closing - cursor - 1)
 		if tag.begins_with("portrait="):
@@ -159,10 +166,27 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 				_add_error(result, source_name, page_line, "portrait event ID must use only letters, numbers, underscores, dots, or hyphens")
 			else:
 				events.append(EventScript.new(EventScript.Kind.PORTRAIT, visible_text.length(), portrait_id))
+		elif tag.begins_with("speed="):
+			var parsed_speed := tag.trim_prefix("speed=").strip_edges()
+			if not parsed_speed.is_valid_float():
+				_add_error(result, source_name, page_line, "speed tag requires a positive number")
+			else:
+				var speed := parsed_speed.to_float()
+				if not is_finite(speed) or speed <= 0.0:
+					_add_error(result, source_name, page_line, "speed tag requires a positive finite number")
+				else:
+					speed_stack.append(speed_stack[-1] * speed)
+		elif tag == "/speed":
+			if speed_stack.size() == 1:
+				_add_error(result, source_name, page_line, "closing speed tag has no matching opening tag")
+			else:
+				speed_stack.pop_back()
 		else:
 			_add_error(result, source_name, page_line, "unknown inline tag '[%s]'" % tag)
 		cursor = closing + 1
-	return {"text": visible_text, "events": events}
+	if speed_stack.size() > 1:
+		_add_error(result, source_name, page_line, "unclosed speed tag")
+	return {"text": visible_text, "events": events, "character_speed_multipliers": speeds}
 
 
 static func _normalize_optional_id(value: String) -> String:

@@ -47,6 +47,28 @@ Event index `0` occurs before the first character is revealed. Asset paths stay
 outside prose; a speaker/presentation catalog will eventually resolve IDs such
 as `laugh_a` to textures.
 
-This initial grammar intentionally excludes timing, pauses, color, size, motion,
-and audio tags. Those will extend the same visible-character event model after
-the basic authoring experience has been evaluated.
+This initial grammar intentionally excludes authored pauses, color, size, motion,
+and audio tags. Those can extend the same visible-character model after the
+basic reveal behavior has been evaluated.
+
+## Authored reveal speed
+
+`[speed=<multiplier>]...[/speed]` changes reveal speed for its visible contents.
+Values must be positive finite numbers. Spans may nest; nested values multiply.
+
+```text
+This is [speed=0.5]slow[/speed] and [speed=2.0]fast[/speed].
+```
+
+The parser resolves a multiplier for every visible Unicode character before
+presentation begins. A player speed setting multiplies the authored value rather
+than replacing it, preserving relative emphasis. Speed tags affect layout only
+by being removed; all text is laid out in full before reveal starts.
+
+## Reveal semantics
+
+An indexed event fires immediately before the character at that index appears.
+This includes events at index zero. Punctuation pauses occur after punctuation
+and before the following character. Confirm completes a page that is still
+revealing; confirm on an already complete page requests advancement. Immediate
+completion executes all remaining events in source order.

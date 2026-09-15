@@ -36,6 +36,9 @@ func _test_valid_fixture() -> void:
 	_check(laugh_page.events.size() == 4, "frequent authored portrait changes are retained")
 	_check(_event_indices(laugh_page) == PackedInt32Array([0, 2, 4, 6]), "alternating laugh portraits resolve to exact visible-character indices")
 	_check(_event_values(laugh_page) == PackedStringArray(["laugh_a", "laugh_b", "laugh_a", "laugh_b"]), "portrait event order and IDs are retained")
+	_check(laugh_page.character_speed_multipliers.size() == laugh_page.text.length(), "every visible character receives an authored speed multiplier")
+	_check(laugh_page.character_speed_multipliers[0] == 2.0 and laugh_page.character_speed_multipliers[8] == 2.0, "fast span applies through its final punctuation")
+	_check(laugh_page.character_speed_multipliers[9] == 1.0 and laugh_page.character_speed_multipliers[10] == 0.5, "default and slow timing resume at exact visible-character boundaries")
 	var choice_page = result.conversation.pages[2]
 	_check(choice_page.choices.size() == 2, "page choices are retained")
 	_check(choice_page.choices[0].text == "Yes" and choice_page.choices[0].target == "accept_challenge", "choice label and target remain separate")
@@ -48,6 +51,9 @@ func _test_visible_character_indices() -> void:
 	var page = result.conversation.pages[0]
 	_check(page.text == "éx", "Unicode visible text is preserved")
 	_check(page.events[0].visible_character_index == 1, "event indices count Unicode characters rather than source bytes or tag characters")
+	var nested := DialogueParserScript.parse_text("@conversation nested\n@page speaker=test name=Test\n[speed=2]a[speed=0.5]b[/speed]c[/speed]d", "nested.dialogue")
+	_check(nested.is_valid(), "nested speed spans parse")
+	_check(nested.conversation.pages[0].character_speed_multipliers == PackedFloat32Array([2.0, 1.0, 2.0, 1.0]), "nested speed spans multiply and restore authored rates")
 
 
 func _test_invalid_fixture() -> void:
@@ -62,6 +68,8 @@ func _test_invalid_fixture() -> void:
 	_check(joined.contains("unknown inline tag"), "unknown inline tag is actionable")
 	_check(joined.contains("portrait tag requires"), "empty portrait event is actionable")
 	_check(joined.contains("@choice requires text=<label> and target=<ID>"), "incomplete choice is actionable")
+	_check(joined.contains("speed tag requires a positive finite number"), "non-positive speed is actionable")
+	_check(joined.contains("closing speed tag has no matching opening tag"), "unmatched closing speed tag is actionable")
 	_check(result.errors[0].begins_with(INVALID_FIXTURE + ":2:"), "diagnostics include source path and line number")
 
 

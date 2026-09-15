@@ -65,6 +65,10 @@ func _test_static_states() -> void:
 	view.configure("", true, "Off-screen speaker.", null, PackedStringArray(["▶ Listen", "  Leave"]))
 	_check(view.speaker_label.text == "???", "empty speaker name safely falls back to question marks")
 	_check(view.choice_label.visible and not view.continue_indicator.visible, "choice state replaces the continue indicator")
+	view.set_page_complete(false)
+	_check(not view.choice_label.visible and not view.continue_indicator.visible and not view.continue_indicator_texture.visible, "incomplete reveal hides choices and all continue indicators")
+	view.set_page_complete(true)
+	_check(view.choice_label.visible, "completion restores the configured choice presentation")
 	view.queue_free()
 
 

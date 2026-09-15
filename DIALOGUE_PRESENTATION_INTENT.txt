@@ -158,6 +158,14 @@ should scale all authored reveal timings rather than erase their relative
 differences. Instant text should remain available as an accessibility setting,
 with authored pauses and reveal-triggered events given an explicit policy.
 
+Reveal behavior is deterministic and operates on visible Unicode-character
+indices. An event at index N fires immediately before character N appears.
+Punctuation adds delay before the following character. Confirm during reveal
+completes the current page and executes all remaining indexed events in order;
+confirm on a completed page advances. Authored `[speed=<multiplier>]` spans may
+nest multiplicatively, and the universal player-speed multiplier scales their
+resolved timing without removing relative slow or fast emphasis.
+
 Begin with one shared visual skin in both overworld and battle. If the contexts
 later need more identity, use compatible DialogueSkin resources rather than
 forking the dialogue system. A battle variant may add heavier side ornaments,
