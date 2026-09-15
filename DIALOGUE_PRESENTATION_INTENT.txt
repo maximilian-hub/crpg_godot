@@ -126,6 +126,16 @@ conventions. A custom editor may later be built on top of that text format. The
 format must nest effects predictably and keep presentation markup out of the
 final visible character count.
 
+The initial external format uses one `.dialogue` file per conversation, ordered
+`@page` directives, `@choice` directives, and inline portrait events such as
+`[portrait=laugh_a]`. Parsing produces presentation-neutral conversation, page,
+choice, and event objects. Inline events are indexed against visible Unicode
+characters after tags are removed, never against raw source offsets. Authored
+portrait and target IDs remain separate from asset paths and runtime callbacks.
+Unknown directives, attributes, tags, and malformed fields are validation errors
+with source locations. The exact grammar is documented separately in
+`docs/dialogue_authoring_format.md` and may be extended for later effect types.
+
 All layout-affecting text presentation, including font size, should be resolved
 before reveal begins. Once a character is visible its size will not change, and
 large text should participate normally in wrapping and paragraph flow.

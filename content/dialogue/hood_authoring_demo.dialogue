@@ -1,0 +1,13 @@
+// Static authoring fixture for the Dialogue Lab.
+@conversation hood_authoring_demo
+
+@page speaker=hood name="Hood" known=false portrait=hood_neutral
+You made it this far.
+
+@page speaker=hood name="Hood" known=true portrait=hood_neutral
+[portrait=laugh_a]ha[portrait=laugh_b]ha[portrait=laugh_a]ha[portrait=laugh_b]ha. The stones remember.
+
+@page speaker=hood name="Hood" known=true portrait=hood_neutral
+Will you challenge me?
+@choice text="Yes" target=accept_challenge
+@choice text="No" target=decline_challenge

@@ -1,0 +1,6 @@
+// Deliberately invalid parser fixture.
+@choice text="Lost" target=nowhere
+@conversation
+@page name="Nameless" known=perhaps portrait=none typo=value
+This has an [unknown=tag] and an [portrait=none] event.
+@choice text="Missing target"
