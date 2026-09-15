@@ -83,12 +83,13 @@ static func calculate_layout(window_size: Vector2i, requested_placement: Placeme
 		maxi(1, floori(float(safe_window.x) / ui_scale)),
 		maxi(1, floori(float(safe_window.y) / ui_scale))
 	)
-	var group_width := mini(MAX_PRESENTATION_WIDTH, maxi(1, logical_size.x - OUTER_MARGIN * 2))
-	var group_height := mini(active_skin.panel_height, maxi(1, logical_size.y - OUTER_MARGIN * 2))
-	var portrait_width := mini(group_width, maxi(1, roundi(group_height * active_skin.portrait_aspect_ratio)))
-	var text_width := maxi(1, group_width - portrait_width + active_skin.panel_join_overlap)
-	var group_x := floori((logical_size.x - group_width) * 0.5)
-	var group_y := logical_size.y - group_height - OUTER_MARGIN
+	var group_width: int = mini(MAX_PRESENTATION_WIDTH, maxi(1, logical_size.x - OUTER_MARGIN * 2))
+	var text_panel_height: int = mini(active_skin.panel_height, maxi(1, logical_size.y - OUTER_MARGIN * 2 - active_skin.name_plate_size.y))
+	var group_height: int = text_panel_height + active_skin.name_plate_size.y
+	var portrait_width: int = mini(group_width, maxi(1, roundi(group_height * active_skin.portrait_aspect_ratio)))
+	var text_width: int = maxi(1, group_width - portrait_width + active_skin.panel_join_overlap)
+	var group_x: int = floori((logical_size.x - group_width) * 0.5)
+	var group_y: int = logical_size.y - group_height - OUTER_MARGIN
 	match requested_placement:
 		Placement.TOP, Placement.BATTLE_FAR:
 			group_y = OUTER_MARGIN
@@ -101,7 +102,7 @@ static func calculate_layout(window_size: Vector2i, requested_placement: Placeme
 		"logical_size": logical_size,
 		"group_rect": Rect2i(group_x, group_y, group_width, group_height),
 		"portrait_rect": Rect2i(group_x, group_y, portrait_width, group_height),
-		"text_rect": Rect2i(group_x + portrait_width - active_skin.panel_join_overlap, group_y, text_width, group_height),
+		"text_rect": Rect2i(group_x + portrait_width - active_skin.panel_join_overlap, group_y + active_skin.name_plate_size.y, text_width, text_panel_height),
 	}
 
 
@@ -238,7 +239,7 @@ func _layout_panel_contents() -> void:
 	continue_indicator_texture.position = continue_indicator.position
 	continue_indicator_texture.size = continue_indicator.size
 
-	speaker_plate.position = dialogue_panel.position + Vector2(skin.name_plate_offset)
+	speaker_plate.position = dialogue_panel.position + Vector2(skin.name_plate_horizontal_offset, -skin.name_plate_size.y)
 	speaker_plate.size = Vector2(skin.name_plate_size)
 	speaker_label.position = Vector2(5, 0)
 	speaker_label.size = speaker_plate.size - Vector2(10, 0)

@@ -17,7 +17,7 @@ class_name DialogueSkin
 @export var panel_join_overlap := 2
 @export var panel_inner_padding := 5
 @export var portrait_inner_padding := 2
-@export var name_plate_offset := Vector2i(4, -9)
+@export var name_plate_horizontal_offset := 4
 @export var name_plate_size := Vector2i(92, 14)
 @export var body_font_size := 8
 @export var name_font_size := 8

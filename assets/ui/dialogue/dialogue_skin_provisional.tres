@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="DialogueSkin" load_steps=5 format=3 uid="uid://cx87ll542jthv"]
 
-[ext_resource type="Script" path="res://scripts/ui/dialogue_skin.gd" id="1_skin"]
+[ext_resource type="Script" uid="uid://b1uvorggwd6p7" path="res://scripts/ui/dialogue_skin.gd" id="1_skin"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_plate"]
 bg_color = Color(0.713726, 0.72549, 0.721569, 1)
@@ -44,7 +44,7 @@ panel_height = 64
 panel_join_overlap = 2
 panel_inner_padding = 5
 portrait_inner_padding = 2
-name_plate_offset = Vector2i(4, -9)
+name_plate_horizontal_offset = 4
 name_plate_size = Vector2i(92, 14)
 body_font_size = 8
 name_font_size = 8

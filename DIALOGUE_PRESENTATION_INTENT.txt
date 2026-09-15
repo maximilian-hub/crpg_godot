@@ -101,9 +101,10 @@ panel meets it at a shared seam. Portrait assets use the 3:4 aspect ratio
 established by the 96x128 hood test portrait. A dedicated empty-state asset will
 eventually fill the portrait panel for off-screen, unknown, or otherwise
 unpictured speakers so absence does not look like a missing asset. A small
-nameplate should sit on top of and slightly overlap the text panel's upper-left
-border like a physical plaque. It displays the current speaker's known name, or
-"???" when the speaker has not been identified.
+nameplate should sit directly on top of the text panel without overlapping it.
+The portrait panel extends upward so its top aligns with the nameplate's top,
+while its bottom aligns with the text panel's bottom. The plaque displays the
+current speaker's known name, or "???" when the speaker has not been identified.
 
 Portrait selection belongs to authored dialogue data rather than to the view.
 A character may have multiple expression portraits, and the selected expression
