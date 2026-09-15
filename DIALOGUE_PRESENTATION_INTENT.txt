@@ -94,6 +94,56 @@ Dialogue data should provide content, speaker, portrait, choices, and preferred
 placement. A presentation skin should provide the frame, typography, colors,
 sounds, ornaments, and animation.
 
+The ordinary dialogue layout should reserve a bordered portrait panel on the
+left and place a left-justified text well to its right. The portrait panel should
+always remain visible. A dedicated empty-state asset will eventually fill it for
+off-screen, unknown, or otherwise unpictured speakers so absence does not look
+like a missing asset. A small nameplate should overlap the upper-left border like
+a physical plaque and display the current speaker's known name, or "???" when
+the speaker has not been identified.
+
+Portrait selection belongs to authored dialogue data rather than to the view.
+A character may have multiple expression portraits, and the selected expression
+may change at page boundaries or within a page at a particular character reveal
+position. Authored events may be very frequent: a line such as "hahahaha" should
+be able to alternate between two laughing portraits on every "ha". The current
+hood NPC has only one portrait, but the data model should not encode that
+limitation.
+
+
+Authored Text and Reveal
+------------------------
+
+Dialogue pages should support authored spans and reveal events without coupling
+story content to scene code. Desired span presentation includes font-size
+changes, capitalization, color, and animated effects such as jiggling. Authoring
+should initially use external text files with tags or similarly readable inline
+conventions. A custom editor may later be built on top of that text format. The
+format must nest effects predictably and keep presentation markup out of the
+final visible character count.
+
+All layout-affecting text presentation, including font size, should be resolved
+before reveal begins. Once a character is visible its size will not change, and
+large text should participate normally in wrapping and paragraph flow.
+
+Text should reveal progressively with a small per-character voice sound. While
+a page is revealing, UI confirm should reveal the remainder immediately and
+play every remaining character sound simultaneously; a subsequent confirm
+advances the completed page. The resulting volume naturally communicates how
+much text was skipped. This deliberately janky behavior should be implemented
+literally first and reconsidered only after listening tests show a problem.
+
+Each speaker should support a distinct voice sound or pitch range. Final voice
+assets will be supplied later, so early prototypes may use placeholders while
+preserving speaker-specific configuration.
+
+Players should have a universal dialogue-speed control expressed as a percentage
+multiplier. Authored timing may override the local pace for spans as small as a
+single word, including deliberately slow or fast delivery. The player setting
+should scale all authored reveal timings rather than erase their relative
+differences. Instant text should remain available as an accessibility setting,
+with authored pauses and reveal-triggered events given an explicit policy.
+
 Begin with one shared visual skin in both overworld and battle. If the contexts
 later need more identity, use compatible DialogueSkin resources rather than
 forking the dialogue system. A battle variant may add heavier side ornaments,

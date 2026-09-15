@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://koqik1scf6a4"]
+
+[ext_resource type="Script" uid="uid://sdkxkyrhdmu" path="res://tools/dev_dialogue/dialogue_lab.gd" id="1_lab"]
+
+[node name="DialogueLab" type="Node"]
+script = ExtResource("1_lab")
