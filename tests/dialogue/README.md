@@ -7,6 +7,7 @@ Run the static dialogue-view checks with:
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_parser_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_reveal_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_speaker_characterization.tscn
+"/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_choice_characterization.tscn
 ```
 
 Open `res://tools/dev_dialogue/dialogue_lab.tscn` in Godot to review the layout.
@@ -40,6 +41,12 @@ that one-based page before its first frame.
 resolution, silent and asset-pending voice profiles, deterministic pitch, the
 whitespace eligibility policy, and the literal all-remaining-requests batch on
 page completion.
+
+`dialogue_choice_characterization.tscn` verifies empty, single, and multiple
+choice pages; reveal gating; wrapping selection; neutral target and cancel
+emission; ordered presentation cues; and optional choice sound slots. The Lab's
+choice buttons and `move_up`, `move_down`, `interact`, and `back` actions expose
+the same controller without executing story consequences.
 
 Font controls compare the engine baseline with Pixel Operator 8, its bold-plaque
 pairing, Pixel Operator Mono 8, and the non-8 Pixel Operator family at 8px and

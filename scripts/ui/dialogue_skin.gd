@@ -10,6 +10,10 @@ class_name DialogueSkin
 @export var continue_indicator_texture: Texture2D
 @export var body_font: Font
 @export var name_font: Font
+@export var choice_navigation_sound: AudioStream
+@export var choice_confirm_sound: AudioStream
+@export var choice_cancel_sound: AudioStream
+@export var choice_cursor := "▶"
 @export var semantic_color_names := PackedStringArray(["emphasis", "warning", "mystery"])
 @export var semantic_color_values := PackedColorArray([Color("d8c590"), Color("e87568"), Color("8fb4d9")])
 @export var semantic_size_names := PackedStringArray(["small", "normal", "large"])

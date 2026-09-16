@@ -3,9 +3,11 @@ extends Node
 const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
 const DialogueParserScript := preload("res://scripts/dialogue/dialogue_parser.gd")
 const RevealScript := preload("res://scripts/dialogue/dialogue_reveal_controller.gd")
+const ChoiceControllerScript := preload("res://scripts/dialogue/dialogue_choice_controller.gd")
 const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 const VoiceEmitterScript := preload("res://scripts/dialogue/dialogue_voice_emitter.gd")
 const VoicePlayerScript := preload("res://scripts/ui/dialogue_voice_player.gd")
+const ChoiceSoundPlayerScript := preload("res://scripts/ui/dialogue_choice_sound_player.gd")
 const SPEAKER_CATALOG := preload("res://assets/ui/dialogue/dialogue_speaker_catalog.tres")
 const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8.ttf")
 const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
@@ -19,8 +21,10 @@ var dialogue_view
 var lab_skin
 var conversation
 var reveal_controller
+var choice_controller
 var voice_emitter
 var voice_player
+var choice_sound_player
 var page_selector: OptionButton
 var event_selector: OptionButton
 var placement_selector: OptionButton
@@ -39,6 +43,7 @@ var current_portrait_event_index := -1
 var current_font_label := "Pixel Operator 8 + Bold plaque"
 var logical_font_size := 8
 var last_voice_description := "none"
+var last_choice_result := "none"
 
 
 func _ready() -> void:
@@ -50,10 +55,15 @@ func _ready() -> void:
 	add_child(dialogue_view)
 	lab_skin = dialogue_view.skin.duplicate(true)
 	reveal_controller = RevealScript.new()
+	choice_controller = ChoiceControllerScript.new()
 	voice_emitter = VoiceEmitterScript.new()
 	voice_player = VoicePlayerScript.new()
 	voice_player.name = "DialogueVoicePlayer"
 	add_child(voice_player)
+	choice_sound_player = ChoiceSoundPlayerScript.new()
+	choice_sound_player.name = "DialogueChoiceSoundPlayer"
+	choice_sound_player.set_skin(lab_skin)
+	add_child(choice_sound_player)
 	reveal_controller.visibility_changed.connect(_on_visibility_changed)
 	reveal_controller.portrait_changed.connect(_on_portrait_changed)
 	reveal_controller.character_revealed.connect(voice_emitter.on_character_revealed)
@@ -61,6 +71,10 @@ func _ready() -> void:
 	voice_emitter.voice_requested.connect(_on_voice_requested)
 	reveal_controller.page_completed.connect(_on_page_completed)
 	reveal_controller.advance_requested.connect(_on_advance_requested)
+	choice_controller.selection_changed.connect(_on_choice_selection_changed)
+	choice_controller.choice_confirmed.connect(_on_choice_confirmed)
+	choice_controller.cancel_requested.connect(_on_choice_cancel_requested)
+	choice_controller.sound_requested.connect(choice_sound_player.play_cue)
 	_build_controls()
 	_apply_font_candidate(2)
 	if parsed.is_valid():
@@ -81,7 +95,7 @@ func _build_background() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 	var title := Label.new()
-	title.text = "DIALOGUE LAB\nAuthored text presentation"
+	title.text = "DIALOGUE LAB\nInteractive choices"
 	title.position = Vector2(20, 18)
 	title.add_theme_font_size_override("font_size", 18)
 	title.modulate = Color("8e969f")
@@ -132,6 +146,11 @@ func _build_controls() -> void:
 	controls.add_child(action_buttons)
 	_add_button(action_buttons, "Complete", _complete_page)
 	_add_button(action_buttons, "Confirm", _confirm_page)
+	var choice_buttons := HBoxContainer.new()
+	controls.add_child(choice_buttons)
+	_add_button(choice_buttons, "Choice ↑", func(): _move_choice(-1))
+	_add_button(choice_buttons, "Choice ↓", func(): _move_choice(1))
+	_add_button(choice_buttons, "Cancel", _cancel_choice)
 	instant_toggle = CheckButton.new()
 	instant_toggle.text = "Instant text"
 	instant_toggle.toggled.connect(_on_instant_toggled)
@@ -210,13 +229,16 @@ func _refresh_page() -> void:
 	event_selector.select(0)
 	var choices := PackedStringArray()
 	for index in range(page.choices.size()):
-		choices.append("%s%s" % ["▶ " if index == 0 else "  ", page.choices[index].text])
+		choices.append(page.choices[index].text)
 	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
 	voice_emitter.set_profile(speaker_profile)
 	last_voice_description = "none"
+	last_choice_result = "none"
 	var display_name: String = page.speaker_name if not page.speaker_name.is_empty() else (speaker_profile.default_display_name if speaker_profile != null else "")
 	dialogue_view.configure(display_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices, page.presentation_spans)
+	choice_controller.start(page.choices)
 	dialogue_view.set_page_complete(false)
+	choice_controller.set_page_complete(false)
 	dialogue_view.set_visible_character_count(0)
 	reveal_controller.paused = false
 	playing = not reveal_controller.instant_text
@@ -246,7 +268,8 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var content_size: Vector2i = dialogue_view.text_content_size()
 	var overflow_state := "OVERFLOW" if dialogue_view.text_overflows() else "fits"
 	var motion_state := "reduced" if reduced_motion_toggle.button_pressed else ("animated" if animated_text_toggle.button_pressed else "disabled")
-	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nMotion: %s\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s" % [
+	var choice_state := "inactive" if not choice_controller.is_active() else "selected %d/%d" % [choice_controller.selected_index + 1, page.choices.size()]
+	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nMotion: %s\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s\nChoice state: %s\nLast choice: %s" % [
 		current_font_label,
 		logical_font_size,
 		conversation.id,
@@ -268,6 +291,8 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 		_presentation_description(page),
 		page.events.size(),
 		", ".join(targets) if not targets.is_empty() else "none",
+		choice_state,
+		last_choice_result,
 	]
 
 
@@ -306,6 +331,7 @@ func _apply_font_candidate(index: int) -> void:
 	lab_skin.choice_font_size = logical_font_size
 	lab_skin.semantic_size_values = PackedInt32Array([maxi(1, roundi(logical_font_size * 0.75)), logical_font_size, maxi(1, roundi(logical_font_size * 1.5))])
 	dialogue_view.set_skin(lab_skin)
+	choice_sound_player.set_skin(lab_skin)
 	if page_selector != null and page_selector.item_count > 0:
 		_restart_page()
 
@@ -366,7 +392,18 @@ func _complete_page() -> void:
 
 
 func _confirm_page() -> void:
-	reveal_controller.confirm()
+	if not reveal_controller.completed:
+		reveal_controller.confirm()
+	elif not choice_controller.confirm():
+		reveal_controller.confirm()
+
+
+func _move_choice(direction: int) -> void:
+	choice_controller.move(direction)
+
+
+func _cancel_choice() -> void:
+	choice_controller.cancel()
 
 
 func _on_speed_selected(index: int) -> void:
@@ -406,6 +443,7 @@ func _on_page_completed() -> void:
 	playing = false
 	play_button.text = "Play"
 	dialogue_view.set_page_complete(true)
+	choice_controller.set_page_complete(true)
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
 
@@ -413,6 +451,37 @@ func _on_advance_requested() -> void:
 	var next_page: int = (page_selector.selected + 1) % conversation.pages.size()
 	page_selector.select(next_page)
 	_refresh_page()
+
+
+func _on_choice_selection_changed(selected_index: int) -> void:
+	dialogue_view.set_selected_choice(selected_index)
+	if conversation != null and not conversation.pages.is_empty():
+		_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _on_choice_confirmed(selected_index: int, text: String, target: String) -> void:
+	last_choice_result = "confirmed #%d '%s' → %s" % [selected_index + 1, text, target]
+	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _on_choice_cancel_requested() -> void:
+	last_choice_result = "cancel requested (no story mutation)"
+	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("move_up") and choice_controller.is_active():
+		_move_choice(-1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("move_down") and choice_controller.is_active():
+		_move_choice(1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("interact"):
+		_confirm_page()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("back") and choice_controller.is_active():
+		_cancel_choice()
+		get_viewport().set_input_as_handled()
 
 
 func _resolve_portrait(portrait_id: String) -> Texture2D:

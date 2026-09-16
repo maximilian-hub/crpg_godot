@@ -25,7 +25,10 @@ Will you challenge me?
 - `@page` begins an ordered page. It requires `speaker` and `name`. `known` is
   `true` by default. `portrait` accepts a presentation ID or `none`.
 - `@choice` belongs to the current page and requires a visible `text` label and
-  a `target` ID. Target interpretation belongs to the eventual dialogue runner.
+  a `target` ID. Choices remain hidden and inactive until the page finishes
+  revealing. Up/down navigation wraps, confirm emits the highlighted target ID,
+  and cancel emits a neutral request. Target interpretation belongs to the
+  eventual gameplay dialogue runner; the presentation layer never executes it.
 
 Attribute values containing spaces must be wrapped in double quotes.
 Directive names and IDs are case-sensitive. IDs may contain letters, numbers,

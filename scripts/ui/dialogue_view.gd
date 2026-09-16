@@ -28,6 +28,8 @@ var continue_indicator: Label
 var continue_indicator_texture: TextureRect
 var page_has_choices := false
 var page_is_complete := true
+var choice_texts := PackedStringArray()
+var selected_choice_index := -1
 var presented_text := ""
 var presented_spans: Array = []
 var jiggle_effect
@@ -59,8 +61,10 @@ func configure(speaker: String, identified: bool, text: String, portrait: Textur
 	portrait_texture.texture = portrait
 	portrait_texture.visible = portrait != null
 	empty_portrait.visible = portrait == null
-	choice_label.text = "   ".join(choices)
+	choice_texts = choices.duplicate()
 	page_has_choices = not choices.is_empty()
+	selected_choice_index = 0 if page_has_choices else -1
+	_render_choices()
 	set_page_complete(true)
 
 
@@ -132,12 +136,26 @@ func set_page_complete(value: bool) -> void:
 	continue_indicator_texture.visible = value and not page_has_choices and skin.continue_indicator_texture != null
 
 
+func set_selected_choice(index: int) -> void:
+	selected_choice_index = clampi(index, 0, choice_texts.size() - 1) if not choice_texts.is_empty() else -1
+	_render_choices()
+
+
+func _render_choices() -> void:
+	var rendered := PackedStringArray()
+	for index in range(choice_texts.size()):
+		var cursor: String = skin.choice_cursor if index == selected_choice_index else " ".repeat(skin.choice_cursor.length())
+		rendered.append("%s %s" % [cursor, choice_texts[index]])
+	choice_label.text = "   ".join(rendered)
+
+
 func set_skin(value: Resource) -> void:
 	var visible_count := dialogue_text.visible_characters if dialogue_text != null else -1
 	skin = value if value != null else DEFAULT_SKIN
 	_ensure_built()
 	_apply_skin()
 	_set_presented_text(presented_text, presented_spans)
+	_render_choices()
 	dialogue_text.visible_characters = visible_count
 	set_page_complete(page_is_complete)
 	if is_inside_tree():
