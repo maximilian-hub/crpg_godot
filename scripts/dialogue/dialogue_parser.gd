@@ -5,6 +5,7 @@ const ConversationScript := preload("res://scripts/dialogue/dialogue_conversatio
 const PageScript := preload("res://scripts/dialogue/dialogue_page.gd")
 const ChoiceScript := preload("res://scripts/dialogue/dialogue_choice.gd")
 const EventScript := preload("res://scripts/dialogue/dialogue_event.gd")
+const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 const ResultScript := preload("res://scripts/dialogue/dialogue_parse_result.gd")
 
 
@@ -133,6 +134,7 @@ static func _finalize_page(page: DialoguePage, body_lines: PackedStringArray, re
 	page.text = parsed.text
 	page.events = parsed.events
 	page.character_speed_multipliers = parsed.character_speed_multipliers
+	page.presentation_spans = parsed.presentation_spans
 	if page.text.is_empty():
 		_add_error(result, source_name, page_line, "page requires visible text")
 
@@ -141,11 +143,21 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 	var visible_text := ""
 	var events: Array[DialogueEvent] = []
 	var speeds := PackedFloat32Array()
+	var presentation_spans: Array = []
 	var speed_stack: Array[float] = [1.0]
+	var color_stack: Array[Dictionary] = []
+	var capitalization_starts := PackedInt32Array()
 	var cursor := 0
 	while cursor < raw_text.length():
 		if raw_text[cursor] != "[":
-			visible_text += raw_text[cursor]
+			var visible_character: String = raw_text[cursor]
+			if not capitalization_starts.is_empty():
+				var capitalized := visible_character.to_upper()
+				if capitalized.length() != 1:
+					_add_error(result, source_name, page_line, "caps transformation must preserve visible-character count near '%s'" % visible_character)
+				else:
+					visible_character = capitalized
+			visible_text += visible_character
 			speeds.append(speed_stack[-1])
 			cursor += 1
 			continue
@@ -181,12 +193,40 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 				_add_error(result, source_name, page_line, "closing speed tag has no matching opening tag")
 			else:
 				speed_stack.pop_back()
+		elif tag.begins_with("color="):
+			var color_name := tag.trim_prefix("color=").strip_edges()
+			if color_name.is_empty() or not _is_valid_id(color_name):
+				_add_error(result, source_name, page_line, "color tag requires a semantic color ID")
+			else:
+				color_stack.append({"name": color_name, "start": visible_text.length()})
+		elif tag == "/color":
+			if color_stack.is_empty():
+				_add_error(result, source_name, page_line, "closing color tag has no matching opening tag")
+			else:
+				var color: Dictionary = color_stack.pop_back()
+				presentation_spans.append(TextSpanScript.new(TextSpanScript.Kind.COLOR, color.start, visible_text.length(), color.name))
+		elif tag == "caps":
+			capitalization_starts.append(visible_text.length())
+		elif tag == "/caps":
+			if capitalization_starts.is_empty():
+				_add_error(result, source_name, page_line, "closing caps tag has no matching opening tag")
+			else:
+				var capitalization_start: int = capitalization_starts[-1]
+				capitalization_starts.resize(capitalization_starts.size() - 1)
+				presentation_spans.append(TextSpanScript.new(TextSpanScript.Kind.CAPITALIZATION, capitalization_start, visible_text.length(), "uppercase"))
 		else:
 			_add_error(result, source_name, page_line, "unknown inline tag '[%s]'" % tag)
 		cursor = closing + 1
 	if speed_stack.size() > 1:
 		_add_error(result, source_name, page_line, "unclosed speed tag")
-	return {"text": visible_text, "events": events, "character_speed_multipliers": speeds}
+	if not color_stack.is_empty():
+		_add_error(result, source_name, page_line, "unclosed color tag")
+	if not capitalization_starts.is_empty():
+		_add_error(result, source_name, page_line, "unclosed caps tag")
+	presentation_spans.sort_custom(func(a, b):
+		return a.start_index < b.start_index if a.start_index != b.start_index else a.end_index > b.end_index
+	)
+	return {"text": visible_text, "events": events, "character_speed_multipliers": speeds, "presentation_spans": presentation_spans}
 
 
 static func _normalize_optional_id(value: String) -> String:

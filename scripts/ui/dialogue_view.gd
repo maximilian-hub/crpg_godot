@@ -7,6 +7,7 @@ const REFERENCE_HEIGHT := 180
 const MAX_PRESENTATION_WIDTH := 304
 const OUTER_MARGIN := 8
 const DEFAULT_SKIN := preload("res://assets/ui/dialogue/dialogue_skin_provisional.tres")
+const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 
 @export var skin: Resource = DEFAULT_SKIN
 
@@ -26,6 +27,8 @@ var continue_indicator: Label
 var continue_indicator_texture: TextureRect
 var page_has_choices := false
 var page_is_complete := true
+var presented_text := ""
+var presented_spans: Array = []
 
 
 func _ready() -> void:
@@ -37,16 +40,40 @@ func _ready() -> void:
 	_layout_from_viewport()
 
 
-func configure(speaker: String, identified: bool, text: String, portrait: Texture2D = null, choices: PackedStringArray = PackedStringArray()) -> void:
+func configure(speaker: String, identified: bool, text: String, portrait: Texture2D = null, choices: PackedStringArray = PackedStringArray(), presentation_spans: Array = []) -> void:
 	_ensure_built()
 	speaker_label.text = speaker if identified and not speaker.is_empty() else "???"
-	dialogue_text.text = text
+	presented_text = text
+	presented_spans = presentation_spans.duplicate()
+	_set_presented_text(text, presentation_spans)
 	portrait_texture.texture = portrait
 	portrait_texture.visible = portrait != null
 	empty_portrait.visible = portrait == null
 	choice_label.text = "   ".join(choices)
 	page_has_choices = not choices.is_empty()
 	set_page_complete(true)
+
+
+func _set_presented_text(text: String, presentation_spans: Array) -> void:
+	dialogue_text.clear()
+	var color_spans: Array = []
+	for span in presentation_spans:
+		if span.kind == TextSpanScript.Kind.COLOR and span.start_index < span.end_index:
+			color_spans.append(span)
+	color_spans.sort_custom(func(a, b):
+		return a.start_index < b.start_index if a.start_index != b.start_index else a.end_index > b.end_index
+	)
+	var open_spans: Array = []
+	for index in range(text.length() + 1):
+		while not open_spans.is_empty() and open_spans[-1].end_index == index:
+			dialogue_text.pop()
+			open_spans.pop_back()
+		for span in color_spans:
+			if span.start_index == index:
+				dialogue_text.push_color(skin.semantic_color(span.value))
+				open_spans.append(span)
+		if index < text.length():
+			dialogue_text.add_text(text[index])
 
 
 func set_page_complete(value: bool) -> void:
@@ -60,6 +87,7 @@ func set_skin(value: Resource) -> void:
 	skin = value if value != null else DEFAULT_SKIN
 	_ensure_built()
 	_apply_skin()
+	_set_presented_text(presented_text, presented_spans)
 	set_page_complete(page_is_complete)
 	if is_inside_tree():
 		_layout_from_viewport()

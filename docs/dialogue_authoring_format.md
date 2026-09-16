@@ -47,9 +47,29 @@ Event index `0` occurs before the first character is revealed. Asset paths stay
 outside prose; a speaker/presentation catalog will eventually resolve IDs such
 as `laugh_a` to textures.
 
-This initial grammar intentionally excludes authored pauses, color, size, motion,
-and audio tags. Those can extend the same visible-character model after the
-basic reveal behavior has been evaluated.
+## Text presentation
+
+`[color=<semantic-ID>]...[/color]` applies a named color supplied by the active
+`DialogueSkin`. Dialogue files use names such as `emphasis`, `warning`, and
+`mystery`, never asset-specific RGB or hexadecimal values. This lets another
+compatible skin reinterpret the same narrative intent.
+
+`[caps]...[/caps]` transforms its contents to uppercase before layout and reveal.
+Color, capitalization, and speed spans may nest:
+
+```text
+[color=warning][caps]Do not[/caps] open the door.[/color]
+```
+
+Presentation tags do not count as visible characters. Capitalization is stored
+in the page's final visible text, while semantic color remains a visible-indexed
+span resolved by the view. Portrait events, authored speeds, voice requests, and
+reveal therefore share one stable character-index space. A capitalization whose
+Unicode uppercase form would change the number of characters is rejected to
+prevent later event indices from becoming ambiguous.
+
+Font-size changes, animated motion, and authored audio tags remain outside this
+milestone.
 
 ## Authored reveal speed
 

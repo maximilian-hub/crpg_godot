@@ -140,6 +140,13 @@ All layout-affecting text presentation, including font size, should be resolved
 before reveal begins. Once a character is visible its size will not change, and
 large text should participate normally in wrapping and paragraph flow.
 
+The first implemented presentation spans are nestable `[color=<semantic-ID>]`
+and `[caps]` tags. Dialogue refers to semantic color names rather than literal
+RGB values; the active DialogueSkin maps those names to colors. Capitalization
+is precomputed into final visible text, while colors remain indexed spans. Both
+preserve the same visible-character coordinates used by reveal timing, portrait
+events, and character voice requests.
+
 Text should reveal progressively with a small per-character voice sound. While
 a page is revealing, UI confirm should reveal the remainder immediately and
 play every remaining character sound simultaneously; a subsequent confirm

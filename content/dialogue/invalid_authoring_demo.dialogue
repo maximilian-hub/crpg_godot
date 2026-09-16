@@ -6,3 +6,4 @@ This has an [unknown=tag] and an [portrait=none] event.
 @choice text="Missing target"
 @page speaker=test name="Broken timing" portrait=none
 [speed=0]Never visible correctly.[/speed][/speed]
+[color=]Bad color.[/color][/color] [caps]Unclosed caps.

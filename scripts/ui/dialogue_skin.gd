@@ -10,6 +10,8 @@ class_name DialogueSkin
 @export var continue_indicator_texture: Texture2D
 @export var body_font: Font
 @export var name_font: Font
+@export var semantic_color_names := PackedStringArray(["emphasis", "warning", "mystery"])
+@export var semantic_color_values := PackedColorArray([Color("d8c590"), Color("e87568"), Color("8fb4d9")])
 
 @export_category("Logical layout")
 @export var portrait_aspect_ratio := 0.75
@@ -28,3 +30,13 @@ class_name DialogueSkin
 @export var name_color := Color("191b1e")
 @export var choice_color := Color("d8c590")
 @export var empty_portrait_color := Color("6f757b")
+
+
+func has_semantic_color(color_name: String) -> bool:
+	var index := semantic_color_names.find(color_name)
+	return index >= 0 and index < semantic_color_values.size()
+
+
+func semantic_color(color_name: String) -> Color:
+	var index := semantic_color_names.find(color_name)
+	return semantic_color_values[index] if index >= 0 and index < semantic_color_values.size() else body_color

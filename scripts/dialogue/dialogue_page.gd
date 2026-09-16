@@ -9,3 +9,4 @@ var text := ""
 var events: Array[DialogueEvent] = []
 var choices: Array[DialogueChoice] = []
 var character_speed_multipliers := PackedFloat32Array()
+var presentation_spans: Array = []

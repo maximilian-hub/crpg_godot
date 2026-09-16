@@ -6,6 +6,7 @@ const DIALOGUE_SKIN := preload("res://assets/ui/dialogue/dialogue_skin_provision
 const HOOD_PORTRAIT := preload("res://assets/ui/portraits/hood/hood_neutral.png")
 const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8.ttf")
 const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
+const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -59,6 +60,11 @@ func _test_static_states() -> void:
 	font_skin.name_font = PIXEL_OPERATOR_8_BOLD
 	view.set_skin(font_skin)
 	_check(view.dialogue_text.get_theme_font("normal_font") == PIXEL_OPERATOR_8 and view.speaker_label.get_theme_font("font") == PIXEL_OPERATOR_8_BOLD, "DialogueSkin independently applies body and plaque font candidates")
+	_check(font_skin.has_semantic_color("warning") and font_skin.semantic_color("warning") != font_skin.body_color, "DialogueSkin resolves named semantic colors independently of authored text")
+	var color_spans: Array = [TextSpanScript.new(TextSpanScript.Kind.COLOR, 1, 3, "warning")]
+	view.configure("Hood", true, "A[B]", null, PackedStringArray(), color_spans)
+	_check(view.dialogue_text.get_total_character_count() == 4, "structured rich text retains one rendered character per visible source character")
+	_check(view.dialogue_text.get_parsed_text() == "A[B]", "structured rich text preserves literal bracket characters without interpreting authored text as markup")
 	view.configure("Hood", true, "Left aligned sample.")
 	_check(view.portrait_panel.visible, "portrait panel remains visible without portrait art")
 	_check(view.empty_portrait.visible and not view.portrait_texture.visible, "missing portrait uses an intentional empty state")

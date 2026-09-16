@@ -3,6 +3,7 @@ extends Node
 const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
 const DialogueParserScript := preload("res://scripts/dialogue/dialogue_parser.gd")
 const RevealScript := preload("res://scripts/dialogue/dialogue_reveal_controller.gd")
+const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 const VoiceEmitterScript := preload("res://scripts/dialogue/dialogue_voice_emitter.gd")
 const VoicePlayerScript := preload("res://scripts/ui/dialogue_voice_player.gd")
 const SPEAKER_CATALOG := preload("res://assets/ui/dialogue/dialogue_speaker_catalog.tres")
@@ -191,7 +192,7 @@ func _refresh_page() -> void:
 	voice_emitter.set_profile(speaker_profile)
 	last_voice_description = "none"
 	var display_name: String = page.speaker_name if not page.speaker_name.is_empty() else (speaker_profile.default_display_name if speaker_profile != null else "")
-	dialogue_view.configure(display_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices)
+	dialogue_view.configure(display_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices, page.presentation_spans)
 	dialogue_view.set_page_complete(false)
 	dialogue_view.dialogue_text.visible_characters = 0
 	reveal_controller.paused = false
@@ -219,7 +220,7 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var next_delay: float = reveal_controller.delay_before_next_character() if reveal_controller != null and not reveal_controller.completed else 0.0
 	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
 	var voice_asset_state := "silent profile" if speaker_profile != null and not speaker_profile.voice_enabled else ("asset ready" if speaker_profile != null and not speaker_profile.voice_clips.is_empty() else "awaiting voice asset")
-	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nVoice requests: %d (%s)\nLast voice: %s\nEvents: %d\nChoices: %s" % [
+	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s" % [
 		current_font_label,
 		logical_font_size,
 		conversation.id,
@@ -234,9 +235,18 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 		voice_emitter.request_count if voice_emitter != null else 0,
 		"enabled" if voice_emitter != null and voice_emitter.enabled else "disabled",
 		last_voice_description,
+		_presentation_description(page),
 		page.events.size(),
 		", ".join(targets) if not targets.is_empty() else "none",
 	]
+
+
+func _presentation_description(page) -> String:
+	var descriptions := PackedStringArray()
+	for span in page.presentation_spans:
+		var kind := "color:%s" % span.value if span.kind == TextSpanScript.Kind.COLOR else "caps"
+		descriptions.append("%s@%d..%d" % [kind, span.start_index, span.end_index])
+	return ", ".join(descriptions) if not descriptions.is_empty() else "none"
 
 
 func _apply_font_candidate(index: int) -> void:

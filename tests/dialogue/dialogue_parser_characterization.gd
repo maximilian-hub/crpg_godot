@@ -43,7 +43,10 @@ func _test_valid_fixture() -> void:
 	_check(choice_page.choices.size() == 2, "page choices are retained")
 	_check(choice_page.choices[0].text == "Yes" and choice_page.choices[0].target == "accept_challenge", "choice label and target remain separate")
 	var font_page = result.conversation.pages[3]
-	_check(font_page.speaker_name == "Ernest the Unreasonably Named" and font_page.text.contains("Q7?!"), "font-evaluation page retains long names, mixed case, numbers, and punctuation")
+	_check(font_page.speaker_name == "Ernest the Unreasonably Named" and font_page.text.contains("Q7?!"), "font-evaluation page retains long names, numbers, and punctuation")
+	_check(font_page.text.contains("MIXED CASE"), "caps spans precompute capitalization into final visible text")
+	_check(font_page.presentation_spans.size() == 3, "fixture retains two semantic colors and one capitalization span")
+	_check(font_page.presentation_spans[0].start_index == 0 and font_page.presentation_spans[0].end_index == 19, "semantic color range uses final visible-character indices")
 
 
 func _test_visible_character_indices() -> void:
@@ -56,6 +59,12 @@ func _test_visible_character_indices() -> void:
 	var nested := DialogueParserScript.parse_text("@conversation nested\n@page speaker=test name=Test\n[speed=2]a[speed=0.5]b[/speed]c[/speed]d", "nested.dialogue")
 	_check(nested.is_valid(), "nested speed spans parse")
 	_check(nested.conversation.pages[0].character_speed_multipliers == PackedFloat32Array([2.0, 1.0, 2.0, 1.0]), "nested speed spans multiply and restore authored rates")
+	var presentation := DialogueParserScript.parse_text("@conversation presentation\n@page speaker=test name=Test\n[color=warning][caps]ab[portrait=changed][speed=2]c![/speed][/caps][/color]", "presentation.dialogue")
+	_check(presentation.is_valid(), "nested presentation and reveal tags parse together")
+	var presentation_page = presentation.conversation.pages[0]
+	_check(presentation_page.text == "ABC!" and presentation_page.events[0].visible_character_index == 2, "capitalization and color markup do not shift portrait indices")
+	_check(presentation_page.character_speed_multipliers == PackedFloat32Array([1.0, 1.0, 2.0, 2.0]), "presentation markup does not shift authored speed indices")
+	_check(presentation_page.presentation_spans.size() == 2 and presentation_page.presentation_spans[0].start_index == 0 and presentation_page.presentation_spans[0].end_index == 4, "nested color and capitalization share stable visible bounds")
 
 
 func _test_invalid_fixture() -> void:
@@ -72,6 +81,9 @@ func _test_invalid_fixture() -> void:
 	_check(joined.contains("@choice requires text=<label> and target=<ID>"), "incomplete choice is actionable")
 	_check(joined.contains("speed tag requires a positive finite number"), "non-positive speed is actionable")
 	_check(joined.contains("closing speed tag has no matching opening tag"), "unmatched closing speed tag is actionable")
+	_check(joined.contains("color tag requires a semantic color ID"), "empty semantic color IDs are rejected")
+	_check(joined.contains("closing color tag has no matching opening tag"), "unmatched closing color tags are actionable")
+	_check(joined.contains("unclosed caps tag"), "unclosed capitalization tags are actionable")
 	_check(result.errors[0].begins_with(INVALID_FIXTURE + ":2:"), "diagnostics include source path and line number")
 
 
