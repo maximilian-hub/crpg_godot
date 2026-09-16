@@ -154,6 +154,13 @@ overflow without automatically shrinking prose or inventing page boundaries;
 authors remain responsible for revising an overflowing page until pagination is
 designed as a separate feature.
 
+The first animated presentation span is semantic `[jiggle]` text, with optional
+named styles such as `subtle` and `strong`. DialogueSkin owns amplitude and
+frequency. Each revealed character begins deterministic motion at its reveal
+time, with offsets snapped to logical pixels and excluded from shaping, wrapping,
+and overflow measurement. A global animated-text control and reduced-motion mode
+render the same authored prose statically without changing its layout or indices.
+
 Text should reveal progressively with a small per-character voice sound. While
 a page is revealing, UI confirm should reveal the remainder immediately and
 play every remaining character sound simultaneously; a subsequent confirm

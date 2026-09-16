@@ -8,3 +8,4 @@ This has an [unknown=tag] and an [portrait=none] event.
 [speed=0]Never visible correctly.[/speed][/speed]
 [color=]Bad color.[/color][/color] [caps]Unclosed caps.
 [size=]Bad size.[/size][/size] [size=large]Unclosed size.
+[jiggle=]Bad jiggle.[/jiggle][/jiggle] [jiggle]Unclosed jiggle.

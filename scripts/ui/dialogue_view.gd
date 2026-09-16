@@ -8,6 +8,7 @@ const MAX_PRESENTATION_WIDTH := 304
 const OUTER_MARGIN := 8
 const DEFAULT_SKIN := preload("res://assets/ui/dialogue/dialogue_skin_provisional.tres")
 const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
+const JiggleEffectScript := preload("res://scripts/ui/dialogue_jiggle_effect.gd")
 
 @export var skin: Resource = DEFAULT_SKIN
 
@@ -29,6 +30,7 @@ var page_has_choices := false
 var page_is_complete := true
 var presented_text := ""
 var presented_spans: Array = []
+var jiggle_effect
 
 
 func _ready() -> void:
@@ -40,12 +42,20 @@ func _ready() -> void:
 	_layout_from_viewport()
 
 
+func _process(delta: float) -> void:
+	if jiggle_effect != null:
+		jiggle_effect.advance(delta)
+
+
 func configure(speaker: String, identified: bool, text: String, portrait: Texture2D = null, choices: PackedStringArray = PackedStringArray(), presentation_spans: Array = []) -> void:
 	_ensure_built()
 	speaker_label.text = speaker if identified and not speaker.is_empty() else "???"
 	presented_text = text
 	presented_spans = presentation_spans.duplicate()
+	jiggle_effect.reset()
 	_set_presented_text(text, presentation_spans)
+	dialogue_text.visible_characters = -1
+	jiggle_effect.reveal_through(text.length())
 	portrait_texture.texture = portrait
 	portrait_texture.visible = portrait != null
 	empty_portrait.visible = portrait == null
@@ -58,7 +68,7 @@ func _set_presented_text(text: String, presentation_spans: Array) -> void:
 	dialogue_text.clear()
 	var active_spans: Array = []
 	for span in presentation_spans:
-		if span.kind in [TextSpanScript.Kind.COLOR, TextSpanScript.Kind.FONT_SIZE] and span.start_index < span.end_index:
+		if span.kind in [TextSpanScript.Kind.COLOR, TextSpanScript.Kind.FONT_SIZE, TextSpanScript.Kind.JIGGLE] and span.start_index < span.end_index:
 			active_spans.append(span)
 	active_spans.sort_custom(func(a, b):
 		return a.start_index < b.start_index if a.start_index != b.start_index else a.end_index > b.end_index
@@ -66,18 +76,24 @@ func _set_presented_text(text: String, presentation_spans: Array) -> void:
 	for index in range(text.length()):
 		var color_name := ""
 		var size_name := ""
+		var jiggle_name := ""
 		for span in active_spans:
 			if span.start_index <= index and index < span.end_index:
 				if span.kind == TextSpanScript.Kind.COLOR:
 					color_name = span.value
 				elif span.kind == TextSpanScript.Kind.FONT_SIZE:
 					size_name = span.value
+				elif span.kind == TextSpanScript.Kind.JIGGLE:
+					jiggle_name = span.value
 		var pushed := 0
 		if not color_name.is_empty():
 			dialogue_text.push_color(skin.semantic_color(color_name))
 			pushed += 1
 		if not size_name.is_empty():
 			dialogue_text.push_font_size(skin.semantic_size(size_name))
+			pushed += 1
+		if not jiggle_name.is_empty():
+			dialogue_text.push_customfx(jiggle_effect, skin.semantic_jiggle(jiggle_name))
 			pushed += 1
 		dialogue_text.add_text(text[index])
 		for _pop in range(pushed):
@@ -92,6 +108,23 @@ func text_content_size() -> Vector2i:
 	return Vector2i(dialogue_text.get_content_width(), dialogue_text.get_content_height())
 
 
+func set_visible_character_count(count: int) -> void:
+	var clamped_count := clampi(count, 0, presented_text.length())
+	var previous_count := presented_text.length() if dialogue_text.visible_characters < 0 else dialogue_text.visible_characters
+	if clamped_count < previous_count:
+		jiggle_effect.reset()
+	dialogue_text.visible_characters = clamped_count
+	jiggle_effect.reveal_through(clamped_count)
+
+
+func set_animated_text_enabled(enabled: bool) -> void:
+	jiggle_effect.animation_enabled = enabled
+
+
+func set_reduced_motion(enabled: bool) -> void:
+	jiggle_effect.reduced_motion = enabled
+
+
 func set_page_complete(value: bool) -> void:
 	page_is_complete = value
 	choice_label.visible = value and page_has_choices
@@ -100,10 +133,12 @@ func set_page_complete(value: bool) -> void:
 
 
 func set_skin(value: Resource) -> void:
+	var visible_count := dialogue_text.visible_characters if dialogue_text != null else -1
 	skin = value if value != null else DEFAULT_SKIN
 	_ensure_built()
 	_apply_skin()
 	_set_presented_text(presented_text, presented_spans)
+	dialogue_text.visible_characters = visible_count
 	set_page_complete(page_is_complete)
 	if is_inside_tree():
 		_layout_from_viewport()
@@ -215,6 +250,7 @@ func _build_view() -> void:
 	dialogue_text.scroll_active = false
 	dialogue_text.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING
 	dialogue_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	jiggle_effect = JiggleEffectScript.new()
 	dialogue_panel.add_child(dialogue_text)
 	choice_label = Label.new()
 	choice_label.name = "ChoiceList"

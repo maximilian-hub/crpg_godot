@@ -29,9 +29,12 @@ scaling, instant text, and character-voice request diagnostics. See
 visible-character indexing rules.
 
 The Ernest page demonstrates nested semantic color, capitalization, and
-`small`/`large` font-size spans. The status panel reports the fully shaped text
-dimensions and marks content as `fits` or `OVERFLOW`; it never auto-shrinks or
-silently paginates authored prose.
+`small`/`large` font-size spans, plus a semantic `strong` jiggle. The status
+panel reports the fully shaped text dimensions and marks content as `fits` or
+`OVERFLOW`; it never auto-shrinks or silently paginates authored prose. Animated
+text and reduced-motion toggles exercise the static accessibility paths.
+For capture or automation, launch the Lab with `-- --dialogue-page=4` to select
+that one-based page before its first frame.
 
 `dialogue_speaker_characterization.tscn` verifies speaker/portrait catalog
 resolution, silent and asset-pending voice profiles, deterministic pitch, the

@@ -86,7 +86,25 @@ Lab reports `OVERFLOW`; the runtime does not silently shrink it or create pages.
 Authors should split or revise the page until automatic pagination receives its
 own explicit design.
 
-Animated motion and authored audio tags remain outside this milestone.
+### Jiggly text
+
+`[jiggle]...[/jiggle]` applies the shared `standard` jiggly-text style.
+`[jiggle=<semantic-ID>]...[/jiggle]` selects another skin-defined style; the
+initial skin provides `subtle`, `standard`, and `strong`.
+
+```text
+[jiggle=subtle]Something is nearby.[/jiggle]
+[jiggle=strong][size=large][color=warning][caps]Run![/caps][/color][/size][/jiggle]
+```
+
+Dialogue source never specifies raw amplitude, frequency, phase, or randomness.
+Those belong to `DialogueSkin`. Motion begins independently for each character
+when reveal reaches its visible index. Offsets are deterministic and snapped to
+whole logical pixels, and they affect drawing only—not shaping, wrapping, or
+overflow measurement. Disabling animated text or enabling reduced motion renders
+the same authored content statically.
+
+Other animated effects and authored audio tags remain outside this milestone.
 
 ## Authored reveal speed
 

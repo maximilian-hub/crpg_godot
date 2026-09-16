@@ -1,7 +1,7 @@
 extends RefCounted
 class_name DialogueTextSpan
 
-enum Kind { COLOR, CAPITALIZATION, FONT_SIZE }
+enum Kind { COLOR, CAPITALIZATION, FONT_SIZE, JIGGLE }
 
 var kind: Kind
 var start_index := 0

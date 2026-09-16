@@ -7,6 +7,7 @@ const HOOD_PORTRAIT := preload("res://assets/ui/portraits/hood/hood_neutral.png"
 const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8.ttf")
 const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
 const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
+const JiggleEffectScript := preload("res://scripts/ui/dialogue_jiggle_effect.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -62,6 +63,7 @@ func _test_static_states() -> void:
 	_check(view.dialogue_text.get_theme_font("normal_font") == PIXEL_OPERATOR_8 and view.speaker_label.get_theme_font("font") == PIXEL_OPERATOR_8_BOLD, "DialogueSkin independently applies body and plaque font candidates")
 	_check(font_skin.has_semantic_color("warning") and font_skin.semantic_color("warning") != font_skin.body_color, "DialogueSkin resolves named semantic colors independently of authored text")
 	_check(font_skin.has_semantic_size("large") and font_skin.semantic_size("large") > font_skin.semantic_size("normal"), "DialogueSkin resolves semantic sizes independently of authored text")
+	_check(font_skin.has_semantic_jiggle("strong") and font_skin.semantic_jiggle("strong").amplitude > font_skin.semantic_jiggle("standard").amplitude, "DialogueSkin resolves named jiggle motion independently of authored text")
 	var color_spans: Array = [TextSpanScript.new(TextSpanScript.Kind.COLOR, 1, 3, "warning")]
 	view.configure("Hood", true, "A[B]", null, PackedStringArray(), color_spans)
 	_check(view.dialogue_text.get_total_character_count() == 4, "structured rich text retains one rendered character per visible source character")
@@ -81,6 +83,31 @@ func _test_static_states() -> void:
 	view.configure("Hood", true, overflowing_text, null, PackedStringArray(), overflowing_spans)
 	_check(view.text_overflows(), "fully shaped content reports overflow without shrinking or automatic pagination")
 	_check(view.dialogue_text.get_theme_font_size("normal_font_size") == font_skin.body_font_size, "overflow detection leaves the configured base font size unchanged")
+	var motion_text := "Motion leaves layout alone."
+	view.configure("Hood", true, motion_text)
+	var static_motion_size: Vector2i = view.text_content_size()
+	var jiggle_spans: Array = [TextSpanScript.new(TextSpanScript.Kind.JIGGLE, 0, motion_text.length(), "strong")]
+	view.configure("Hood", true, motion_text, null, PackedStringArray(), jiggle_spans)
+	_check(view.text_content_size() == static_motion_size, "jiggle draw offsets do not affect shaping, wrapping, or overflow measurements")
+	view.set_visible_character_count(0)
+	_check(view.jiggle_effect.revealed_at.is_empty(), "hidden jiggle characters have no animation start time")
+	view.set_visible_character_count(1)
+	_check(view.jiggle_effect.revealed_at.has(0) and not view.jiggle_effect.revealed_at.has(1), "jiggle animation begins only when each indexed character is revealed")
+	var effect = JiggleEffectScript.new()
+	effect.reveal_through(1)
+	effect.advance(0.125)
+	var deterministic_offset: Vector2 = effect.offset_for(0, 2.0, 7.0)
+	var repeated_effect = JiggleEffectScript.new()
+	repeated_effect.reveal_through(1)
+	repeated_effect.advance(0.125)
+	_check(repeated_effect.offset_for(0, 2.0, 7.0) == deterministic_offset, "jiggle offset is deterministic for matching character index and elapsed reveal time")
+	_check(deterministic_offset.x == roundf(deterministic_offset.x) and deterministic_offset.y == roundf(deterministic_offset.y), "jiggle offsets snap to whole logical pixels")
+	_check(effect.offset_for(1, 2.0, 7.0) == Vector2.ZERO, "unrevealed characters remain motionless")
+	effect.reduced_motion = true
+	_check(effect.offset_for(0, 2.0, 7.0) == Vector2.ZERO, "reduced motion renders authored jiggle spans statically")
+	effect.reduced_motion = false
+	effect.animation_enabled = false
+	_check(effect.offset_for(0, 2.0, 7.0) == Vector2.ZERO, "global animated-text control disables authored motion")
 	view.configure("Hood", true, "Left aligned sample.")
 	_check(view.portrait_panel.visible, "portrait panel remains visible without portrait art")
 	_check(view.empty_portrait.visible and not view.portrait_texture.visible, "missing portrait uses an intentional empty state")

@@ -30,6 +30,8 @@ var font_size_selector: OptionButton
 var play_button: Button
 var instant_toggle: CheckButton
 var voice_toggle: CheckButton
+var animated_text_toggle: CheckButton
+var reduced_motion_toggle: CheckButton
 var status_label: Label
 var playing := true
 var current_portrait_id := ""
@@ -139,6 +141,15 @@ func _build_controls() -> void:
 	voice_toggle.button_pressed = true
 	voice_toggle.toggled.connect(_on_voice_toggled)
 	controls.add_child(voice_toggle)
+	animated_text_toggle = CheckButton.new()
+	animated_text_toggle.text = "Animated text"
+	animated_text_toggle.button_pressed = true
+	animated_text_toggle.toggled.connect(_on_animated_text_toggled)
+	controls.add_child(animated_text_toggle)
+	reduced_motion_toggle = CheckButton.new()
+	reduced_motion_toggle.text = "Reduced motion"
+	reduced_motion_toggle.toggled.connect(_on_reduced_motion_toggled)
+	controls.add_child(reduced_motion_toggle)
 	status_label = Label.new()
 	status_label.name = "ParserStatus"
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -172,6 +183,18 @@ func _populate_pages() -> void:
 	for index in range(conversation.pages.size()):
 		var page = conversation.pages[index]
 		page_selector.add_item("%d: %s" % [index + 1, page.text.replace("\n", " ").left(28)])
+	var requested_page := _requested_initial_page()
+	if requested_page >= 0 and requested_page < page_selector.item_count:
+		page_selector.select(requested_page)
+
+
+func _requested_initial_page() -> int:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--dialogue-page="):
+			var value := argument.trim_prefix("--dialogue-page=")
+			if value.is_valid_int():
+				return value.to_int() - 1
+	return -1
 
 
 func _refresh_page() -> void:
@@ -194,7 +217,7 @@ func _refresh_page() -> void:
 	var display_name: String = page.speaker_name if not page.speaker_name.is_empty() else (speaker_profile.default_display_name if speaker_profile != null else "")
 	dialogue_view.configure(display_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices, page.presentation_spans)
 	dialogue_view.set_page_complete(false)
-	dialogue_view.dialogue_text.visible_characters = 0
+	dialogue_view.set_visible_character_count(0)
 	reveal_controller.paused = false
 	playing = not reveal_controller.instant_text
 	play_button.text = "Pause" if playing else "Play"
@@ -222,7 +245,8 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var voice_asset_state := "silent profile" if speaker_profile != null and not speaker_profile.voice_enabled else ("asset ready" if speaker_profile != null and not speaker_profile.voice_clips.is_empty() else "awaiting voice asset")
 	var content_size: Vector2i = dialogue_view.text_content_size()
 	var overflow_state := "OVERFLOW" if dialogue_view.text_overflows() else "fits"
-	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s" % [
+	var motion_state := "reduced" if reduced_motion_toggle.button_pressed else ("animated" if animated_text_toggle.button_pressed else "disabled")
+	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nMotion: %s\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s" % [
 		current_font_label,
 		logical_font_size,
 		conversation.id,
@@ -237,6 +261,7 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 		content_size.x,
 		content_size.y,
 		overflow_state,
+		motion_state,
 		voice_emitter.request_count if voice_emitter != null else 0,
 		"enabled" if voice_emitter != null and voice_emitter.enabled else "disabled",
 		last_voice_description,
@@ -249,7 +274,7 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 func _presentation_description(page) -> String:
 	var descriptions := PackedStringArray()
 	for span in page.presentation_spans:
-		var kind := "color:%s" % span.value if span.kind == TextSpanScript.Kind.COLOR else ("size:%s" % span.value if span.kind == TextSpanScript.Kind.FONT_SIZE else "caps")
+		var kind := "color:%s" % span.value if span.kind == TextSpanScript.Kind.COLOR else ("size:%s" % span.value if span.kind == TextSpanScript.Kind.FONT_SIZE else ("jiggle:%s" % span.value if span.kind == TextSpanScript.Kind.JIGGLE else "caps"))
 		descriptions.append("%s@%d..%d" % [kind, span.start_index, span.end_index])
 	return ", ".join(descriptions) if not descriptions.is_empty() else "none"
 
@@ -291,7 +316,7 @@ func _on_font_size_selected(index: int) -> void:
 
 
 func _on_visibility_changed(count: int) -> void:
-	dialogue_view.dialogue_text.visible_characters = count
+	dialogue_view.set_visible_character_count(count)
 	if conversation != null and not conversation.pages.is_empty():
 		_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
@@ -360,6 +385,16 @@ func _on_instant_toggled(enabled: bool) -> void:
 func _on_voice_toggled(enabled: bool) -> void:
 	voice_emitter.enabled = enabled
 	voice_player.enabled = enabled
+	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _on_animated_text_toggled(enabled: bool) -> void:
+	dialogue_view.set_animated_text_enabled(enabled)
+	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _on_reduced_motion_toggled(enabled: bool) -> void:
+	dialogue_view.set_reduced_motion(enabled)
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
 

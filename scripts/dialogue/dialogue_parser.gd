@@ -147,6 +147,7 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 	var speed_stack: Array[float] = [1.0]
 	var color_stack: Array[Dictionary] = []
 	var size_stack: Array[Dictionary] = []
+	var jiggle_stack: Array[Dictionary] = []
 	var capitalization_starts := PackedInt32Array()
 	var cursor := 0
 	while cursor < raw_text.length():
@@ -218,6 +219,18 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 			else:
 				var size: Dictionary = size_stack.pop_back()
 				presentation_spans.append(TextSpanScript.new(TextSpanScript.Kind.FONT_SIZE, size.start, visible_text.length(), size.name))
+		elif tag == "jiggle" or tag.begins_with("jiggle="):
+			var jiggle_name := "standard" if tag == "jiggle" else tag.trim_prefix("jiggle=").strip_edges()
+			if jiggle_name.is_empty() or not _is_valid_id(jiggle_name):
+				_add_error(result, source_name, page_line, "jiggle tag requires a semantic jiggle ID")
+			else:
+				jiggle_stack.append({"name": jiggle_name, "start": visible_text.length()})
+		elif tag == "/jiggle":
+			if jiggle_stack.is_empty():
+				_add_error(result, source_name, page_line, "closing jiggle tag has no matching opening tag")
+			else:
+				var jiggle: Dictionary = jiggle_stack.pop_back()
+				presentation_spans.append(TextSpanScript.new(TextSpanScript.Kind.JIGGLE, jiggle.start, visible_text.length(), jiggle.name))
 		elif tag == "caps":
 			capitalization_starts.append(visible_text.length())
 		elif tag == "/caps":
@@ -236,6 +249,8 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 		_add_error(result, source_name, page_line, "unclosed color tag")
 	if not size_stack.is_empty():
 		_add_error(result, source_name, page_line, "unclosed size tag")
+	if not jiggle_stack.is_empty():
+		_add_error(result, source_name, page_line, "unclosed jiggle tag")
 	if not capitalization_starts.is_empty():
 		_add_error(result, source_name, page_line, "unclosed caps tag")
 	presentation_spans.sort_custom(func(a, b):
