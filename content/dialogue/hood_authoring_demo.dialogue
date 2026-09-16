@@ -11,3 +11,6 @@ You made it this far.
 Will you challenge me?
 @choice text="Yes" target=accept_challenge
 @choice text="No" target=decline_challenge
+
+@page speaker=ernest_the_unreasonably_named name="Ernest the Unreasonably Named" known=true portrait=none
+Ernest's move: Q7?! "Check," he said — 128 times. MIXED case wraps punctuation cleanly.

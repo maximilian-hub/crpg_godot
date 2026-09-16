@@ -26,7 +26,7 @@ func _test_valid_fixture() -> void:
 	var result = DialogueParserScript.parse_file(VALID_FIXTURE)
 	_check(result.is_valid(), "representative authored conversation parses without errors: %s" % "; ".join(result.errors))
 	_check(result.conversation.id == "hood_authoring_demo", "conversation ID is retained")
-	_check(result.conversation.pages.size() == 3, "ordered pages are retained")
+	_check(result.conversation.pages.size() == 4, "ordered pages are retained")
 	var unknown_page = result.conversation.pages[0]
 	_check(unknown_page.speaker_id == "hood" and unknown_page.speaker_name == "Hood", "speaker identity and display name are distinct fields")
 	_check(not unknown_page.speaker_known, "unknown-name presentation state is retained")
@@ -42,6 +42,8 @@ func _test_valid_fixture() -> void:
 	var choice_page = result.conversation.pages[2]
 	_check(choice_page.choices.size() == 2, "page choices are retained")
 	_check(choice_page.choices[0].text == "Yes" and choice_page.choices[0].target == "accept_challenge", "choice label and target remain separate")
+	var font_page = result.conversation.pages[3]
+	_check(font_page.speaker_name == "Ernest the Unreasonably Named" and font_page.text.contains("Q7?!"), "font-evaluation page retains long names, mixed case, numbers, and punctuation")
 
 
 func _test_visible_character_indices() -> void:

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/hood_test_portrait.png" id="2_portrait"]
+
+[resource]
+script = ExtResource("1_profile")
+speaker_id = "hood"
+default_display_name = "Hood"
+portrait_ids = PackedStringArray("hood_neutral", "laugh_a", "laugh_b")
+portrait_textures = Array[Texture2D]([ExtResource("2_portrait"), ExtResource("2_portrait"), ExtResource("2_portrait")])
+voice_enabled = true
+minimum_pitch = 0.92
+maximum_pitch = 1.08
+voice_seed = 1701

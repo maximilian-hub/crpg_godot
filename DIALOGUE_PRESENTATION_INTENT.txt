@@ -151,6 +151,13 @@ Each speaker should support a distinct voice sound or pitch range. Final voice
 assets will be supplied later, so early prototypes may use placeholders while
 preserving speaker-specific configuration.
 
+Speaker presentation is resolved through data-driven profiles keyed by authored
+speaker IDs. Profiles map stable portrait IDs to textures and carry optional
+voice clips, pitch ranges, volume, and deterministic variation seeds. Missing
+voice assets remain a valid, diagnosable state, and explicitly silent speakers
+must not emit voice requests. Whitespace is silent by default; letters, numbers,
+and punctuation are eligible for a character voice sound.
+
 Players should have a universal dialogue-speed control expressed as a percentage
 multiplier. Authored timing may override the local pace for spans as small as a
 single word, including deliberately slow or fast delivery. The player setting

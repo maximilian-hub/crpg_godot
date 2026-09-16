@@ -6,13 +6,14 @@ Run the static dialogue-view checks with:
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_view_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_parser_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_reveal_characterization.tscn
+"/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_speaker_characterization.tscn
 ```
 
 Open `res://tools/dev_dialogue/dialogue_lab.tscn` in Godot to review the layout.
 Use the lab controls to switch portrait, identity, content, and placement states.
 Resize the window to check integer scale transitions, narrow layouts, and wide
 layouts. This milestone intentionally uses plain grayscale placeholder styling;
-it does not implement reveal timing, authored tags, or dialogue audio.
+final decorative skin and dialogue voice assets are still intentionally absent.
 
 The provisional skin is `res://assets/ui/dialogue/dialogue_skin_provisional.tres`.
 Its panel and plaque slots accept any `StyleBox`, including future nine-sliced
@@ -23,5 +24,17 @@ The lab parses `res://content/dialogue/hood_authoring_demo.dialogue`. Page and
 portrait-state selectors demonstrate ordered pages and expression events without
 coupling them to gameplay. Reveal controls provide play/pause, restart, one
 character stepping, immediate completion, two-stage confirm, player-speed
-scaling, and instant text. See `docs/dialogue_authoring_format.md` for the
-grammar, speed spans, and visible-character indexing rules.
+scaling, instant text, and character-voice request diagnostics. See
+`docs/dialogue_authoring_format.md` for the grammar, speed spans, and
+visible-character indexing rules.
+
+`dialogue_speaker_characterization.tscn` verifies speaker/portrait catalog
+resolution, silent and asset-pending voice profiles, deterministic pitch, the
+whitespace eligibility policy, and the literal all-remaining-requests batch on
+page completion.
+
+Font controls compare the engine baseline with Pixel Operator 8, its bold-plaque
+pairing, Pixel Operator Mono 8, and the non-8 Pixel Operator family at 8px and
+16px logical sizes. The tested pixel-font imports disable antialiasing and
+subpixel positioning, fix font oversampling at 1x, and render through the
+DialogueView's nearest-filtered logical stage.

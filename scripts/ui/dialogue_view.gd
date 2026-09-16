@@ -127,6 +127,7 @@ func _build_view() -> void:
 	content_stage = Control.new()
 	content_stage.name = "ContentStage"
 	content_stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content_stage.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(content_stage)
 
 	portrait_panel = Panel.new()
@@ -209,8 +210,12 @@ func _apply_skin() -> void:
 	continue_indicator_texture.texture = skin.continue_indicator_texture
 	if skin.body_font != null:
 		dialogue_text.add_theme_font_override("normal_font", skin.body_font)
+	else:
+		dialogue_text.remove_theme_font_override("normal_font")
 	if skin.name_font != null:
 		speaker_label.add_theme_font_override("font", skin.name_font)
+	else:
+		speaker_label.remove_theme_font_override("font")
 	dialogue_text.add_theme_font_size_override("normal_font_size", skin.body_font_size)
 	dialogue_text.add_theme_color_override("default_color", skin.body_color)
 	speaker_label.add_theme_font_size_override("font_size", skin.name_font_size)

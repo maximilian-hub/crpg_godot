@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="DialogueSpeakerCatalog" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_catalog.gd" id="1_catalog"]
+[ext_resource type="Resource" path="res://assets/ui/dialogue/hood_dialogue_speaker.tres" id="2_hood"]
+[ext_resource type="Resource" path="res://assets/ui/dialogue/ernest_dialogue_speaker.tres" id="3_ernest"]
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="4_profile"]
+
+[resource]
+script = ExtResource("1_catalog")
+profiles = Array[ExtResource("4_profile")]([ExtResource("2_hood"), ExtResource("3_ernest")])

@@ -4,6 +4,8 @@ const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
 const DialogueViewScript := preload("res://scripts/ui/dialogue_view.gd")
 const DIALOGUE_SKIN := preload("res://assets/ui/dialogue/dialogue_skin_provisional.tres")
 const HOOD_PORTRAIT := preload("res://assets/ui/portraits/hood_test_portrait.png")
+const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8.ttf")
+const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
 
 var failures: Array[String] = []
 var checks := 0
@@ -47,6 +49,15 @@ func _test_static_states() -> void:
 	var view = DIALOGUE_VIEW_SCENE.instantiate()
 	add_child(view)
 	view.apply_window_size(Vector2i(1920, 1080))
+	_check(view.content_stage.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST, "dialogue stage enforces nearest filtering independently of its host viewport")
+	_check(PIXEL_OPERATOR_8.antialiasing == 0, "Pixel Operator 8 disables grayscale antialiasing")
+	_check(PIXEL_OPERATOR_8.subpixel_positioning == 0, "Pixel Operator 8 disables subpixel positioning")
+	_check(is_equal_approx(PIXEL_OPERATOR_8.oversampling, 1.0), "Pixel Operator 8 fixes font oversampling at native 1x")
+	var font_skin = DIALOGUE_SKIN.duplicate(true)
+	font_skin.body_font = PIXEL_OPERATOR_8
+	font_skin.name_font = PIXEL_OPERATOR_8_BOLD
+	view.set_skin(font_skin)
+	_check(view.dialogue_text.get_theme_font("normal_font") == PIXEL_OPERATOR_8 and view.speaker_label.get_theme_font("font") == PIXEL_OPERATOR_8_BOLD, "DialogueSkin independently applies body and plaque font candidates")
 	view.configure("Hood", true, "Left aligned sample.")
 	_check(view.portrait_panel.visible, "portrait panel remains visible without portrait art")
 	_check(view.empty_portrait.visible and not view.portrait_texture.visible, "missing portrait uses an intentional empty state")

@@ -3,22 +3,39 @@ extends Node
 const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
 const DialogueParserScript := preload("res://scripts/dialogue/dialogue_parser.gd")
 const RevealScript := preload("res://scripts/dialogue/dialogue_reveal_controller.gd")
-const HOOD_PORTRAIT := preload("res://assets/ui/portraits/hood_test_portrait.png")
+const VoiceEmitterScript := preload("res://scripts/dialogue/dialogue_voice_emitter.gd")
+const VoicePlayerScript := preload("res://scripts/ui/dialogue_voice_player.gd")
+const SPEAKER_CATALOG := preload("res://assets/ui/dialogue/dialogue_speaker_catalog.tres")
+const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8.ttf")
+const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
+const PIXEL_OPERATOR_MONO_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperatorMono8.ttf")
+const PIXEL_OPERATOR_MONO_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperatorMono8-Bold.ttf")
+const PIXEL_OPERATOR := preload("res://assets/ui/fonts/pixel_operator/PixelOperator.ttf")
+const PIXEL_OPERATOR_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator-Bold.ttf")
 const DEMO_PATH := "res://content/dialogue/hood_authoring_demo.dialogue"
 
 var dialogue_view
+var lab_skin
 var conversation
 var reveal_controller
+var voice_emitter
+var voice_player
 var page_selector: OptionButton
 var event_selector: OptionButton
 var placement_selector: OptionButton
 var speed_selector: OptionButton
+var font_selector: OptionButton
+var font_size_selector: OptionButton
 var play_button: Button
 var instant_toggle: CheckButton
+var voice_toggle: CheckButton
 var status_label: Label
 var playing := true
 var current_portrait_id := ""
 var current_portrait_event_index := -1
+var current_font_label := "Pixel Operator 8 + Bold plaque"
+var logical_font_size := 8
+var last_voice_description := "none"
 
 
 func _ready() -> void:
@@ -28,12 +45,21 @@ func _ready() -> void:
 	_build_background()
 	dialogue_view = DIALOGUE_VIEW_SCENE.instantiate()
 	add_child(dialogue_view)
+	lab_skin = dialogue_view.skin.duplicate(true)
 	reveal_controller = RevealScript.new()
+	voice_emitter = VoiceEmitterScript.new()
+	voice_player = VoicePlayerScript.new()
+	voice_player.name = "DialogueVoicePlayer"
+	add_child(voice_player)
 	reveal_controller.visibility_changed.connect(_on_visibility_changed)
 	reveal_controller.portrait_changed.connect(_on_portrait_changed)
+	reveal_controller.character_revealed.connect(voice_emitter.on_character_revealed)
+	voice_emitter.voice_requested.connect(voice_player.play_request)
+	voice_emitter.voice_requested.connect(_on_voice_requested)
 	reveal_controller.page_completed.connect(_on_page_completed)
 	reveal_controller.advance_requested.connect(_on_advance_requested)
 	_build_controls()
+	_apply_font_candidate(2)
 	if parsed.is_valid():
 		_populate_pages()
 		_refresh_page()
@@ -52,7 +78,7 @@ func _build_background() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 	var title := Label.new()
-	title.text = "DIALOGUE LAB\nDeterministic reveal milestone"
+	title.text = "DIALOGUE LAB\nSpeaker profiles + character voice"
 	title.position = Vector2(20, 18)
 	title.add_theme_font_size_override("font_size", 18)
 	title.modulate = Color("8e969f")
@@ -83,11 +109,16 @@ func _build_controls() -> void:
 	page_selector = _add_option(controls, "Page", [])
 	event_selector = _add_option(controls, "Portrait state", [])
 	placement_selector = _add_option(controls, "Placement", ["Bottom", "Top", "Center", "Battle near", "Battle far"])
+	font_selector = _add_option(controls, "Dialogue font", ["Engine default", "Pixel Operator 8", "Pixel Operator 8 + Bold plaque", "Pixel Operator Mono 8 + Bold", "Pixel Operator + Bold"])
+	font_selector.select(2)
+	font_size_selector = _add_option(controls, "Logical font size", ["8 px", "16 px"])
 	speed_selector = _add_option(controls, "Player speed", ["50%", "100%", "200%", "400%"])
 	speed_selector.select(1)
 	page_selector.item_selected.connect(func(_index: int): _refresh_page())
 	event_selector.item_selected.connect(func(_index: int): _refresh_portrait_state())
 	placement_selector.item_selected.connect(func(index: int): dialogue_view.set_placement(index))
+	font_selector.item_selected.connect(_apply_font_candidate)
+	font_size_selector.item_selected.connect(_on_font_size_selected)
 	speed_selector.item_selected.connect(_on_speed_selected)
 	var buttons := HBoxContainer.new()
 	controls.add_child(buttons)
@@ -102,6 +133,11 @@ func _build_controls() -> void:
 	instant_toggle.text = "Instant text"
 	instant_toggle.toggled.connect(_on_instant_toggled)
 	controls.add_child(instant_toggle)
+	voice_toggle = CheckButton.new()
+	voice_toggle.text = "Character voice requests"
+	voice_toggle.button_pressed = true
+	voice_toggle.toggled.connect(_on_voice_toggled)
+	controls.add_child(voice_toggle)
 	status_label = Label.new()
 	status_label.name = "ParserStatus"
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -151,7 +187,11 @@ func _refresh_page() -> void:
 	var choices := PackedStringArray()
 	for index in range(page.choices.size()):
 		choices.append("%s%s" % ["▶ " if index == 0 else "  ", page.choices[index].text])
-	dialogue_view.configure(page.speaker_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices)
+	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
+	voice_emitter.set_profile(speaker_profile)
+	last_voice_description = "none"
+	var display_name: String = page.speaker_name if not page.speaker_name.is_empty() else (speaker_profile.default_display_name if speaker_profile != null else "")
+	dialogue_view.configure(display_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices)
 	dialogue_view.set_page_complete(false)
 	dialogue_view.dialogue_text.visible_characters = 0
 	reveal_controller.paused = false
@@ -177,18 +217,61 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var revealed: int = reveal_controller.visible_character_count if reveal_controller != null else 0
 	var reveal_state := "complete" if reveal_controller != null and reveal_controller.completed else ("playing" if playing else "paused")
 	var next_delay: float = reveal_controller.delay_before_next_character() if reveal_controller != null and not reveal_controller.completed else 0.0
-	status_label.text = "Conversation:\n  %s\nSpeaker ID: %s\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nEvents: %d\nChoices: %s" % [
+	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
+	var voice_asset_state := "silent profile" if speaker_profile != null and not speaker_profile.voice_enabled else ("asset ready" if speaker_profile != null and not speaker_profile.voice_clips.is_empty() else "awaiting voice asset")
+	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nVoice requests: %d (%s)\nLast voice: %s\nEvents: %d\nChoices: %s" % [
+		current_font_label,
+		logical_font_size,
 		conversation.id,
 		page.speaker_id,
+		voice_asset_state,
 		_portrait_label(portrait_id),
 		event_description,
 		revealed,
 		page.text.length(),
 		reveal_state,
 		next_delay,
+		voice_emitter.request_count if voice_emitter != null else 0,
+		"enabled" if voice_emitter != null and voice_emitter.enabled else "disabled",
+		last_voice_description,
 		page.events.size(),
 		", ".join(targets) if not targets.is_empty() else "none",
 	]
+
+
+func _apply_font_candidate(index: int) -> void:
+	match index:
+		0:
+			current_font_label = "Engine default"
+			lab_skin.body_font = null
+			lab_skin.name_font = null
+		1:
+			current_font_label = "Pixel Operator 8"
+			lab_skin.body_font = PIXEL_OPERATOR_8
+			lab_skin.name_font = PIXEL_OPERATOR_8
+		2:
+			current_font_label = "Pixel Operator 8 + Bold plaque"
+			lab_skin.body_font = PIXEL_OPERATOR_8
+			lab_skin.name_font = PIXEL_OPERATOR_8_BOLD
+		3:
+			current_font_label = "Pixel Operator Mono 8 + Bold"
+			lab_skin.body_font = PIXEL_OPERATOR_MONO_8
+			lab_skin.name_font = PIXEL_OPERATOR_MONO_8_BOLD
+		4:
+			current_font_label = "Pixel Operator + Bold"
+			lab_skin.body_font = PIXEL_OPERATOR
+			lab_skin.name_font = PIXEL_OPERATOR_BOLD
+	lab_skin.body_font_size = logical_font_size
+	lab_skin.name_font_size = logical_font_size
+	lab_skin.choice_font_size = logical_font_size
+	dialogue_view.set_skin(lab_skin)
+	if page_selector != null and page_selector.item_count > 0:
+		_restart_page()
+
+
+func _on_font_size_selected(index: int) -> void:
+	logical_font_size = 8 if index == 0 else 16
+	_apply_font_candidate(font_selector.selected)
 
 
 func _on_visibility_changed(count: int) -> void:
@@ -258,6 +341,16 @@ func _on_instant_toggled(enabled: bool) -> void:
 		play_button.text = "Play"
 
 
+func _on_voice_toggled(enabled: bool) -> void:
+	voice_emitter.enabled = enabled
+	voice_player.enabled = enabled
+	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _on_voice_requested(stream: AudioStream, pitch: float, _volume_db: float, visible_index: int, character: String) -> void:
+	last_voice_description = "@%d '%s' pitch %.2f%s" % [visible_index, character, pitch, " (no clip yet)" if stream == null else ""]
+
+
 func _on_page_completed() -> void:
 	playing = false
 	play_button.text = "Play"
@@ -272,7 +365,9 @@ func _on_advance_requested() -> void:
 
 
 func _resolve_portrait(portrait_id: String) -> Texture2D:
-	return null if portrait_id.is_empty() else HOOD_PORTRAIT
+	if portrait_id.is_empty() or conversation == null or conversation.pages.is_empty():
+		return null
+	return SPEAKER_CATALOG.portrait(conversation.pages[page_selector.selected].speaker_id, portrait_id)
 
 
 func _portrait_label(portrait_id: String) -> String:
