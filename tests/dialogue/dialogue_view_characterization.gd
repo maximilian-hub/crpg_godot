@@ -3,7 +3,7 @@ extends Node
 const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
 const DialogueViewScript := preload("res://scripts/ui/dialogue_view.gd")
 const DIALOGUE_SKIN := preload("res://assets/ui/dialogue/dialogue_skin_provisional.tres")
-const HOOD_PORTRAIT := preload("res://assets/ui/portraits/hood_test_portrait.png")
+const HOOD_PORTRAIT := preload("res://assets/ui/portraits/hood/hood_neutral.png")
 const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8.ttf")
 const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
 
@@ -43,6 +43,7 @@ func _test_layout_calculation() -> void:
 	_check(near.group_rect.position.y > far.group_rect.position.y, "battle-near and battle-far map to opposing vertical placements")
 	_check(DIALOGUE_SKIN.text_panel_style != null and DIALOGUE_SKIN.portrait_panel_style != null and DIALOGUE_SKIN.name_plate_style != null, "skin supplies independently replaceable panel and plaque styles")
 	_check(DIALOGUE_SKIN.portrait_aspect_ratio == float(HOOD_PORTRAIT.get_width()) / float(HOOD_PORTRAIT.get_height()), "skin aspect ratio matches the supplied portrait asset")
+	_check(DIALOGUE_SKIN.empty_portrait_texture != null and DIALOGUE_SKIN.empty_portrait_texture.get_size() == Vector2(96, 128), "skin supplies the correctly sized empty portrait asset")
 
 
 func _test_static_states() -> void:

@@ -1,15 +1,20 @@
-[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=6 format=3 uid="uid://buqngbuxss8vj"]
 
 [ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="1_profile"]
-[ext_resource type="Texture2D" path="res://assets/ui/portraits/hood_test_portrait.png" id="2_portrait"]
+[ext_resource type="Texture2D" uid="uid://b5afi4pl0eum3" path="res://assets/ui/portraits/hood/hood_neutral.png" id="2_neutral"]
+[ext_resource type="Texture2D" uid="uid://bx6ki0r7os74n" path="res://assets/ui/portraits/hood/hood_laugh_a.png" id="3_laugh_a"]
+[ext_resource type="Texture2D" uid="uid://indkoq5c8w3f" path="res://assets/ui/portraits/hood/hood_laugh_b.png" id="4_laugh_b"]
+[ext_resource type="AudioStream" uid="uid://n2wknqvbqhc4" path="res://assets/audio/ui/hood_blip.wav" id="5_voice"]
 
 [resource]
 script = ExtResource("1_profile")
 speaker_id = "hood"
 default_display_name = "Hood"
 portrait_ids = PackedStringArray("hood_neutral", "laugh_a", "laugh_b")
-portrait_textures = Array[Texture2D]([ExtResource("2_portrait"), ExtResource("2_portrait"), ExtResource("2_portrait")])
+portrait_textures = Array[Texture2D]([ExtResource("2_neutral"), ExtResource("3_laugh_a"), ExtResource("4_laugh_b")])
 voice_enabled = true
+voice_clips = Array[AudioStream]([ExtResource("5_voice")])
 minimum_pitch = 0.92
 maximum_pitch = 1.08
+volume_db = 0.0
 voice_seed = 1701

@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="DialogueSkin" load_steps=5 format=3 uid="uid://cx87ll542jthv"]
+[gd_resource type="Resource" script_class="DialogueSkin" load_steps=6 format=3 uid="uid://cx87ll542jthv"]
 
 [ext_resource type="Script" uid="uid://b1uvorggwd6p7" path="res://scripts/ui/dialogue_skin.gd" id="1_skin"]
+[ext_resource type="Texture2D" uid="uid://r62s16qrdm5j" path="res://assets/ui/portraits/empty.png" id="2_empty"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_plate"]
 bg_color = Color(0.713726, 0.72549, 0.721569, 1)
@@ -39,6 +40,7 @@ script = ExtResource("1_skin")
 text_panel_style = SubResource("StyleBox_text")
 portrait_panel_style = SubResource("StyleBox_portrait")
 name_plate_style = SubResource("StyleBox_plate")
+empty_portrait_texture = ExtResource("2_empty")
 portrait_aspect_ratio = 0.75
 panel_height = 64
 panel_join_overlap = 2
