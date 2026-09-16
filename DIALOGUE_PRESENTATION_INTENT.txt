@@ -95,9 +95,9 @@ placement. A presentation skin should provide the frame, typography, colors,
 sounds, ornaments, and animation.
 
 Authored choices become visible and interactive only after their page finishes
-revealing. UI up/down navigation wraps through the available choices. Confirm
-during reveal completes text first; confirm afterward emits the highlighted
-choice's stable target ID without executing story consequences. Cancel likewise
+revealing. UI left/right navigation wraps through the horizontally presented
+choices. Confirm during reveal completes text first; confirm afterward emits the
+highlighted choice's stable target ID without executing story consequences. Cancel likewise
 emits a neutral request. DialogueSkin provides optional navigation, confirmation,
 and cancellation sounds, while gameplay remains responsible for interpreting
 targets and changing state.

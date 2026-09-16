@@ -45,7 +45,7 @@ page completion.
 `dialogue_choice_characterization.tscn` verifies empty, single, and multiple
 choice pages; reveal gating; wrapping selection; neutral target and cancel
 emission; ordered presentation cues; and optional choice sound slots. The Lab's
-choice buttons and `move_up`, `move_down`, `interact`, and `back` actions expose
+choice buttons and `move_left`, `move_right`, `interact`, and `back` actions expose
 the same controller without executing story consequences.
 
 Font controls compare the engine baseline with Pixel Operator 8, its bold-plaque

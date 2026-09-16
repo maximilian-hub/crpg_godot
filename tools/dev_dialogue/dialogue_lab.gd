@@ -148,8 +148,8 @@ func _build_controls() -> void:
 	_add_button(action_buttons, "Confirm", _confirm_page)
 	var choice_buttons := HBoxContainer.new()
 	controls.add_child(choice_buttons)
-	_add_button(choice_buttons, "Choice ↑", func(): _move_choice(-1))
-	_add_button(choice_buttons, "Choice ↓", func(): _move_choice(1))
+	_add_button(choice_buttons, "Choice ←", func(): _move_choice(-1))
+	_add_button(choice_buttons, "Choice →", func(): _move_choice(1))
 	_add_button(choice_buttons, "Cancel", _cancel_choice)
 	instant_toggle = CheckButton.new()
 	instant_toggle.text = "Instant text"
@@ -470,10 +470,10 @@ func _on_choice_cancel_requested() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("move_up") and choice_controller.is_active():
+	if event.is_action_pressed("move_left") and choice_controller.is_active():
 		_move_choice(-1)
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("move_down") and choice_controller.is_active():
+	elif event.is_action_pressed("move_right") and choice_controller.is_active():
 		_move_choice(1)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("interact"):
