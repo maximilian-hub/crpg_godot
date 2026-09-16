@@ -79,7 +79,7 @@ func _build_background() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 	var title := Label.new()
-	title.text = "DIALOGUE LAB\nSpeaker profiles + character voice"
+	title.text = "DIALOGUE LAB\nAuthored text presentation"
 	title.position = Vector2(20, 18)
 	title.add_theme_font_size_override("font_size", 18)
 	title.modulate = Color("8e969f")
@@ -220,7 +220,9 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var next_delay: float = reveal_controller.delay_before_next_character() if reveal_controller != null and not reveal_controller.completed else 0.0
 	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
 	var voice_asset_state := "silent profile" if speaker_profile != null and not speaker_profile.voice_enabled else ("asset ready" if speaker_profile != null and not speaker_profile.voice_clips.is_empty() else "awaiting voice asset")
-	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s" % [
+	var content_size: Vector2i = dialogue_view.text_content_size()
+	var overflow_state := "OVERFLOW" if dialogue_view.text_overflows() else "fits"
+	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s" % [
 		current_font_label,
 		logical_font_size,
 		conversation.id,
@@ -232,6 +234,9 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 		page.text.length(),
 		reveal_state,
 		next_delay,
+		content_size.x,
+		content_size.y,
+		overflow_state,
 		voice_emitter.request_count if voice_emitter != null else 0,
 		"enabled" if voice_emitter != null and voice_emitter.enabled else "disabled",
 		last_voice_description,
@@ -244,7 +249,7 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 func _presentation_description(page) -> String:
 	var descriptions := PackedStringArray()
 	for span in page.presentation_spans:
-		var kind := "color:%s" % span.value if span.kind == TextSpanScript.Kind.COLOR else "caps"
+		var kind := "color:%s" % span.value if span.kind == TextSpanScript.Kind.COLOR else ("size:%s" % span.value if span.kind == TextSpanScript.Kind.FONT_SIZE else "caps")
 		descriptions.append("%s@%d..%d" % [kind, span.start_index, span.end_index])
 	return ", ".join(descriptions) if not descriptions.is_empty() else "none"
 
@@ -274,6 +279,7 @@ func _apply_font_candidate(index: int) -> void:
 	lab_skin.body_font_size = logical_font_size
 	lab_skin.name_font_size = logical_font_size
 	lab_skin.choice_font_size = logical_font_size
+	lab_skin.semantic_size_values = PackedInt32Array([maxi(1, roundi(logical_font_size * 0.75)), logical_font_size, maxi(1, roundi(logical_font_size * 1.5))])
 	dialogue_view.set_skin(lab_skin)
 	if page_selector != null and page_selector.item_count > 0:
 		_restart_page()

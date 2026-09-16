@@ -68,8 +68,25 @@ reveal therefore share one stable character-index space. A capitalization whose
 Unicode uppercase form would change the number of characters is rejected to
 prevent later event indices from becoming ambiguous.
 
-Font-size changes, animated motion, and authored audio tags remain outside this
-milestone.
+### Semantic font size
+
+`[size=<semantic-ID>]...[/size]` changes the size of its visible contents. The
+initial shared skin defines `small`, `normal`, and `large`; their logical pixel
+sizes belong to `DialogueSkin`, not to conversation prose.
+
+```text
+You hear a [size=small]faint whisper[/size], then:
+[size=large][color=warning][caps]Run![/caps][/color][/size]
+```
+
+Size spans may nest or cross other presentation spans without changing visible
+indices. The complete mixed-size document is shaped and wrapped before reveal.
+If its measured width or height exceeds the dialogue text region, the Dialogue
+Lab reports `OVERFLOW`; the runtime does not silently shrink it or create pages.
+Authors should split or revise the page until automatic pagination receives its
+own explicit design.
+
+Animated motion and authored audio tags remain outside this milestone.
 
 ## Authored reveal speed
 

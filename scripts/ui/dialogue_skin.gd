@@ -12,6 +12,8 @@ class_name DialogueSkin
 @export var name_font: Font
 @export var semantic_color_names := PackedStringArray(["emphasis", "warning", "mystery"])
 @export var semantic_color_values := PackedColorArray([Color("d8c590"), Color("e87568"), Color("8fb4d9")])
+@export var semantic_size_names := PackedStringArray(["small", "normal", "large"])
+@export var semantic_size_values := PackedInt32Array([6, 8, 12])
 
 @export_category("Logical layout")
 @export var portrait_aspect_ratio := 0.75
@@ -40,3 +42,13 @@ func has_semantic_color(color_name: String) -> bool:
 func semantic_color(color_name: String) -> Color:
 	var index := semantic_color_names.find(color_name)
 	return semantic_color_values[index] if index >= 0 and index < semantic_color_values.size() else body_color
+
+
+func has_semantic_size(size_name: String) -> bool:
+	var index := semantic_size_names.find(size_name)
+	return index >= 0 and index < semantic_size_values.size()
+
+
+func semantic_size(size_name: String) -> int:
+	var index := semantic_size_names.find(size_name)
+	return maxi(1, semantic_size_values[index]) if index >= 0 and index < semantic_size_values.size() else body_font_size

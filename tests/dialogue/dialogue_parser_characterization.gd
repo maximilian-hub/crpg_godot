@@ -1,6 +1,7 @@
 extends Node
 
 const DialogueParserScript := preload("res://scripts/dialogue/dialogue_parser.gd")
+const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 const VALID_FIXTURE := "res://content/dialogue/hood_authoring_demo.dialogue"
 const INVALID_FIXTURE := "res://content/dialogue/invalid_authoring_demo.dialogue"
 
@@ -45,8 +46,10 @@ func _test_valid_fixture() -> void:
 	var font_page = result.conversation.pages[3]
 	_check(font_page.speaker_name == "Ernest the Unreasonably Named" and font_page.text.contains("Q7?!"), "font-evaluation page retains long names, numbers, and punctuation")
 	_check(font_page.text.contains("MIXED CASE"), "caps spans precompute capitalization into final visible text")
-	_check(font_page.presentation_spans.size() == 3, "fixture retains two semantic colors and one capitalization span")
-	_check(font_page.presentation_spans[0].start_index == 0 and font_page.presentation_spans[0].end_index == 19, "semantic color range uses final visible-character indices")
+	_check(font_page.presentation_spans.size() == 5, "fixture retains semantic color, capitalization, and font-size spans")
+	var opening_spans: Array = font_page.presentation_spans.filter(func(span): return span.start_index == 0 and span.end_index == 19)
+	_check(opening_spans.size() == 2, "nested size and color ranges share final visible-character indices")
+	_check(font_page.presentation_spans.any(func(span): return span.kind == TextSpanScript.Kind.FONT_SIZE and span.value == "small"), "fixture retains its semantic small-text span")
 
 
 func _test_visible_character_indices() -> void:
@@ -59,12 +62,12 @@ func _test_visible_character_indices() -> void:
 	var nested := DialogueParserScript.parse_text("@conversation nested\n@page speaker=test name=Test\n[speed=2]a[speed=0.5]b[/speed]c[/speed]d", "nested.dialogue")
 	_check(nested.is_valid(), "nested speed spans parse")
 	_check(nested.conversation.pages[0].character_speed_multipliers == PackedFloat32Array([2.0, 1.0, 2.0, 1.0]), "nested speed spans multiply and restore authored rates")
-	var presentation := DialogueParserScript.parse_text("@conversation presentation\n@page speaker=test name=Test\n[color=warning][caps]ab[portrait=changed][speed=2]c![/speed][/caps][/color]", "presentation.dialogue")
+	var presentation := DialogueParserScript.parse_text("@conversation presentation\n@page speaker=test name=Test\n[size=large][color=warning][caps]ab[portrait=changed][speed=2]c![/speed][/caps][/color][/size]", "presentation.dialogue")
 	_check(presentation.is_valid(), "nested presentation and reveal tags parse together")
 	var presentation_page = presentation.conversation.pages[0]
 	_check(presentation_page.text == "ABC!" and presentation_page.events[0].visible_character_index == 2, "capitalization and color markup do not shift portrait indices")
 	_check(presentation_page.character_speed_multipliers == PackedFloat32Array([1.0, 1.0, 2.0, 2.0]), "presentation markup does not shift authored speed indices")
-	_check(presentation_page.presentation_spans.size() == 2 and presentation_page.presentation_spans[0].start_index == 0 and presentation_page.presentation_spans[0].end_index == 4, "nested color and capitalization share stable visible bounds")
+	_check(presentation_page.presentation_spans.size() == 3 and presentation_page.presentation_spans.all(func(span): return span.start_index == 0 and span.end_index == 4), "nested size, color, and capitalization share stable visible bounds")
 
 
 func _test_invalid_fixture() -> void:
@@ -84,6 +87,9 @@ func _test_invalid_fixture() -> void:
 	_check(joined.contains("color tag requires a semantic color ID"), "empty semantic color IDs are rejected")
 	_check(joined.contains("closing color tag has no matching opening tag"), "unmatched closing color tags are actionable")
 	_check(joined.contains("unclosed caps tag"), "unclosed capitalization tags are actionable")
+	_check(joined.contains("size tag requires a semantic size ID"), "empty semantic size IDs are rejected")
+	_check(joined.contains("closing size tag has no matching opening tag"), "unmatched closing size tags are actionable")
+	_check(joined.contains("unclosed size tag"), "unclosed size tags are actionable")
 	_check(result.errors[0].begins_with(INVALID_FIXTURE + ":2:"), "diagnostics include source path and line number")
 
 

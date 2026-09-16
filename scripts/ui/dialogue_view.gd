@@ -56,24 +56,40 @@ func configure(speaker: String, identified: bool, text: String, portrait: Textur
 
 func _set_presented_text(text: String, presentation_spans: Array) -> void:
 	dialogue_text.clear()
-	var color_spans: Array = []
+	var active_spans: Array = []
 	for span in presentation_spans:
-		if span.kind == TextSpanScript.Kind.COLOR and span.start_index < span.end_index:
-			color_spans.append(span)
-	color_spans.sort_custom(func(a, b):
+		if span.kind in [TextSpanScript.Kind.COLOR, TextSpanScript.Kind.FONT_SIZE] and span.start_index < span.end_index:
+			active_spans.append(span)
+	active_spans.sort_custom(func(a, b):
 		return a.start_index < b.start_index if a.start_index != b.start_index else a.end_index > b.end_index
 	)
-	var open_spans: Array = []
-	for index in range(text.length() + 1):
-		while not open_spans.is_empty() and open_spans[-1].end_index == index:
+	for index in range(text.length()):
+		var color_name := ""
+		var size_name := ""
+		for span in active_spans:
+			if span.start_index <= index and index < span.end_index:
+				if span.kind == TextSpanScript.Kind.COLOR:
+					color_name = span.value
+				elif span.kind == TextSpanScript.Kind.FONT_SIZE:
+					size_name = span.value
+		var pushed := 0
+		if not color_name.is_empty():
+			dialogue_text.push_color(skin.semantic_color(color_name))
+			pushed += 1
+		if not size_name.is_empty():
+			dialogue_text.push_font_size(skin.semantic_size(size_name))
+			pushed += 1
+		dialogue_text.add_text(text[index])
+		for _pop in range(pushed):
 			dialogue_text.pop()
-			open_spans.pop_back()
-		for span in color_spans:
-			if span.start_index == index:
-				dialogue_text.push_color(skin.semantic_color(span.value))
-				open_spans.append(span)
-		if index < text.length():
-			dialogue_text.add_text(text[index])
+
+
+func text_overflows() -> bool:
+	return dialogue_text.get_content_height() > ceili(dialogue_text.size.y) or dialogue_text.get_content_width() > ceili(dialogue_text.size.x)
+
+
+func text_content_size() -> Vector2i:
+	return Vector2i(dialogue_text.get_content_width(), dialogue_text.get_content_height())
 
 
 func set_page_complete(value: bool) -> void:
@@ -197,6 +213,7 @@ func _build_view() -> void:
 	dialogue_text.name = "DialogueText"
 	dialogue_text.fit_content = false
 	dialogue_text.scroll_active = false
+	dialogue_text.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING
 	dialogue_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dialogue_panel.add_child(dialogue_text)
 	choice_label = Label.new()

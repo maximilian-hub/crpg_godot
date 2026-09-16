@@ -147,6 +147,13 @@ is precomputed into final visible text, while colors remain indexed spans. Both
 preserve the same visible-character coordinates used by reveal timing, portrait
 events, and character voice requests.
 
+Semantic `[size=<semantic-ID>]` spans are likewise resolved by DialogueSkin,
+initially through `small`, `normal`, and `large`. Mixed-size text is completely
+shaped and wrapped before reveal begins. The Dialogue Lab reports measured text
+overflow without automatically shrinking prose or inventing page boundaries;
+authors remain responsible for revising an overflowing page until pagination is
+designed as a separate feature.
+
 Text should reveal progressively with a small per-character voice sound. While
 a page is revealing, UI confirm should reveal the remainder immediately and
 play every remaining character sound simultaneously; a subsequent confirm

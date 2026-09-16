@@ -28,6 +28,11 @@ scaling, instant text, and character-voice request diagnostics. See
 `docs/dialogue_authoring_format.md` for the grammar, speed spans, and
 visible-character indexing rules.
 
+The Ernest page demonstrates nested semantic color, capitalization, and
+`small`/`large` font-size spans. The status panel reports the fully shaped text
+dimensions and marks content as `fits` or `OVERFLOW`; it never auto-shrinks or
+silently paginates authored prose.
+
 `dialogue_speaker_characterization.tscn` verifies speaker/portrait catalog
 resolution, silent and asset-pending voice profiles, deterministic pitch, the
 whitespace eligibility policy, and the literal all-remaining-requests batch on

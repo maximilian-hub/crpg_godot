@@ -146,6 +146,7 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 	var presentation_spans: Array = []
 	var speed_stack: Array[float] = [1.0]
 	var color_stack: Array[Dictionary] = []
+	var size_stack: Array[Dictionary] = []
 	var capitalization_starts := PackedInt32Array()
 	var cursor := 0
 	while cursor < raw_text.length():
@@ -205,6 +206,18 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 			else:
 				var color: Dictionary = color_stack.pop_back()
 				presentation_spans.append(TextSpanScript.new(TextSpanScript.Kind.COLOR, color.start, visible_text.length(), color.name))
+		elif tag.begins_with("size="):
+			var size_name := tag.trim_prefix("size=").strip_edges()
+			if size_name.is_empty() or not _is_valid_id(size_name):
+				_add_error(result, source_name, page_line, "size tag requires a semantic size ID")
+			else:
+				size_stack.append({"name": size_name, "start": visible_text.length()})
+		elif tag == "/size":
+			if size_stack.is_empty():
+				_add_error(result, source_name, page_line, "closing size tag has no matching opening tag")
+			else:
+				var size: Dictionary = size_stack.pop_back()
+				presentation_spans.append(TextSpanScript.new(TextSpanScript.Kind.FONT_SIZE, size.start, visible_text.length(), size.name))
 		elif tag == "caps":
 			capitalization_starts.append(visible_text.length())
 		elif tag == "/caps":
@@ -221,6 +234,8 @@ static func _parse_inline_events(raw_text: String, result: DialogueParseResult, 
 		_add_error(result, source_name, page_line, "unclosed speed tag")
 	if not color_stack.is_empty():
 		_add_error(result, source_name, page_line, "unclosed color tag")
+	if not size_stack.is_empty():
+		_add_error(result, source_name, page_line, "unclosed size tag")
 	if not capitalization_starts.is_empty():
 		_add_error(result, source_name, page_line, "unclosed caps tag")
 	presentation_spans.sort_custom(func(a, b):

@@ -61,10 +61,26 @@ func _test_static_states() -> void:
 	view.set_skin(font_skin)
 	_check(view.dialogue_text.get_theme_font("normal_font") == PIXEL_OPERATOR_8 and view.speaker_label.get_theme_font("font") == PIXEL_OPERATOR_8_BOLD, "DialogueSkin independently applies body and plaque font candidates")
 	_check(font_skin.has_semantic_color("warning") and font_skin.semantic_color("warning") != font_skin.body_color, "DialogueSkin resolves named semantic colors independently of authored text")
+	_check(font_skin.has_semantic_size("large") and font_skin.semantic_size("large") > font_skin.semantic_size("normal"), "DialogueSkin resolves semantic sizes independently of authored text")
 	var color_spans: Array = [TextSpanScript.new(TextSpanScript.Kind.COLOR, 1, 3, "warning")]
 	view.configure("Hood", true, "A[B]", null, PackedStringArray(), color_spans)
 	_check(view.dialogue_text.get_total_character_count() == 4, "structured rich text retains one rendered character per visible source character")
 	_check(view.dialogue_text.get_parsed_text() == "A[B]", "structured rich text preserves literal bracket characters without interpreting authored text as markup")
+	var wrapping_text := "Mixed size words wrap across the dialogue panel cleanly."
+	view.configure("Hood", true, wrapping_text)
+	var normal_content_size: Vector2i = view.text_content_size()
+	var large_spans: Array = [TextSpanScript.new(TextSpanScript.Kind.FONT_SIZE, 0, wrapping_text.length(), "large")]
+	view.configure("Hood", true, wrapping_text, null, PackedStringArray(), large_spans)
+	var large_content_size: Vector2i = view.text_content_size()
+	_check(large_content_size.y > normal_content_size.y, "semantic large text participates in shaping and increases wrapped layout height")
+	var laid_out_height := large_content_size.y
+	view.dialogue_text.visible_characters = 0
+	_check(view.text_content_size().y == laid_out_height, "mixed-size layout is complete before progressive reveal begins")
+	var overflowing_text := "overflow ".repeat(80)
+	var overflowing_spans: Array = [TextSpanScript.new(TextSpanScript.Kind.FONT_SIZE, 0, overflowing_text.length(), "large")]
+	view.configure("Hood", true, overflowing_text, null, PackedStringArray(), overflowing_spans)
+	_check(view.text_overflows(), "fully shaped content reports overflow without shrinking or automatic pagination")
+	_check(view.dialogue_text.get_theme_font_size("normal_font_size") == font_skin.body_font_size, "overflow detection leaves the configured base font size unchanged")
 	view.configure("Hood", true, "Left aligned sample.")
 	_check(view.portrait_panel.visible, "portrait panel remains visible without portrait art")
 	_check(view.empty_portrait.visible and not view.portrait_texture.visible, "missing portrait uses an intentional empty state")

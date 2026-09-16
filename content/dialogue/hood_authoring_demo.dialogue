@@ -13,4 +13,4 @@ Will you challenge me?
 @choice text="No" target=decline_challenge
 
 @page speaker=ernest_the_unreasonably_named name="Ernest the Unreasonably Named" known=true portrait=none
-[color=emphasis]Ernest's move: Q7?![/color] "Check," he said — 128 times. [caps][color=warning]mixed case[/color][/caps] wraps punctuation cleanly.
+[size=large][color=emphasis]Ernest's move: Q7?![/color][/size] [size=small]"Check," he said[/size] — 128 times. [caps][color=warning]mixed case[/color][/caps] wraps punctuation cleanly.
