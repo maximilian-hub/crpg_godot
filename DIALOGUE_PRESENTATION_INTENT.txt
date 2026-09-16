@@ -102,6 +102,16 @@ emits a neutral request. DialogueSkin provides optional navigation, confirmation
 and cancellation sounds, while gameplay remains responsible for interpreting
 targets and changing state.
 
+Runtime sequencing belongs to a presentation-neutral DialogueSessionRunner,
+not to the Dialogue Lab or a particular gameplay scene. The runner owns page
+lifecycle, reveal and choice coordination, two-stage confirmation, ordinary page
+advancement, restart behavior, and conversation completion. It forwards neutral
+page, portrait, visible-character, choice, target, settings, and completion
+signals; hosts decide how to draw those states and how gameplay interprets target
+IDs. Dialogue-wide speed, instant-text, motion, voice, and UI-sound preferences
+live in one session settings object so future overworld and battle presenters use
+the same accessibility state.
+
 The ordinary dialogue layout should use connected, equal-height portrait and
 text panels rather than placing the portrait inside a larger enclosing box. The
 bordered portrait panel remains visible on the left and the left-justified text

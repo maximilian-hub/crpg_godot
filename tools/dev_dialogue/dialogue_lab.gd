@@ -2,8 +2,7 @@ extends Node
 
 const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
 const DialogueParserScript := preload("res://scripts/dialogue/dialogue_parser.gd")
-const RevealScript := preload("res://scripts/dialogue/dialogue_reveal_controller.gd")
-const ChoiceControllerScript := preload("res://scripts/dialogue/dialogue_choice_controller.gd")
+const SessionRunnerScript := preload("res://scripts/dialogue/dialogue_session_runner.gd")
 const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 const VoiceEmitterScript := preload("res://scripts/dialogue/dialogue_voice_emitter.gd")
 const VoicePlayerScript := preload("res://scripts/ui/dialogue_voice_player.gd")
@@ -20,8 +19,7 @@ const DEMO_PATH := "res://content/dialogue/hood_authoring_demo.dialogue"
 var dialogue_view
 var lab_skin
 var conversation
-var reveal_controller
-var choice_controller
+var session_runner
 var voice_emitter
 var voice_player
 var choice_sound_player
@@ -54,8 +52,9 @@ func _ready() -> void:
 	dialogue_view = DIALOGUE_VIEW_SCENE.instantiate()
 	add_child(dialogue_view)
 	lab_skin = dialogue_view.skin.duplicate(true)
-	reveal_controller = RevealScript.new()
-	choice_controller = ChoiceControllerScript.new()
+	session_runner = SessionRunnerScript.new()
+	session_runner.name = "DialogueSessionRunner"
+	add_child(session_runner)
 	voice_emitter = VoiceEmitterScript.new()
 	voice_player = VoicePlayerScript.new()
 	voice_player.name = "DialogueVoicePlayer"
@@ -64,17 +63,20 @@ func _ready() -> void:
 	choice_sound_player.name = "DialogueChoiceSoundPlayer"
 	choice_sound_player.set_skin(lab_skin)
 	add_child(choice_sound_player)
-	reveal_controller.visibility_changed.connect(_on_visibility_changed)
-	reveal_controller.portrait_changed.connect(_on_portrait_changed)
-	reveal_controller.character_revealed.connect(voice_emitter.on_character_revealed)
+	session_runner.visibility_changed.connect(_on_visibility_changed)
+	session_runner.portrait_changed.connect(_on_portrait_changed)
+	session_runner.character_revealed.connect(voice_emitter.on_character_revealed)
 	voice_emitter.voice_requested.connect(voice_player.play_request)
 	voice_emitter.voice_requested.connect(_on_voice_requested)
-	reveal_controller.page_completed.connect(_on_page_completed)
-	reveal_controller.advance_requested.connect(_on_advance_requested)
-	choice_controller.selection_changed.connect(_on_choice_selection_changed)
-	choice_controller.choice_confirmed.connect(_on_choice_confirmed)
-	choice_controller.cancel_requested.connect(_on_choice_cancel_requested)
-	choice_controller.sound_requested.connect(choice_sound_player.play_cue)
+	session_runner.page_started.connect(_on_page_started)
+	session_runner.page_completed.connect(_on_page_completed)
+	session_runner.choice_selection_changed.connect(_on_choice_selection_changed)
+	session_runner.choice_confirmed.connect(_on_choice_confirmed)
+	session_runner.target_emitted.connect(_on_target_emitted)
+	session_runner.choice_cancel_requested.connect(_on_choice_cancel_requested)
+	session_runner.choice_sound_requested.connect(choice_sound_player.play_cue)
+	session_runner.setting_changed.connect(_on_setting_changed)
+	session_runner.conversation_finished.connect(_on_conversation_finished)
 	_build_controls()
 	_apply_font_candidate(2)
 	if parsed.is_valid():
@@ -85,8 +87,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if playing and reveal_controller != null:
-		reveal_controller.advance(delta)
+	if playing and session_runner != null:
+		session_runner.advance(delta)
 
 
 func _build_background() -> void:
@@ -219,7 +221,12 @@ func _requested_initial_page() -> int:
 func _refresh_page() -> void:
 	if conversation == null or conversation.pages.is_empty():
 		return
-	var page = conversation.pages[page_selector.selected]
+	session_runner.start(conversation, page_selector.selected)
+
+
+func _on_page_started(page, page_index: int, _page_count: int) -> void:
+	if page_selector.selected != page_index:
+		page_selector.select(page_index)
 	event_selector.clear()
 	event_selector.add_item("Initial: %s" % _portrait_label(page.initial_portrait_id))
 	event_selector.set_item_metadata(0, page.initial_portrait_id)
@@ -234,16 +241,14 @@ func _refresh_page() -> void:
 	voice_emitter.set_profile(speaker_profile)
 	last_voice_description = "none"
 	last_choice_result = "none"
+	current_portrait_id = page.initial_portrait_id
+	current_portrait_event_index = -1
 	var display_name: String = page.speaker_name if not page.speaker_name.is_empty() else (speaker_profile.default_display_name if speaker_profile != null else "")
 	dialogue_view.configure(display_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices, page.presentation_spans)
-	choice_controller.start(page.choices)
 	dialogue_view.set_page_complete(false)
-	choice_controller.set_page_complete(false)
 	dialogue_view.set_visible_character_count(0)
-	reveal_controller.paused = false
-	playing = not reveal_controller.instant_text
+	playing = not session_runner.settings.instant_text
 	play_button.text = "Pause" if playing else "Play"
-	reveal_controller.start(page)
 
 
 func _refresh_portrait_state() -> void:
@@ -260,15 +265,15 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var targets := PackedStringArray()
 	for choice in page.choices:
 		targets.append("%s → %s" % [choice.text, choice.target])
-	var revealed: int = reveal_controller.visible_character_count if reveal_controller != null else 0
-	var reveal_state := "complete" if reveal_controller != null and reveal_controller.completed else ("playing" if playing else "paused")
-	var next_delay: float = reveal_controller.delay_before_next_character() if reveal_controller != null and not reveal_controller.completed else 0.0
+	var revealed: int = session_runner.visible_character_count() if session_runner != null else 0
+	var reveal_state := "complete" if session_runner != null and session_runner.is_page_complete() else ("playing" if playing else "paused")
+	var next_delay: float = session_runner.next_character_delay() if session_runner != null else 0.0
 	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
 	var voice_asset_state := "silent profile" if speaker_profile != null and not speaker_profile.voice_enabled else ("asset ready" if speaker_profile != null and not speaker_profile.voice_clips.is_empty() else "awaiting voice asset")
 	var content_size: Vector2i = dialogue_view.text_content_size()
 	var overflow_state := "OVERFLOW" if dialogue_view.text_overflows() else "fits"
 	var motion_state := "reduced" if reduced_motion_toggle.button_pressed else ("animated" if animated_text_toggle.button_pressed else "disabled")
-	var choice_state := "inactive" if not choice_controller.is_active() else "selected %d/%d" % [choice_controller.selected_index + 1, page.choices.size()]
+	var choice_state := "inactive" if not session_runner.choices_are_active() else "selected %d/%d" % [session_runner.selected_choice_index() + 1, page.choices.size()]
 	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nMotion: %s\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s\nChoice state: %s\nLast choice: %s" % [
 		current_font_label,
 		logical_font_size,
@@ -369,88 +374,70 @@ func _apply_portrait(portrait_id: String, visible_index: int) -> void:
 
 
 func _toggle_playing() -> void:
-	playing = not playing and not reveal_controller.completed
+	playing = not playing and not session_runner.is_page_complete()
 	play_button.text = "Pause" if playing else "Play"
-	reveal_controller.paused = not playing
+	session_runner.set_paused(not playing)
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
 
 func _restart_page() -> void:
-	reveal_controller.paused = false
-	_refresh_page()
+	session_runner.restart_page()
 
 
 func _step_character() -> void:
 	playing = false
-	reveal_controller.paused = true
+	session_runner.set_paused(true)
 	play_button.text = "Play"
-	reveal_controller.reveal_one()
+	session_runner.reveal_one()
 
 
 func _complete_page() -> void:
-	reveal_controller.complete_immediately()
+	session_runner.complete_page()
 
 
 func _confirm_page() -> void:
-	if not reveal_controller.completed:
-		reveal_controller.confirm()
-	elif not choice_controller.confirm():
-		reveal_controller.confirm()
+	session_runner.confirm()
 
 
 func _move_choice(direction: int) -> void:
-	choice_controller.move(direction)
+	session_runner.move_choice(direction)
 
 
 func _cancel_choice() -> void:
-	choice_controller.cancel()
+	session_runner.cancel_choice()
 
 
 func _on_speed_selected(index: int) -> void:
 	var speeds := [0.5, 1.0, 2.0, 4.0]
-	reveal_controller.set_player_speed(speeds[index])
+	session_runner.set_player_speed(speeds[index])
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
 
 func _on_instant_toggled(enabled: bool) -> void:
-	reveal_controller.set_instant_text(enabled)
-	if enabled:
-		playing = false
-		play_button.text = "Play"
+	session_runner.set_instant_text(enabled)
 
 
 func _on_voice_toggled(enabled: bool) -> void:
-	voice_emitter.enabled = enabled
-	voice_player.enabled = enabled
-	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+	session_runner.set_voice_enabled(enabled)
 
 
 func _on_animated_text_toggled(enabled: bool) -> void:
-	dialogue_view.set_animated_text_enabled(enabled)
-	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+	session_runner.set_animated_text_enabled(enabled)
 
 
 func _on_reduced_motion_toggled(enabled: bool) -> void:
-	dialogue_view.set_reduced_motion(enabled)
-	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+	session_runner.set_reduced_motion(enabled)
 
 
 func _on_voice_requested(stream: AudioStream, pitch: float, _volume_db: float, visible_index: int, character: String) -> void:
 	last_voice_description = "@%d '%s' pitch %.2f%s" % [visible_index, character, pitch, " (no clip yet)" if stream == null else ""]
 
 
-func _on_page_completed() -> void:
+func _on_page_completed(_page, _page_index: int) -> void:
 	playing = false
 	play_button.text = "Play"
 	dialogue_view.set_page_complete(true)
-	choice_controller.set_page_complete(true)
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
-
-
-func _on_advance_requested() -> void:
-	var next_page: int = (page_selector.selected + 1) % conversation.pages.size()
-	page_selector.select(next_page)
-	_refresh_page()
 
 
 func _on_choice_selection_changed(selected_index: int) -> void:
@@ -460,7 +447,12 @@ func _on_choice_selection_changed(selected_index: int) -> void:
 
 
 func _on_choice_confirmed(selected_index: int, text: String, target: String) -> void:
-	last_choice_result = "confirmed #%d '%s' → %s" % [selected_index + 1, text, target]
+	last_choice_result = "confirmed #%d '%s'" % [selected_index + 1, text]
+	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _on_target_emitted(target: String) -> void:
+	last_choice_result += " → %s (emitted only)" % target
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
 
@@ -469,17 +461,43 @@ func _on_choice_cancel_requested() -> void:
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
 
+func _on_setting_changed(setting: StringName, value: Variant) -> void:
+	match setting:
+		&"instant_text":
+			if bool(value):
+				playing = false
+				play_button.text = "Play"
+		&"animated_text_enabled":
+			dialogue_view.set_animated_text_enabled(bool(value))
+		&"reduced_motion":
+			dialogue_view.set_reduced_motion(bool(value))
+		&"voice_enabled":
+			voice_emitter.enabled = bool(value)
+			voice_player.enabled = bool(value)
+		&"ui_sounds_enabled":
+			choice_sound_player.enabled = bool(value)
+	if conversation != null and not conversation.pages.is_empty() and page_selector.item_count > 0:
+		_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _on_conversation_finished(conversation_id: String) -> void:
+	playing = false
+	play_button.text = "Play"
+	last_choice_result = "conversation finished: %s" % conversation_id
+	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("move_left") and choice_controller.is_active():
+	if event.is_action_pressed("move_left") and session_runner.choices_are_active():
 		_move_choice(-1)
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("move_right") and choice_controller.is_active():
+	elif event.is_action_pressed("move_right") and session_runner.choices_are_active():
 		_move_choice(1)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("interact"):
 		_confirm_page()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("back") and choice_controller.is_active():
+	elif event.is_action_pressed("back") and session_runner.choices_are_active():
 		_cancel_choice()
 		get_viewport().set_input_as_handled()
 

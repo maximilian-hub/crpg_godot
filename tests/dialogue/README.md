@@ -8,6 +8,7 @@ Run the static dialogue-view checks with:
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_reveal_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_speaker_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_choice_characterization.tscn
+"/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_session_runner_characterization.tscn
 ```
 
 Open `res://tools/dev_dialogue/dialogue_lab.tscn` in Godot to review the layout.
@@ -47,6 +48,12 @@ choice pages; reveal gating; wrapping selection; neutral target and cancel
 emission; ordered presentation cues; and optional choice sound slots. The Lab's
 choice buttons and `move_left`, `move_right`, `interact`, and `back` actions expose
 the same controller without executing story consequences.
+
+`dialogue_session_runner_characterization.tscn` verifies the reusable runtime
+boundary used by the Lab: ordered page starts, two-stage confirmation, choice
+gating, one-shot neutral target emission, explicit post-choice continuation,
+restart behavior, settings propagation, sound gating, and final conversation
+completion. The runner does not interpret target IDs or depend on DialogueView.
 
 Font controls compare the engine baseline with Pixel Operator 8, its bold-plaque
 pairing, Pixel Operator Mono 8, and the non-8 Pixel Operator family at 8px and
