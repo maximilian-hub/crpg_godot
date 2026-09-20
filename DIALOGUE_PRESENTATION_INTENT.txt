@@ -179,12 +179,15 @@ time, with offsets snapped to logical pixels and excluded from shaping, wrapping
 and overflow measurement. A global animated-text control and reduced-motion mode
 render the same authored prose statically without changing its layout or indices.
 
-Text should reveal progressively with a small per-character voice sound. While
-a page is revealing, UI confirm should reveal the remainder immediately and
-play every remaining character sound simultaneously; a subsequent confirm
-advances the completed page. The resulting volume naturally communicates how
-much text was skipped. This deliberately janky behavior should be implemented
-literally first and reconsidered only after listening tests show a problem.
+Text should reveal progressively with a small per-character voice sound. Text
+size also communicates vocal intensity: small text uses a soft voice offset,
+normal text uses the speaker's base volume, and large text uses a loud offset.
+While a page is revealing, UI confirm should reveal the remainder immediately
+and play one consolidated skip blip; a subsequent confirm advances the completed
+page. The skip blip uses the first eligible character at the largest text size
+remaining in the skipped range, so skipped shouts still sound loud without
+stacking every unrevealed character sound simultaneously. Instant text and other
+immediate-completion paths follow the same one-blip rule.
 
 Each speaker should support a distinct voice sound or pitch range. Final voice
 assets will be supplied later, so early prototypes may use placeholders while

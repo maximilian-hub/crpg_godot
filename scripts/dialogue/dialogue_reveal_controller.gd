@@ -3,6 +3,8 @@ class_name DialogueRevealController
 
 signal portrait_changed(portrait_id: String, visible_character_index: int)
 signal character_revealed(visible_character_index: int, character: String)
+signal bulk_reveal_started(start_index: int, end_index: int)
+signal bulk_reveal_finished(start_index: int, end_index: int)
 signal visibility_changed(visible_character_count: int)
 signal page_completed
 signal advance_requested
@@ -75,12 +77,18 @@ func reveal_one() -> bool:
 func complete_immediately() -> void:
 	if page == null or completed:
 		return
+	var bulk_start := visible_character_count
+	var bulk_end: int = page.text.length()
+	if bulk_start < bulk_end:
+		bulk_reveal_started.emit(bulk_start, bulk_end)
 	while visible_character_count < page.text.length():
 		_dispatch_events_at(visible_character_count)
 		var character: String = page.text[visible_character_count]
 		character_revealed.emit(visible_character_count, character)
 		visible_character_count += 1
 	_dispatch_events_at(visible_character_count)
+	if bulk_start < bulk_end:
+		bulk_reveal_finished.emit(bulk_start, bulk_end)
 	visibility_changed.emit(visible_character_count)
 	_complete_page()
 

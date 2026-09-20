@@ -56,6 +56,7 @@ func _ready() -> void:
 	session_runner.name = "DialogueSessionRunner"
 	add_child(session_runner)
 	voice_emitter = VoiceEmitterScript.new()
+	voice_emitter.set_skin(lab_skin)
 	voice_player = VoicePlayerScript.new()
 	voice_player.name = "DialogueVoicePlayer"
 	add_child(voice_player)
@@ -66,6 +67,8 @@ func _ready() -> void:
 	session_runner.visibility_changed.connect(_on_visibility_changed)
 	session_runner.portrait_changed.connect(_on_portrait_changed)
 	session_runner.character_revealed.connect(voice_emitter.on_character_revealed)
+	session_runner.bulk_reveal_started.connect(voice_emitter.on_bulk_reveal_started)
+	session_runner.bulk_reveal_finished.connect(voice_emitter.on_bulk_reveal_finished)
 	voice_emitter.voice_requested.connect(voice_player.play_request)
 	voice_emitter.voice_requested.connect(_on_voice_requested)
 	session_runner.page_started.connect(_on_page_started)
@@ -239,6 +242,7 @@ func _on_page_started(page, page_index: int, _page_count: int) -> void:
 		choices.append(page.choices[index].text)
 	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
 	voice_emitter.set_profile(speaker_profile)
+	voice_emitter.set_page(page)
 	last_voice_description = "none"
 	last_choice_result = "none"
 	current_portrait_id = page.initial_portrait_id
@@ -429,8 +433,8 @@ func _on_reduced_motion_toggled(enabled: bool) -> void:
 	session_runner.set_reduced_motion(enabled)
 
 
-func _on_voice_requested(stream: AudioStream, pitch: float, _volume_db: float, visible_index: int, character: String) -> void:
-	last_voice_description = "@%d '%s' pitch %.2f%s" % [visible_index, character, pitch, " (no clip yet)" if stream == null else ""]
+func _on_voice_requested(stream: AudioStream, pitch: float, volume_db: float, visible_index: int, character: String) -> void:
+	last_voice_description = "@%d '%s' pitch %.2f volume %+.1f dB%s" % [visible_index, character, pitch, volume_db, " (no clip yet)" if stream == null else ""]
 
 
 func _on_page_completed(_page, _page_index: int) -> void:

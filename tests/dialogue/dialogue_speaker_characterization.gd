@@ -5,6 +5,7 @@ const RevealScript := preload("res://scripts/dialogue/dialogue_reveal_controller
 const ProfileScript := preload("res://scripts/dialogue/dialogue_speaker_profile.gd")
 const EmitterScript := preload("res://scripts/dialogue/dialogue_voice_emitter.gd")
 const CATALOG := preload("res://assets/ui/dialogue/dialogue_speaker_catalog.tres")
+const SKIN := preload("res://assets/ui/dialogue/dialogue_skin_provisional.tres")
 
 var failures: Array[String] = []
 var checks := 0
@@ -13,7 +14,9 @@ var checks := 0
 func _ready() -> void:
 	_test_catalog_resolution()
 	_test_voice_policy_and_determinism()
-	_test_completion_emits_every_remaining_request()
+	_test_text_size_volume()
+	_test_completion_emits_one_loudest_remaining_request()
+	_test_bulk_reveal_edge_cases()
 	if failures.is_empty():
 		print("DIALOGUE SPEAKER CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -59,19 +62,77 @@ func _test_voice_policy_and_determinism() -> void:
 	_check(requests.size() == 3, "silent profiles emit no voice requests")
 
 
-func _test_completion_emits_every_remaining_request() -> void:
-	var result = DialogueParserScript.parse_text("@conversation voice\n@page speaker=hood name=Hood\nA B!", "voice.dialogue")
+func _test_text_size_volume() -> void:
+	var result = DialogueParserScript.parse_text("@conversation sized\n@page speaker=test name=Test\n[size=small]s[/size]n[size=large]L[size=small]q[/size][/size][size=unknown]u[/size]", "sized.dialogue")
+	var page = result.conversation.pages[0]
+	var profile = ProfileScript.new()
+	var clips: Array[AudioStream] = [AudioStreamWAV.new()]
+	profile.voice_clips = clips
+	profile.volume_db = 2.0
+	var emitter = EmitterScript.new()
+	emitter.set_profile(profile)
+	emitter.set_page(page)
+	emitter.set_skin(SKIN)
+	var volumes := PackedFloat32Array()
+	for index in range(page.text.length()):
+		emitter.voice_requested.connect(func(_stream, _pitch, volume, _index, _character): volumes.append(volume), CONNECT_ONE_SHOT)
+		emitter.on_character_revealed(index, page.text[index])
+	_check(volumes == PackedFloat32Array([-10.0, 2.0, 8.0, -10.0, 2.0]), "small, normal, large, nested-small, and unknown-size text use the configured additive volumes")
+
+
+func _test_completion_emits_one_loudest_remaining_request() -> void:
+	var result = DialogueParserScript.parse_text("@conversation voice\n@page speaker=hood name=Hood\nA[size=small]b[/size] [size=large]C![/size]", "voice.dialogue")
+	var page = result.conversation.pages[0]
 	var reveal = RevealScript.new()
 	var emitter = EmitterScript.new()
 	emitter.set_profile(CATALOG.profile("hood"))
-	var indices := PackedInt32Array()
-	emitter.voice_requested.connect(func(_stream, _pitch, _volume, index, _character): indices.append(index))
+	emitter.set_page(page)
+	emitter.set_skin(SKIN)
+	var requests: Array = []
+	emitter.voice_requested.connect(func(_stream, pitch, volume, index, character): requests.append([pitch, volume, index, character]))
 	reveal.character_revealed.connect(emitter.on_character_revealed)
-	reveal.start(result.conversation.pages[0])
+	reveal.bulk_reveal_started.connect(emitter.on_bulk_reveal_started)
+	reveal.bulk_reveal_finished.connect(emitter.on_bulk_reveal_finished)
+	reveal.start(page)
 	reveal.reveal_one()
 	reveal.complete_immediately()
-	_check(indices == PackedInt32Array([0, 2, 3]), "completion synchronously emits every remaining eligible character request in source order")
-	_check(reveal.completed and emitter.request_count == 3, "completion returns with the full voice-request batch emitted")
+	_check(requests.size() == 2 and requests[0][2] == 0 and requests[1][2] == 3, "bulk completion replaces all remaining character blips with the first loudest eligible character")
+	_check(is_equal_approx(requests[1][1], 6.0), "bulk completion applies the large-text offset to the speaker base volume")
+	_check(is_equal_approx(requests[1][0], CATALOG.profile("hood").pitch_for(3)), "consolidated blip uses its representative character's deterministic pitch")
+	_check(reveal.completed and emitter.request_count == 2, "completion returns after exactly one consolidated skip request")
+
+
+func _test_bulk_reveal_edge_cases() -> void:
+	var whitespace_result = DialogueParserScript.parse_text("@conversation whitespace\n@page speaker=hood name=Hood\nA \t ", "whitespace.dialogue")
+	var whitespace_page = whitespace_result.conversation.pages[0]
+	var reveal = RevealScript.new()
+	var emitter = EmitterScript.new()
+	emitter.set_profile(CATALOG.profile("hood"))
+	emitter.set_page(whitespace_page)
+	emitter.set_skin(SKIN)
+	reveal.character_revealed.connect(emitter.on_character_revealed)
+	reveal.bulk_reveal_started.connect(emitter.on_bulk_reveal_started)
+	reveal.bulk_reveal_finished.connect(emitter.on_bulk_reveal_finished)
+	reveal.start(whitespace_page)
+	reveal.reveal_one()
+	reveal.complete_immediately()
+	_check(emitter.request_count == 1, "a skipped range containing only whitespace emits no consolidated blip")
+
+	var instant_result = DialogueParserScript.parse_text("@conversation instant\n@page speaker=hood name=Hood\n[size=small]quiet[/size] [size=large]LOUD[/size]", "instant.dialogue")
+	var instant_page = instant_result.conversation.pages[0]
+	var instant_reveal = RevealScript.new()
+	var instant_emitter = EmitterScript.new()
+	instant_emitter.set_profile(CATALOG.profile("hood"))
+	instant_emitter.set_page(instant_page)
+	instant_emitter.set_skin(SKIN)
+	var instant_requests: Array = []
+	instant_emitter.voice_requested.connect(func(_stream, _pitch, volume, index, _character): instant_requests.append([volume, index]))
+	instant_reveal.character_revealed.connect(instant_emitter.on_character_revealed)
+	instant_reveal.bulk_reveal_started.connect(instant_emitter.on_bulk_reveal_started)
+	instant_reveal.bulk_reveal_finished.connect(instant_emitter.on_bulk_reveal_finished)
+	instant_reveal.instant_text = true
+	instant_reveal.start(instant_page)
+	_check(instant_requests.size() == 1 and instant_requests[0][1] == 6 and is_equal_approx(instant_requests[0][0], 6.0), "instant text emits one blip using the first loudest character in the complete page")
 
 
 func _check(condition: bool, description: String) -> void:

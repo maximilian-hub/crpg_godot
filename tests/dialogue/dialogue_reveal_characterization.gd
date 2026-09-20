@@ -82,12 +82,17 @@ func _test_confirm_and_instant_semantics() -> void:
 	var reveal = RevealScript.new()
 	var completion_count := [0]
 	var advance_count := [0]
+	var bulk_ranges: Array = []
 	reveal.page_completed.connect(func(): completion_count[0] += 1)
 	reveal.advance_requested.connect(func(): advance_count[0] += 1)
+	reveal.bulk_reveal_started.connect(func(start_index: int, end_index: int): bulk_ranges.append(["start", start_index, end_index]))
+	reveal.bulk_reveal_finished.connect(func(start_index: int, end_index: int): bulk_ranges.append(["finish", start_index, end_index]))
 	reveal.start(page)
+	reveal.reveal_one()
 	var first_result = reveal.confirm()
 	_check(first_result == RevealScript.ConfirmResult.COMPLETED_PAGE and reveal.visible_character_count == 4, "first confirm completes an active page")
 	_check(completion_count[0] == 1 and advance_count[0] == 0, "completion confirm does not also advance")
+	_check(bulk_ranges == [["start", 1, 4], ["finish", 1, 4]], "bulk reveal reports its exact remaining half-open character range")
 	var second_result = reveal.confirm()
 	_check(second_result == RevealScript.ConfirmResult.REQUESTED_ADVANCE and advance_count[0] == 1, "second confirm requests advancement")
 	reveal.start(page)

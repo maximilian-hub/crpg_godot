@@ -89,6 +89,11 @@ Lab reports `OVERFLOW`; the runtime does not silently shrink it or create pages.
 Authors should split or revise the page until automatic pagination receives its
 own explicit design.
 
+Text size also affects character-voice volume. `small` is spoken softly at 12 dB
+below the speaker profile's base volume, untagged/`normal` text uses the base
+volume, and `large` is spoken loudly at 6 dB above it. For nested size spans, the
+innermost active size controls both drawing and voice volume.
+
 ### Jiggly text
 
 `[jiggle]...[/jiggle]` applies the shared `standard` jiggly-text style.
@@ -129,4 +134,7 @@ An indexed event fires immediately before the character at that index appears.
 This includes events at index zero. Punctuation pauses occur after punctuation
 and before the following character. Confirm completes a page that is still
 revealing; confirm on an already complete page requests advancement. Immediate
-completion executes all remaining events in source order.
+completion executes all remaining events in source order but emits only one
+voice blip. That blip uses the first voice-eligible character at the largest
+text size in the unrevealed range. Immediate completion emits no blip when only
+whitespace remains.

@@ -5,7 +5,7 @@
 You made it this far.
 
 @page speaker=hood name="Hood" known=true portrait=hood_neutral
-[speed=2.0][portrait=laugh_a]ha[portrait=laugh_b]ha[portrait=laugh_a]ha[portrait=laugh_b]ha.[/speed] [speed=0.5]The stones remember.[/speed]
+[size=large][speed=2.0][portrait=laugh_a]ha[portrait=laugh_b]ha[portrait=laugh_a]ha[portrait=laugh_b]ha.[/speed][/size] [size=small][speed=0.5]The stones remember.[/speed][/size]
 
 @page speaker=hood name="Hood" known=true portrait=hood_neutral
 Will you challenge me?

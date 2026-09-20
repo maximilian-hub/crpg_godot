@@ -22,6 +22,11 @@ class_name DialogueSkin
 @export var semantic_jiggle_amplitudes := PackedFloat32Array([1.0, 1.0, 2.0])
 @export var semantic_jiggle_frequencies := PackedFloat32Array([4.0, 7.0, 10.0])
 
+@export_category("Dialogue voice dynamics")
+@export var small_text_voice_volume_offset_db := -12.0
+@export var normal_text_voice_volume_offset_db := 0.0
+@export var large_text_voice_volume_offset_db := 6.0
+
 @export_category("Logical layout")
 @export var portrait_aspect_ratio := 0.75
 @export var panel_height := 64
@@ -59,6 +64,16 @@ func has_semantic_size(size_name: String) -> bool:
 func semantic_size(size_name: String) -> int:
 	var index := semantic_size_names.find(size_name)
 	return maxi(1, semantic_size_values[index]) if index >= 0 and index < semantic_size_values.size() else body_font_size
+
+
+func semantic_size_voice_volume_offset_db(size_name: String) -> float:
+	match size_name:
+		"small":
+			return small_text_voice_volume_offset_db
+		"large":
+			return large_text_voice_volume_offset_db
+		_:
+			return normal_text_voice_volume_offset_db
 
 
 func has_semantic_jiggle(jiggle_name: String) -> bool:

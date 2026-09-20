@@ -40,8 +40,8 @@ that one-based page before its first frame.
 
 `dialogue_speaker_characterization.tscn` verifies speaker/portrait catalog
 resolution, silent and asset-pending voice profiles, deterministic pitch, the
-whitespace eligibility policy, and the literal all-remaining-requests batch on
-page completion.
+whitespace eligibility policy, size-based voice volume, and the single loudest-
+remaining blip emitted on immediate page completion.
 
 `dialogue_choice_characterization.tscn` verifies empty, single, and multiple
 choice pages; reveal gating; wrapping selection; neutral target and cancel

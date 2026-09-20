@@ -69,8 +69,10 @@ func _test_centralized_settings() -> void:
 	add_child(runner)
 	var changes := PackedStringArray()
 	var cues := PackedStringArray()
+	var bulk_ranges: Array = []
 	runner.setting_changed.connect(func(setting: StringName, value): changes.append("%s=%s" % [setting, value]))
 	runner.choice_sound_requested.connect(func(cue: StringName): cues.append(String(cue)))
+	runner.bulk_reveal_started.connect(func(start_index: int, end_index: int): bulk_ranges.append([start_index, end_index]))
 	runner.set_player_speed(2.5)
 	runner.set_animated_text_enabled(false)
 	runner.set_reduced_motion(true)
@@ -81,6 +83,7 @@ func _test_centralized_settings() -> void:
 	_check(changes.size() == 5, "each centralized setting change is observable by presentation hosts")
 	runner.set_instant_text(true)
 	runner.start(_conversation(), 1)
+	_check(bulk_ranges == [[0, 7]], "session runner forwards the exact instant-text bulk reveal range")
 	runner.move_choice(1)
 	_check(cues.is_empty(), "disabled UI sounds suppress otherwise valid choice cues")
 	runner.set_ui_sounds_enabled(true)
