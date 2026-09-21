@@ -34,7 +34,11 @@ var instant_toggle: CheckButton
 var voice_toggle: CheckButton
 var animated_text_toggle: CheckButton
 var reduced_motion_toggle: CheckButton
+var construction_preview_toggle: CheckButton
 var status_label: Label
+var lab_title: Label
+var controls_panel: PanelContainer
+var lab_ui_visible := true
 var playing := true
 var current_portrait_id := ""
 var current_portrait_event_index := -1
@@ -99,16 +103,16 @@ func _build_background() -> void:
 	background.color = Color("23272d")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
-	var title := Label.new()
-	title.text = "DIALOGUE LAB\nInteractive choices"
-	title.position = Vector2(20, 18)
-	title.add_theme_font_size_override("font_size", 18)
-	title.modulate = Color("8e969f")
-	background.add_child(title)
+	lab_title = Label.new()
+	lab_title.text = "DIALOGUE LAB\nInteractive choices\nH: hide/show Lab UI"
+	lab_title.position = Vector2(20, 18)
+	lab_title.add_theme_font_size_override("font_size", 18)
+	lab_title.modulate = Color("8e969f")
+	background.add_child(lab_title)
 
 
 func _build_controls() -> void:
-	var controls_panel := PanelContainer.new()
+	controls_panel = PanelContainer.new()
 	controls_panel.name = "LabControls"
 	controls_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	controls_panel.offset_left = -316
@@ -174,6 +178,11 @@ func _build_controls() -> void:
 	reduced_motion_toggle.text = "Reduced motion"
 	reduced_motion_toggle.toggled.connect(_on_reduced_motion_toggled)
 	controls.add_child(reduced_motion_toggle)
+	construction_preview_toggle = CheckButton.new()
+	construction_preview_toggle.text = "Construction preview"
+	construction_preview_toggle.tooltip_text = "Hide all dialogue content while retaining the panel construction"
+	construction_preview_toggle.toggled.connect(_on_construction_preview_toggled)
+	controls.add_child(construction_preview_toggle)
 	status_label = Label.new()
 	status_label.name = "ParserStatus"
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -370,9 +379,7 @@ func _on_portrait_changed(portrait_id: String, visible_index: int) -> void:
 func _apply_portrait(portrait_id: String, visible_index: int) -> void:
 	current_portrait_id = portrait_id
 	current_portrait_event_index = visible_index
-	dialogue_view.portrait_texture.texture = _resolve_portrait(portrait_id)
-	dialogue_view.portrait_texture.visible = not portrait_id.is_empty()
-	dialogue_view.empty_portrait.visible = portrait_id.is_empty()
+	dialogue_view.set_portrait(_resolve_portrait(portrait_id))
 	if conversation != null and not conversation.pages.is_empty():
 		_refresh_status(conversation.pages[page_selector.selected], portrait_id, visible_index)
 
@@ -433,6 +440,16 @@ func _on_reduced_motion_toggled(enabled: bool) -> void:
 	session_runner.set_reduced_motion(enabled)
 
 
+func _on_construction_preview_toggled(enabled: bool) -> void:
+	dialogue_view.set_construction_preview(enabled)
+
+
+func _toggle_lab_ui() -> void:
+	lab_ui_visible = not lab_ui_visible
+	lab_title.visible = lab_ui_visible
+	controls_panel.visible = lab_ui_visible
+
+
 func _on_voice_requested(stream: AudioStream, pitch: float, volume_db: float, visible_index: int, character: String) -> void:
 	last_voice_description = "@%d '%s' pitch %.2f volume %+.1f dB%s" % [visible_index, character, pitch, volume_db, " (no clip yet)" if stream == null else ""]
 
@@ -489,6 +506,12 @@ func _on_conversation_finished(conversation_id: String) -> void:
 	play_button.text = "Play"
 	last_choice_result = "conversation finished: %s" % conversation_id
 	_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_H:
+		_toggle_lab_ui()
+		get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:

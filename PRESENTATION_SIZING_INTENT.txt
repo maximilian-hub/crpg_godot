@@ -1,0 +1,178 @@
+PRESENTATION SIZING INTENT
+==========================
+
+Purpose
+-------
+
+This document records the chosen long-term sizing policy for the game's major
+presentation contexts. It is design intent, not a claim that the complete policy
+has already been implemented.
+
+The project will use a hybrid sizing approach rather than forcing the overworld,
+dialogue UI, menus, and chess battle to obey one universal scaling strategy.
+Each context has different artistic and interaction requirements, and should use
+the simplest policy that preserves those requirements.
+
+
+Canonical UI Composition
+------------------------
+
+Dialogue, menus, HUD elements, result screens, and other authored interfaces
+should be designed inside a canonical 16:9 safe composition. Important content
+must remain inside that area on every platform.
+
+The operating-system window or physical device screen does not itself need to
+be forced to 16:9. The canonical area should be fitted uniformly and centered
+inside the available safe display region. Space outside it may use letterboxing,
+pillarboxing, a flat thematic color, decorative extensions, or nonessential
+background imagery. It must not reveal interaction-critical content or change
+authored UI relationships.
+
+Nonuniform stretching should never be used. Fractional scaling is acceptable
+for generated interface artwork and other UI elements even when it sacrifices
+strict pixel-perfectness. World rendering may retain a different scaling policy.
+
+Landscape orientation is the intended presentation for phones and tablets.
+Device cutouts, rounded corners, system gesture areas, television overscan, and
+platform UI-safe-area requirements must be respected when fitting the canonical
+composition.
+
+
+Dialogue and Menu UI
+--------------------
+
+The dialogue UI should remain a fixed composition rather than reflowing or
+changing its proportions for arbitrary window shapes.
+
+The current reference is a 320x180 logical 16:9 canvas containing a bottom-
+centered 304x78 dialogue construction. The portrait panel, nameplate, text panel,
+seams, and ornamentation should preserve their authored relationships. Wider or
+taller displays should not make the dialogue box wider, narrower, or otherwise
+recompose it.
+
+This decision permits the standard dialogue construction to use one complete
+304x78 frame artwork rather than requiring a fully modular nine-slice treatment.
+The complete frame may be generated and painted at a larger resolution, then
+reduced and cleaned for its final presentation. A modular derivative may still
+be created later if a genuine variable-size use case appears, but it is not a
+prerequisite for the standard dialogue box.
+
+Dialogue and general UI may use fractional uniform scaling. Typography and
+filtering should be evaluated separately so that the chosen scaling produces an
+acceptable result, but the world is not required to abandon integer scaling in
+order for UI to scale smoothly.
+
+
+Overworld
+---------
+
+The overworld should retain its centered square presentation and its existing
+integer-scaling behavior. This keeps world pixels stable and prevents arbitrary
+window proportions from changing the visible gameplay composition.
+
+The square overworld presentation may coexist inside the outer canonical 16:9
+stage. Dialogue and other UI should be positioned in the canonical UI layer,
+not made dependent on the overworld subviewport's integer scale.
+
+
+Chess Battle
+------------
+
+The chess battle is the deliberate exception to a strictly fixed 16:9 content
+rectangle. Its board should use as much of the device's safe display region as
+possible because square size directly affects touchscreen accuracy, especially
+with an angled and foreshortened board.
+
+The battle environment may fill the complete safe screen. Critical HUD and
+authored staging should still respect a central 16:9 safe composition, but the
+board may expand into additional vertical or horizontal space available on
+16:10, 4:3, ultrawide, or other aspect ratios.
+
+Future battle UI will include approximately:
+
+* A stone player console in the lower-left.
+* A corresponding opponent console in the upper-right.
+* Player and opponent portraits or identity presentation.
+* Turn and cooldown indicators.
+* Access to settings, class skills, emotes, surrender, offer-draw, and other
+  future actions.
+
+These consoles should preferably be compact horizontal corner panels rather
+than tall permanent sidebars. Frequently needed status and tactical actions may
+remain visible; infrequent actions should open a temporary drawer, modal, or
+secondary menu rather than permanently consuming board space.
+
+The player panel rectangle, opponent panel rectangle, device safe area, hands,
+pieces, and any other required exclusion zones will become explicit constraints
+in battle layout. The board should be the largest valid projection that does not
+intersect those constraints. In conceptual terms:
+
+    maximum board size = largest projection that fits within
+                         the safe display region
+                         without intersecting reserved UI regions
+
+This avoids reserving generic sidebars and avoids automatically shrinking the
+board to a strict letterboxed 16:9 rectangle. On a squarer tablet, the board may
+shrink only by the amount actually required by the authored panels, rather than
+losing all space outside a fitted 16:9 area.
+
+The current projection already leaves useful bands above and below the playable
+surface. The upper-right and lower-left placements should exploit those regions,
+including the empty space around the trapezoidal board, while never covering
+playable square polygons or important piece/hand presentation.
+
+
+Mobile Interaction
+------------------
+
+Physical tablet size may compensate for some proportional loss of screen area,
+but layout must not assume that resolution or aspect ratio reliably describes a
+device's physical dimensions. Board sizing and touch interaction should still
+be tested against practical minimum touch targets.
+
+Future mobile battle interaction may additionally use touch-down highlighting,
+touch-up confirmation, drag cancellation, strong selected-square feedback, or
+other input assistance. These interaction improvements are complementary to,
+not replacements for, maximizing board size.
+
+If wide phones provide otherwise unused space outside the central composition,
+future touch controls may occupy those safe outer regions without changing the
+authored game view.
+
+
+Planned Validation
+------------------
+
+Before battle panel artwork is finalized, create a Battle UI Layout Lab using
+plain placeholder rectangles and the real angled board. It should exercise at
+least 16:9, 16:10, 4:3, and ultrawide-phone display shapes and report projected
+square dimensions.
+
+The Lab should be used to determine:
+
+* Final player and opponent console dimensions.
+* Whether compact mobile variants are required.
+* The exact board-clearance constraints.
+* Minimum comfortable projected square sizes.
+* Collisions with pieces, hands, dialogue, and device safe areas.
+* Whether temporary menus should overlay, displace, or pause the board.
+
+No battle sizing or panel implementation should be committed solely from the
+provisional example dimensions discussed during planning. The constraint policy
+is locked in; exact panel sizes remain an empirical layout decision.
+
+
+Decision Summary
+----------------
+
+* Dialogue and authored UI: fixed canonical 16:9 composition.
+* Standard dialogue construction: fixed 304x78 logical artwork is permitted.
+* Overworld: centered square with integer scaling.
+* Chess battle environment: fills the safe screen.
+* Chessboard: fluid and maximized subject to explicit UI and safe-area
+  constraints.
+* Battle HUD: critical information remains safe; corner consoles constrain the
+  board only by the space they actually occupy.
+* Mobile: landscape-only presentation, safe-area aware, with future touch-
+  specific interaction assistance.
+

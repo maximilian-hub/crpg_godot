@@ -41,8 +41,15 @@ RPG interface. Stone detail is subordinate to text.
 Asset Authoring
 ---------------
 
-Pixelorama is an appropriate authoring tool, but the primary asset should not be
-one complete dialogue box at a fixed size. Author a modular nine-slice frame:
+Pixelorama is an appropriate cleanup and finishing tool. The standard dialogue
+construction now has a fixed 304x78 logical composition, so its primary artwork
+may be one complete frame. This makes it easier to preserve continuous material,
+lighting, seams, and ornamentation across the portrait, plaque, and text regions.
+Generate or paint at a larger matching aspect, reduce to the final logical size,
+then repair individual pixels and verify readability in Dialogue Lab.
+
+Nine-slice frames remain an optional derivative for any future interface that
+genuinely needs variable dimensions:
 
     corner | top edge    | corner
     -------+-------------+-------
@@ -51,17 +58,17 @@ one complete dialogue box at a fixed size. Author a modular nine-slice frame:
     -------+-------------+-------
     corner | bottom edge | corner
 
-Godot should assemble this as a StyleBoxTexture on a PanelContainer, or through
-an equivalent nine-patch treatment. Corners remain fixed while edges and the
-center tile or stretch as appropriate.
+Godot may assemble such a derivative as a StyleBoxTexture on a PanelContainer,
+or through an equivalent nine-patch treatment. Corners remain fixed while edges
+and the center tile or stretch as appropriate.
 
 Good starting experiments are 8x8- or 12x12-pixel corner regions inside a small
 24x24-, 36x36-, or 48x48-pixel source texture. Recognizable details should live
 in corners or separate ornaments. Repeating edges should remain quiet enough
 that tiling is not obvious.
 
-The initial art pass should be grayscale. Border thickness, padding, tiling, and
-text readability should be proven before final color and decorative detail.
+The initial complete-frame art pass should prove border thickness, content
+openings, padding, and text readability before final color and decorative detail.
 
 
 Shared Dialogue Architecture
@@ -112,10 +119,12 @@ IDs. Dialogue-wide speed, instant-text, motion, voice, and UI-sound preferences
 live in one session settings object so future overworld and battle presenters use
 the same accessibility state.
 
-The ordinary dialogue layout should use connected, equal-height portrait and
-text panels rather than placing the portrait inside a larger enclosing box. The
-bordered portrait panel remains visible on the left and the left-justified text
-panel meets it at a shared seam. Portrait assets use the 3:4 aspect ratio
+The ordinary dialogue layout should appear as one fixed physical construction
+containing connected portrait, text, and nameplate regions. The current standard
+may use a single complete 304x78 frame texture, with transparent logical content
+containers positioned over its openings; the older independent panel styles
+remain a useful fallback. The bordered portrait region remains visible on the
+left and the left-justified text region meets it at a shared seam. Portrait assets use the 3:4 aspect ratio
 established by the 96x128 hood test portrait. A dedicated empty-state asset will
 eventually fill the portrait panel for off-screen, unknown, or otherwise
 unpictured speakers so absence does not look like a missing asset. A small
@@ -220,12 +229,12 @@ later need more identity, use compatible DialogueSkin resources rather than
 forking the dialogue system. A battle variant may add heavier side ornaments,
 King aura colors, or portrait plaques while retaining the same visual language.
 
-DialogueSkin should expose independently replaceable StyleBox resources for the
-text panel, portrait panel, and name plaque. Asset-backed StyleBoxTextures can
-therefore replace provisional StyleBoxFlat frames without changing view
-structure. The text interior, empty portrait, continue indicator, and fonts
-should likewise be replaceable skin assets, while spacing and proportions remain
-logical integer values.
+DialogueSkin should expose a replaceable complete-frame texture for the fixed
+standard composition, while retaining independently replaceable StyleBox
+resources for the text panel, portrait panel, and name plaque as a fallback for
+future variable-size variants. The text interior, empty portrait, continue
+indicator, and fonts should likewise be replaceable skin assets, while spacing
+and proportions remain authored layout values.
 
 Useful placement modes may eventually include:
 

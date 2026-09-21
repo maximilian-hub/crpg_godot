@@ -2,6 +2,7 @@ extends Resource
 class_name DialogueSkin
 
 @export_category("Replaceable presentation assets")
+@export var complete_frame_texture: Texture2D
 @export var text_panel_style: StyleBox
 @export var portrait_panel_style: StyleBox
 @export var name_plate_style: StyleBox
@@ -33,8 +34,12 @@ class_name DialogueSkin
 @export var panel_join_overlap := 2
 @export var panel_inner_padding := 5
 @export var portrait_inner_padding := 2
+@export var portrait_content_insets := Vector4.ZERO
+@export var text_content_insets := Vector4.ZERO
+@export var body_text_offset := Vector2.ZERO
 @export var name_plate_horizontal_offset := 4
 @export var name_plate_size := Vector2i(92, 14)
+@export var name_text_offset := Vector2(5, 0)
 @export var body_font_size := 8
 @export var name_font_size := 8
 @export var choice_font_size := 7

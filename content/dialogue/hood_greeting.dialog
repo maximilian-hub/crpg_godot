@@ -1,6 +1,9 @@
 // Hood greets the player.
 @conversation hood_greeting
 
+@page speaker=hood name="Hood" known=false portrait=neutral
+Test test test test test test test test test test test test
+
 @page speaker=hood name="Hood" known=false portrait=annoyed
 ...
 

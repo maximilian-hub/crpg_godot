@@ -44,14 +44,21 @@ func _test_layout_calculation() -> void:
 	var far: Dictionary = DialogueViewScript.calculate_layout(Vector2i(1920, 1080), DialogueViewScript.Placement.BATTLE_FAR)
 	_check(near.group_rect.position.y > far.group_rect.position.y, "battle-near and battle-far map to opposing vertical placements")
 	_check(DIALOGUE_SKIN.text_panel_style != null and DIALOGUE_SKIN.portrait_panel_style != null and DIALOGUE_SKIN.name_plate_style != null, "skin supplies independently replaceable panel and plaque styles")
+	_check(DIALOGUE_SKIN.complete_frame_texture != null and DIALOGUE_SKIN.complete_frame_texture.get_size() == Vector2(304, 78), "skin supplies the fixed complete-frame artwork at its canonical logical size")
 	_check(DIALOGUE_SKIN.portrait_aspect_ratio == float(HOOD_PORTRAIT.get_width()) / float(HOOD_PORTRAIT.get_height()), "skin aspect ratio matches the supplied portrait asset")
 	_check(DIALOGUE_SKIN.empty_portrait_texture != null and DIALOGUE_SKIN.empty_portrait_texture.get_size() == Vector2(96, 128), "skin supplies the correctly sized empty portrait asset")
+	_check(DIALOGUE_SKIN.portrait_content_insets == Vector4(12, 11, 2, 7), "complete-frame skin maps portrait artwork to the second frame's rectangular opening with its authored downward nudge")
+	_check(DIALOGUE_SKIN.text_content_insets == Vector4(13, 9, 12, 9), "complete-frame skin maps dialogue content to the second frame's rectangular opening")
+	_check(DIALOGUE_SKIN.body_text_offset == Vector2(1, 2), "complete-frame skin nudges body text within its measured opening")
+	_check(DIALOGUE_SKIN.name_text_offset == Vector2(9, 3), "complete-frame skin positions name text within its plaque")
 
 
 func _test_static_states() -> void:
 	var view = DIALOGUE_VIEW_SCENE.instantiate()
 	add_child(view)
 	view.apply_window_size(Vector2i(1920, 1080))
+	_check(view.complete_frame.visible and view.complete_frame.size == Vector2(304, 78), "complete-frame artwork occupies the canonical assembled group rectangle")
+	_check(view.dialogue_panel.get_theme_stylebox("panel") is StyleBoxEmpty and view.portrait_panel.get_theme_stylebox("panel") is StyleBoxEmpty and view.speaker_plate.get_theme_stylebox("panel") is StyleBoxEmpty, "complete-frame mode makes the structural content containers visually transparent")
 	_check(view.content_stage.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST, "dialogue stage enforces nearest filtering independently of its host viewport")
 	_check(PIXEL_OPERATOR_8.antialiasing == 0, "Pixel Operator 8 disables grayscale antialiasing")
 	_check(PIXEL_OPERATOR_8.subpixel_positioning == 0, "Pixel Operator 8 disables subpixel positioning")
@@ -133,6 +140,16 @@ func _test_static_states() -> void:
 	_check(not view.choice_label.visible and not view.continue_indicator.visible and not view.continue_indicator_texture.visible, "incomplete reveal hides choices and all continue indicators")
 	view.set_page_complete(true)
 	_check(view.choice_label.visible, "completion restores the configured choice presentation")
+	view.configure("Hood", true, "Construction sample.")
+	view.set_page_complete(true)
+	_check(view.empty_portrait.visible and view.speaker_label.visible and view.dialogue_text.visible and view.continue_indicator.visible, "ordinary completed dialogue exposes all applicable content layers")
+	view.set_construction_preview(true)
+	_check(view.portrait_panel.visible and view.dialogue_panel.visible and view.speaker_plate.visible, "construction preview preserves the portrait, text, and nameplate structures")
+	_check(view.complete_frame.visible, "construction preview preserves the complete-frame artwork")
+	_check(not view.speaker_label.visible and not view.dialogue_text.visible and not view.portrait_texture.visible and not view.empty_portrait.visible, "construction preview hides text, portrait art, and the empty portrait presentation")
+	_check(not view.choice_label.visible and not view.continue_indicator.visible and not view.continue_indicator_texture.visible and not view.text_interior.visible, "construction preview hides choices, continue indicators, and optional interior imagery")
+	view.set_construction_preview(false)
+	_check(view.empty_portrait.visible and view.speaker_label.visible and view.dialogue_text.visible and view.continue_indicator.visible, "leaving construction preview restores the current dialogue state")
 	view.queue_free()
 
 

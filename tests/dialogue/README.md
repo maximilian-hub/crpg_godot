@@ -13,6 +13,10 @@ Run the static dialogue-view checks with:
 
 Open `res://tools/dev_dialogue/dialogue_lab.tscn` in Godot to review the layout.
 Use the lab controls to switch portrait, identity, content, and placement states.
+Enable **Construction preview** to hide dialogue text, names, portraits, empty-
+portrait art, choices, indicators, and optional interior imagery while retaining
+the three structural panels. Press `H` to hide or restore the Lab title and
+control panel for clean reference screenshots.
 Resize the window to check integer scale transitions, narrow layouts, and wide
 layouts. This milestone intentionally uses plain grayscale placeholder styling;
 final decorative skin and dialogue voice assets are still intentionally absent.
