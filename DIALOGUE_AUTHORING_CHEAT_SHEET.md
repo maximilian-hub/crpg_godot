@@ -7,14 +7,14 @@ Dialogue files are UTF-8 text files ending in `.dialogue`. One file contains one
 ```text
 @conversation hood_greeting
 
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 You made it this far.
 ```
 
 ## Page header
 
 ```text
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 ```
 
 - `speaker`: stable speaker/profile ID.
@@ -41,6 +41,25 @@ The portrait changes immediately before the following visible character appears.
 ```
 
 Portrait IDs must already exist in the speaker profile. Inline `portrait=none` is not currently supported.
+
+Hood currently provides these portrait IDs:
+
+```text
+neutral
+laugh_a
+laugh_b
+annoyed
+disappointed
+thinking
+wistful
+```
+
+`hood_neutral` remains accepted as a legacy alias, but new dialogue should use `neutral`.
+
+Portrait IDs belong to the page's speaker. Multiple characters can all define
+`angry`; `speaker=hood portrait=angry` selects Hood's version, and inline
+`[portrait=angry]` continues using that page's speaker. Start a new page to
+change speakers.
 
 ### Reveal speed
 
@@ -115,7 +134,7 @@ Tags do not appear in the displayed text or disturb portrait-event indices.
 Place choices after the page text:
 
 ```text
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 Will you challenge me?
 @choice text="Yes" target=accept_challenge
 @choice text="No" target=decline_challenge
@@ -150,19 +169,19 @@ Lines within a page are preserved. Prefer natural UI wrapping unless an authored
 // Hood confronts the player.
 @conversation hood_confrontation
 
-@page speaker=hood name="Hood" known=false portrait=hood_neutral
+@page speaker=hood name="Hood" known=false portrait=neutral
 You made it this far.
 
 @page speaker=hood name="Hood" known=true portrait=laugh_a
 They call me [color=mystery][caps]Hood[/caps][/color].
 
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 I have waited [speed=0.5]a very long time[/speed].
 
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 [portrait=laugh_a]ha[portrait=laugh_b]ha[portrait=laugh_a]ha!
 
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 Will you challenge me?
 @choice text="Draw your weapon" target=accept_challenge
 @choice text="Walk away" target=decline_challenge

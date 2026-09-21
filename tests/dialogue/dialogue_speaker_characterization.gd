@@ -29,8 +29,11 @@ func _ready() -> void:
 func _test_catalog_resolution() -> void:
 	var hood = CATALOG.profile("hood")
 	_check(hood != null and hood.default_display_name == "Hood", "speaker ID resolves to its data-driven profile")
-	_check(CATALOG.portrait("hood", "hood_neutral") != null, "portrait ID resolves through the speaker profile")
+	_check(CATALOG.portrait("hood", "neutral") != null, "canonical neutral portrait ID resolves through the speaker profile")
+	_check(CATALOG.portrait("hood", "hood_neutral") == CATALOG.portrait("hood", "neutral"), "legacy Hood neutral ID remains a compatibility alias")
 	_check(CATALOG.portrait("hood", "laugh_a") != CATALOG.portrait("hood", "laugh_b"), "expression IDs resolve to their distinct supplied assets")
+	for portrait_id in ["annoyed", "disappointed", "thinking", "wistful"]:
+		_check(CATALOG.portrait("hood", portrait_id) != null, "Hood's '%s' authoring ID resolves to its supplied portrait" % portrait_id)
 	_check(hood.voice_clips.size() == 1 and hood.voice_clips[0] != null, "Hood profile resolves its supplied character voice clip")
 	_check(CATALOG.portrait("hood", "missing") == null and CATALOG.profile("missing") == null, "unknown IDs fail safely into empty presentation")
 	var ernest = CATALOG.profile("ernest_the_unreasonably_named")

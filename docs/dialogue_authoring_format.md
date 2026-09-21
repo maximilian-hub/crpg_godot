@@ -7,13 +7,13 @@ comments.
 ```text
 @conversation hood_challenge
 
-@page speaker=hood name="???" known=false portrait=hood_neutral
+@page speaker=hood name="???" known=false portrait=neutral
 You made it this far.
 
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 [portrait=laugh_a]ha[portrait=laugh_b]ha.
 
-@page speaker=hood name="Hood" known=true portrait=hood_neutral
+@page speaker=hood name="Hood" known=true portrait=neutral
 Will you challenge me?
 @choice text="Yes" target=accept_challenge
 @choice text="No" target=decline_challenge
@@ -49,6 +49,11 @@ produces visible text `haha` with portrait events at indices `0` and `2`.
 Event index `0` occurs before the first character is revealed. Asset paths stay
 outside prose; a speaker/presentation catalog will eventually resolve IDs such
 as `laugh_a` to textures.
+
+Portrait IDs are scoped to the page's `speaker` profile. Different speakers may
+each define an `angry` portrait: `speaker=hood portrait=angry` resolves Hood's,
+while `speaker=ernest portrait=angry` resolves Ernest's. Inline portrait events
+use the same current-page speaker. Changing speakers requires a new page.
 
 ## Text presentation
 

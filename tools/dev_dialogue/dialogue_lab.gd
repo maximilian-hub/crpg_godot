@@ -14,7 +14,7 @@ const PIXEL_OPERATOR_MONO_8 := preload("res://assets/ui/fonts/pixel_operator/Pix
 const PIXEL_OPERATOR_MONO_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperatorMono8-Bold.ttf")
 const PIXEL_OPERATOR := preload("res://assets/ui/fonts/pixel_operator/PixelOperator.ttf")
 const PIXEL_OPERATOR_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator-Bold.ttf")
-const DEMO_PATH := "res://content/dialogue/hood_authoring_demo.dialogue"
+const DIALOGUE_PATH := "res://content/dialogue/hood_greeting.dialog"
 
 var dialogue_view
 var lab_skin
@@ -46,7 +46,7 @@ var last_choice_result := "none"
 
 func _ready() -> void:
 	get_viewport().canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
-	var parsed = DialogueParserScript.parse_file(DEMO_PATH)
+	var parsed = DialogueParserScript.parse_file(DIALOGUE_PATH)
 	conversation = parsed.conversation
 	_build_background()
 	dialogue_view = DIALOGUE_VIEW_SCENE.instantiate()
@@ -125,7 +125,7 @@ func _build_controls() -> void:
 	heading.add_theme_font_size_override("font_size", 16)
 	controls.add_child(heading)
 	var source := Label.new()
-	source.text = DEMO_PATH.get_file()
+	source.text = DIALOGUE_PATH.get_file()
 	source.modulate = Color("aeb5bd")
 	controls.add_child(source)
 	page_selector = _add_option(controls, "Page", [])

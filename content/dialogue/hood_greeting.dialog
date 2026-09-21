@@ -1,0 +1,50 @@
+// Hood greets the player.
+@conversation hood_greeting
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+...
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Hello.
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+I was just pondering these statues.
+
+@page speaker=hood name="Hood" known=false portrait=thinking
+Do you know anything of them?
+
+@page speaker=hood name="Hood" known=false portrait=thinking
+...
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Of course not.
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Some say these figures represent a king and queen from long ago.
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+They abandoned their power and wealth, their kingdom... they stopped playing the game.
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Legend says they settled deep in these woods, to live a quiet natural life in solitude.
+
+@page speaker=hood name="Hood" known=false portrait=wistful
+Perhaps one day, I, too...
+
+@page speaker=hood name="Hood" known=false portrait=wistful
+...
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Nevermind.
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+I see that look in your eyes. You wish to play.
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+How tiresome.
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Very well.
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+I shall end this quickly.

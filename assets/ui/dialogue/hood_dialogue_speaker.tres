@@ -1,17 +1,21 @@
-[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=6 format=3 uid="uid://buqngbuxss8vj"]
+[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=10 format=3 uid="uid://buqngbuxss8vj"]
 
 [ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="1_profile"]
 [ext_resource type="Texture2D" uid="uid://b5afi4pl0eum3" path="res://assets/ui/portraits/hood/hood_neutral.png" id="2_neutral"]
 [ext_resource type="Texture2D" uid="uid://bx6ki0r7os74n" path="res://assets/ui/portraits/hood/hood_laugh_a.png" id="3_laugh_a"]
 [ext_resource type="Texture2D" uid="uid://indkoq5c8w3f" path="res://assets/ui/portraits/hood/hood_laugh_b.png" id="4_laugh_b"]
 [ext_resource type="AudioStream" uid="uid://n2wknqvbqhc4" path="res://assets/audio/ui/hood_blip.wav" id="5_voice"]
+[ext_resource type="Texture2D" uid="uid://c1es4sd6mce1a" path="res://assets/ui/portraits/hood/hood_annoyed.png" id="6_annoyed"]
+[ext_resource type="Texture2D" uid="uid://cjgy2v7j6lbu6" path="res://assets/ui/portraits/hood/hood_disappointed.png" id="7_disappointed"]
+[ext_resource type="Texture2D" uid="uid://xwpqnjxs2qlc" path="res://assets/ui/portraits/hood/hood_thinking.png" id="8_thinking"]
+[ext_resource type="Texture2D" uid="uid://dw767ur0hc3j" path="res://assets/ui/portraits/hood/hood_wistful.png" id="9_wistful"]
 
 [resource]
 script = ExtResource("1_profile")
 speaker_id = "hood"
 default_display_name = "Hood"
-portrait_ids = PackedStringArray("hood_neutral", "laugh_a", "laugh_b")
-portrait_textures = Array[Texture2D]([ExtResource("2_neutral"), ExtResource("3_laugh_a"), ExtResource("4_laugh_b")])
+portrait_ids = PackedStringArray("neutral", "hood_neutral", "laugh_a", "laugh_b", "annoyed", "disappointed", "thinking", "wistful")
+portrait_textures = Array[Texture2D]([ExtResource("2_neutral"), ExtResource("2_neutral"), ExtResource("3_laugh_a"), ExtResource("4_laugh_b"), ExtResource("6_annoyed"), ExtResource("7_disappointed"), ExtResource("8_thinking"), ExtResource("9_wistful")])
 voice_enabled = true
 voice_clips = Array[AudioStream]([ExtResource("5_voice")])
 minimum_pitch = 0.92

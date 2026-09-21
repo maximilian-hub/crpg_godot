@@ -22,9 +22,10 @@ Its panel and plaque slots accept any `StyleBox`, including future nine-sliced
 `StyleBoxTexture` assets. It also exposes optional textures for the text interior,
 empty portrait, and continue indicator, plus fonts and logical spacing values.
 
-The lab parses `res://content/dialogue/hood_authoring_demo.dialogue`. Page and
-portrait-state selectors demonstrate ordered pages and expression events without
-coupling them to gameplay. Reveal controls provide play/pause, restart, one
+The Lab currently plays `res://content/dialogue/hood_greeting.dialog`; the older
+`hood_authoring_demo.dialogue` remains a parser and presentation regression
+fixture. Page and portrait-state selectors demonstrate ordered pages and
+expression events without coupling them to gameplay. Reveal controls provide play/pause, restart, one
 character stepping, immediate completion, two-stage confirm, player-speed
 scaling, instant text, and character-voice request diagnostics. See
 `docs/dialogue_authoring_format.md` for the grammar, speed spans, and

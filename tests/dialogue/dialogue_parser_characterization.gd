@@ -31,7 +31,7 @@ func _test_valid_fixture() -> void:
 	var unknown_page = result.conversation.pages[0]
 	_check(unknown_page.speaker_id == "hood" and unknown_page.speaker_name == "Hood", "speaker identity and display name are distinct fields")
 	_check(not unknown_page.speaker_known, "unknown-name presentation state is retained")
-	_check(unknown_page.initial_portrait_id == "hood_neutral", "initial portrait ID is retained without an asset path")
+	_check(unknown_page.initial_portrait_id == "neutral", "initial portrait ID is retained without an asset path")
 	var laugh_page = result.conversation.pages[1]
 	_check(laugh_page.text == "hahahaha. The stones remember.", "inline portrait tags are removed from visible text")
 	_check(laugh_page.events.size() == 4, "frequent authored portrait changes are retained")
