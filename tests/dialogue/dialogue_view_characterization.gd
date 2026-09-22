@@ -8,6 +8,7 @@ const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOpe
 const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
 const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
 const JiggleEffectScript := preload("res://scripts/ui/dialogue_jiggle_effect.gd")
+const PortraitShadowScript := preload("res://scripts/ui/dialogue_portrait_shadow.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -48,8 +49,12 @@ func _test_layout_calculation() -> void:
 	_check(DIALOGUE_SKIN.portrait_aspect_ratio == float(HOOD_PORTRAIT.get_width()) / float(HOOD_PORTRAIT.get_height()), "skin aspect ratio matches the supplied portrait asset")
 	_check(DIALOGUE_SKIN.empty_portrait_texture != null and DIALOGUE_SKIN.empty_portrait_texture.get_size() == Vector2(96, 128), "skin supplies the correctly sized empty portrait asset")
 	_check(DIALOGUE_SKIN.portrait_content_insets == Vector4(12, 11, 2, 7), "complete-frame skin maps portrait artwork to the second frame's rectangular opening with its authored downward nudge")
+	_check(DIALOGUE_SKIN.portrait_shadow_enabled and DIALOGUE_SKIN.portrait_shadow_opening_insets == Vector4(12, 10, 2, 8), "complete-frame skin enables a shadow around the frame's true portrait opening")
+	_check(DIALOGUE_SKIN.portrait_shadow_edge_thickness == Vector4(4, 4, 2, 2) and DIALOGUE_SKIN.portrait_shadow_edge_opacity == Vector4(0.75, 0.75, 0.25, 0.65), "portrait shadow preserves the values authored in the live Dialogue Lab")
+	_check(DIALOGUE_SKIN.portrait_shadow_frame_overlap == 0 and DIALOGUE_SKIN.portrait_shadow_bottom_offset == 1, "portrait shadow preserves zero frame overlap and moves only its bottom edge down one pixel")
 	_check(DIALOGUE_SKIN.text_content_insets == Vector4(13, 9, 12, 9), "complete-frame skin maps dialogue content to the second frame's rectangular opening")
-	_check(DIALOGUE_SKIN.body_text_offset == Vector2(1, 2), "complete-frame skin nudges body text within its measured opening")
+	_check(DIALOGUE_SKIN.body_text_offset == Vector2(2, 4), "complete-frame skin nudges body text within its measured opening")
+	_check(DIALOGUE_SKIN.body_text_bottom_reserve == 0, "complete-frame skin lets body text use the full remaining panel height")
 	_check(DIALOGUE_SKIN.name_text_offset == Vector2(9, 3), "complete-frame skin positions name text within its plaque")
 
 
@@ -58,6 +63,15 @@ func _test_static_states() -> void:
 	add_child(view)
 	view.apply_window_size(Vector2i(1920, 1080))
 	_check(view.complete_frame.visible and view.complete_frame.size == Vector2(304, 78), "complete-frame artwork occupies the canonical assembled group rectangle")
+	_check(view.portrait_shadow.get_parent() == view.portrait_panel and view.portrait_shadow.get_index() > view.empty_portrait.get_index(), "portrait inset shadow renders above portrait and empty-state content")
+	_check(view.portrait_shadow.size == view.portrait_panel.size and view.portrait_shadow.shadow_bands().size() == 12, "portrait inset shadow covers the logical portrait panel with stepped edge bands")
+	var tuned_shadow_bands: Array = view.portrait_shadow.shadow_bands()
+	_check((tuned_shadow_bands[10].rect as Rect2).position.y == 70.0, "bottom portrait shadow begins one logical pixel below the frame opening")
+	var shadow_uses_logical_pixels := true
+	for band in view.portrait_shadow.shadow_bands():
+		var rect: Rect2 = band.rect
+		shadow_uses_logical_pixels = shadow_uses_logical_pixels and rect.position == rect.position.round() and rect.size == rect.size.round()
+	_check(shadow_uses_logical_pixels, "portrait inset shadow uses whole logical-pixel rectangles")
 	_check(view.dialogue_panel.get_theme_stylebox("panel") is StyleBoxEmpty and view.portrait_panel.get_theme_stylebox("panel") is StyleBoxEmpty and view.speaker_plate.get_theme_stylebox("panel") is StyleBoxEmpty, "complete-frame mode makes the structural content containers visually transparent")
 	_check(view.content_stage.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST, "dialogue stage enforces nearest filtering independently of its host viewport")
 	_check(PIXEL_OPERATOR_8.antialiasing == 0, "Pixel Operator 8 disables grayscale antialiasing")
@@ -118,6 +132,7 @@ func _test_static_states() -> void:
 	view.configure("Hood", true, "Left aligned sample.")
 	_check(view.portrait_panel.visible, "portrait panel remains visible without portrait art")
 	_check(view.empty_portrait.visible and not view.portrait_texture.visible, "missing portrait uses an intentional empty state")
+	_check(view.portrait_shadow.visible and not view.portrait_shadow.shadow_bands().is_empty(), "empty portrait state retains the frame-owned inset shadow")
 	_check(view.speaker_label.text == "Hood", "known speaker displays authored name")
 	_check(view.portrait_panel.get_parent() == view.dialogue_panel.get_parent(), "portrait and text panels are siblings rather than nested boxes")
 	_check(view.portrait_panel.position.y == view.speaker_plate.position.y, "live portrait top aligns with the name plaque top (%s vs %s)" % [view.portrait_panel.position.y, view.speaker_plate.position.y])
@@ -146,11 +161,17 @@ func _test_static_states() -> void:
 	view.set_construction_preview(true)
 	_check(view.portrait_panel.visible and view.dialogue_panel.visible and view.speaker_plate.visible, "construction preview preserves the portrait, text, and nameplate structures")
 	_check(view.complete_frame.visible, "construction preview preserves the complete-frame artwork")
+	_check(view.portrait_shadow.visible and not view.portrait_shadow.shadow_bands().is_empty(), "construction preview preserves the portrait inset shadow")
 	_check(not view.speaker_label.visible and not view.dialogue_text.visible and not view.portrait_texture.visible and not view.empty_portrait.visible, "construction preview hides text, portrait art, and the empty portrait presentation")
 	_check(not view.choice_label.visible and not view.continue_indicator.visible and not view.continue_indicator_texture.visible and not view.text_interior.visible, "construction preview hides choices, continue indicators, and optional interior imagery")
 	view.set_construction_preview(false)
 	_check(view.empty_portrait.visible and view.speaker_label.visible and view.dialogue_text.visible and view.continue_indicator.visible, "leaving construction preview restores the current dialogue state")
 	view.queue_free()
+	var disabled_shadow = PortraitShadowScript.new()
+	disabled_shadow.size = Vector2(59, 78)
+	disabled_shadow.configure(false, Vector4(12, 10, 2, 8), Vector4(4, 4, 2, 2), Vector4(0.75, 0.75, 0.25, 0.65), Color.BLACK, 0, 1)
+	_check(disabled_shadow.shadow_bands().is_empty(), "disabled portrait shadow draws no bands")
+	disabled_shadow.queue_free()
 
 
 func _check(condition: bool, description: String) -> void:

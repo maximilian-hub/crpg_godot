@@ -20,6 +20,7 @@ var portrait_panel: Panel
 var portrait_texture: TextureRect
 var empty_portrait: Control
 var empty_portrait_texture: TextureRect
+var portrait_shadow
 var speaker_plate: Panel
 var speaker_label: Label
 var dialogue_text: RichTextLabel
@@ -269,6 +270,10 @@ func _build_view() -> void:
 	silhouette.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	silhouette.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	empty_portrait.add_child(silhouette)
+	portrait_shadow = preload("res://scripts/ui/dialogue_portrait_shadow.gd").new()
+	portrait_shadow.name = "PortraitInsetShadow"
+	portrait_shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_panel.add_child(portrait_shadow)
 
 	dialogue_panel = Panel.new()
 	dialogue_panel.name = "TextPanel"
@@ -346,6 +351,15 @@ func _apply_skin() -> void:
 	silhouette.visible = skin.empty_portrait_texture == null
 	silhouette.modulate = skin.empty_portrait_color
 	silhouette.add_theme_font_size_override("font_size", 26)
+	portrait_shadow.configure(
+		skin.portrait_shadow_enabled,
+		skin.portrait_shadow_opening_insets if skin.portrait_shadow_opening_insets != Vector4.ZERO else skin.portrait_content_insets,
+		skin.portrait_shadow_edge_thickness,
+		skin.portrait_shadow_edge_opacity,
+		skin.portrait_shadow_color,
+		skin.portrait_shadow_frame_overlap,
+		skin.portrait_shadow_bottom_offset
+	)
 	_apply_content_visibility()
 
 
@@ -381,6 +395,8 @@ func _layout_panel_contents() -> void:
 	portrait_texture.size = portrait_content_size
 	empty_portrait.position = portrait_content_position
 	empty_portrait.size = portrait_content_size
+	portrait_shadow.position = Vector2.ZERO
+	portrait_shadow.size = portrait_panel.size
 	empty_portrait_texture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	(empty_portrait.get_node("Silhouette") as Label).set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -400,7 +416,7 @@ func _layout_panel_contents() -> void:
 	dialogue_text.position = Vector2(text_left, text_top) + skin.body_text_offset
 	dialogue_text.size = Vector2(
 		maxf(1.0, dialogue_panel.size.x - text_left - text_right - skin.body_text_offset.x),
-		maxf(1.0, dialogue_panel.size.y - text_top - text_bottom - 12.0 - skin.body_text_offset.y)
+		maxf(1.0, dialogue_panel.size.y - text_top - text_bottom - float(skin.body_text_bottom_reserve) - skin.body_text_offset.y)
 	)
 	choice_label.position = Vector2(text_left, dialogue_panel.size.y - text_bottom - 9.0)
 	choice_label.size = Vector2(maxf(1.0, dialogue_panel.size.x - text_left - text_right - 12.0), 9.0)

@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://b1uvorggwd6p7" path="res://scripts/ui/dialogue_skin.gd" id="1_skin"]
 [ext_resource type="Texture2D" uid="uid://r62s16qrdm5j" path="res://assets/ui/portraits/empty.png" id="2_empty"]
-[ext_resource type="Texture2D" uid="uid://lllpqrmoufma" path="res://assets/ui/dialog_frame_test_2.png" id="3_complete_frame"]
+[ext_resource type="Texture2D" uid="uid://kcx7ov4c8jxm" path="res://assets/ui/dialog_frame_test_2.png" id="3_complete_frame"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_plate"]
 bg_color = Color(0.713726, 0.72549, 0.721569, 1)
@@ -60,8 +60,16 @@ panel_join_overlap = 2
 panel_inner_padding = 5
 portrait_inner_padding = 4
 portrait_content_insets = Vector4(12, 11, 2, 7)
+portrait_shadow_enabled = true
+portrait_shadow_opening_insets = Vector4(12, 10, 2, 8)
+portrait_shadow_edge_thickness = Vector4(4, 4, 2, 2)
+portrait_shadow_edge_opacity = Vector4(0.75, 0.75, 0.25, 0.65)
+portrait_shadow_color = Color(0.0134583, 0.0273438, 0.0250657, 1)
+portrait_shadow_frame_overlap = 0
+portrait_shadow_bottom_offset = 1
 text_content_insets = Vector4(13, 9, 12, 9)
-body_text_offset = Vector2(1, 2)
+body_text_offset = Vector2(2, 4)
+body_text_bottom_reserve = 0
 name_plate_horizontal_offset = 4
 name_plate_size = Vector2i(92, 14)
 name_text_offset = Vector2(9, 3)

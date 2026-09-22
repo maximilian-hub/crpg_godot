@@ -38,6 +38,14 @@ var construction_preview_toggle: CheckButton
 var status_label: Label
 var lab_title: Label
 var controls_panel: PanelContainer
+var shadow_controls_panel: PanelContainer
+var shadow_enabled_toggle: CheckButton
+var shadow_thickness_controls: Array[SpinBox] = []
+var shadow_opacity_controls: Array[SpinBox] = []
+var shadow_color_picker: ColorPickerButton
+var shadow_overlap_control: SpinBox
+var shadow_bottom_offset_control: SpinBox
+var shadow_defaults: Dictionary
 var lab_ui_visible := true
 var playing := true
 var current_portrait_id := ""
@@ -85,6 +93,7 @@ func _ready() -> void:
 	session_runner.setting_changed.connect(_on_setting_changed)
 	session_runner.conversation_finished.connect(_on_conversation_finished)
 	_build_controls()
+	_build_shadow_controls()
 	_apply_font_candidate(2)
 	if parsed.is_valid():
 		_populate_pages()
@@ -209,6 +218,126 @@ func _add_button(parent: Control, text: String, callback: Callable) -> Button:
 	button.pressed.connect(callback)
 	parent.add_child(button)
 	return button
+
+
+func _build_shadow_controls() -> void:
+	shadow_defaults = {
+		"enabled": lab_skin.portrait_shadow_enabled,
+		"thickness": lab_skin.portrait_shadow_edge_thickness,
+		"opacity": lab_skin.portrait_shadow_edge_opacity,
+		"color": lab_skin.portrait_shadow_color,
+		"overlap": lab_skin.portrait_shadow_frame_overlap,
+		"bottom_offset": lab_skin.portrait_shadow_bottom_offset,
+	}
+	shadow_controls_panel = PanelContainer.new()
+	shadow_controls_panel.name = "PortraitShadowControls"
+	shadow_controls_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	shadow_controls_panel.offset_left = -600
+	shadow_controls_panel.offset_top = 16
+	shadow_controls_panel.offset_right = -332
+	shadow_controls_panel.custom_minimum_size = Vector2(268, 0)
+	shadow_controls_panel.z_index = 20
+	add_child(shadow_controls_panel)
+	var controls := VBoxContainer.new()
+	controls.add_theme_constant_override("separation", 6)
+	shadow_controls_panel.add_child(controls)
+	var heading := Label.new()
+	heading.text = "Portrait inset shadow"
+	heading.add_theme_font_size_override("font_size", 16)
+	controls.add_child(heading)
+	shadow_enabled_toggle = CheckButton.new()
+	shadow_enabled_toggle.text = "Enabled"
+	shadow_enabled_toggle.button_pressed = lab_skin.portrait_shadow_enabled
+	shadow_enabled_toggle.toggled.connect(func(_enabled: bool): _apply_shadow_tuning())
+	controls.add_child(shadow_enabled_toggle)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 4)
+	controls.add_child(grid)
+	for title in ["Edge", "Width", "Opacity"]:
+		var header := Label.new()
+		header.text = title
+		grid.add_child(header)
+	var edge_names := ["Left", "Top", "Right", "Bottom"]
+	var thickness: Vector4 = lab_skin.portrait_shadow_edge_thickness
+	var opacity: Vector4 = lab_skin.portrait_shadow_edge_opacity
+	for index in range(4):
+		var edge_label := Label.new()
+		edge_label.text = edge_names[index]
+		grid.add_child(edge_label)
+		var thickness_control := _add_shadow_spin(grid, thickness[index], 0.0, 8.0, 1.0, " px")
+		var opacity_control := _add_shadow_spin(grid, opacity[index] * 100.0, 0.0, 100.0, 5.0, "%")
+		shadow_thickness_controls.append(thickness_control)
+		shadow_opacity_controls.append(opacity_control)
+		thickness_control.value_changed.connect(func(_value: float): _apply_shadow_tuning())
+		opacity_control.value_changed.connect(func(_value: float): _apply_shadow_tuning())
+	var color_label := Label.new()
+	color_label.text = "Shadow color"
+	controls.add_child(color_label)
+	shadow_color_picker = ColorPickerButton.new()
+	shadow_color_picker.color = lab_skin.portrait_shadow_color
+	shadow_color_picker.custom_minimum_size.y = 28
+	shadow_color_picker.color_changed.connect(func(_color: Color): _apply_shadow_tuning())
+	controls.add_child(shadow_color_picker)
+	var overlap_label := Label.new()
+	overlap_label.text = "Frame overlap"
+	controls.add_child(overlap_label)
+	shadow_overlap_control = _add_shadow_spin(controls, lab_skin.portrait_shadow_frame_overlap, 0.0, 4.0, 1.0, " px")
+	shadow_overlap_control.value_changed.connect(func(_value: float): _apply_shadow_tuning())
+	var bottom_offset_label := Label.new()
+	bottom_offset_label.text = "Bottom Y offset"
+	controls.add_child(bottom_offset_label)
+	shadow_bottom_offset_control = _add_shadow_spin(controls, lab_skin.portrait_shadow_bottom_offset, -4.0, 4.0, 1.0, " px")
+	shadow_bottom_offset_control.value_changed.connect(func(_value: float): _apply_shadow_tuning())
+	_add_button(controls, "Reset shadow", _reset_shadow_tuning)
+
+
+func _add_shadow_spin(parent: Control, initial: float, minimum: float, maximum: float, step: float, suffix: String) -> SpinBox:
+	var spin := SpinBox.new()
+	spin.min_value = minimum
+	spin.max_value = maximum
+	spin.step = step
+	spin.value = initial
+	spin.suffix = suffix
+	spin.custom_minimum_size.x = 72
+	parent.add_child(spin)
+	return spin
+
+
+func _apply_shadow_tuning() -> void:
+	if dialogue_view == null or shadow_thickness_controls.size() < 4:
+		return
+	lab_skin.portrait_shadow_enabled = shadow_enabled_toggle.button_pressed
+	lab_skin.portrait_shadow_edge_thickness = Vector4(
+		shadow_thickness_controls[0].value,
+		shadow_thickness_controls[1].value,
+		shadow_thickness_controls[2].value,
+		shadow_thickness_controls[3].value
+	)
+	lab_skin.portrait_shadow_edge_opacity = Vector4(
+		shadow_opacity_controls[0].value / 100.0,
+		shadow_opacity_controls[1].value / 100.0,
+		shadow_opacity_controls[2].value / 100.0,
+		shadow_opacity_controls[3].value / 100.0
+	)
+	lab_skin.portrait_shadow_color = shadow_color_picker.color
+	lab_skin.portrait_shadow_frame_overlap = roundi(shadow_overlap_control.value)
+	lab_skin.portrait_shadow_bottom_offset = roundi(shadow_bottom_offset_control.value)
+	dialogue_view.set_skin(lab_skin)
+
+
+func _reset_shadow_tuning() -> void:
+	shadow_enabled_toggle.button_pressed = shadow_defaults.enabled
+	var thickness: Vector4 = shadow_defaults.thickness
+	var opacity: Vector4 = shadow_defaults.opacity
+	for index in range(4):
+		shadow_thickness_controls[index].value = thickness[index]
+		shadow_opacity_controls[index].value = opacity[index] * 100.0
+	shadow_color_picker.color = shadow_defaults.color
+	shadow_overlap_control.value = shadow_defaults.overlap
+	shadow_bottom_offset_control.value = shadow_defaults.bottom_offset
+	_apply_shadow_tuning()
 
 
 func _populate_pages() -> void:
@@ -448,6 +577,7 @@ func _toggle_lab_ui() -> void:
 	lab_ui_visible = not lab_ui_visible
 	lab_title.visible = lab_ui_visible
 	controls_panel.visible = lab_ui_visible
+	shadow_controls_panel.visible = lab_ui_visible
 
 
 func _on_voice_requested(stream: AudioStream, pitch: float, volume_db: float, visible_index: int, character: String) -> void:

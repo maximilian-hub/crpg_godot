@@ -35,8 +35,18 @@ class_name DialogueSkin
 @export var panel_inner_padding := 5
 @export var portrait_inner_padding := 2
 @export var portrait_content_insets := Vector4.ZERO
+@export_category("Portrait inset shadow")
+@export var portrait_shadow_enabled := false
+@export var portrait_shadow_opening_insets := Vector4.ZERO
+@export var portrait_shadow_edge_thickness := Vector4.ZERO
+@export var portrait_shadow_edge_opacity := Vector4.ZERO
+@export var portrait_shadow_color := Color(0.02, 0.025, 0.03, 1.0)
+@export_range(0, 8, 1) var portrait_shadow_frame_overlap := 0
+@export_range(-8, 8, 1) var portrait_shadow_bottom_offset := 0
+@export_category("Logical layout")
 @export var text_content_insets := Vector4.ZERO
 @export var body_text_offset := Vector2.ZERO
+@export var body_text_bottom_reserve := 12
 @export var name_plate_horizontal_offset := 4
 @export var name_plate_size := Vector2i(92, 14)
 @export var name_text_offset := Vector2(5, 0)
