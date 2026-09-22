@@ -55,6 +55,7 @@ var pending_projectile_defeats: Dictionary = {}
 var presented_promotions: Dictionary = {}
 var skitter_sound_player := AudioStreamPlayer.new()
 var pending_skitter_steps: Dictionary = {}
+var pending_charge_aura_impacts: Dictionary = {}
 
 
 func _ready() -> void:
@@ -137,6 +138,7 @@ func _on_board_rebuilt(board: Array) -> void:
 	silently_removed_piece_views.clear()
 	persistent_king_corpses.clear()
 	pending_attack_damage_visuals.clear()
+	pending_charge_aura_impacts.clear()
 	selection_effect_piece = null
 	player_move_submission_active = false
 	piece_views = view.rebuild_board(board)
@@ -173,10 +175,12 @@ func _on_piece_summoned(piece: ModelPiece, completion: CompletionGate) -> void:
 func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
+		pending_charge_aura_impacts.erase(piece)
 		printerr("Presentation has no visual node for ", piece.type, " at ", to)
 		return
 	if not presentation_policy.should_hold_completion_gate():
 		view.snap_piece_node(piece_node, to, not (piece is KingPiece))
+		_disperse_pending_charge_aura(piece, piece_node)
 		pending_skitter_steps.erase(piece)
 		return
 
@@ -195,6 +199,7 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 				await magic.play_move(from, to)
 		else:
 			await _play_unpowered_king_move(piece_node, to)
+		_disperse_pending_charge_aura(piece, piece_node)
 		gate.release()
 		return
 	await view.move_piece_node_with_hand(piece_node, from, to)
@@ -275,10 +280,16 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 	if attacker is KingPiece:
 		var magic := _get_king_magic(attacker)
 		if magic != null and is_instance_valid(defender_node):
+			if pending_charge_aura_impacts.has(attacker):
+				magic.capture_impact.connect(
+					func(_defender: PieceView): _disperse_pending_charge_aura(attacker, attacker_node),
+					CONNECT_ONE_SHOT
+				)
 			await magic.play_capture(from, to, defender_node)
 			silently_removed_piece_views[defender] = true
 		else:
 			await _play_unpowered_king_move(attacker_node, to)
+			_disperse_pending_charge_aura(attacker, attacker_node)
 		gate.release()
 		return
 	var carried_offscreen := false
@@ -327,6 +338,7 @@ func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, from: V
 
 func _on_piece_destroyed(piece: ModelPiece) -> void:
 	pending_attack_damage_visuals.erase(piece)
+	pending_charge_aura_impacts.erase(piece)
 	var piece_node: Node = piece_views.get(piece)
 	var magic: Node = king_magic_controllers.get(piece)
 	var death_profile: Resource = king_death_profile if piece is KingPiece else null
@@ -549,9 +561,20 @@ func _on_ability_targeting_ended(king: KingPiece, _ability_name: String, reason:
 	view.clear_highlights()
 	var piece_node: Node = get_piece_view(king)
 	if king is MinotaurKing and is_instance_valid(piece_node):
-		view.fade_out_ss_aura(piece_node, reason == "cancelled")
+		if reason == "confirmed":
+			pending_charge_aura_impacts[king] = true
+		else:
+			pending_charge_aura_impacts.erase(king)
+			view.fade_out_ss_aura(piece_node, reason == "cancelled")
 	elif king is NecromancerKing:
 		_hide_necromancer_aura(king)
+
+
+func _disperse_pending_charge_aura(king: ModelPiece, piece_node: Node) -> void:
+	if not pending_charge_aura_impacts.erase(king):
+		return
+	if is_instance_valid(piece_node):
+		view.fade_out_ss_aura(piece_node, false)
 
 
 func _on_selection_piece_processing(piece: ModelPiece) -> void:

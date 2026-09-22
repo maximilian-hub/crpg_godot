@@ -74,7 +74,12 @@ func charge(coord: Vector2i):
 				await model.actually_move_piece(self, coord - direction)
 				return
 		else:
-			model.destroy_piece(target_piece, true)
+			# Charge is a physical capture: keep the defender's view planted until
+			# the Minotaur reaches it, then let the shared magical-King capture
+			# presentation knock it off the board.
+			await model.actually_capture_piece(self, target_piece, coord, coord)
+			model.destroy_piece(target_piece, false)
+			return
 
 	await model.actually_move_piece(self, coord)
 

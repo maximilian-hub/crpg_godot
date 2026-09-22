@@ -49,6 +49,7 @@ func _run_suite() -> void:
 	await _test_arakne_spike_burst_lethal_knockoff()
 	await _test_arakne_spike_burst_lethal_king()
 	await _test_minotaur_charge_survivor_landing()
+	await _test_minotaur_charge_capture_knockoff()
 	await _test_minotaur_rage_barrier()
 	await _test_active_bone_pawn_summon_presentation()
 	await _test_rage_raise_dead_death_square_target()
@@ -921,6 +922,38 @@ func _test_minotaur_charge_survivor_landing() -> void:
 	_expect(charging_view.coordinate == Vector2i(4, 3), "Charge presentation updates the Minotaur View coordinate")
 	_expect(charging_view.position.is_equal_approx(context.view.grid_to_screen(4, 3)), "Charge presentation finishes on the adjacent square")
 	_expect(model.current_turn == "white" and not model.action_in_progress, "a surviving stunned sole King automatically passes after the composed Charge lands")
+	await _destroy_game(context.game)
+
+
+func _test_minotaur_charge_capture_knockoff() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	var target_pawn := Pawn.new("black", Vector2i(4, 4))
+	var defending_king := MinotaurKing.new("black", Vector2i(0, 0))
+	defending_king.stunned = true
+	_reset_battle(model, context.controller, [charging_minotaur, target_pawn, defending_king])
+	var charging_magic: ChessKingMagicController = context.adapter.king_magic_controllers[charging_minotaur]
+	var charging_view: PieceView = context.adapter.get_piece_view(charging_minotaur)
+	var target_view: PieceView = context.adapter.get_piece_view(target_pawn)
+	context.view.spawn_ss_aura(charging_view)
+	context.adapter._on_ability_targeting_ended(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, "confirmed")
+	var observation := {"impact_count": 0, "explosion_count": 0, "aura_at_impact": 0}
+	charging_magic.capture_impact.connect(func(hit: PieceView):
+		if hit == target_view:
+			observation.impact_count += 1
+			observation.aura_at_impact = context.view._get_descendant_effects_in_group(charging_view, &"aura").size()
+	, CONNECT_ONE_SHOT)
+	context.view.child_entered_tree.connect(func(child: Node):
+		if child.name == "Explosion":
+			observation.explosion_count += 1)
+
+	await model.submit_active_ability(charging_minotaur, target_pawn.coordinate)
+	_expect(observation.impact_count == 1, "lethal Charge knocks its target away at Minotaur collision")
+	_expect(observation.aura_at_impact == 1, "Charge aura remains attached until the Minotaur reaches its target")
+	_expect(context.view._get_descendant_effects_in_group(charging_view, &"aura").is_empty(), "Charge aura disperses after collision")
+	_expect(observation.explosion_count == 0, "lethal Charge bypasses the legacy destruction explosion")
+	_expect(model.board[4][4] == charging_minotaur and charging_minotaur.coordinate == Vector2i(4, 4), "lethal Charge occupies the captured square")
 	await _destroy_game(context.game)
 
 
