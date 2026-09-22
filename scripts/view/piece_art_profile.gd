@@ -15,6 +15,9 @@ class_name PieceArtProfile
 ## Optional screen-space adjustments from the shared body anchor for unusual silhouettes.
 @export var cooldown_anchor_offset := Vector2.ZERO
 @export var selection_orb_offset := Vector2.ZERO
+## Local adjustment for the legacy Charge aura, whose animation canvas is not
+## centered around its bright ground ring.
+@export var charge_aura_offset := Vector2.ZERO
 
 
 func texture_for_color(color: String) -> Texture2D:

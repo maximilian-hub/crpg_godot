@@ -50,6 +50,7 @@ func _run_suite() -> void:
 	await _test_arakne_spike_burst_lethal_king()
 	await _test_minotaur_charge_survivor_landing()
 	await _test_minotaur_charge_capture_knockoff()
+	await _test_minotaur_charge_wall_arrival()
 	await _test_minotaur_rage_barrier()
 	await _test_active_bone_pawn_summon_presentation()
 	await _test_rage_raise_dead_death_square_target()
@@ -208,7 +209,7 @@ func _test_player_hand_castling_presentation() -> void:
 
 	var carry_paths: Array[StringName] = []
 	var observation := {"castle_commits": 0, "rook_released": false, "hand_visible_after_rook": false, "rook_released_before_king": false, "completion_count": 0}
-	model.piece_castling_committed.connect(func(_king: KingPiece, _rook: ModelPiece, _king_from: Vector2i, _king_to: Vector2i, _rook_from: Vector2i, _rook_to: Vector2i, _gate: CompletionGate): observation.castle_commits += 1)
+	model.piece_castling_committed.connect(func(_king: KingPiece, _rook: ModelPiece, _king_from: Vector2i, _king_to: Vector2i, _rook_from: Vector2i, _rook_to: Vector2i, _presentation): observation.castle_commits += 1)
 	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
 	rig.piece_released.connect(
 		func(piece_node: Node2D):
@@ -937,6 +938,8 @@ func _test_minotaur_charge_capture_knockoff() -> void:
 	var charging_view: PieceView = context.adapter.get_piece_view(charging_minotaur)
 	var target_view: PieceView = context.adapter.get_piece_view(target_pawn)
 	context.view.spawn_ss_aura(charging_view)
+	var charge_aura := context.view._get_descendant_effects_in_group(charging_view, &"aura")[0] as Node2D
+	_expect(charge_aura.position == charging_view.art_profile.charge_aura_offset and charge_aura.position == Vector2(0, -22), "Charge aura uses the Minotaur art profile's replacement-sprite alignment")
 	context.adapter._on_ability_targeting_ended(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, "confirmed")
 	var observation := {"impact_count": 0, "explosion_count": 0, "aura_at_impact": 0}
 	charging_magic.capture_impact.connect(func(hit: PieceView):
@@ -954,6 +957,43 @@ func _test_minotaur_charge_capture_knockoff() -> void:
 	_expect(context.view._get_descendant_effects_in_group(charging_view, &"aura").is_empty(), "Charge aura disperses after collision")
 	_expect(observation.explosion_count == 0, "lethal Charge bypasses the legacy destruction explosion")
 	_expect(model.board[4][4] == charging_minotaur and charging_minotaur.coordinate == Vector2i(4, 4), "lethal Charge occupies the captured square")
+	await _destroy_game(context.game)
+
+
+func _test_minotaur_charge_wall_arrival() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	var defending_king := MinotaurKing.new("black", Vector2i(0, 0))
+	defending_king.stunned = true
+	_reset_battle(model, context.controller, [charging_minotaur, defending_king])
+	var charging_view := context.adapter.get_piece_view(charging_minotaur) as PieceView
+	var charging_magic: ChessKingMagicController = context.adapter.king_magic_controllers[charging_minotaur]
+	charging_magic.profile.movement_profile.hand_approach_duration = 0.01
+	charging_magic.profile.movement_profile.gesture_lock_duration = 0.0
+	charging_magic.profile.movement_profile.gesture_duration = 0.6
+	charging_magic.profile.movement_profile.king_move_delay = 0.05
+	charging_magic.profile.movement_profile.travel_duration = 0.05
+	charging_magic.profile.movement_profile.settle_duration = 0.1
+	context.view.spawn_ss_aura(charging_view)
+	context.adapter._on_ability_targeting_ended(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, "confirmed")
+	var target := Vector2i(4, 7)
+	var observation := {"stunned_at_destination": false, "hand_retreating": false, "stars_present": false, "aura_dispersing": false, "action_open": false}
+	model.piece_stunned.connect(func(piece: ModelPiece, _duration: int):
+		if piece != charging_minotaur:
+			return
+		observation.stunned_at_destination = charging_view.position.is_equal_approx(context.view.grid_to_screen(target.x, target.y))
+		observation.hand_retreating = charging_magic.hand.visible and charging_magic._hand_gesture_running
+		observation.stars_present = context.view._get_descendant_effects_in_group(charging_view, &"stun").size() == 1
+		observation.aura_dispersing = not context.adapter.pending_charge_aura_impacts.has(charging_minotaur)
+		observation.action_open = model.action_in_progress
+	, CONNECT_ONE_SHOT)
+
+	await model.submit_active_ability(charging_minotaur, target)
+	_expect(observation.stunned_at_destination, "wall Charge applies stun when the Minotaur reaches the wall square")
+	_expect(observation.hand_retreating and observation.action_open, "wall Charge arrival effects begin before hand retreat and action aftermath complete")
+	_expect(observation.stars_present and observation.aura_dispersing, "wall Charge spawns stun stars and starts aura dispersal together at arrival")
+	_expect(not charging_magic.hand.visible and context.view._get_descendant_effects_in_group(charging_view, &"aura").is_empty(), "wall Charge still waits for hand retreat and aura cleanup before completing")
 	await _destroy_game(context.game)
 
 

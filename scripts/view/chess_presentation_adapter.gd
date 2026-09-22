@@ -172,7 +172,7 @@ func _on_piece_summoned(piece: ModelPiece, completion: CompletionGate) -> void:
 	completion.release()
 
 
-func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate) -> void:
+func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, presentation) -> void:
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		pending_charge_aura_impacts.erase(piece)
@@ -184,26 +184,29 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, g
 		pending_skitter_steps.erase(piece)
 		return
 
-	gate.hold()
+	presentation.claim()
+	var report_arrival := func():
+		_disperse_pending_charge_aura(piece, piece_node)
+		presentation.mark_arrived(piece)
 	if piece.type == "pawn" and (to.x == 0 or to.x == model.board.size() - 1):
+		report_arrival.call()
 		await view.remove_promoting_pawn_with_hand(piece_node)
-		gate.release()
+		presentation.finish_aftermath()
 		return
 	if piece is KingPiece:
 		var is_skitter_followup := pending_skitter_steps.erase(piece)
 		var magic := _get_king_magic(piece)
 		if magic != null:
 			if is_skitter_followup:
-				await magic.play_followup_move(to)
+				await magic.play_followup_move(to, report_arrival)
 			else:
-				await magic.play_move(from, to)
+				await magic.play_move(from, to, false, report_arrival)
 		else:
-			await _play_unpowered_king_move(piece_node, to)
-		_disperse_pending_charge_aura(piece, piece_node)
-		gate.release()
+			await _play_unpowered_king_move(piece_node, to, report_arrival)
+		presentation.finish_aftermath()
 		return
-	await view.move_piece_node_with_hand(piece_node, from, to)
-	gate.release()
+	await view.move_piece_node_with_hand(piece_node, from, to, true, true, &"", report_arrival)
+	presentation.finish_aftermath()
 
 
 func _on_skitter_step_started(piece: ArakneKing, _from: Vector2i, _to: Vector2i) -> void:
@@ -215,7 +218,7 @@ func _on_skitter_step_started(piece: ArakneKing, _from: Vector2i, _to: Vector2i)
 	skitter_sound_player.play()
 
 
-func _on_piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, gate: CompletionGate) -> void:
+func _on_piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, presentation) -> void:
 	var king_node := get_piece_view(king) as PieceView
 	var rook_node := get_piece_view(rook) as PieceView
 	if not is_instance_valid(king_node) or not is_instance_valid(rook_node):
@@ -225,7 +228,7 @@ func _on_piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: 
 		view.snap_piece_node(king_node, king_to, false)
 		return
 
-	gate.hold()
+	presentation.claim()
 	var magic := _get_king_magic(king) as ChessKingMagicController
 	var hand := view.get_hand_rig_for_color(rook.color)
 	var continue_hand_visit := (
@@ -234,15 +237,15 @@ func _on_piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: 
 		and hand.can_animate()
 		and magic.hand == hand
 	)
-	await view.move_piece_node_with_hand(rook_node, rook_from, rook_to, true, not continue_hand_visit, ChessHandRig.CARRY_PATH_SLIDE)
+	await view.move_piece_node_with_hand(rook_node, rook_from, rook_to, true, not continue_hand_visit, ChessHandRig.CARRY_PATH_SLIDE, func(): presentation.mark_arrived(rook))
 	if is_instance_valid(magic):
-		await magic.play_move(king_from, king_to, continue_hand_visit)
+		await magic.play_move(king_from, king_to, continue_hand_visit, func(): presentation.mark_arrived(king))
 	else:
-		await _play_unpowered_king_move(king_node, king_to)
-	gate.release()
+		await _play_unpowered_king_move(king_node, king_to, func(): presentation.mark_arrived(king))
+	presentation.finish_aftermath()
 
 
-func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, _captured_at: Vector2i, gate: CompletionGate) -> void:
+func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, _captured_at: Vector2i, presentation) -> void:
 	var attacker_node: Node = get_piece_view(attacker)
 	var defender_node: Node = get_piece_view(defender)
 	if not is_instance_valid(attacker_node):
@@ -251,7 +254,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		view.snap_piece_node(attacker_node, to, not (attacker is KingPiece))
 		return
 
-	gate.hold()
+	presentation.claim()
 	if defender is KingPiece and is_instance_valid(defender_node):
 		var defender_magic := _get_king_magic(defender)
 		var death_profile: Resource = king_death_profile if king_death_profile != null else KingDeathProfile.new()
@@ -264,6 +267,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 			# scene owns the universal hurt sound as well as the blood animation.
 			_present_damage_splatter(defender, defender_node)
 			death_effect.play()
+			presentation.mark_arrived(attacker)
 		if attacker is KingPiece:
 			var attacking_magic := _get_king_magic(attacker)
 			if attacking_magic != null:
@@ -275,7 +279,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		if not death_effect.running and not death_effect.finished: death_effect.play()
 		if not death_effect.result_ready: await death_effect.result_ready_for_display
 		persistent_king_corpses[defender] = true
-		gate.release()
+		presentation.finish_aftermath()
 		return
 	if attacker is KingPiece:
 		var magic := _get_king_magic(attacker)
@@ -285,21 +289,22 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 					func(_defender: PieceView): _disperse_pending_charge_aura(attacker, attacker_node),
 					CONNECT_ONE_SHOT
 				)
-			await magic.play_capture(from, to, defender_node)
+			await magic.play_capture(from, to, defender_node, func(): presentation.mark_arrived(attacker))
 			silently_removed_piece_views[defender] = true
 		else:
-			await _play_unpowered_king_move(attacker_node, to)
+			await _play_unpowered_king_move(attacker_node, to, func(): presentation.mark_arrived(attacker))
 			_disperse_pending_charge_aura(attacker, attacker_node)
-		gate.release()
+		presentation.finish_aftermath()
 		return
 	var carried_offscreen := false
 	if is_instance_valid(defender_node):
-		carried_offscreen = await view.capture_piece_node_with_hand(attacker_node, defender_node, from, to)
+		carried_offscreen = await view.capture_piece_node_with_hand(attacker_node, defender_node, from, to, func(): presentation.mark_arrived(attacker))
 	else:
 		await view.move_piece_node(attacker_node, to)
+		presentation.mark_arrived(attacker)
 	if carried_offscreen:
 		silently_removed_piece_views[defender] = true
-	gate.release()
+	presentation.finish_aftermath()
 
 
 func _on_ordinary_move_submission_started(_piece: ModelPiece, _target: Vector2i) -> void:
@@ -679,11 +684,11 @@ func _clear_magic_controllers() -> void:
 	king_magic_controllers.clear()
 
 
-func _play_unpowered_king_move(piece_node: PieceView, to: Vector2i) -> void:
+func _play_unpowered_king_move(piece_node: PieceView, to: Vector2i, arrival_callback: Callable = Callable()) -> void:
 	var fallback := KingMagicController.new()
 	view.add_child(fallback)
 	fallback.configure(view, null, piece_node, null)
-	await fallback.play_move(piece_node.coordinate, to)
+	await fallback.play_move(piece_node.coordinate, to, false, arrival_callback)
 	fallback.queue_free()
 
 

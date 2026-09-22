@@ -3,6 +3,7 @@ extends Node
 class_name ChessBoardModel
 
 const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_ability_presentation_context.gd")
+const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
 
 ## Serves as the Model layer of our chess games.
 # You may notice a lack of Checking; this is intentional.
@@ -28,11 +29,11 @@ signal board_rebuilt(board: Array)
 signal settled_action_completed()
 signal piece_added(piece: ModelPiece)
 signal piece_summoned(piece: ModelPiece, completion: CompletionGate)
-signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, presentation)
 signal piece_landed(piece: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal skitter_step_started(piece: ArakneKing, from: Vector2i, to: Vector2i)
-signal piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, completion: CompletionGate)
-signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, completion: CompletionGate)
+signal piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, presentation)
+signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, presentation)
 signal piece_attack_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal piece_promotion_committed(old_piece: ModelPiece, new_piece: ModelPiece, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
@@ -617,7 +618,7 @@ func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
 ## Moves a piece from one square to another.
 # Assumes empty destination square for normal moves.
 # Validation is handled in move_piece() or callers like handle_combat.
-func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
+func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callable = Callable()): # <-- Added 'async'
 		# ... (existing safety checks) ...
 		if not is_instance_valid(piece):
 			printerr("actually_move_piece: Invalid piece instance provided.")
@@ -632,16 +633,15 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i): # <-- Added 'async'
 		piece.coordinate = to # Update model coordinate *before* animation starts
 		piece.has_moved = true
 
-		var completion := CompletionGate.new()
-		piece_move_committed.emit(piece, from, to, completion)
-		completion.close()
-		await completion.wait_until_released()
+		var presentation := PieceArrivalContext.new([piece])
+		piece_move_committed.emit(piece, from, to, presentation)
+		presentation.close_claims()
+		await presentation.wait_for_arrival(piece)
+		if arrival_effect.is_valid():
+			arrival_effect.call()
+		await _announce_piece_landed(piece, from, to)
+		await presentation.wait_for_aftermath()
 		print("Animation finished for piece: ", piece.type)
-
-		var landing_completion := CompletionGate.new()
-		piece_landed.emit(piece, from, to, landing_completion)
-		landing_completion.close()
-		await landing_completion.wait_until_released()
 		if not is_piece_active(piece) or piece.coordinate != to:
 			return
 
@@ -668,16 +668,25 @@ func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: V
 	piece.coordinate = to
 	piece.has_moved = true
 
-	var completion := CompletionGate.new()
-	piece_capture_committed.emit(piece, captured_piece, from, to, captured_at, completion)
-	completion.close()
-	await completion.wait_until_released()
+	var presentation := PieceArrivalContext.new([piece])
+	piece_capture_committed.emit(piece, captured_piece, from, to, captured_at, presentation)
+	presentation.close_claims()
+	await presentation.wait_for_arrival(piece)
+	await _announce_piece_landed(piece, from, to)
+	await presentation.wait_for_aftermath()
 
 	if piece is BonePawn and piece._on_dead_row():
 		destroy_piece(piece, true)
 		return
 	if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
 		await promotion_check(piece)
+
+
+func _announce_piece_landed(piece: ModelPiece, from: Vector2i, to: Vector2i) -> void:
+	var landing_completion := CompletionGate.new()
+	piece_landed.emit(piece, from, to, landing_completion)
+	landing_completion.close()
+	await landing_completion.wait_until_released()
 
 func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
 	var rook_piece = board[rook_row][rook_col]
@@ -745,10 +754,14 @@ func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
 	rook.coordinate = rook_to
 	king.has_moved = true
 	rook.has_moved = true
-	var completion := CompletionGate.new()
-	piece_castling_committed.emit(king, rook, from, to, rook_from, rook_to, completion)
-	completion.close()
-	await completion.wait_until_released()
+	var presentation := PieceArrivalContext.new([rook, king])
+	piece_castling_committed.emit(king, rook, from, to, rook_from, rook_to, presentation)
+	presentation.close_claims()
+	await presentation.wait_for_arrival(rook)
+	await _announce_piece_landed(rook, rook_from, rook_to)
+	await presentation.wait_for_arrival(king)
+	await _announce_piece_landed(king, from, to)
+	await presentation.wait_for_aftermath()
 
 func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	var captured_row := from.x

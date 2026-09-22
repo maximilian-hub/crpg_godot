@@ -356,11 +356,13 @@ func _test_special_moves() -> void:
 	var rook := Rook.new("white", Vector2i(7, 7))
 	castle_model.add_piece(king, king.coordinate)
 	castle_model.add_piece(rook, rook.coordinate)
-	var castle_events := {"compound": 0, "ordinary": 0}
-	castle_model.piece_castling_committed.connect(func(_king: KingPiece, _rook: ModelPiece, _king_from: Vector2i, _king_to: Vector2i, _rook_from: Vector2i, _rook_to: Vector2i, _gate: CompletionGate): castle_events.compound += 1)
-	castle_model.piece_move_committed.connect(func(_piece: ModelPiece, _from: Vector2i, _to: Vector2i, _gate: CompletionGate): castle_events.ordinary += 1)
+	var castle_events := {"compound": 0, "ordinary": 0, "landings": []}
+	castle_model.piece_castling_committed.connect(func(_king: KingPiece, _rook: ModelPiece, _king_from: Vector2i, _king_to: Vector2i, _rook_from: Vector2i, _rook_to: Vector2i, _presentation): castle_events.compound += 1)
+	castle_model.piece_move_committed.connect(func(_piece: ModelPiece, _from: Vector2i, _to: Vector2i, _presentation): castle_events.ordinary += 1)
+	castle_model.piece_landed.connect(func(piece: ModelPiece, _from: Vector2i, to: Vector2i, _gate: CompletionGate): castle_events.landings.append([piece, to]))
 	_expect(await castle_model.submit_move(king, Vector2i(7, 6)), "headless castling command is accepted")
 	_expect(castle_events.compound == 1 and castle_events.ordinary == 0, "castling publishes one atomic compound event instead of two ordinary moves")
+	_expect(castle_events.landings == [[rook, Vector2i(7, 5)], [king, Vector2i(7, 6)]], "castling publishes rook and King arrivals in presentation order")
 	_expect(castle_model.board[7][6] == king and castle_model.board[7][5] == rook, "castling places the king and rook on their destination squares")
 	castle_model.free()
 
@@ -371,13 +373,17 @@ func _test_special_moves() -> void:
 	passant_model.add_piece(black_pawn, black_pawn.coordinate)
 	passant_model.last_move = {"piece": black_pawn, "from": Vector2i(1, 5), "to": Vector2i(3, 5)}
 	var passant_captures: Array[Dictionary] = []
+	var passant_landings: Array[Vector2i] = []
 	passant_model.piece_capture_committed.connect(
-		func(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, _completion: CompletionGate):
+		func(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, _presentation):
 			passant_captures.append({"attacker": attacker, "defender": defender, "from": from, "to": to, "captured_at": captured_at})
 	)
+	passant_model.piece_landed.connect(func(piece: ModelPiece, _from: Vector2i, to: Vector2i, _gate: CompletionGate):
+		if piece == white_pawn: passant_landings.append(to))
 	_expect(await passant_model.submit_move(white_pawn, Vector2i(2, 5)), "headless en passant command is accepted")
 	_expect(passant_model.board[2][5] == white_pawn and passant_model.board[3][5] == null, "en passant removes the adjacent pawn")
 	_expect(passant_captures.size() == 1 and passant_captures[0]["captured_at"] == Vector2i(3, 5), "en passant reports its separate captured square through the lethal-capture event")
+	_expect(passant_landings == [Vector2i(2, 5)], "en passant publishes the attacker's destination arrival")
 	passant_model.free()
 
 	var promotion_model := _new_empty_model()
@@ -441,7 +447,7 @@ func _test_raise_dead_excludes_occupied_death_square() -> void:
 	model.add_piece(necromancer, necromancer.coordinate)
 	var capture_events: Array[Dictionary] = []
 	model.piece_capture_committed.connect(
-		func(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, _completion: CompletionGate):
+		func(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, _presentation):
 			capture_events.append({"attacker": attacker, "defender": defender, "from": from, "to": to, "captured_at": captured_at})
 	)
 	_expect(await model.submit_move(rook, bishop.coordinate), "lethal capture that triggers Raise Dead is accepted")

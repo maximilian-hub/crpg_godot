@@ -183,19 +183,20 @@ func _build_activation_sequence() -> void:
 	)
 
 
-func play_move(from: Vector2i, to: Vector2i, continue_from_current_hand := false) -> void:
+func play_move(from: Vector2i, to: Vector2i, continue_from_current_hand := false, arrival_callback: Callable = Callable()) -> void:
 	_finishing_compound_hand_move = continue_from_current_hand
 	await _begin_gesture(from, to, continue_from_current_hand)
 	king.coordinate = to
 	board.clear_piece_placement(king)
 	await _travel_king(board.grid_to_screen(to.x, to.y), profile.movement_profile.travel_duration)
 	board._update_piece_depth(king)
+	if arrival_callback.is_valid(): arrival_callback.call()
 	await _end_gesture()
 
 
 ## Continues an already-commanded compound move without summoning or swiping
 ## the hand a second time.
-func play_followup_move(to: Vector2i) -> void:
+func play_followup_move(to: Vector2i, arrival_callback: Callable = Callable()) -> void:
 	running = true
 	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(true)
 	var move: Resource = profile.movement_profile
@@ -208,17 +209,18 @@ func play_followup_move(to: Vector2i) -> void:
 		move.travel_duration * SKITTER_DURATION_SCALE
 	)
 	board._update_piece_depth(king)
+	if arrival_callback.is_valid(): arrival_callback.call()
 	king_aura.set_silhouette_power(profile.activation_profile.resting_aura_power)
 	king_aura.set_particle_power(profile.activation_profile.resting_particle_power)
 	running = false
 	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(false)
 
 
-func play_capture(from: Vector2i, to: Vector2i, defender: PieceView) -> void:
+func play_capture(from: Vector2i, to: Vector2i, defender: PieceView, arrival_callback: Callable = Callable()) -> void:
 	await _begin_gesture(from, to)
 	king.coordinate = to
 	board.clear_piece_placement(king)
-	await _travel_with_knockoff(board.grid_to_screen(to.x, to.y), defender, from, to)
+	await _travel_with_knockoff(board.grid_to_screen(to.x, to.y), defender, from, to, arrival_callback)
 	board._update_piece_depth(king)
 	await _end_gesture()
 
@@ -369,9 +371,10 @@ func _travel_skitter_king(target: Vector2, duration: float) -> void:
 	king.z_index = original_z
 
 
-func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i, to: Vector2i) -> void:
+func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i, to: Vector2i, arrival_callback: Callable = Callable()) -> void:
 	if not is_instance_valid(defender):
 		await _travel_king(target, profile.movement_profile.travel_duration)
+		if arrival_callback.is_valid(): arrival_callback.call()
 		return
 	var move: Resource = profile.movement_profile
 	var king_start := king.position
@@ -398,6 +401,7 @@ func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i,
 	board.spawn_capture_clack(defender, true)
 	capture_impact.emit(defender)
 	var total: float = maxf(finish_duration, knock_duration)
+	var arrival_state := {"reported": false}
 	var impact := create_tween()
 	impact.tween_method(func(elapsed: float):
 		var kp := impact_fraction + (1.0 - impact_fraction) * clampf(elapsed / maxf(finish_duration, 0.001), 0.0, 1.0)
@@ -405,9 +409,15 @@ func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i,
 		king.position = _arc(king_start, target, kp, move.lift_height)
 		defender.position = ballistic_position(defender_start, knockoff.initial_velocity, knockoff.gravity, flight_time)
 		defender.rotation = start_rotation + deg_to_rad(move.knockoff_angular_speed * side) * flight_time
+		if not arrival_state.reported and elapsed + 0.0001 >= finish_duration:
+			arrival_state.reported = true
+			if arrival_callback.is_valid(): arrival_callback.call()
 	, 0.0, total, total * board.animation_duration_scale)
 	await impact.finished
 	king.position = target
+	if not arrival_state.reported:
+		arrival_state.reported = true
+		if arrival_callback.is_valid(): arrival_callback.call()
 
 
 func disable_effects() -> void:

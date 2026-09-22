@@ -558,9 +558,10 @@ func move_piece_node_with_player_hand(
 	to: Vector2i,
 	enter_from_offscreen := true,
 	retreat_offscreen := true,
-	carry_path_override: StringName = &""
+	carry_path_override: StringName = &"",
+	arrival_callback: Callable = Callable()
 ) -> void:
-	await move_piece_node_with_hand(piece_node, from, to, enter_from_offscreen, retreat_offscreen, carry_path_override)
+	await move_piece_node_with_hand(piece_node, from, to, enter_from_offscreen, retreat_offscreen, carry_path_override, arrival_callback)
 
 func move_piece_node_with_hand(
 	piece_node: Node,
@@ -568,7 +569,8 @@ func move_piece_node_with_hand(
 	to: Vector2i,
 	enter_from_offscreen := true,
 	retreat_offscreen := true,
-	carry_path_override: StringName = &""
+	carry_path_override: StringName = &"",
+	arrival_callback: Callable = Callable()
 ) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("move_piece_node_with_hand: Invalid piece node.")
@@ -579,11 +581,16 @@ func move_piece_node_with_hand(
 		piece_node.coordinate = to
 		_update_piece_depth(piece_node)
 		await _tween_piece_to(piece_node, destination)
+		if arrival_callback.is_valid(): arrival_callback.call()
 		return
 
 	piece_node.coordinate = to
 	var destination_z_index := get_piece_depth(to)
 	var carry_path := carry_path_override if not carry_path_override.is_empty() else get_player_hand_carry_path(piece_node, from, to)
+	if arrival_callback.is_valid():
+		hand_rig.piece_released.connect(func(released: Node2D):
+			if released == piece_node: arrival_callback.call()
+		, CONNECT_ONE_SHOT)
 	await hand_rig.play_piece_move(piece_node, destination, get_world_scale(), carry_path, enter_from_offscreen, retreat_offscreen, destination_z_index)
 	_update_piece_depth(piece_node)
 
@@ -619,7 +626,7 @@ func place_promoted_piece_with_hand(queen_node: Node2D, destination: Vector2i) -
 		destination_depth
 	)
 
-func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i) -> bool:
+func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i, arrival_callback: Callable = Callable()) -> bool:
 	if not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
 		return false
 	var hand_rig := _get_piece_hand_rig(attacker_node)
@@ -628,10 +635,15 @@ func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from
 		attacker_node.coordinate = to
 		_update_piece_depth(attacker_node)
 		await _tween_piece_to(attacker_node, destination)
+		if arrival_callback.is_valid(): arrival_callback.call()
 		return false
 
 	attacker_node.coordinate = to
 	var destination_z_index := get_piece_depth(to)
+	if arrival_callback.is_valid():
+		hand_rig.piece_released.connect(func(released: Node2D):
+			if released == attacker_node: arrival_callback.call()
+		, CONNECT_ONE_SHOT)
 	var carried_offscreen: bool = await hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale(), destination_z_index)
 	_update_piece_depth(attacker_node)
 	return carried_offscreen
@@ -787,6 +799,9 @@ func spawn_ss_aura(piece: Node):
 	aura.add_to_group("aura")
 	if piece.has_method("get_body_anchor"):
 		piece.get_body_anchor().add_child(aura)
+		var profile: Resource = piece.get("art_profile")
+		if profile != null:
+			aura.position = profile.charge_aura_offset
 	else:
 		piece.add_child(aura)
 	play_power_activation_sound()

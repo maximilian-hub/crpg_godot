@@ -1,6 +1,7 @@
 extends Node
 
 const GAME := preload("res://scenes/chess_game.tscn")
+const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -171,8 +172,10 @@ func _ready() -> void:
 			lethal_hit_feedback.motes_at_grab = black_magic.cooldown_presentation.active_mote_count()
 	, CONNECT_ONE_SHOT)
 	view.near_hand_rig.animation_duration_scale = 0.02
-	var lethal_gate := CompletionGate.new()
-	await adapter._on_piece_capture_committed(lethal_attacker, black_king, lethal_attacker.coordinate, black_king.coordinate, black_king.coordinate, lethal_gate)
+	var lethal_presentation := PieceArrivalContext.new([lethal_attacker])
+	adapter._on_piece_capture_committed(lethal_attacker, black_king, lethal_attacker.coordinate, black_king.coordinate, black_king.coordinate, lethal_presentation)
+	lethal_presentation.close_claims()
+	await lethal_presentation.wait_for_aftermath()
 	_check(lethal_attacker_view.position.is_equal_approx(lethal_origin), "lethal King capture reuses the long-range attack slam and returns the attacker to its original square")
 	_check(lethal_hit_feedback.count == 1, "lethal King impact preserves the ordinary blood splatter and hurt-sound feedback")
 	_check(lethal_hit_feedback.motes_at_grab == 3, "defending King cooldown motes remain visible while the attacking hand grabs its piece")

@@ -81,10 +81,7 @@ func charge(coord: Vector2i):
 			model.destroy_piece(target_piece, false)
 			return
 
-	await model.actually_move_piece(self, coord)
-
-	if hit_wall:
-		stun()
+	await model.actually_move_piece(self, coord, Callable(self, "stun") if hit_wall else Callable())
 
 ## Every surviving hit queues one Rage. The Model resolves it later, so
 ## adjacent Minotaurs can alternate without recursively nesting function calls.
