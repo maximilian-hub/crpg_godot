@@ -144,7 +144,7 @@ func _ready() -> void:
 	await black_magic.play_activation()
 	_check(not black_magic.hand.visible and black_magic.hand.position == black_magic.activation_sequence.hand_rest_position, "far-seat full activation uses its transformed hover and returns offscreen")
 	_check(is_equal_approx(black_magic.activation_sequence.hand_motion_scale, view.get_world_scale()), "shipping activation scales its authored approach and retreat curves with the board")
-	_check(black_magic.king_aura.silhouette_power >= black_magic.profile.activation_profile.resting_aura_power and black_magic.king_aura.particle_power >= black_magic.cooldown_presentation.profile.ready_particle_power, "full activation transitions a ready King from ritual effects into its augmented persistent aura")
+	_check(black_magic.cooldown_presentation.active_mote_count() == black_king.base_cooldown and black_magic.king_aura.particle_power < black_magic.cooldown_presentation.profile.ready_particle_power, "full activation preserves the opening cooldown motes without applying ready-aura treatment")
 	_check(black_magic.activation_sequence.get_script().resource_path == "res://scripts/view/chess_hood_activation_sequence.gd", "opponent army identity selects the Hood decisive choreography independent of King type")
 
 	var lethal_profile := preload("res://scripts/view/chess_king_death_profile.gd").new()

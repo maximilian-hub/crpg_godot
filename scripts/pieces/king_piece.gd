@@ -31,8 +31,8 @@ var passive_ability_name: String = "Passive Ability"
 func _init(_color: String, _coordinate: Vector2i):
 	super._init(_color, _coordinate) # Call the parent ModelPiece constructor
 	self.is_king = true
-	# Abilities start ready by default.
-	# Specific Kings can override base_cooldown in their own _init.
+	# The base constructor cannot know a subclass's authored cooldown yet.
+	# Active King subclasses set base_cooldown and then call reset_cooldown().
 	set_cooldown(0)
 	
 func get_legal_moves() -> Array:

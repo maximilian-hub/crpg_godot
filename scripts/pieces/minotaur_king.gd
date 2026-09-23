@@ -15,6 +15,7 @@ func _init(color: String, coord: Vector2i):
 	self.active_ability_name = "Charge"
 	self.active_ability_id = &"charge"
 	self.passive_ability_name = "Retaliating Rage"
+	reset_cooldown()
 
 func get_active_ability_targets() -> Array:
 	var row = coordinate.x

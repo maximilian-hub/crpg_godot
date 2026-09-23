@@ -23,6 +23,7 @@ func _init(color: String, coord: Vector2i):
 	self.active_ability_name = ACTIVE_ABILITY_NAME
 	self.active_ability_id = ACTIVE_ABILITY_ID
 	self.passive_ability_name = PASSIVE_ABILITY_NAME
+	reset_cooldown()
 
 
 ## Initial selection exposes only ordinary King destinations. Empty adjacent

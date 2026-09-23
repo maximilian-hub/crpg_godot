@@ -100,6 +100,8 @@ func _test_active_ability_cooldown_counts_full_turns() -> void:
 	target.current_hp = 10
 	model.add_piece(arakne, arakne.coordinate)
 	model.add_piece(target, target.coordinate)
+	_expect(arakne.current_cooldown == ArakneKing.ACTIVE_ABILITY_COOLDOWN and not arakne.is_active_ability_ready(), "an active King starts at its authored cooldown")
+	arakne.set_cooldown(0)
 	_expect(await model.submit_active_ability(arakne, target.coordinate), "ready active ability is accepted before cooldown starts")
 	_expect(arakne.current_cooldown == 0 and arakne.cooldown_reset_pending and model.current_turn == "black", "ability use schedules recharge without immediately emitting cooldown")
 	var restored_model := ChessBoardModel.new()
@@ -397,6 +399,7 @@ func _test_minotaur_charge_landing() -> void:
 	var surviving_model := _new_empty_model()
 	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
 	var defending_minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	charging_minotaur.set_cooldown(0)
 	defending_minotaur.stunned = true
 	surviving_model.add_piece(charging_minotaur, charging_minotaur.coordinate)
 	surviving_model.add_piece(defending_minotaur, defending_minotaur.coordinate)
@@ -410,6 +413,7 @@ func _test_minotaur_charge_landing() -> void:
 	var lethal_model := _new_empty_model()
 	var lethal_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
 	var arakne := ArakneKing.new("black", Vector2i(4, 4))
+	lethal_minotaur.set_cooldown(0)
 	lethal_model.add_piece(lethal_minotaur, lethal_minotaur.coordinate)
 	lethal_model.add_piece(arakne, arakne.coordinate)
 	_expect(await lethal_model.submit_active_ability(lethal_minotaur, arakne.coordinate), "lethal Charge command is accepted")
@@ -463,6 +467,7 @@ func _test_complete_battle_from_commands() -> void:
 	var model := _new_empty_model()
 	var arakne := ArakneKing.new("white", Vector2i(4, 4))
 	var black_king := ClassicKing.new("black", Vector2i(3, 3))
+	arakne.set_cooldown(0)
 	model.add_piece(arakne, arakne.coordinate)
 	model.add_piece(black_king, black_king.coordinate)
 	_expect(await model.submit_active_ability(arakne, black_king.coordinate), "headless active-ability command is accepted")

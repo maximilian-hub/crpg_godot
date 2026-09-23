@@ -13,6 +13,7 @@ func _init(color: String, coord: Vector2i):
 	self.active_ability_name = "Summon Bone Pawn"
 	self.active_ability_id = &"summon_bone_pawn"
 	self.passive_ability_name = "Raise Dead"
+	reset_cooldown()
 
 func get_active_ability_targets() -> Array:
 	return model.get_empty_squares_to_furthest_rank(self.color)

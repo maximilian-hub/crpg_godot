@@ -552,6 +552,7 @@ func _test_active_bone_pawn_summon_presentation() -> void:
 	var model: ChessBoardModel = context.model
 	var controller: ChessBoardController = context.controller
 	var necromancer := NecromancerKing.new("white", Vector2i(7, 4))
+	necromancer.set_cooldown(0)
 	var pawn := Pawn.new("white", Vector2i(6, 0))
 	_reset_battle(model, controller, [necromancer, pawn])
 	var observation := {"summoned_count": 0}
@@ -586,6 +587,10 @@ func _test_default_initialization_and_normal_move() -> void:
 	_expect(model.current_turn == "white", "default battle starts with White")
 	_expect(model.get_king("white") != null, "default board has a White king")
 	_expect(model.get_king("black") != null, "default board has a Black king")
+	var white_king := model.get_king("white") as KingPiece
+	var black_king := model.get_king("black") as KingPiece
+	_expect(white_king.current_cooldown == white_king.base_cooldown and not white_king.is_active_ability_ready(), "White active ability starts on its authored cooldown")
+	_expect(black_king.current_cooldown == black_king.base_cooldown and not black_king.is_active_ability_ready(), "Black active ability starts on its authored cooldown")
 
 	var pawn: ModelPiece = model.board[6][0]
 	var legal_moves := model.get_legal_moves(pawn)
@@ -911,6 +916,7 @@ func _test_minotaur_charge_survivor_landing() -> void:
 	var context := await _create_game()
 	var model: ChessBoardModel = context.model
 	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	charging_minotaur.set_cooldown(0)
 	var defending_minotaur := MinotaurKing.new("black", Vector2i(4, 4))
 	defending_minotaur.stunned = true
 	_reset_battle(model, context.controller, [charging_minotaur, defending_minotaur])
@@ -930,6 +936,7 @@ func _test_minotaur_charge_capture_knockoff() -> void:
 	var context := await _create_game()
 	var model: ChessBoardModel = context.model
 	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	charging_minotaur.set_cooldown(0)
 	var target_pawn := Pawn.new("black", Vector2i(4, 4))
 	var defending_king := MinotaurKing.new("black", Vector2i(0, 0))
 	defending_king.stunned = true
@@ -964,6 +971,7 @@ func _test_minotaur_charge_wall_arrival() -> void:
 	var context := await _create_game()
 	var model: ChessBoardModel = context.model
 	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	charging_minotaur.set_cooldown(0)
 	var defending_king := MinotaurKing.new("black", Vector2i(0, 0))
 	defending_king.stunned = true
 	_reset_battle(model, context.controller, [charging_minotaur, defending_king])

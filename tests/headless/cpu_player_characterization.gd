@@ -30,6 +30,7 @@ func _ready() -> void:
 func _test_authoritative_primary_actions() -> void:
 	var model := _new_empty_model()
 	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	arakne.set_cooldown(0)
 	var rook := Rook.new("white", Vector2i(7, 0))
 	var pawn := Pawn.new("black", Vector2i(3, 3))
 	model.add_piece(arakne, arakne.coordinate)
@@ -83,6 +84,7 @@ func _test_cpu_capture_and_tie_breaking() -> void:
 func _test_cpu_active_ability() -> void:
 	var model := _new_empty_model()
 	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	arakne.set_cooldown(0)
 	var pawn := Pawn.new("black", Vector2i(3, 3))
 	var black_king := ClassicKing.new("black", Vector2i(0, 0))
 	model.add_piece(arakne, arakne.coordinate)
