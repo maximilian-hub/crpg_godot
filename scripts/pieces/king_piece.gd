@@ -76,6 +76,9 @@ func reset_cooldown():
 
 ## Schedules recharge without showing motes until this King's next turn begins.
 func schedule_cooldown() -> void:
+	if model != null and model.active_ability_cooldowns_disabled:
+		set_cooldown(0)
+		return
 	current_cooldown = 0
 	cooldown_reset_pending = base_cooldown > 0
 	if cooldown_reset_pending:
@@ -84,6 +87,8 @@ func schedule_cooldown() -> void:
 		cooldown_ready.emit(self)
 
 func is_active_ability_ready() -> bool:
+	if model != null and model.active_ability_cooldowns_disabled:
+		return true
 	return current_cooldown == 0 and not cooldown_reset_pending
 
 func announce_cooldown_state() -> void:
@@ -104,6 +109,9 @@ func decrement_cooldown():
 func _on_turn_changed(current_turn: String):
 	super._on_turn_changed(current_turn)
 	if current_turn != color:
+		return
+	if model != null and model.active_ability_cooldowns_disabled:
+		set_cooldown(0)
 		return
 	if cooldown_reset_pending:
 		set_cooldown(base_cooldown)

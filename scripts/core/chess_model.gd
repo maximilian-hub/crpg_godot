@@ -56,6 +56,11 @@ var pending_reaction: Dictionary = {}
 var is_initialized: bool = false
 var position_revision: int = 0
 
+# Runtime policy used by developer surfaces such as the board sandbox. This is
+# deliberately not part of ChessPosition, so test conveniences never leak into
+# saved or production battle state.
+var active_ability_cooldowns_disabled := false
+
 # One primary move/ability and every consequence it causes are one action.
 # current_turn does not change until the action and reaction queue are finished.
 var action_in_progress: bool = false
@@ -265,7 +270,18 @@ func inject_dependencies(piece: ModelPiece):
 		connect("piece_destroyed", death_callback)
 	if piece is KingPiece:
 		var king_piece: KingPiece = piece
+		if active_ability_cooldowns_disabled:
+			king_piece.set_cooldown(0)
 		king_piece.announce_cooldown_state()
+
+func set_active_ability_cooldowns_disabled(disabled: bool) -> void:
+	active_ability_cooldowns_disabled = disabled
+	if not disabled:
+		return
+	for row in board:
+		for piece in row:
+			if piece is KingPiece:
+				(piece as KingPiece).set_cooldown(0)
 
 func unregister_piece(piece: ModelPiece) -> void:
 	if not is_instance_valid(piece):

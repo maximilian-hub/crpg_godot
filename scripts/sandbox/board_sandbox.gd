@@ -48,6 +48,7 @@ var think_button: Button
 var step_button: Button
 var speed_slider: HSlider
 var speed_value_label: Label
+var cooldowns_check: CheckButton
 var grip_check: CheckButton
 var grip_profile_option: OptionButton
 var grip_x_spin: SpinBox
@@ -132,6 +133,12 @@ func _build_panel() -> void:
 	speed_value_label = Label.new()
 	speed_value_label.custom_minimum_size.x = 72.0
 	speed_row.add_child(speed_value_label)
+
+	cooldowns_check = CheckButton.new()
+	cooldowns_check.text = "Disable Cooldowns"
+	cooldowns_check.tooltip_text = "Keep King active abilities ready for sandbox testing"
+	cooldowns_check.toggled.connect(_on_cooldowns_toggled)
+	panel.add_child(cooldowns_check)
 
 	grip_check = CheckButton.new()
 	grip_check.text = "Grip Anchors"
@@ -460,6 +467,11 @@ func _on_grip_toggled(enabled: bool) -> void:
 	board.show_piece_grip_anchors = enabled
 	_refresh_control_states()
 
+func _on_cooldowns_toggled(disabled: bool) -> void:
+	model.set_active_ability_cooldowns_disabled(disabled)
+	_clear_ai_thoughts()
+	_refresh_control_states()
+
 func _selected_grip_profile() -> PieceArtProfile:
 	if grip_profile_option == null or grip_profile_option.selected < 0 or grip_profile_option.selected >= grip_profile_ids.size():
 		return null
@@ -547,6 +559,8 @@ func _refresh_control_states() -> void:
 	var speed_colors := [COLOR_ULTRA_SLOW, COLOR_SLOW, COLOR_EDIT, COLOR_MANUAL, COLOR_INSTANT]
 	speed_value_label.text = speed_names[speed]
 	speed_value_label.add_theme_color_override("font_color", speed_colors[speed])
+	cooldowns_check.set_pressed_no_signal(model.active_ability_cooldowns_disabled)
+	cooldowns_check.add_theme_color_override("font_color", COLOR_CYAN if model.active_ability_cooldowns_disabled else Color.WHITE)
 	grip_check.set_pressed_no_signal(board.show_piece_grip_anchors)
 	grip_check.add_theme_color_override("font_color", COLOR_CYAN if board.show_piece_grip_anchors else Color.WHITE)
 	turn_option.select(0 if model.current_turn == "white" else 1)

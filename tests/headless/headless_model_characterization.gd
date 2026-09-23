@@ -19,6 +19,7 @@ func _run() -> void:
 	_test_stun_timer_saturates_at_zero()
 	await _test_initialization_and_move()
 	await _test_active_ability_cooldown_counts_full_turns()
+	_test_active_ability_cooldown_override()
 	await _test_forced_pass_after_action()
 	await _test_turn_entry_recovery_prevents_pass()
 	await _test_nonlethal_combat()
@@ -126,6 +127,23 @@ func _test_active_ability_cooldown_counts_full_turns() -> void:
 	model.switch_turn()
 	model.switch_turn()
 	_expect(arakne.current_cooldown == 0, "cooldown 2 becomes ready after two complete cooldown turns")
+	model.free()
+
+func _test_active_ability_cooldown_override() -> void:
+	var model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	model.add_piece(arakne, arakne.coordinate)
+	_expect(not arakne.is_active_ability_ready(), "cooldown override leaves normal startup behavior unchanged while disabled")
+	model.set_active_ability_cooldowns_disabled(true)
+	_expect(arakne.current_cooldown == 0 and arakne.is_active_ability_ready(), "cooldown override immediately readies an existing active King")
+	arakne.schedule_cooldown()
+	_expect(arakne.current_cooldown == 0 and not arakne.cooldown_reset_pending and arakne.is_active_ability_ready(), "cooldown override prevents a spent ability from scheduling recharge")
+	var minotaur := MinotaurKing.new("black", Vector2i(3, 3))
+	model.add_piece(minotaur, minotaur.coordinate)
+	_expect(minotaur.current_cooldown == 0 and minotaur.is_active_ability_ready(), "cooldown override readies active Kings added after it is enabled")
+	model.set_active_ability_cooldowns_disabled(false)
+	minotaur.schedule_cooldown()
+	_expect(minotaur.cooldown_reset_pending and not minotaur.is_active_ability_ready(), "disabling the override restores normal cooldown scheduling")
 	model.free()
 
 

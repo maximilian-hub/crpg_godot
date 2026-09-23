@@ -30,6 +30,7 @@ func _ready() -> void:
 	_check(sandbox.ai_mode_buttons[ChessCpuPlayer.ExecutionMode.DISABLED].button_pressed, "AI Off is visibly selected at startup", failures)
 	_check(not sandbox.ai_side_buttons["white"].button_pressed and sandbox.ai_side_buttons["black"].button_pressed, "AI side toggles show the default Black selection", failures)
 	_check(sandbox.speed_value_label.text == "Normal", "animation slider labels its startup state", failures)
+	_check(not sandbox.cooldowns_check.button_pressed and not model.active_ability_cooldowns_disabled, "active cooldown override starts disabled", failures)
 	_check(not sandbox.grip_check.button_pressed, "Grip Anchors starts visibly unchecked", failures)
 	_check(sandbox.editor.selected_tool == BoardEditorController.Tool.CURSOR and sandbox.piece_palette.cursor_item.selected_state, "Cursor starts visibly selected in the palette", failures)
 	_check(sandbox.piece_palette.cursor_item.shortcut_label.text == "Esc", "Cursor tool displays its Escape shortcut", failures)
@@ -199,6 +200,19 @@ func _ready() -> void:
 	_check(sandbox.piece_palette.king_items["white"].preview.sprite.texture.resource_path == "res://assets/pieces/kings/white_arakne.png" and sandbox.piece_palette.king_items["white"].preview.sprite.material == null, "White Arakne palette preview uses authored White art without the palette shader", failures)
 	_check(sandbox.piece_palette.king_items["black"].preview.sprite.texture.resource_path == "res://assets/pieces/kings/black_arakne.png" and sandbox.piece_palette.king_items["black"].preview.sprite.material == null, "Black Arakne palette preview uses authored Black art without a palette shader", failures)
 	_check(sandbox.editor.selected_type_id == &"arakne_king" and sandbox.editor.selected_color == "white", "king selector updates an active king tool while preserving color", failures)
+	sandbox.editor.place_selected(Vector2i(4, 4))
+	var sandbox_arakne := model.board[4][4] as KingPiece
+	_check(sandbox_arakne != null and not sandbox_arakne.is_active_ability_ready(), "sandbox active Kings normally retain their starting cooldown", failures)
+	sandbox._on_cooldowns_toggled(true)
+	_check(sandbox.cooldowns_check.button_pressed and sandbox_arakne.current_cooldown == 0 and sandbox_arakne.is_active_ability_ready(), "Disable Cooldowns immediately readies active Kings", failures)
+	sandbox_arakne.schedule_cooldown()
+	_check(sandbox_arakne.current_cooldown == 0 and not sandbox_arakne.cooldown_reset_pending and sandbox_arakne.is_active_ability_ready(), "sandbox cooldown override keeps a spent active ability ready", failures)
+	sandbox.undo()
+	await get_tree().process_frame
+	sandbox.redo()
+	await get_tree().process_frame
+	sandbox_arakne = model.board[4][4] as KingPiece
+	_check(sandbox_arakne != null and sandbox_arakne.is_active_ability_ready(), "sandbox cooldown override survives position rebuilds", failures)
 	sandbox._toggle_ai_side("white")
 	sandbox._set_mode(sandbox.Mode.PLAY)
 	_check(not sandbox.piece_palette.palette_enabled and sandbox.piece_palette.king_selector.disabled, "Play Mode leaves the palette visible but disabled", failures)
