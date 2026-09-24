@@ -48,7 +48,9 @@ func _run_suite() -> void:
 	await _test_arakne_spike_burst()
 	await _test_arakne_spike_burst_lethal_knockoff()
 	await _test_arakne_spike_burst_lethal_king()
+	await _test_nonlocal_active_ability_windup()
 	await _test_minotaur_charge_survivor_landing()
+	await _test_minotaur_charge_lethal_king_landing()
 	await _test_minotaur_charge_capture_knockoff()
 	await _test_minotaur_charge_wall_arrival()
 	await _test_minotaur_rage_barrier()
@@ -355,7 +357,9 @@ func _test_arakne_staged_skitter_presentation() -> void:
 			landed_view_coordinates.append(piece_view.coordinate))
 	controller.select_piece(arakne)
 	await controller._on_square_clicked(Vector2i(4, 5))
-	_expect(controller.legal_moves == arakne.get_skitter_destinations(Vector2i(4, 5)) and Vector2i(4, 5) not in controller.legal_moves, "Skitter staging presents only second-step destination highlights")
+	var expected_staged_targets: Array = [Vector2i(4, 5)]
+	expected_staged_targets.append_array(arakne.get_skitter_destinations(Vector2i(4, 5)))
+	_expect(controller.legal_moves == expected_staged_targets, "Skitter staging keeps the legal one-step stop highlighted beside second-step destinations")
 	controller._on_square_clicked(Vector2i(3, 6))
 	while model.action_in_progress:
 		if skitter_visual.started:
@@ -912,6 +916,34 @@ func _test_arakne_spike_burst_lethal_king() -> void:
 	await _destroy_game(context.game)
 
 
+func _test_nonlocal_active_ability_windup() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	charging_minotaur.set_cooldown(0)
+	var defending_king := MinotaurKing.new("black", Vector2i(0, 0))
+	defending_king.stunned = true
+	_reset_battle(model, context.controller, [charging_minotaur, defending_king])
+	var charging_view := context.adapter.get_piece_view(charging_minotaur) as PieceView
+	_expect(is_equal_approx(context.adapter.nonlocal_ability_reveal_duration, 0.6), "non-local active abilities use the authored 0.6-second reveal by default")
+	context.adapter.nonlocal_ability_reveal_duration = 0.05
+	var observation := {
+		"flash_visible": false,
+		"aura_visible": false,
+		"highlight_count": -1,
+	}
+	model.targeted_ability_committed.connect(func(_ability_context):
+		observation.flash_visible = context.view.flash_overlay.visible
+		observation.aura_visible = context.view._get_descendant_effects_in_group(charging_view, &"aura").size() == 1
+		observation.highlight_count = _count_highlighted_squares(context.view)
+	, CONNECT_ONE_SHOT)
+
+	await model.submit_active_ability(charging_minotaur, Vector2i(4, 7))
+	_expect(observation.flash_visible and observation.aura_visible, "a non-local active ability shows its public flash and King-specific windup")
+	_expect(observation.highlight_count == 0, "a non-local active ability never reveals private target highlights")
+	await _destroy_game(context.game)
+
+
 func _test_minotaur_charge_survivor_landing() -> void:
 	var context := await _create_game()
 	var model: ChessBoardModel = context.model
@@ -921,6 +953,12 @@ func _test_minotaur_charge_survivor_landing() -> void:
 	defending_minotaur.stunned = true
 	_reset_battle(model, context.controller, [charging_minotaur, defending_minotaur])
 	var charging_view: Node = context.adapter.get_piece_view(charging_minotaur)
+	var observation := {"splatter_count": 0, "splatter_at_arrival": false}
+	context.view.child_entered_tree.connect(func(child: Node):
+		if child.name != "BloodSplatter":
+			return
+		observation.splatter_count += 1
+		observation.splatter_at_arrival = charging_view.position.is_equal_approx(context.view.grid_to_screen(4, 3)))
 
 	await model.submit_active_ability(charging_minotaur, defending_minotaur.coordinate)
 	_expect(defending_minotaur.current_hp == defending_minotaur.max_hp - 2, "composed Charge damages its surviving target")
@@ -928,7 +966,51 @@ func _test_minotaur_charge_survivor_landing() -> void:
 	_expect(model.board[4][3] == charging_minotaur and charging_minotaur.coordinate == Vector2i(4, 3), "composed Charge ends adjacent to its surviving target")
 	_expect(charging_view.coordinate == Vector2i(4, 3), "Charge presentation updates the Minotaur View coordinate")
 	_expect(charging_view.position.is_equal_approx(context.view.grid_to_screen(4, 3)), "Charge presentation finishes on the adjacent square")
+	_expect(observation.splatter_count == 1 and observation.splatter_at_arrival, "surviving King Charge damage presents blood only when the Minotaur arrives")
 	_expect(model.current_turn == "white" and not model.action_in_progress, "a surviving stunned sole King automatically passes after the composed Charge lands")
+	await _destroy_game(context.game)
+
+
+func _test_minotaur_charge_lethal_king_landing() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	charging_minotaur.set_cooldown(0)
+	var defending_minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	defending_minotaur.current_hp = 2
+	_reset_battle(model, context.controller, [charging_minotaur, defending_minotaur])
+	var charging_view := context.adapter.get_piece_view(charging_minotaur) as PieceView
+	var death_profile: Resource = context.adapter.king_death_profile.duplicate(true)
+	death_profile.death_sound = null
+	death_profile.red_blink_count = 1
+	death_profile.blink_on_duration = 0.01
+	death_profile.blink_off_duration = 0.01
+	death_profile.pre_death_hold_duration = 0.01
+	death_profile.stone_fade_duration = 0.02
+	death_profile.tremor_slowdown_duration = 0.01
+	death_profile.result_delay = 0.03
+	death_profile.rift_speed = 10000.0
+	context.adapter.king_death_profile = death_profile
+	context.adapter._on_ability_targeting_started(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, charging_minotaur.get_active_ability_targets())
+	context.adapter._on_ability_targeting_ended(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, "confirmed")
+	var target := defending_minotaur.coordinate
+	var adjacent := Vector2i(4, 3)
+	var observation := {"splatter_at_impact": false, "death_started_at_impact": false}
+	context.view.child_entered_tree.connect(func(child: Node):
+		if child.name == "BloodSplatter":
+			observation.splatter_at_impact = charging_view.position.is_equal_approx(context.view.grid_to_screen(adjacent.x, adjacent.y))
+	)
+	model.piece_destroyed.connect(func(piece: ModelPiece):
+		if piece == defending_minotaur:
+			var deaths: Array[Node] = context.view.find_children("*", "ChessKingDeathEffect", true, false)
+			observation.death_started_at_impact = charging_view.position.is_equal_approx(context.view.grid_to_screen(adjacent.x, adjacent.y)) and not deaths.is_empty() and deaths[0].running
+	, CONNECT_ONE_SHOT)
+
+	await model.submit_active_ability(charging_minotaur, target)
+	_expect(observation.splatter_at_impact, "lethal King Charge presents blood when the Minotaur reaches its target")
+	_expect(observation.death_started_at_impact, "lethal King Charge begins the King death sequence at collision")
+	_expect(model.board[adjacent.x][adjacent.y] == charging_minotaur and model.board[target.x][target.y] == null and defending_minotaur.color in model.defeated_king_colors, "lethal Charge stops adjacent to a durable target and defeats it without overlap")
+	_expect(not context.adapter.pending_charge_aura_impacts.has(charging_minotaur), "lethal King Charge starts aura dispersal at collision")
 	await _destroy_game(context.game)
 
 
@@ -944,7 +1026,7 @@ func _test_minotaur_charge_capture_knockoff() -> void:
 	var charging_magic: ChessKingMagicController = context.adapter.king_magic_controllers[charging_minotaur]
 	var charging_view: PieceView = context.adapter.get_piece_view(charging_minotaur)
 	var target_view: PieceView = context.adapter.get_piece_view(target_pawn)
-	context.view.spawn_ss_aura(charging_view)
+	context.adapter._on_ability_targeting_started(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, charging_minotaur.get_active_ability_targets())
 	var charge_aura := context.view._get_descendant_effects_in_group(charging_view, &"aura")[0] as Node2D
 	_expect(charge_aura.position == charging_view.art_profile.charge_aura_offset and charge_aura.position == Vector2(0, -22), "Charge aura uses the Minotaur art profile's replacement-sprite alignment")
 	context.adapter._on_ability_targeting_ended(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, "confirmed")
@@ -983,7 +1065,7 @@ func _test_minotaur_charge_wall_arrival() -> void:
 	charging_magic.profile.movement_profile.king_move_delay = 0.05
 	charging_magic.profile.movement_profile.travel_duration = 0.05
 	charging_magic.profile.movement_profile.settle_duration = 0.1
-	context.view.spawn_ss_aura(charging_view)
+	context.adapter._on_ability_targeting_started(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, charging_minotaur.get_active_ability_targets())
 	context.adapter._on_ability_targeting_ended(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, "confirmed")
 	var target := Vector2i(4, 7)
 	var observation := {"stunned_at_destination": false, "hand_retreating": false, "stars_present": false, "aura_dispersing": false, "action_open": false}
@@ -1270,6 +1352,14 @@ func _count_board_pieces(model: ChessBoardModel) -> int:
 		for piece in row:
 			if piece != null:
 				count += 1
+	return count
+
+
+func _count_highlighted_squares(view: ChessBoardView) -> int:
+	var count := 0
+	for square in view.get_node("Squares").get_children():
+		if square.get_node("Highlight").visible:
+			count += 1
 	return count
 
 

@@ -38,6 +38,7 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var cooldown_presentation_profile: Resource = DEFAULT_COOLDOWN_PRESENTATION
 @export var arakne_skitter_sound: AudioStream
 @export_range(-80.0, 24.0, 0.1) var arakne_skitter_volume_db := 0.0
+@export_range(0.0, 2.0, 0.05) var nonlocal_ability_reveal_duration := 0.6
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -56,6 +57,8 @@ var presented_promotions: Dictionary = {}
 var skitter_sound_player := AudioStreamPlayer.new()
 var pending_skitter_steps: Dictionary = {}
 var pending_charge_aura_impacts: Dictionary = {}
+var committed_charge_actions: Dictionary = {}
+var locally_previewed_abilities: Dictionary = {}
 
 
 func _ready() -> void:
@@ -139,6 +142,8 @@ func _on_board_rebuilt(board: Array) -> void:
 	persistent_king_corpses.clear()
 	pending_attack_damage_visuals.clear()
 	pending_charge_aura_impacts.clear()
+	committed_charge_actions.clear()
+	locally_previewed_abilities.clear()
 	selection_effect_piece = null
 	player_move_submission_active = false
 	piece_views = view.rebuild_board(board)
@@ -173,6 +178,7 @@ func _on_piece_summoned(piece: ModelPiece, completion: CompletionGate) -> void:
 
 
 func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, presentation) -> void:
+	committed_charge_actions.erase(piece)
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		pending_charge_aura_impacts.erase(piece)
@@ -246,6 +252,7 @@ func _on_piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: 
 
 
 func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, _captured_at: Vector2i, presentation) -> void:
+	var is_committed_charge := committed_charge_actions.erase(attacker)
 	var attacker_node: Node = get_piece_view(attacker)
 	var defender_node: Node = get_piece_view(defender)
 	if not is_instance_valid(attacker_node):
@@ -256,6 +263,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 
 	presentation.claim()
 	if defender is KingPiece and is_instance_valid(defender_node):
+		var is_charge_impact := is_committed_charge
 		var defender_magic := _get_king_magic(defender)
 		var death_profile: Resource = king_death_profile if king_death_profile != null else KingDeathProfile.new()
 		var death_effect := view.create_king_death_effect(defender_node, death_profile, screen_shake)
@@ -266,11 +274,17 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 			# ordinary hit feedback explicitly at physical contact. The splatter
 			# scene owns the universal hurt sound as well as the blood animation.
 			_present_damage_splatter(defender, defender_node)
+			if is_charge_impact:
+				_disperse_pending_charge_aura(attacker, attacker_node)
 			death_effect.play()
 			presentation.mark_arrived(attacker)
 		if attacker is KingPiece:
 			var attacking_magic := _get_king_magic(attacker)
-			if attacking_magic != null:
+			if is_charge_impact and attacking_magic != null:
+				await attacking_magic.play_move(from, to, false, death_contact)
+			elif is_charge_impact:
+				await _play_unpowered_king_move(attacker_node, to, death_contact)
+			elif attacking_magic != null:
 				await attacking_magic.play_attack(from, to, death_contact)
 			else:
 				await view.attack_piece_node(attacker_node, to, death_contact)
@@ -344,6 +358,8 @@ func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, from: V
 func _on_piece_destroyed(piece: ModelPiece) -> void:
 	pending_attack_damage_visuals.erase(piece)
 	pending_charge_aura_impacts.erase(piece)
+	committed_charge_actions.erase(piece)
+	locally_previewed_abilities.erase(piece)
 	var piece_node: Node = piece_views.get(piece)
 	var magic: Node = king_magic_controllers.get(piece)
 	var death_profile: Resource = king_death_profile if piece is KingPiece else null
@@ -496,17 +512,34 @@ func _on_ability_started(piece: KingPiece, ability_name: String, gate: Completio
 
 
 func _on_targeted_ability_committed(context) -> void:
-	if not presentation_policy.should_hold_completion_gate() or ability_presentations == null:
+	if context.ability_id == MinotaurKing.ACTIVE_ABILITY_ID:
+		committed_charge_actions[context.source] = true
+	var was_locally_previewed: bool = locally_previewed_abilities.get(context.source, &"") == context.ability_id
+	locally_previewed_abilities.erase(context.source)
+	if not presentation_policy.should_hold_completion_gate():
 		return
-	var profile: Resource = ability_presentations.find_profile(context.source.get_position_type_id(), context.ability_id)
+	var profile: Resource = null
+	if ability_presentations != null:
+		profile = ability_presentations.find_profile(context.source.get_position_type_id(), context.ability_id)
 	var source_view := get_piece_view(context.source) as PieceView
 	var target_view := get_piece_view(context.target_piece) as PieceView
-	if profile == null or not is_instance_valid(source_view) or not is_instance_valid(target_view):
+	var has_projectile_presentation := profile != null and is_instance_valid(source_view) and is_instance_valid(target_view)
+	if was_locally_previewed and not has_projectile_presentation:
 		return
 	context.claim()
-	if not (context.target_piece is KingPiece):
-		pending_projectile_defeats[context.target_piece] = target_view
-	_play_targeted_projectile(context, source_view, target_view, profile)
+	if not was_locally_previewed:
+		_begin_ability_windup(context.source, false, [])
+		var reveal_duration: float = nonlocal_ability_reveal_duration * presentation_policy.duration_scale()
+		if reveal_duration > 0.0:
+			await get_tree().create_timer(reveal_duration).timeout
+		_confirm_ability_windup(context.source, false)
+	if has_projectile_presentation:
+		if not (context.target_piece is KingPiece):
+			pending_projectile_defeats[context.target_piece] = target_view
+		await _play_targeted_projectile(context, source_view, target_view, profile)
+		return
+	context.mark_impact()
+	context.finish_aftermath()
 
 
 func _play_targeted_projectile(context, source_view: PieceView, target_view: PieceView, profile: Resource) -> void:
@@ -548,10 +581,16 @@ func _on_ability_effect_resolved(piece: KingPiece, ability_name: String, affecte
 
 
 func _on_ability_targeting_started(king: KingPiece, _ability_name: String, _targets: Array) -> void:
+	locally_previewed_abilities[king] = king.get_active_ability_id()
+	_begin_ability_windup(king, true, _targets)
+
+
+func _begin_ability_windup(king: KingPiece, show_target_highlights: bool, targets: Array) -> void:
 	var magic := _get_king_magic(king)
 	if is_instance_valid(magic): magic.set_targeting(true)
-	view.clear_highlights()
-	view.show_legal_moves(_targets)
+	if show_target_highlights:
+		view.clear_highlights()
+		view.show_legal_moves(targets)
 	view.flash_screen()
 	var piece_node: Node = get_piece_view(king)
 	if king is MinotaurKing and is_instance_valid(piece_node):
@@ -561,16 +600,34 @@ func _on_ability_targeting_started(king: KingPiece, _ability_name: String, _targ
 
 
 func _on_ability_targeting_ended(king: KingPiece, _ability_name: String, reason: String) -> void:
+	if reason == "confirmed":
+		_confirm_ability_windup(king, true)
+		return
+	locally_previewed_abilities.erase(king)
+	_cancel_ability_windup(king, true, reason == "cancelled")
+
+
+func _confirm_ability_windup(king: KingPiece, clear_target_highlights: bool) -> void:
 	var magic := _get_king_magic(king)
 	if is_instance_valid(magic): magic.set_targeting(false)
-	view.clear_highlights()
+	if clear_target_highlights:
+		view.clear_highlights()
 	var piece_node: Node = get_piece_view(king)
 	if king is MinotaurKing and is_instance_valid(piece_node):
-		if reason == "confirmed":
-			pending_charge_aura_impacts[king] = true
-		else:
-			pending_charge_aura_impacts.erase(king)
-			view.fade_out_ss_aura(piece_node, reason == "cancelled")
+		pending_charge_aura_impacts[king] = true
+	elif king is NecromancerKing:
+		_hide_necromancer_aura(king)
+
+
+func _cancel_ability_windup(king: KingPiece, clear_target_highlights: bool, play_powerdown_sound: bool) -> void:
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic): magic.set_targeting(false)
+	if clear_target_highlights:
+		view.clear_highlights()
+	var piece_node: Node = get_piece_view(king)
+	if king is MinotaurKing and is_instance_valid(piece_node):
+		pending_charge_aura_impacts.erase(king)
+		view.fade_out_ss_aura(piece_node, play_powerdown_sound)
 	elif king is NecromancerKing:
 		_hide_necromancer_aura(king)
 

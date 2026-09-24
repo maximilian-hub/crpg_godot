@@ -299,8 +299,10 @@ func _test_arakne_staged_controller_selection() -> void:
 	_expect(Vector2i(4, 6) not in controller.legal_moves and Vector2i(4, 5) in controller.legal_moves, "initial Arakne selection shows ordinary King moves but not remote skitter endpoints")
 	await controller._on_square_clicked(Vector2i(4, 5))
 	var expected_skitter := arakne.get_skitter_destinations(Vector2i(4, 5))
-	_expect(controller.skitter_intermediate == Vector2i(4, 5) and controller.legal_moves == expected_skitter, "choosing an empty first step replaces initial highlights with only its skitter destinations")
-	_expect(Vector2i(4, 5) not in controller.legal_moves, "the unhighlighted intermediate remains a separate confirmation target")
+	var expected_staged_targets: Array = [Vector2i(4, 5)]
+	expected_staged_targets.append_array(expected_skitter)
+	_expect(controller.skitter_intermediate == Vector2i(4, 5) and controller.legal_moves == expected_staged_targets, "choosing an empty first step highlights both stopping there and continuing along a Skitter path")
+	_expect(Vector2i(4, 5) in controller.legal_moves, "the highlighted intermediate remains a separate one-step confirmation target")
 	await controller._on_square_clicked(Vector2i(4, 3))
 	_expect(controller.selected_piece == null and controller.skitter_intermediate == Vector2i(-1, -1), "clicking another initial King square cancels staged Skitter selection")
 	controller.select_piece(arakne)
@@ -435,7 +437,7 @@ func _test_minotaur_charge_landing() -> void:
 	lethal_model.add_piece(lethal_minotaur, lethal_minotaur.coordinate)
 	lethal_model.add_piece(arakne, arakne.coordinate)
 	_expect(await lethal_model.submit_active_ability(lethal_minotaur, arakne.coordinate), "lethal Charge command is accepted")
-	_expect(lethal_model.board[4][4] == lethal_minotaur and lethal_minotaur.coordinate == Vector2i(4, 4), "lethal Charge still occupies the target square")
+	_expect(lethal_model.board[4][3] == lethal_minotaur and lethal_minotaur.coordinate == Vector2i(4, 3) and lethal_model.board[4][4] == null, "lethal Charge stops adjacent to a durable target")
 	lethal_model.free()
 
 func _test_model_owned_raise_dead_choice() -> void:

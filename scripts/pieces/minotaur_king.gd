@@ -4,6 +4,7 @@ class_name MinotaurKing
 
 const PASSIVE_ABILITY_NAME: String = "Retaliating Rage"
 const ACTIVE_ABILITY_NAME: String = "Charge"
+const ACTIVE_ABILITY_ID: StringName = &"charge"
 const ACTIVE_ABILITY_COOLDOWN = 4
 
 func _init(color: String, coord: Vector2i):
@@ -13,7 +14,7 @@ func _init(color: String, coord: Vector2i):
 	self.current_hp = self.max_hp
 	self.base_cooldown = 4
 	self.active_ability_name = "Charge"
-	self.active_ability_id = &"charge"
+	self.active_ability_id = ACTIVE_ABILITY_ID
 	self.passive_ability_name = "Retaliating Rage"
 	reset_cooldown()
 
@@ -64,23 +65,25 @@ func charge(coord: Vector2i):
 	var hit_wall := target_piece == null
 
 	if target_piece != null:
-		if target_piece.is_king:
-			await target_piece.take_damage(2)
-			# Stop on the final empty square when the defending king survives.
-			if target_piece.current_hp > 0:
-				var direction := Vector2i(
-					sign(coord.x - coordinate.x),
-					sign(coord.y - coordinate.y)
-				)
-				await model.actually_move_piece(self, coord - direction)
-				return
-		else:
-			# Charge is a physical capture: keep the defender's view planted until
-			# the Minotaur reaches it, then let the shared magical-King capture
-			# presentation knock it off the board.
-			await model.actually_capture_piece(self, target_piece, coord, coord)
-			model.destroy_piece(target_piece, false)
+		if target_piece.max_hp > 1:
+			# Durable targets stop the Charge on the final empty square even when
+			# the hit is lethal. Damage presentation therefore begins at arrival
+			# without ever overlapping the target's death presentation.
+			var direction := Vector2i(
+				sign(coord.x - coordinate.x),
+				sign(coord.y - coordinate.y)
+			)
+			await model.actually_move_piece(
+				self,
+				coord - direction,
+				Callable(target_piece, "take_damage").bind(2)
+			)
 			return
+		# Charge is a physical capture against a one-HP target: keep the
+		# defender's view planted until collision, then knock it off the board.
+		await model.actually_capture_piece(self, target_piece, coord, coord)
+		model.destroy_piece(target_piece, false)
+		return
 
 	await model.actually_move_piece(self, coord, Callable(self, "stun") if hit_wall else Callable())
 

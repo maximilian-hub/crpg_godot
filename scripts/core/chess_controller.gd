@@ -79,7 +79,10 @@ func _on_square_clicked(coord: Vector2i):
 				if not destinations.is_empty():
 					skitter_intermediate = coord
 					skitter_destinations.assign(destinations)
-					legal_moves.assign(destinations)
+					# The chosen first step remains a valid "stop here" target during
+					# Skitter staging, so keep it visible beside the second-step options.
+					legal_moves.assign([coord])
+					legal_moves.append_array(destinations)
 					selection_targets_changed.emit(legal_moves)
 					return
 		deselect_piece()
