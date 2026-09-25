@@ -98,6 +98,7 @@ func _ready() -> void:
 	model.ability_started.connect(_on_ability_started)
 	model.targeted_ability_committed.connect(_on_targeted_ability_committed)
 	model.reaction_selection_preparing.connect(_on_reaction_selection_preparing)
+	model.reaction_selection_committed.connect(_on_reaction_selection_committed)
 	model.reaction_queued.connect(_on_reaction_queued)
 	model.reaction_finished.connect(_on_reaction_finished)
 	model.ability_effect_resolved.connect(_on_ability_effect_resolved)
@@ -727,17 +728,22 @@ func _on_reaction_selection_preparing(calling_piece: ModelPiece, action_type: St
 	if action_type != "raise_dead" or not calling_piece is NecromancerKing:
 		return
 	if not presentation_policy.should_hold_completion_gate():
-		_reveal_ability_windup(calling_piece)
+		_show_necromancer_aura(calling_piece)
 		return
 	completion.hold()
 	var hand_profile := _get_ability_hand_profile(calling_piece, &"raise_dead")
 	var magic := _get_king_magic(calling_piece)
 	if is_instance_valid(magic):
 		await magic.prepare_ability_hand(hand_profile.pre_reveal_hover_duration)
-	_reveal_ability_windup(calling_piece)
+	_show_necromancer_aura(calling_piece)
 	if is_instance_valid(magic):
 		await magic.finish_stationary_ability_hand(hand_profile.post_reveal_hold_duration)
 	completion.release()
+
+
+func _on_reaction_selection_committed(calling_piece: ModelPiece, action_type: String, _target: Vector2i) -> void:
+	if action_type == "raise_dead" and calling_piece is NecromancerKing:
+		_hide_necromancer_aura(calling_piece)
 
 
 func _on_reaction_queued(calling_piece: ModelPiece, action_type: String, event_data, sequence: int) -> void:
@@ -762,9 +768,11 @@ func _release_pending_damage_reactions(piece: ModelPiece) -> void:
 		_present_queued_reaction(reaction.action_type, reaction.event_data, reaction.sequence)
 
 
-func _on_reaction_finished(_calling_piece: ModelPiece, action_type: String, _event_data, sequence: int, _resolved: bool) -> void:
+func _on_reaction_finished(calling_piece: ModelPiece, action_type: String, _event_data, sequence: int, _resolved: bool) -> void:
 	if action_type != "raise_dead":
 		return
+	if calling_piece is NecromancerKing:
+		_hide_necromancer_aura(calling_piece)
 	var anchor: Node = raise_dead_skull_anchors.get(sequence)
 	raise_dead_skull_anchors.erase(sequence)
 	if is_instance_valid(anchor):

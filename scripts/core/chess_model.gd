@@ -45,6 +45,7 @@ signal targeted_ability_committed(context)
 signal ability_effect_resolved(piece: KingPiece, ability_name: String, affected_coords: Array)
 signal reaction_selection_requested(calling_piece: ModelPiece, action_type: String, targets: Array)
 signal reaction_selection_preparing(calling_piece: ModelPiece, action_type: String, targets: Array, completion: CompletionGate)
+signal reaction_selection_committed(calling_piece: ModelPiece, action_type: String, target: Vector2i)
 signal reaction_selection_resolved(calling_piece: ModelPiece, action_type: String, target: Vector2i)
 signal reaction_queued(calling_piece: ModelPiece, action_type: String, event_data, sequence: int)
 signal reaction_finished(calling_piece: ModelPiece, action_type: String, event_data, sequence: int, resolved: bool)
@@ -1134,6 +1135,7 @@ func continue_action_resolution() -> void:
 		selection_completion.close()
 		await selection_completion.wait_until_released()
 		if not is_piece_active(calling_piece) or battle_over:
+			reaction_finished.emit(calling_piece, action_type, event_data, opportunity["sequence"], false)
 			continue
 		pending_reaction = {
 			"calling_piece": calling_piece,
@@ -1171,6 +1173,7 @@ func submit_reaction_selection(coord: Vector2i) -> bool:
 	var event_data = pending_reaction["event_data"]
 	var sequence: int = pending_reaction["sequence"]
 	pending_reaction.clear()
+	reaction_selection_committed.emit(calling_piece, action_type, coord)
 	await calling_piece._on_special_target_selected(coord)
 	reaction_selection_resolved.emit(calling_piece, action_type, coord)
 	reaction_finished.emit(calling_piece, action_type, event_data, sequence, true)

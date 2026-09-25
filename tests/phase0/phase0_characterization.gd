@@ -1263,6 +1263,11 @@ func _test_raise_dead_selection_resume() -> void:
 	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
 	var bishop := Bishop.new("white", Vector2i(4, 4))
 	_reset_battle(model, controller, [necromancer, bishop])
+	var reveal_observation := {"flash_seen": false}
+	context.view.flash_overlay.visibility_changed.connect(func():
+		if context.view.flash_overlay.visible:
+			reveal_observation.flash_seen = true
+	)
 
 	_expect(model.begin_action("white"), "Raise Dead characterization action starts")
 	model.destroy_piece(bishop, true)
@@ -1272,11 +1277,19 @@ func _test_raise_dead_selection_resume() -> void:
 	_expect(not controller.legal_moves.is_empty(), "Raise Dead exposes legal choices through Controller state")
 	_expect(model.has_pending_reaction(), "Raise Dead exposes the pending choice through Model state")
 	_expect(model.action_in_progress, "Raise Dead pauses the current Model action")
+	var aura: GPUParticles2D = context.adapter.necromancer_auras.get(necromancer)
+	_expect(not reveal_observation.flash_seen and is_instance_valid(aura) and aura.emitting, "Raise Dead reveals its skull aura without using the active-targeting white flash")
 
 	var choice: Vector2i = controller.legal_moves[0]
+	var commit_observation := {"aura_stopped": false}
+	model.reaction_selection_committed.connect(func(piece: ModelPiece, action_type: String, _target: Vector2i):
+		if piece == necromancer and action_type == "raise_dead":
+			commit_observation.aura_stopped = is_instance_valid(aura) and not aura.emitting
+	, CONNECT_ONE_SHOT)
 	await model.submit_reaction_selection(choice)
 	_expect(model.board[choice.x][choice.y] is BonePawn, "Raise Dead choice summons a Bone Pawn")
 	_expect(not controller.non_move_selection_mode, "Raise Dead choice exits selection mode")
+	_expect(commit_observation.aura_stopped and not aura.emitting, "Raise Dead skull aura stops when any controller commits its target")
 	_expect(model.current_turn == "black", "Raise Dead choice resumes resolution and switches turn")
 
 	await _destroy_game(context.game)

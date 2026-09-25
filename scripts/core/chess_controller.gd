@@ -38,7 +38,7 @@ func _ready():
 	model.battle_finished.connect(_on_battle_finished)
 	model.board_rebuilt.connect(_on_board_rebuilt)
 	model.reaction_selection_requested.connect(_on_reaction_selection_requested)
-	model.reaction_selection_resolved.connect(_on_reaction_selection_resolved)
+	model.reaction_selection_committed.connect(_on_reaction_selection_committed)
 
 func _on_square_clicked(coord: Vector2i):
 	if model.battle_over:
@@ -313,6 +313,6 @@ func _on_reaction_selection_requested(calling_piece: ModelPiece, _action_type: S
 	if is_player_controlled(calling_piece.color):
 		initiate_non_move_selection_mode(calling_piece, targets)
 
-func _on_reaction_selection_resolved(_calling_piece: ModelPiece, _action_type: String, _target: Vector2i) -> void:
+func _on_reaction_selection_committed(_calling_piece: ModelPiece, _action_type: String, _target: Vector2i) -> void:
 	if non_move_selection_mode:
 		end_non_move_selection_mode()
