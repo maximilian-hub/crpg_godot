@@ -21,6 +21,7 @@ var player_controlled_colors: Array[String] = ["white", "black"]
 signal selection_piece_processing(piece: ModelPiece)
 signal selection_piece_processed()
 signal ability_targeting_started(king: KingPiece, ability_name: String, targets: Array)
+signal ability_targeting_preparing(king: KingPiece, ability_name: String, targets: Array, completion: CompletionGate)
 signal ability_targeting_ended(king: KingPiece, ability_name: String, reason: String)
 signal selection_targets_changed(targets: Array)
 signal selection_cleared()
@@ -68,7 +69,7 @@ func _on_square_clicked(coord: Vector2i):
 		return
 
 	if piece == selected_piece and piece is KingPiece and piece.is_active_ability_ready() and piece.has_active_ability():
-		select_active_ability(piece.color)
+		await select_active_ability(piece.color)
 		return
 
 	if coord in legal_moves:
@@ -165,7 +166,7 @@ func _on_white_active_button_pressed() -> void:
 	if active_ability_selected:
 		deselect_active_ability(true)
 	else:
-		select_active_ability("white")
+		await select_active_ability("white")
 
 func _on_black_active_button_pressed() -> void:
 	if model.battle_over:
@@ -181,7 +182,7 @@ func _on_black_active_button_pressed() -> void:
 	if active_ability_selected:
 		deselect_active_ability(true)
 	else:
-		select_active_ability("black")
+		await select_active_ability("black")
 
 func select_active_ability(color: String):
 	deselect_piece()
@@ -197,8 +198,20 @@ func select_active_ability(color: String):
 		active_king = null
 		return
 
+	var preparing_king := active_king
+	var preparing_targets := _get_primary_targets(ChessPrimaryAction.Kind.ACTIVE_ABILITY, preparing_king)
+	is_input_locked = true
+	var completion := CompletionGate.new()
+	ability_targeting_preparing.emit(preparing_king, preparing_king.get_active_ability_name(), preparing_targets, completion)
+	completion.close()
+	await completion.wait_until_released()
+	is_input_locked = model.action_in_progress or model.battle_over
+	if model.battle_over or not is_instance_valid(preparing_king) or preparing_king != active_king:
+		if is_instance_valid(preparing_king):
+			ability_targeting_ended.emit(preparing_king, preparing_king.get_active_ability_name(), "interrupted")
+		return
 	active_ability_selected = true
-	legal_moves = _get_primary_targets(ChessPrimaryAction.Kind.ACTIVE_ABILITY, active_king)
+	legal_moves = preparing_targets
 	ability_targeting_started.emit(active_king, active_king.get_active_ability_name(), legal_moves)
 
 func configure_player_controlled_colors(colors: Array[String]) -> void:

@@ -44,6 +44,7 @@ signal ability_started(piece: KingPiece, ability_name: String, completion: Compl
 signal targeted_ability_committed(context)
 signal ability_effect_resolved(piece: KingPiece, ability_name: String, affected_coords: Array)
 signal reaction_selection_requested(calling_piece: ModelPiece, action_type: String, targets: Array)
+signal reaction_selection_preparing(calling_piece: ModelPiece, action_type: String, targets: Array, completion: CompletionGate)
 signal reaction_selection_resolved(calling_piece: ModelPiece, action_type: String, target: Vector2i)
 
 var battle_over: bool = false
@@ -1124,6 +1125,12 @@ func continue_action_resolution() -> void:
 		if targets.is_empty():
 			continue
 
+		var selection_completion := CompletionGate.new()
+		reaction_selection_preparing.emit(calling_piece, action_type, targets.duplicate(), selection_completion)
+		selection_completion.close()
+		await selection_completion.wait_until_released()
+		if not is_piece_active(calling_piece) or battle_over:
+			continue
 		pending_reaction = {
 			"calling_piece": calling_piece,
 			"action_type": action_type,

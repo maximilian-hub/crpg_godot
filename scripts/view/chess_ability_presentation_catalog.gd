@@ -2,14 +2,28 @@ extends Resource
 class_name ChessAbilityPresentationCatalog
 
 const Entry := preload("res://scripts/view/chess_ability_presentation_entry.gd")
+const HandProfile := preload("res://scripts/view/chess_ability_hand_profile.gd")
 @export var entries: Array[Resource] = []
 
 func find_profile(piece_type_id: StringName, ability_id: StringName) -> Resource:
+	var entry := find_entry(piece_type_id, ability_id)
+	return entry.resolved_profile() if entry != null else null
+
+func find_entry(piece_type_id: StringName, ability_id: StringName) -> Resource:
 	var normalized := ChessPieceCatalog.normalize_type_id(piece_type_id)
 	for entry in entries:
 		if entry != null and ChessPieceCatalog.normalize_type_id(entry.piece_type_id) == normalized and entry.ability_id == ability_id:
-			return entry.resolved_profile()
+			return entry
 	return null
+
+func find_hand_profile(piece_type_id: StringName, ability_id: StringName) -> Resource:
+	var entry := find_entry(piece_type_id, ability_id)
+	if entry != null and entry.hand_profile != null:
+		return entry.hand_profile
+	var fallback := HandProfile.new()
+	if ability_id == &"charge" or ability_id == &"spike_burst":
+		fallback.command_style = HandProfile.CommandStyle.DIRECTIONAL
+	return fallback
 
 func upsert(piece_type_id: StringName, ability_id: StringName, profile: Resource) -> void:
 	var normalized := ChessPieceCatalog.normalize_type_id(piece_type_id)

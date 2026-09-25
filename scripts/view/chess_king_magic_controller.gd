@@ -30,6 +30,8 @@ var _hand_gesture_running := false
 var _command_reached := false
 var _king_move_released := false
 var _finishing_compound_hand_move := false
+var _ability_hand_prepared := false
+var _ability_command_consumable := false
 const SKITTER_DURATION_SCALE := 0.68
 const SKITTER_ZIGZAG_AMPLITUDE := 5.0
 const SKITTER_ZIGZAG_CYCLES := 2.0
@@ -39,6 +41,71 @@ const SKITTER_ROTATION_DEGREES := 2.0
 signal hand_command_reached()
 signal king_move_released()
 signal hand_gesture_completed()
+
+func prepare_ability_hand(hover_duration: float) -> void:
+	if running:
+		return
+	running = true
+	_ability_hand_prepared = true
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(true)
+	var move: Resource = profile.movement_profile
+	king_aura.set_silhouette_power(move.king_silhouette_power)
+	king_aura.set_particle_power(move.king_particle_power)
+	if is_instance_valid(hand) and hand.can_animate():
+		var effective_scale := board.get_world_scale() * hand.art_scale_multiplier
+		hand.scale = Vector2.ONE * effective_scale
+		hand._apply_pose(false)
+		hand.set_magical_foreground(true, self)
+		hand_aura.set_layer_z(ChessHandRig.MAGIC_AURA_Z, ChessHandRig.MAGIC_AURA_Z)
+		hand.visible = true
+		hand.position = hand._offscreen_rest_position(effective_scale)
+		var hover := king.position + PresentationTransform.king_hover_offset(move.hand_hover_offset, hand.seat, false, board.get_world_scale())
+		await _tween_position(hand, hover, move.hand_approach_duration)
+		hand_aura.set_silhouette_power(move.hand_silhouette_power)
+		hand_aura.set_particle_power(move.hand_particle_power)
+	if hover_duration > 0.0:
+		await get_tree().create_timer(hover_duration * board.animation_duration_scale).timeout
+
+func command_ability_hand(from: Vector2i, to: Vector2i) -> void:
+	if not _ability_hand_prepared:
+		await prepare_ability_hand(0.0)
+	var move: Resource = profile.movement_profile
+	if is_instance_valid(hand) and hand.can_animate():
+		var hover := king.position + PresentationTransform.king_hover_offset(move.hand_hover_offset, hand.seat, false, board.get_world_scale())
+		var points := gesture_points(board.grid_to_screen(from.x, from.y), board.grid_to_screen(to.x, to.y), hover, move.gesture_corridor_clearance * board.get_world_scale(), move.gesture_sweep_distance * board.get_world_scale())
+		_start_unified_hand_gesture(points[0], points[1], hand._offscreen_rest_position(board.get_world_scale() * hand.art_scale_multiplier))
+	_start_king_move_delay(move.king_move_delay)
+	if not _king_move_released: await king_move_released
+	_ability_command_consumable = true
+
+func finish_stationary_ability_hand(hold_duration: float) -> void:
+	if hold_duration > 0.0:
+		await get_tree().create_timer(hold_duration * board.animation_duration_scale).timeout
+	await cancel_ability_hand()
+
+func finish_commanded_ability_hand() -> void:
+	_ability_command_consumable = false
+	_ability_hand_prepared = false
+	if _hand_gesture_running:
+		await hand_gesture_completed
+	king_aura.set_silhouette_power(profile.activation_profile.resting_aura_power)
+	king_aura.set_particle_power(profile.activation_profile.resting_particle_power)
+	running = false
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(false)
+
+func cancel_ability_hand() -> void:
+	_ability_hand_prepared = false
+	_ability_command_consumable = false
+	if is_instance_valid(hand) and hand.can_animate() and hand.visible:
+		await _tween_position(hand, hand._offscreen_rest_position(board.get_world_scale() * hand.art_scale_multiplier), profile.movement_profile.hand_approach_duration)
+		hand.visible = false
+		hand.set_magical_foreground(false, self)
+		hand_aura.set_power(0.0)
+		hand_aura.set_layer_z(ChessHandRig.GRIP_BACK_Z - 1, ChessHandRig.ARM_FOREGROUND_Z + 1)
+	king_aura.set_silhouette_power(profile.activation_profile.resting_aura_power)
+	king_aura.set_particle_power(profile.activation_profile.resting_particle_power)
+	running = false
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(false)
 
 
 func configure(board_view: ChessBoardView, hand_rig: ChessHandRig, king_view: PieceView, king_profile: Resource, king_type_id: StringName = &"classic_king", cooldown_profile: Resource = null) -> void:
@@ -238,6 +305,10 @@ func play_attack(_from: Vector2i, target: Vector2i, contact_callback := Callable
 
 
 func _begin_gesture(from: Vector2i, to: Vector2i, continue_from_current_hand := false) -> void:
+	if _ability_command_consumable:
+		_ability_command_consumable = false
+		_ability_hand_prepared = false
+		return
 	running = true
 	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_aura_suppressed(true)
 	var move: Resource = profile.movement_profile

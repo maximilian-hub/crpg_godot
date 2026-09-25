@@ -7,6 +7,7 @@ const DEFAULT_ABILITY_PRESENTATIONS := preload("res://assets/chess_ability_prese
 const DEFAULT_COOLDOWN_PRESENTATION := preload("res://assets/chess_king_cooldown_presentation.tres")
 const SpecialMoveDirector := preload("res://scripts/view/chess_special_move_director.gd")
 const SpecialMoveProfile := preload("res://scripts/view/chess_special_move_presentation_profile.gd")
+const AbilityHandProfile := preload("res://scripts/view/chess_ability_hand_profile.gd")
 
 const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
 const KingMagicController = preload("res://scripts/view/chess_king_magic_controller.gd")
@@ -85,9 +86,11 @@ func _ready() -> void:
 	model.piece_recovered.connect(_on_piece_recovered)
 	model.ability_started.connect(_on_ability_started)
 	model.targeted_ability_committed.connect(_on_targeted_ability_committed)
+	model.reaction_selection_preparing.connect(_on_reaction_selection_preparing)
 	model.ability_effect_resolved.connect(_on_ability_effect_resolved)
 	model.battle_finished.connect(_on_battle_finished)
 	controller.ability_targeting_started.connect(_on_ability_targeting_started)
+	controller.ability_targeting_preparing.connect(_on_ability_targeting_preparing)
 	controller.ability_targeting_ended.connect(_on_ability_targeting_ended)
 	controller.selection_piece_processing.connect(_on_selection_piece_processing)
 	controller.selection_piece_processed.connect(_on_selection_piece_processed)
@@ -519,20 +522,37 @@ func _on_targeted_ability_committed(context) -> void:
 	if not presentation_policy.should_hold_completion_gate():
 		return
 	var profile: Resource = null
+	var hand_profile := _get_ability_hand_profile(context.source, context.ability_id)
 	if ability_presentations != null:
 		profile = ability_presentations.find_profile(context.source.get_position_type_id(), context.ability_id)
 	var source_view := get_piece_view(context.source) as PieceView
 	var target_view := get_piece_view(context.target_piece) as PieceView
 	var has_projectile_presentation := profile != null and is_instance_valid(source_view) and is_instance_valid(target_view)
-	if was_locally_previewed and not has_projectile_presentation:
+	# Stationary local previews have already completed their hand choreography.
+	# Directional previews must continue so the waiting hand can swipe toward the
+	# authoritative target instead of falling through to a fresh move gesture.
+	if (
+		was_locally_previewed
+		and hand_profile.command_style == AbilityHandProfile.CommandStyle.STATIONARY
+		and not has_projectile_presentation
+	):
 		return
 	context.claim()
 	if not was_locally_previewed:
-		_begin_ability_windup(context.source, false, [])
+		var magic := _get_king_magic(context.source)
+		if is_instance_valid(magic):
+			await magic.prepare_ability_hand(hand_profile.pre_reveal_hover_duration)
+		_reveal_ability_windup(context.source)
+		if hand_profile.command_style == AbilityHandProfile.CommandStyle.STATIONARY and is_instance_valid(magic):
+			magic.finish_stationary_ability_hand(hand_profile.post_reveal_hold_duration)
 		var reveal_duration: float = nonlocal_ability_reveal_duration * presentation_policy.duration_scale()
 		if reveal_duration > 0.0:
 			await get_tree().create_timer(reveal_duration).timeout
 		_confirm_ability_windup(context.source, false)
+	if hand_profile.command_style == AbilityHandProfile.CommandStyle.DIRECTIONAL:
+		var directional_magic := _get_king_magic(context.source)
+		if is_instance_valid(directional_magic):
+			await directional_magic.command_ability_hand(context.source.coordinate, context.target_coordinate)
 	if has_projectile_presentation:
 		if not (context.target_piece is KingPiece):
 			pending_projectile_defeats[context.target_piece] = target_view
@@ -568,6 +588,9 @@ func _play_targeted_projectile(context, source_view: PieceView, target_view: Pie
 	else:
 		pending_projectile_defeats.erase(context.target_piece)
 	director.queue_free()
+	var magic := _get_king_magic(context.source)
+	if is_instance_valid(magic):
+		await magic.finish_commanded_ability_hand()
 	context.finish_aftermath()
 
 
@@ -582,7 +605,25 @@ func _on_ability_effect_resolved(piece: KingPiece, ability_name: String, affecte
 
 func _on_ability_targeting_started(king: KingPiece, _ability_name: String, _targets: Array) -> void:
 	locally_previewed_abilities[king] = king.get_active_ability_id()
-	_begin_ability_windup(king, true, _targets)
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic): magic.set_targeting(true)
+	view.clear_highlights()
+	view.show_legal_moves(_targets)
+
+
+func _on_ability_targeting_preparing(king: KingPiece, _ability_name: String, _targets: Array, completion: CompletionGate) -> void:
+	if not presentation_policy.should_hold_completion_gate():
+		_reveal_ability_windup(king)
+		return
+	completion.hold()
+	var hand_profile := _get_ability_hand_profile(king, king.get_active_ability_id())
+	var magic := _get_king_magic(king)
+	if is_instance_valid(magic):
+		await magic.prepare_ability_hand(hand_profile.pre_reveal_hover_duration)
+	_reveal_ability_windup(king)
+	if hand_profile.command_style == AbilityHandProfile.CommandStyle.STATIONARY and is_instance_valid(magic):
+		magic.finish_stationary_ability_hand(hand_profile.post_reveal_hold_duration)
+	completion.release()
 
 
 func _begin_ability_windup(king: KingPiece, show_target_highlights: bool, targets: Array) -> void:
@@ -591,6 +632,10 @@ func _begin_ability_windup(king: KingPiece, show_target_highlights: bool, target
 	if show_target_highlights:
 		view.clear_highlights()
 		view.show_legal_moves(targets)
+	_reveal_ability_windup(king)
+
+
+func _reveal_ability_windup(king: KingPiece) -> void:
 	view.flash_screen()
 	var piece_node: Node = get_piece_view(king)
 	if king is MinotaurKing and is_instance_valid(piece_node):
@@ -621,7 +666,9 @@ func _confirm_ability_windup(king: KingPiece, clear_target_highlights: bool) -> 
 
 func _cancel_ability_windup(king: KingPiece, clear_target_highlights: bool, play_powerdown_sound: bool) -> void:
 	var magic := _get_king_magic(king)
-	if is_instance_valid(magic): magic.set_targeting(false)
+	if is_instance_valid(magic):
+		magic.set_targeting(false)
+		magic.cancel_ability_hand()
 	if clear_target_highlights:
 		view.clear_highlights()
 	var piece_node: Node = get_piece_view(king)
@@ -643,6 +690,29 @@ func _on_selection_piece_processing(piece: ModelPiece) -> void:
 	selection_effect_piece = piece
 	if piece is NecromancerKing:
 		_show_necromancer_aura(piece)
+
+
+func _on_reaction_selection_preparing(calling_piece: ModelPiece, action_type: String, _targets: Array, completion: CompletionGate) -> void:
+	if action_type != "raise_dead" or not calling_piece is NecromancerKing:
+		return
+	if not presentation_policy.should_hold_completion_gate():
+		_reveal_ability_windup(calling_piece)
+		return
+	completion.hold()
+	var hand_profile := _get_ability_hand_profile(calling_piece, &"raise_dead")
+	var magic := _get_king_magic(calling_piece)
+	if is_instance_valid(magic):
+		await magic.prepare_ability_hand(hand_profile.pre_reveal_hover_duration)
+	_reveal_ability_windup(calling_piece)
+	if is_instance_valid(magic):
+		await magic.finish_stationary_ability_hand(hand_profile.post_reveal_hold_duration)
+	completion.release()
+
+
+func _get_ability_hand_profile(king: KingPiece, ability_id: StringName) -> Resource:
+	if ability_presentations != null and ability_presentations.has_method("find_hand_profile"):
+		return ability_presentations.find_hand_profile(king.get_position_type_id(), ability_id)
+	return AbilityHandProfile.new()
 
 
 func _on_selection_piece_processed() -> void:
