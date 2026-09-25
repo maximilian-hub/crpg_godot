@@ -626,7 +626,7 @@ func place_promoted_piece_with_hand(queen_node: Node2D, destination: Vector2i) -
 		destination_depth
 	)
 
-func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i, arrival_callback: Callable = Callable()) -> bool:
+func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i, arrival_callback: Callable = Callable(), impact_callback: Callable = Callable()) -> bool:
 	if not is_instance_valid(attacker_node) or not is_instance_valid(defender_node):
 		return false
 	var hand_rig := _get_piece_hand_rig(attacker_node)
@@ -635,6 +635,7 @@ func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from
 		attacker_node.coordinate = to
 		_update_piece_depth(attacker_node)
 		await _tween_piece_to(attacker_node, destination)
+		if impact_callback.is_valid(): impact_callback.call()
 		if arrival_callback.is_valid(): arrival_callback.call()
 		return false
 
@@ -643,6 +644,10 @@ func capture_piece_node_with_hand(attacker_node: Node, defender_node: Node, from
 	if arrival_callback.is_valid():
 		hand_rig.piece_released.connect(func(released: Node2D):
 			if released == attacker_node: arrival_callback.call()
+		, CONNECT_ONE_SHOT)
+	if impact_callback.is_valid():
+		hand_rig.captured_piece_grabbed.connect(func(captured: Node2D):
+			if captured == defender_node: impact_callback.call()
 		, CONNECT_ONE_SHOT)
 	var carried_offscreen: bool = await hand_rig.play_piece_capture(attacker_node, defender_node, destination, get_world_scale(), destination_z_index)
 	_update_piece_depth(attacker_node)

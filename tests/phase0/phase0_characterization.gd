@@ -56,6 +56,7 @@ func _run_suite() -> void:
 	await _test_minotaur_rage_barrier()
 	await _test_active_bone_pawn_summon_presentation()
 	await _test_rage_raise_dead_death_square_target()
+	await _test_raise_dead_reaction_trigger_bursts()
 	await _test_terminal_rank_raise_dead_expiration()
 	await _test_rage_priority_before_raise_dead()
 	await _test_raise_dead_selection_resume()
@@ -457,7 +458,7 @@ func _test_player_hand_capture_presentation() -> void:
 	_expect(observation.get("clack_vfx", false), "ordinary capture pickup emits the shared clack burst without duplicating its existing sound")
 	_expect(is_equal_approx(rad_to_deg(rig.get_node("CapturedPiecePivot").rotation), rig.captured_piece_rotation_degrees), "captured piece finishes at its configured carry angle")
 	_expect(model.board[5][0] == rook and rook_view.position == context.view.get_piece_rest_position(rook_view, Vector2i(5, 0)), "hand-carried attacker occupies the captured piece's square at its varied resting position")
-	_expect(removal_timeline == ["hand_finished", "defender_destroyed"], "captured defender is destroyed only after the hand retreats offscreen")
+	_expect(removal_timeline == ["defender_destroyed", "hand_finished"], "captured defender becomes authoritatively destroyed at pickup while its view remains through hand retreat")
 	_expect(context.adapter.get_piece_view(bishop) == null and not is_instance_valid(bishop_view), "captured defender is silently removed after leaving the viewport")
 	_expect(_count_children_named(context.view, &"Explosion") == 0, "hand-carried defender does not spawn a capture explosion")
 
@@ -754,7 +755,7 @@ func _test_nonlethal_attack_presentation() -> void:
 	rig.attack_slam_duration = 0.01
 	rig.attack_rebound_duration = 0.01
 	rig.retreat_duration = 0.01
-	var observation := {"attack_events": 0, "action_open": false, "gate_pending": false, "grabbed": false, "released": false, "visuals_delayed": false, "visuals_at_contact": false}
+	var observation := {"attack_events": 0, "action_open": false, "gate_pending": false, "grabbed": false, "released": false, "visuals_delayed": false, "visuals_at_contact": false, "reaction_delayed": false, "reaction_at_contact": false}
 	var carry_paths: Array[StringName] = []
 	model.piece_attack_committed.connect(
 		func(piece: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, gate: CompletionGate):
@@ -768,10 +769,12 @@ func _test_nonlethal_attack_presentation() -> void:
 		func(piece_node: Node2D):
 			observation["grabbed"] = piece_node == rook_view and piece_node.get_parent() == rig.piece_slot
 			observation["visuals_delayed"] = minotaur.current_hp < minotaur.max_hp and hp_bar.current_hp == initial_displayed_hp and _count_children_named(context.view, &"BloodSplatter") == 0
+			observation["reaction_delayed"] = context.adapter.pending_damage_reactions.has(minotaur) and not context.adapter.reaction_sound_scheduled
 	)
 	rig.attack_contact.connect(
 		func(piece_node: Node2D):
 			observation["visuals_at_contact"] = piece_node == rook_view and hp_bar.current_hp == minotaur.current_hp and _count_children_named(context.view, &"BloodSplatter") == 1
+			observation["reaction_at_contact"] = piece_node == rook_view and context.adapter.reaction_sound_scheduled and not context.adapter.pending_damage_reactions.has(minotaur)
 	)
 	rig.piece_released.connect(func(piece_node: Node2D): observation["released"] = piece_node == rook_view and piece_node.get_parent() == context.view.get_node("Pieces"))
 	rig.carry_path_started.connect(func(path: StringName): carry_paths.append(path))
@@ -782,6 +785,7 @@ func _test_nonlethal_attack_presentation() -> void:
 	_expect(observation["action_open"] and observation["gate_pending"], "nonlethal attack animation runs inside the open Model action")
 	_expect(observation["grabbed"] and observation["released"] and carry_paths == [&"slam"], "player ranged attack is carried through a hand-rig slam and rebound")
 	_expect(observation["visuals_delayed"] and observation["visuals_at_contact"], "damage HP, splatter, and sound presentation begins when the hand-carried attacker contacts the king")
+	_expect(observation["reaction_delayed"] and observation["reaction_at_contact"], "Retaliate feedback waits through hand approach and releases at Minotaur damage contact")
 	_expect(minotaur.current_hp == minotaur.max_hp - rook.attack_power, "animated nonlethal attack applies damage")
 	_expect(model.board[4][0] == rook and rook.coordinate == Vector2i(4, 0), "animated attacker remains on its Model square")
 	_expect(rook_view.coordinate == Vector2i(4, 0), "attack animation does not change the PieceView coordinate")
@@ -1140,6 +1144,47 @@ func _test_rage_raise_dead_death_square_target() -> void:
 	_expect(model.board[3][4] is BonePawn, "composed Raise Dead summons on the Rage death square")
 	_expect(_count_summon_portals(context.view) == 0, "Raise Dead uses and cleans up the shared summon portal")
 	_expect(not controller.non_move_selection_mode, "death-square selection exits reaction mode")
+	await _destroy_game(context.game)
+
+
+func _test_raise_dead_reaction_trigger_bursts() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
+	var first_victim := Rook.new("white", Vector2i(3, 3))
+	var second_victim := Bishop.new("white", Vector2i(4, 4))
+	_reset_battle(model, context.controller, [necromancer, first_victim, second_victim])
+	var queued_coordinates: Array[Vector2i] = []
+	var queued_sequences: Array[int] = []
+	model.reaction_queued.connect(func(_piece: ModelPiece, action_type: String, event_data, sequence: int):
+		if action_type == "raise_dead":
+			queued_coordinates.append(event_data)
+			queued_sequences.append(sequence)
+	)
+
+	_expect(model.begin_action("white"), "multi-corpse reaction presentation action starts")
+	model.destroy_piece(first_victim, true)
+	model.destroy_piece(second_victim, true)
+	var anchors := get_tree().get_nodes_in_group(&"reaction_skull_anchor")
+	var anchor_positions: Array[Vector2] = []
+	for anchor in anchors:
+		if anchor.get_parent() == context.view:
+			anchor_positions.append(anchor.position)
+	_expect(queued_coordinates == [Vector2i(3, 3), Vector2i(4, 4)], "each eligible death emits its own queued Raise Dead event")
+	_expect(anchors.size() == 2 and anchors.all(func(anchor): return anchor.emitting and not anchor.one_shot), "same-beat eligible deaths create persistent skull anchors for every corpse")
+	_expect(context.view.cell_to_screen_center(3, 3) in anchor_positions and context.view.cell_to_screen_center(4, 4) in anchor_positions, "Raise Dead skull anchors use the geometric centers of the victims' former board squares")
+	var skull_material := anchors[0].process_material as ParticleProcessMaterial
+	_expect(skull_material.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_BOX and skull_material.emission_box_extents.x > 14.0 and skull_material.emission_box_extents.y > 14.0, "Raise Dead skulls emit across a broad area inside each square")
+	_expect(skull_material.direction.y < 0.0 and skull_material.spread < 45.0 and skull_material.gravity.y < 0.0, "Raise Dead skulls begin upward and gently accelerate upward")
+	_expect(context.adapter.reaction_sound_scheduled, "same-frame reactions share one deferred universal sound request")
+	await get_tree().process_frame
+	_expect(not context.adapter.reaction_sound_scheduled and context.adapter.reaction_sound_player.stream == context.adapter.reaction_trigger_sound, "same-frame reactions resolve to the configured universal sound without affecting skull bursts")
+	model.reaction_finished.emit(necromancer, "raise_dead", queued_coordinates[0], queued_sequences[0], true)
+	await get_tree().process_frame
+	_expect(not anchors[0].emitting and anchors[0].dismissing and anchors[1].emitting, "resolving one Raise Dead dismisses only its matching corpse anchor")
+	model.reaction_finished.emit(necromancer, "raise_dead", queued_coordinates[1], queued_sequences[1], false)
+	await get_tree().process_frame
+	_expect(not anchors[1].emitting and anchors[1].dismissing, "an expired Raise Dead opportunity also dismisses its corpse anchor")
 	await _destroy_game(context.game)
 
 

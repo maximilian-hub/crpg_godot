@@ -82,7 +82,6 @@ func charge(coord: Vector2i):
 		# Charge is a physical capture against a one-HP target: keep the
 		# defender's view planted until collision, then knock it off the board.
 		await model.actually_capture_piece(self, target_piece, coord, coord)
-		model.destroy_piece(target_piece, false)
 		return
 
 	await model.actually_move_piece(self, coord, Callable(self, "stun") if hit_wall else Callable())

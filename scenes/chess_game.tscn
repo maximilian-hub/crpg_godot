@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://d08pm3rm8pke7"]
+[gd_scene load_steps=19 format=3 uid="uid://d08pm3rm8pke7"]
 
 [ext_resource type="Script" uid="uid://cmaa2v0c21liv" path="res://scripts/core/chess_game.gd" id="1_wnm4a"]
 [ext_resource type="Script" uid="uid://btscqv5oft3hb" path="res://scripts/core/chess_model.gd" id="2_fv27a"]
@@ -16,6 +16,7 @@
 [ext_resource type="Resource" uid="uid://c6awk4axdemy3" path="res://assets/player_army_presentation.tres" id="15_player_presentation"]
 [ext_resource type="Resource" uid="uid://bn1bn30l1rhrs" path="res://assets/opponent_army_presentation.tres" id="16_opponent_presentation"]
 [ext_resource type="Script" uid="uid://dhg06o83mtgil" path="res://scripts/view/chess_screen_shake.gd" id="17_screen_shake"]
+[ext_resource type="AudioStream" uid="uid://c8reppkguwx7s" path="res://assets/audio/chess/interactions/default/reaction.wav" id="18_reaction"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qi3br"]
 bg_color = Color(0.1, 0.075, 0.14, 0.98)
@@ -212,6 +213,7 @@ controller = NodePath("../ChessController")
 view = NodePath("../CanvasLayer/ChessBoard")
 result_view = NodePath("../CanvasLayer/ResultOverlay")
 screen_shake = NodePath("../ScreenShake")
+reaction_trigger_sound = ExtResource("18_reaction")
 
 [connection signal="pressed" from="UI/WhitePlayerUIContainer/WhiteActiveButton" to="ChessController" method="_on_white_active_button_pressed"]
 [connection signal="pressed" from="UI/BlackPlayerUIContainer/BlackActiveButton" to="ChessController" method="_on_black_active_button_pressed"]

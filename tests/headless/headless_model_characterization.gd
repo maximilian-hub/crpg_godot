@@ -28,6 +28,7 @@ func _run() -> void:
 	await _test_special_moves()
 	await _test_minotaur_charge_landing()
 	await _test_headless_rage()
+	_test_reaction_queued_boundary()
 	await _test_rage_raise_dead_includes_death_square()
 	await _test_terminal_rank_raise_dead_expires_bone_pawn()
 	await _test_headless_reaction_priority()
@@ -45,6 +46,18 @@ func _test_completion_gate_contract() -> void:
 	_expect(not claimed.is_completed(), "claimed completion gate waits after emission closes")
 	claimed.release()
 	_expect(claimed.is_completed(), "claimed completion gate resolves after release")
+
+func _test_reaction_queued_boundary() -> void:
+	var model := _new_empty_model()
+	var minotaur := MinotaurKing.new("black", Vector2i(3, 3))
+	model.add_piece(minotaur, minotaur.coordinate)
+	var observed: Array[String] = []
+	model.reaction_queued.connect(func(_piece: ModelPiece, action_type: String, _event_data, _sequence: int): observed.append(action_type))
+	model.queue_selection_opportunity(minotaur, "retaliating_rage", null)
+	model.battle_over = true
+	model.queue_selection_opportunity(minotaur, "retaliating_rage", null)
+	_expect(observed == ["retaliating_rage"], "reaction_queued reports accepted opportunities but suppresses rejected post-battle reactions")
+	model.free()
 
 func _test_stun_timer_saturates_at_zero() -> void:
 	var model := ChessBoardModel.new()
@@ -451,6 +464,13 @@ func _test_model_owned_raise_dead_choice() -> void:
 	await model.continue_action_resolution()
 	_expect(model.has_pending_reaction(), "Model owns the pending Raise Dead decision")
 	var pending := model.get_pending_reaction()
+	var finished := {"action_type": "", "event_data": null, "sequence": -1, "resolved": false}
+	model.reaction_finished.connect(func(_piece: ModelPiece, action_type: String, event_data, sequence: int, resolved: bool):
+		finished.action_type = action_type
+		finished.event_data = event_data
+		finished.sequence = sequence
+		finished.resolved = resolved
+	, CONNECT_ONE_SHOT)
 	_expect(pending["calling_piece"] == necromancer, "pending decision identifies its reacting piece")
 	_expect(bishop.coordinate in pending["targets"], "direct destruction includes its empty death square")
 	var target: Vector2i = bishop.coordinate
@@ -458,6 +478,7 @@ func _test_model_owned_raise_dead_choice() -> void:
 	_expect(model.has_pending_reaction(), "invalid reaction choice preserves pending state")
 	_expect(await model.submit_reaction_selection(target), "valid reaction choice is accepted")
 	_expect(model.board[target.x][target.y] is BonePawn, "headless Raise Dead summons a Bone Pawn")
+	_expect(finished.get("action_type") == "raise_dead" and finished.get("event_data") == bishop.coordinate and finished.get("sequence") == pending["sequence"] and finished.get("resolved"), "Raise Dead completion identifies the exact corpse-origin queue entry after summoning")
 	_expect(not model.action_in_progress and model.current_turn == "black", "reaction submission resumes and finishes the action")
 	model.free()
 

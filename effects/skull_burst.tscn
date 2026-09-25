@@ -1,0 +1,36 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://effects/skull_burst.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://b6o2sns7qwf53" path="res://assets/particle/particle_skull.png" id="2_skull"]
+
+[sub_resource type="Gradient" id="Gradient_skull_burst"]
+offsets = PackedFloat32Array(0, 0.16, 0.68, 1)
+colors = PackedColorArray(0.435294, 0.00392157, 0.764706, 0, 0.52, 0.08, 0.86, 1, 0.436471, 0.00232327, 0.765236, 0.9, 0.435294, 0.00392157, 0.764706, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture_skull_burst"]
+gradient = SubResource("Gradient_skull_burst")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_skull_burst"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(34, 24, 1)
+direction = Vector3(0, -1, 0)
+spread = 24.0
+initial_velocity_min = 22.0
+initial_velocity_max = 38.0
+angular_velocity_min = -90.0
+angular_velocity_max = 90.0
+gravity = Vector3(0, -18, 0)
+scale_min = 1.5
+scale_max = 3.25
+color_ramp = SubResource("GradientTexture_skull_burst")
+
+[node name="RaiseDeadSkullAnchor" type="GPUParticles2D"]
+z_index = 74
+texture_filter = 1
+amount = 14
+lifetime = 1.8
+randomness_ratio = 0.45
+texture = ExtResource("2_skull")
+process_material = SubResource("ParticleProcessMaterial_skull_burst")
+script = ExtResource("1_script")

@@ -27,6 +27,7 @@ const KingPresentationProfile = preload("res://scripts/view/chess_king_presentat
 # await the animation, and then release the gate.
 
 const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
+const SKULL_BURST_SCENE := preload("res://effects/skull_burst.tscn")
 
 @export var model: ChessBoardModel
 @export var controller: ChessBoardController
@@ -39,6 +40,8 @@ const SKULL_AURA_SCENE := preload("res://effects/skull_aura.tscn")
 @export var cooldown_presentation_profile: Resource = DEFAULT_COOLDOWN_PRESENTATION
 @export var arakne_skitter_sound: AudioStream
 @export_range(-80.0, 24.0, 0.1) var arakne_skitter_volume_db := 0.0
+@export var reaction_trigger_sound: AudioStream
+@export_range(-80.0, 24.0, 0.1) var reaction_trigger_volume_db := 0.0
 @export_range(0.0, 2.0, 0.05) var nonlocal_ability_reveal_duration := 0.6
 
 var piece_views: Dictionary = {}
@@ -56,16 +59,24 @@ var active_king_deaths: Array[Node] = []
 var pending_projectile_defeats: Dictionary = {}
 var presented_promotions: Dictionary = {}
 var skitter_sound_player := AudioStreamPlayer.new()
+var reaction_sound_player := AudioStreamPlayer.new()
+var reaction_sound_scheduled := false
 var pending_skitter_steps: Dictionary = {}
 var pending_charge_aura_impacts: Dictionary = {}
 var committed_charge_actions: Dictionary = {}
 var locally_previewed_abilities: Dictionary = {}
+var retained_capture_piece_views: Dictionary = {}
+var pending_damage_reactions: Dictionary = {}
+var raise_dead_skull_anchors: Dictionary = {}
 
 
 func _ready() -> void:
 	skitter_sound_player.name = "ArakneSkitterSound"
 	skitter_sound_player.bus = &"SFX"
 	add_child(skitter_sound_player)
+	reaction_sound_player.name = "ReactionTriggerSound"
+	reaction_sound_player.bus = &"SFX"
+	add_child(reaction_sound_player)
 	if presentation_policy == null:
 		presentation_policy = PresentationPolicy.new()
 	_apply_presentation_policy()
@@ -87,6 +98,8 @@ func _ready() -> void:
 	model.ability_started.connect(_on_ability_started)
 	model.targeted_ability_committed.connect(_on_targeted_ability_committed)
 	model.reaction_selection_preparing.connect(_on_reaction_selection_preparing)
+	model.reaction_queued.connect(_on_reaction_queued)
+	model.reaction_finished.connect(_on_reaction_finished)
 	model.ability_effect_resolved.connect(_on_ability_effect_resolved)
 	model.battle_finished.connect(_on_battle_finished)
 	controller.ability_targeting_started.connect(_on_ability_targeting_started)
@@ -147,6 +160,9 @@ func _on_board_rebuilt(board: Array) -> void:
 	pending_charge_aura_impacts.clear()
 	committed_charge_actions.clear()
 	locally_previewed_abilities.clear()
+	retained_capture_piece_views.clear()
+	pending_damage_reactions.clear()
+	_clear_raise_dead_skull_anchors()
 	selection_effect_piece = null
 	player_move_submission_active = false
 	piece_views = view.rebuild_board(board)
@@ -264,6 +280,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		view.snap_piece_node(attacker_node, to, not (attacker is KingPiece))
 		return
 
+	retained_capture_piece_views[defender] = true
 	presentation.claim()
 	if defender is KingPiece and is_instance_valid(defender_node):
 		var is_charge_impact := is_committed_charge
@@ -277,6 +294,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 			# ordinary hit feedback explicitly at physical contact. The splatter
 			# scene owns the universal hurt sound as well as the blood animation.
 			_present_damage_splatter(defender, defender_node)
+			presentation.mark_impact()
 			if is_charge_impact:
 				_disperse_pending_charge_aura(attacker, attacker_node)
 			death_effect.play()
@@ -296,31 +314,40 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 		if not death_effect.running and not death_effect.finished: death_effect.play()
 		if not death_effect.result_ready: await death_effect.result_ready_for_display
 		persistent_king_corpses[defender] = true
+		_finalize_retained_capture_view(defender, defender_node, true)
 		presentation.finish_aftermath()
 		return
 	if attacker is KingPiece:
 		var magic := _get_king_magic(attacker)
 		if magic != null and is_instance_valid(defender_node):
+			magic.capture_impact.connect(func(_defender: PieceView): presentation.mark_impact(), CONNECT_ONE_SHOT)
 			if pending_charge_aura_impacts.has(attacker):
 				magic.capture_impact.connect(
 					func(_defender: PieceView): _disperse_pending_charge_aura(attacker, attacker_node),
 					CONNECT_ONE_SHOT
 				)
 			await magic.play_capture(from, to, defender_node, func(): presentation.mark_arrived(attacker))
-			silently_removed_piece_views[defender] = true
 		else:
-			await _play_unpowered_king_move(attacker_node, to, func(): presentation.mark_arrived(attacker))
+			await _play_unpowered_king_move(attacker_node, to, func():
+				presentation.mark_impact()
+				presentation.mark_arrived(attacker)
+			)
 			_disperse_pending_charge_aura(attacker, attacker_node)
+		_finalize_retained_capture_view(defender, defender_node, false)
 		presentation.finish_aftermath()
 		return
 	var carried_offscreen := false
 	if is_instance_valid(defender_node):
-		carried_offscreen = await view.capture_piece_node_with_hand(attacker_node, defender_node, from, to, func(): presentation.mark_arrived(attacker))
+		carried_offscreen = await view.capture_piece_node_with_hand(
+			attacker_node, defender_node, from, to,
+			func(): presentation.mark_arrived(attacker),
+			func(): presentation.mark_impact()
+		)
 	else:
 		await view.move_piece_node(attacker_node, to)
+		presentation.mark_impact()
 		presentation.mark_arrived(attacker)
-	if carried_offscreen:
-		silently_removed_piece_views[defender] = true
+	_finalize_retained_capture_view(defender, defender_node, false)
 	presentation.finish_aftermath()
 
 
@@ -363,6 +390,8 @@ func _on_piece_destroyed(piece: ModelPiece) -> void:
 	pending_charge_aura_impacts.erase(piece)
 	committed_charge_actions.erase(piece)
 	locally_previewed_abilities.erase(piece)
+	if retained_capture_piece_views.has(piece):
+		return
 	var piece_node: Node = piece_views.get(piece)
 	var magic: Node = king_magic_controllers.get(piece)
 	var death_profile: Resource = king_death_profile if piece is KingPiece else null
@@ -408,6 +437,7 @@ func _dispose_king_magic(magic: Node) -> void:
 
 
 func _on_battle_finished(winner_color: String) -> void:
+	_clear_raise_dead_skull_anchors()
 	for effect in active_king_deaths:
 		if is_instance_valid(effect) and not effect.result_ready:
 			await effect.result_ready_for_display
@@ -468,6 +498,7 @@ func _flush_pending_attack_damage(piece: ModelPiece) -> void:
 	var queued_visuals: Array = pending_attack_damage_visuals[piece]
 	while not queued_visuals.is_empty():
 		_present_piece_damage(piece, int(queued_visuals.pop_front()))
+	_release_pending_damage_reactions(piece)
 
 
 func _present_piece_damage(piece: ModelPiece, current_hp: int) -> void:
@@ -707,6 +738,88 @@ func _on_reaction_selection_preparing(calling_piece: ModelPiece, action_type: St
 	if is_instance_valid(magic):
 		await magic.finish_stationary_ability_hand(hand_profile.post_reveal_hold_duration)
 	completion.release()
+
+
+func _on_reaction_queued(calling_piece: ModelPiece, action_type: String, event_data, sequence: int) -> void:
+	if action_type == "retaliating_rage" and pending_attack_damage_visuals.has(calling_piece):
+		var pending: Array = pending_damage_reactions.get(calling_piece, [])
+		pending.append({"action_type": action_type, "event_data": event_data, "sequence": sequence})
+		pending_damage_reactions[calling_piece] = pending
+		return
+	_present_queued_reaction(action_type, event_data, sequence)
+
+
+func _present_queued_reaction(action_type: String, event_data, sequence: int) -> void:
+	_schedule_reaction_sound()
+	if action_type == "raise_dead" and event_data is Vector2i:
+		_spawn_raise_dead_skull_anchor(event_data, sequence)
+
+
+func _release_pending_damage_reactions(piece: ModelPiece) -> void:
+	var pending: Array = pending_damage_reactions.get(piece, [])
+	pending_damage_reactions.erase(piece)
+	for reaction in pending:
+		_present_queued_reaction(reaction.action_type, reaction.event_data, reaction.sequence)
+
+
+func _on_reaction_finished(_calling_piece: ModelPiece, action_type: String, _event_data, sequence: int, _resolved: bool) -> void:
+	if action_type != "raise_dead":
+		return
+	var anchor: Node = raise_dead_skull_anchors.get(sequence)
+	raise_dead_skull_anchors.erase(sequence)
+	if is_instance_valid(anchor):
+		anchor.dismiss()
+
+
+func _finalize_retained_capture_view(piece: ModelPiece, piece_node: Node, keep_corpse: bool) -> void:
+	retained_capture_piece_views.erase(piece)
+	piece_views.erase(piece)
+	necromancer_auras.erase(piece)
+	var magic: Node = king_magic_controllers.get(piece)
+	king_magic_controllers.erase(piece)
+	if not keep_corpse and is_instance_valid(piece_node):
+		view.remove_piece(piece_node)
+	if not keep_corpse and is_instance_valid(magic):
+		_dispose_king_magic(magic)
+
+
+func _schedule_reaction_sound() -> void:
+	if reaction_sound_scheduled:
+		return
+	reaction_sound_scheduled = true
+	_play_coalesced_reaction_sound.call_deferred()
+
+
+func _play_coalesced_reaction_sound() -> void:
+	reaction_sound_scheduled = false
+	if reaction_trigger_sound == null:
+		return
+	reaction_sound_player.stream = reaction_trigger_sound
+	reaction_sound_player.volume_db = reaction_trigger_volume_db
+	reaction_sound_player.play()
+
+
+func _spawn_raise_dead_skull_anchor(coordinate: Vector2i, sequence: int) -> void:
+	if not model.is_in_bounds(coordinate.x, coordinate.y):
+		return
+	var anchor := SKULL_BURST_SCENE.instantiate() as GPUParticles2D
+	view.add_child(anchor)
+	var cell_polygon := view.projection.get_cell_polygon(coordinate)
+	var cell_bounds := Rect2(cell_polygon[0], Vector2.ZERO)
+	for point in cell_polygon:
+		cell_bounds = cell_bounds.expand(point)
+	anchor.position = view.cell_to_screen_center(coordinate.x, coordinate.y)
+	# A broad inset rectangle reads as the whole square without bleeding over the
+	# perspective-slanted edges of the projected cell.
+	anchor.configure_emission_footprint(cell_bounds.size * Vector2(0.72, 0.68))
+	raise_dead_skull_anchors[sequence] = anchor
+
+
+func _clear_raise_dead_skull_anchors() -> void:
+	for anchor in raise_dead_skull_anchors.values():
+		if is_instance_valid(anchor):
+			anchor.queue_free()
+	raise_dead_skull_anchors.clear()
 
 
 func _get_ability_hand_profile(king: KingPiece, ability_id: StringName) -> Resource:

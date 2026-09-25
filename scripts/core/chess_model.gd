@@ -46,6 +46,8 @@ signal ability_effect_resolved(piece: KingPiece, ability_name: String, affected_
 signal reaction_selection_requested(calling_piece: ModelPiece, action_type: String, targets: Array)
 signal reaction_selection_preparing(calling_piece: ModelPiece, action_type: String, targets: Array, completion: CompletionGate)
 signal reaction_selection_resolved(calling_piece: ModelPiece, action_type: String, target: Vector2i)
+signal reaction_queued(calling_piece: ModelPiece, action_type: String, event_data, sequence: int)
+signal reaction_finished(calling_piece: ModelPiece, action_type: String, event_data, sequence: int, resolved: bool)
 
 var battle_over: bool = false
 var battle_result: String = ""
@@ -685,9 +687,11 @@ func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: V
 	piece.coordinate = to
 	piece.has_moved = true
 
-	var presentation := PieceArrivalContext.new([piece])
+	var presentation := PieceArrivalContext.new([piece], true)
 	piece_capture_committed.emit(piece, captured_piece, from, to, captured_at, presentation)
 	presentation.close_claims()
+	await presentation.wait_for_impact()
+	destroy_piece(captured_piece, false)
 	await presentation.wait_for_arrival(piece)
 	await _announce_piece_landed(piece, from, to)
 	await presentation.wait_for_aftermath()
@@ -790,7 +794,6 @@ func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
 
 	var captured_at := Vector2i(captured_row, captured_col)
 	await actually_capture_piece(piece, captured_piece, to, captured_at)
-	destroy_piece(captured_piece, false)
 
 # Assumes a piece is moving to attack another piece.
 #func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
@@ -845,9 +848,6 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
 
 			await actually_capture_piece(attacker, defender_instance, to, to)
-
-			# Now destroy the defender. Pass false because actually_move_piece already overwrote the square.
-			destroy_piece(defender_instance, false) 
 
 		else: # Defender survives, takes damage, attacker stays put
 			await announce_piece_attack(attacker, defender, attacker.coordinate, to, damage)
@@ -1076,6 +1076,7 @@ func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String,
 		"sequence": selection_sequence,
 		"event_data": event_data
 	})
+	reaction_queued.emit(calling_piece, action_type, event_data, selection_sequence)
 	print("Queued reaction: ", action_type, " for ", calling_piece.color)
 
 ## Drain automatic/choice reactions. A choice pauses this function; the chosen
@@ -1100,6 +1101,7 @@ func continue_action_resolution() -> void:
 		var opportunity: Dictionary = selection_queue.pop_front()
 		var calling_piece: ModelPiece = opportunity["calling_piece"]
 		if not is_piece_active(calling_piece):
+			reaction_finished.emit(calling_piece, opportunity["action_type"], opportunity["event_data"], opportunity["sequence"], false)
 			continue
 
 		var action_type: String = opportunity["action_type"]
@@ -1110,6 +1112,7 @@ func continue_action_resolution() -> void:
 		# continue the exchange before lower-priority selection reactions.
 		if action_type == "retaliating_rage":
 			await calling_piece.resolve_automatic_reaction(action_type, event_data)
+			reaction_finished.emit(calling_piece, action_type, event_data, opportunity["sequence"], true)
 
 			# Let the already-running effect finish, but do not begin another
 			# reaction after it defeats a king.
@@ -1123,6 +1126,7 @@ func continue_action_resolution() -> void:
 
 		# Earlier reactions may have occupied every valid square. Skip cleanly.
 		if targets.is_empty():
+			reaction_finished.emit(calling_piece, action_type, event_data, opportunity["sequence"], false)
 			continue
 
 		var selection_completion := CompletionGate.new()
@@ -1135,6 +1139,7 @@ func continue_action_resolution() -> void:
 			"calling_piece": calling_piece,
 			"action_type": action_type,
 			"event_data": event_data,
+			"sequence": opportunity["sequence"],
 			"targets": targets.duplicate(),
 		}
 		reaction_selection_requested.emit(calling_piece, action_type, targets.duplicate())
@@ -1163,9 +1168,12 @@ func submit_reaction_selection(coord: Vector2i) -> bool:
 		return false
 
 	var action_type: String = pending_reaction["action_type"]
+	var event_data = pending_reaction["event_data"]
+	var sequence: int = pending_reaction["sequence"]
 	pending_reaction.clear()
 	await calling_piece._on_special_target_selected(coord)
 	reaction_selection_resolved.emit(calling_piece, action_type, coord)
+	reaction_finished.emit(calling_piece, action_type, event_data, sequence, true)
 	await continue_action_resolution()
 	return true
 

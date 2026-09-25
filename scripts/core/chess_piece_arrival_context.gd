@@ -7,9 +7,12 @@ class_name ChessPieceArrivalContext
 
 var arrival_gates: Dictionary = {}
 var aftermath_gate := CompletionGate.new()
+var impact_gate := CompletionGate.new()
+var tracks_impact := false
 
 
-func _init(pieces: Array) -> void:
+func _init(pieces: Array, include_impact := false) -> void:
+	tracks_impact = include_impact
 	for piece in pieces:
 		arrival_gates[piece] = CompletionGate.new()
 
@@ -18,12 +21,26 @@ func claim() -> void:
 	for gate: CompletionGate in arrival_gates.values():
 		gate.hold()
 	aftermath_gate.hold()
+	if tracks_impact:
+		impact_gate.hold()
 
 
 func close_claims() -> void:
 	for gate: CompletionGate in arrival_gates.values():
 		gate.close()
 	aftermath_gate.close()
+	if tracks_impact:
+		impact_gate.close()
+
+
+func mark_impact() -> void:
+	if tracks_impact and not impact_gate.is_completed():
+		impact_gate.release()
+
+
+func wait_for_impact() -> void:
+	if tracks_impact:
+		await impact_gate.wait_until_released()
 
 
 func mark_arrived(piece: ModelPiece) -> void:
