@@ -10,3 +10,4 @@ display_height = 64.0
 grip_anchor = Vector2(0, -37)
 cooldown_anchor_offset = Vector2(0, 0)
 selection_orb_offset = Vector2(0, 0)
+charge_aura_offset = Vector2(0, 0)

@@ -146,6 +146,13 @@ func _ready() -> void:
 	lab.sequence._fire_crackle(0)
 	var fixed_king_target: Vector2 = lab.lightning.to_local(lab.preview_king.sprite.global_position)
 	_check(lab.lightning.points[lab.lightning.points.size() - 1] == fixed_king_target, "Response-opening crackle uses the original fixed King target")
+	var crackle_player := lab.sequence.audio_players.get(&"crackle") as AudioStreamPlayer
+	var sampled_crackle_streams: Dictionary = {}
+	lab.sequence.crackle_audio_rng.seed = 7341
+	for crackle_index in range(12):
+		lab.sequence._play_crackle()
+		sampled_crackle_streams[crackle_player.stream] = true
+	_check(crackle_player != null and crackle_player.playing and sampled_crackle_streams.size() > 1, "Each ritual crackle randomly selects and plays one of the activation crackle sounds")
 	lab.sequence._fire_crackle(99)
 	var crackle_position: Vector2 = lab.preview_hand.position
 	_check(crackle_position != hover_position, "A crackle blinks the hand toward the King Piece")
