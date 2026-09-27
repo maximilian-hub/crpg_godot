@@ -151,8 +151,13 @@ func _ready() -> void:
 	lab.sequence.crackle_audio_rng.seed = 7341
 	for crackle_index in range(12):
 		lab.sequence._play_crackle()
-		sampled_crackle_streams[crackle_player.stream] = true
-	_check(crackle_player != null and crackle_player.playing and sampled_crackle_streams.size() > 1, "Each ritual crackle randomly selects and plays one of the activation crackle sounds")
+		var played_index: int = (lab.sequence.next_crackle_player + lab.sequence.crackle_players.size() - 1) % lab.sequence.crackle_players.size()
+		sampled_crackle_streams[lab.sequence.crackle_players[played_index].stream] = true
+	var playing_crackle_players := 0
+	for pooled_player in lab.sequence.crackle_players:
+		if pooled_player.playing: playing_crackle_players += 1
+	_check(crackle_player != null and sampled_crackle_streams.size() > 1, "Each ritual crackle randomly selects and plays one of the activation crackle sounds")
+	_check(lab.sequence.crackle_players.size() == 4 and playing_crackle_players == 4, "Crackles rotate across four audio players so rapid climax bolts can overlap")
 	lab.sequence._fire_crackle(99)
 	var crackle_position: Vector2 = lab.preview_hand.position
 	_check(crackle_position != hover_position, "A crackle blinks the hand toward the King Piece")
@@ -230,7 +235,7 @@ func _ready() -> void:
 	for expected_phase in [lab.sequence.Phase.APPROACH, lab.sequence.Phase.INVOCATION, lab.sequence.Phase.RESPONSE, lab.sequence.Phase.BUILDUP, lab.sequence.Phase.CLIMAX, lab.sequence.Phase.AFTERIMAGE, lab.sequence.Phase.COMPLETE]:
 		_check(expected_phase in phases, "Activation ritual enters phase %s" % lab.sequence.Phase.keys()[expected_phase])
 	_check(&"hand_hum" in cues and &"king_hum" in cues and &"crackle" in cues and &"beam" in cues and &"resolve" in cues, "Activation ritual exposes every planned audio hook")
-	_check(cues.count(&"crackle") == 3, "Response crackle and in-range authored buildup crackles fire while overflow timing remains stored and silent")
+	_check(cues.count(&"crackle") == 3 + lab.activation_profile.climax_beam_count, "Response, in-range buildup, and every climax bolt play crackles while overflow timing remains stored and silent")
 	_check(is_equal_approx(lab.preview_king.sprite.self_modulate.a, 1.0) and not lab.stone_sprite.visible, "Completion leaves the authored army-colored king revealed")
 	_check(is_equal_approx(lab.king_aura.silhouette_power, lab.activation_profile.resting_aura_power) and is_equal_approx(lab.king_aura.particle_power, lab.activation_profile.resting_particle_power) and is_zero_approx(lab.hand_aura.power) and lab.lightning.points.is_empty(), "Completion retains the King's independently configured resting aura channels")
 	_check(lab.preview_hand.position == lab.sequence.hand_rest_position and not lab.preview_hand.visible, "Completion clears tremor and hides the hand at its off-board rest position")

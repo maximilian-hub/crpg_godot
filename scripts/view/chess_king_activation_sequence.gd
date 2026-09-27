@@ -14,7 +14,9 @@ const CRACKLE_STREAMS := [
 	preload("res://assets/audio/chess/activation/crackle_2.wav"),
 	preload("res://assets/audio/chess/activation/crackle_3.wav"),
 ]
-const CRACKLE_VOLUME_DB := -3.0
+const BUILDUP_CRACKLE_VOLUME_DB := -3.0
+const CLIMAX_CRACKLE_VOLUME_DB := 0
+const CRACKLE_PLAYER_COUNT := 4
 
 var profile: Resource
 var hand_root: Node2D
@@ -25,6 +27,8 @@ var hand_aura: ChessAura2D
 var king_aura: ChessAura2D
 var lightning: Node2D
 var audio_players: Dictionary = {}
+var crackle_players: Array[AudioStreamPlayer] = []
+var next_crackle_player := 0
 var elapsed := 0.0
 var playback_speed := 1.0
 var running := false
@@ -74,7 +78,7 @@ func configure(
 	lightning = lightning_effect
 	audio_players = players
 	crackle_audio_rng.randomize()
-	_ensure_crackle_player()
+	_ensure_crackle_players()
 	base_hand_position = hand_root.position
 	hand_rest_position = rest_position if is_finite(rest_position.x) and is_finite(rest_position.y) else base_hand_position
 	hand_motion_scale = maxf(motion_scale, 0.01)
@@ -123,6 +127,7 @@ func restart(autoplay := true) -> void:
 	last_tremor_tick = -1
 	active_crackle_until = -1.0
 	active_climax_beam_index = -1
+	next_crackle_player = 0
 	tremor_offset = Vector2.ZERO
 	lightning_hand_offset = Vector2.ZERO
 	crackle_hand_target = Vector2.ZERO
@@ -515,6 +520,7 @@ func _show_climax_beam(index: int) -> void:
 	# The climax uses the canonical fixed target so it reads as one focused beam.
 	_configure_lightning(true, profile.beam_branch_count, profile.beam_width, profile.random_seed + 900 + index * 113, -1, true)
 	lightning.show_strength(1.0)
+	_play_crackle(CLIMAX_CRACKLE_VOLUME_DB)
 
 
 func _fire_crackle(index: int) -> void:
@@ -528,7 +534,7 @@ func _fire_crackle(index: int) -> void:
 	_configure_lightning(false, 0, profile.crackle_width, path_seed, path_seed + 10000, index == 0)
 	lightning.show_strength(1.0)
 	active_crackle_until = elapsed + profile.crackle_duration
-	_play_crackle()
+	_play_crackle(BUILDUP_CRACKLE_VOLUME_DB)
 
 
 func _configure_lightning(beam: bool, branch_count: int, line_width: float, seed: int, target_seed := -1, use_fixed_target := false) -> void:
@@ -603,29 +609,46 @@ func _play_one_shot(cue: StringName) -> void:
 		player.play()
 
 
-func _play_crackle() -> void:
+func _play_crackle(volume_db := BUILDUP_CRACKLE_VOLUME_DB) -> void:
 	audio_cue.emit(&"crackle")
-	var player := _ensure_crackle_player()
-	if player == null or CRACKLE_STREAMS.is_empty():
+	_ensure_crackle_players()
+	if crackle_players.is_empty() or CRACKLE_STREAMS.is_empty():
 		return
+	var player := crackle_players[next_crackle_player]
+	next_crackle_player = (next_crackle_player + 1) % crackle_players.size()
 	player.stream = CRACKLE_STREAMS[crackle_audio_rng.randi_range(0, CRACKLE_STREAMS.size() - 1)]
+	player.volume_db = volume_db
 	player.play()
 
 
-func _ensure_crackle_player() -> AudioStreamPlayer:
-	var player := audio_players.get(&"crackle") as AudioStreamPlayer
-	if player != null:
-		return player
-	player = AudioStreamPlayer.new()
-	player.name = "CrackleAudio"
-	player.bus = &"SFX"
-	player.volume_db = CRACKLE_VOLUME_DB
-	add_child(player)
-	audio_players[&"crackle"] = player
-	return player
+func _ensure_crackle_players() -> void:
+	if crackle_players.size() == CRACKLE_PLAYER_COUNT:
+		return
+	crackle_players.clear()
+	var primary := audio_players.get(&"crackle") as AudioStreamPlayer
+	if primary == null:
+		primary = AudioStreamPlayer.new()
+		primary.name = "CrackleAudio1"
+		primary.bus = &"SFX"
+		primary.volume_db = BUILDUP_CRACKLE_VOLUME_DB
+		add_child(primary)
+		audio_players[&"crackle"] = primary
+	primary.volume_db = BUILDUP_CRACKLE_VOLUME_DB
+	crackle_players.append(primary)
+	for index in range(1, CRACKLE_PLAYER_COUNT):
+		var player := AudioStreamPlayer.new()
+		player.name = "CrackleAudio%d" % (index + 1)
+		player.bus = primary.bus
+		player.volume_db = primary.volume_db
+		add_child(player)
+		crackle_players.append(player)
 
 
 func _stop_player(cue: StringName) -> void:
+	if cue == &"crackle":
+		for crackle_player in crackle_players:
+			crackle_player.stop()
+		return
 	var player := audio_players.get(cue) as AudioStreamPlayer
 	if player != null:
 		player.stop()
@@ -635,9 +658,13 @@ func _stop_all_audio() -> void:
 	for player in audio_players.values():
 		if player is AudioStreamPlayer:
 			player.stop()
+	for index in range(1, crackle_players.size()):
+		crackle_players[index].stop()
 
 
 func _pause_audio(paused: bool) -> void:
 	for player in audio_players.values():
 		if player is AudioStreamPlayer:
 			player.stream_paused = paused
+	for index in range(1, crackle_players.size()):
+		crackle_players[index].stream_paused = paused
