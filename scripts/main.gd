@@ -20,6 +20,7 @@ enum BattlePresentationMode {
 
 @onready var active_content: Node = $ActiveContent
 @onready var fade_overlay: ColorRect = $TransitionLayer/FadeOverlay
+@onready var dialogue_presenter: DialoguePresenter = $DialoguePresentationLayer/DialoguePresenter
 
 var player_cell := Vector2i(-1, -1)
 var player_facing := Vector2i.UP
@@ -34,6 +35,7 @@ var battle_environment: ChessEnvironmentSurface = null
 var battle_frame: SubViewportContainer = null
 var battle_viewport: SubViewport = null
 var battle_shake_offset := Vector2.ZERO
+var dialogue_pending := false
 
 func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
@@ -116,15 +118,25 @@ static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
 	}
 
 func _on_challenge_requested(encounter_profile: ChessEncounterProfile) -> void:
-	if is_transitioning or active_overworld == null:
+	if is_transitioning or dialogue_pending or active_overworld == null:
 		return
 	player_cell = active_overworld.get_player_cell()
 	player_facing = active_overworld.get_player_facing()
+	active_overworld.set_world_input_enabled(false)
+	if encounter_state == "initial" and encounter_profile != null and not encounter_profile.pre_battle_dialogue_path.is_empty():
+		dialogue_pending = true
+		if dialogue_presenter.start_file(encounter_profile.pre_battle_dialogue_path, DialogueView.Placement.BOTTOM):
+			await dialogue_presenter.conversation_finished
+		dialogue_pending = false
+		if active_overworld == null:
+			return
 	encounter_state = "awaiting_result"
 	await _transition_to_battle(encounter_profile)
 
 func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> void:
 	is_transitioning = true
+	dialogue_pending = false
+	dialogue_presenter.stop()
 	active_overworld.set_world_input_enabled(false)
 	await _fade_to(1.0)
 	_clear_active_content()

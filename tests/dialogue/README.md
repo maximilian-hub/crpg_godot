@@ -9,6 +9,8 @@ Run the static dialogue-view checks with:
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_speaker_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_choice_characterization.tscn
 "/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_session_runner_characterization.tscn
+"/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_presenter_characterization.tscn
+"/Users/max/Desktop/crpg/Godot 4.app/Contents/MacOS/Godot" --headless --path . tests/dialogue/dialogue_game_flow_characterization.tscn
 ```
 
 Open `res://tools/dev_dialogue/dialogue_lab.tscn` in Godot to review the layout.

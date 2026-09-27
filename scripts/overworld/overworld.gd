@@ -83,6 +83,10 @@ func _can_talk_to_npc() -> bool:
 
 func _begin_challenge_dialogue() -> void:
 	npc.face_toward(player.grid_cell)
+	if encounter_state == "initial":
+		player.set_input_enabled(false)
+		challenge_requested.emit(npc.encounter_profile)
+		return
 	var pages := rematch_pages if encounter_state == "rematchable" else greeting_pages
 	_show_pages(pages)
 

@@ -341,6 +341,10 @@ func _apply_skin() -> void:
 		speaker_label.add_theme_font_override("font", skin.name_font)
 	else:
 		speaker_label.remove_theme_font_override("font")
+	if skin.choice_font != null:
+		choice_label.add_theme_font_override("font", skin.choice_font)
+	else:
+		choice_label.remove_theme_font_override("font")
 	dialogue_text.add_theme_font_size_override("normal_font_size", skin.body_font_size)
 	dialogue_text.add_theme_color_override("default_color", skin.body_color)
 	speaker_label.add_theme_font_size_override("font_size", skin.name_font_size)

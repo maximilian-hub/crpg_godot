@@ -140,11 +140,17 @@ func _test_overworld_scene() -> void:
 
 	player.configure(overworld.collision_grid, overworld.npc, Vector2i(6, 6), Vector2i.UP)
 	_check(overworld._can_talk_to_npc(), "idle adjacent player facing NPC can interact")
+	requested_profiles.clear()
 	overworld._begin_challenge_dialogue()
-	_check(overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "challenge opens page dialogue")
+	_check(overworld.dialogue_mode == Overworld.DialogueMode.CLOSED and requested_profiles == [overworld.npc.encounter_profile], "initial challenge delegates authored pre-battle dialogue to the game flow")
+	_check(overworld.player.movement_state == overworld.player.MovementState.INPUT_LOCKED, "initial challenge locks overworld movement while the shared presenter runs")
 	_check(overworld.npc.facing == Vector2i.DOWN and npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "challenge dialogue turns the NPC toward the player")
+	overworld.encounter_state = "rematchable"
+	overworld.player.set_input_enabled(true)
+	overworld._begin_challenge_dialogue()
+	_check(overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "rematch keeps the legacy page dialogue")
 	overworld._advance_page()
-	_check(overworld.dialogue_mode == Overworld.DialogueMode.CHOICE, "challenge pages lead to yes/no choice")
+	_check(overworld.dialogue_mode == Overworld.DialogueMode.CHOICE, "rematch pages lead to the legacy yes/no choice")
 	overworld._decline_challenge()
 	_check(overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "decline shows configured response")
 	overworld._advance_page()
@@ -161,6 +167,8 @@ func _test_main_starts_in_overworld() -> void:
 	await get_tree().process_frame
 	_check(main.active_overworld != null, "main starts with an overworld instance")
 	_check(main.active_battle == null, "main does not start directly in battle")
+	_check(main.dialogue_presenter.get_parent() == main.get_node("DialoguePresentationLayer"), "Main owns one persistent shared dialogue presenter outside active gameplay content")
+	_check((main.dialogue_presenter.get_parent() as CanvasLayer).layer < (main.get_node("TransitionLayer") as CanvasLayer).layer, "shared dialogue renders above gameplay and below the transition fade")
 	_check(main.active_overworld.get_player_cell() == Vector2i(6, 7), "main applies the scene-marker default player position")
 	var frame := main.active_content.get_node("OverworldFrame") as SubViewportContainer
 	var viewport := frame.get_node("OverworldViewport") as SubViewport
@@ -199,15 +207,27 @@ func _test_main_starts_in_overworld() -> void:
 	await get_tree().physics_frame
 	_check(main.active_overworld.get_player_cell().x < 6, "embedded overworld receives configured movement input")
 
-	main.player_cell = Vector2i(5, 7)
-	main.player_facing = Vector2i.LEFT
 	var forest_profile := main.active_overworld.npc.encounter_profile
-	await main._transition_to_battle(forest_profile)
+	_check(forest_profile.pre_battle_dialogue_path == "res://content/dialogue/hood_greeting.dialog", "forest encounter owns the authored Hood introduction")
+	main.active_overworld.player.configure(main.active_overworld.collision_grid, main.active_overworld.npc, Vector2i(5, 5), Vector2i.RIGHT)
+	main.dialogue_presenter.session_runner.set_instant_text(true)
+	main.active_overworld._begin_challenge_dialogue()
+	await get_tree().process_frame
+	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_greeting", "initial Hood interaction opens the authored conversation in the shared presenter")
+	_check(main.active_battle == null and main.active_overworld.player.movement_state == main.active_overworld.player.MovementState.INPUT_LOCKED, "battle waits for dialogue completion while overworld input remains locked")
+	while main.dialogue_presenter.active:
+		main.dialogue_presenter.confirm()
+	var dialogue_transition_timeout := 60
+	while main.active_battle == null and dialogue_transition_timeout > 0:
+		await get_tree().process_frame
+		dialogue_transition_timeout -= 1
+	_check(dialogue_transition_timeout > 0, "completing Hood's conversation releases the battle transition")
 	if main.active_battle.opening_in_progress:
 		main.active_battle.opening_director.finish_immediately()
 		await get_tree().process_frame
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
+	_check(is_instance_valid(main.dialogue_presenter) and main.dialogue_presenter.get_parent() == main.get_node("DialoguePresentationLayer"), "shared presenter survives the transition and remains available over chess")
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as ChessEnvironmentSurface
 	var environment_quad := battle_environment.mesh as QuadMesh
 	_check(environment_quad != null and environment_quad.size == main.get_viewport().get_visible_rect().size + Vector2(48, 36), "battle environment overscans native window space for maximum screen shake")
@@ -259,8 +279,8 @@ func _test_main_starts_in_overworld() -> void:
 		await get_tree().process_frame
 	_check(exit_results == ["win"], "confirmed battle exit carries the player result")
 	_check(main.active_overworld != null and main.active_battle == null, "confirmed result returns to a fresh overworld")
-	_check(main.active_overworld.get_player_cell() == Vector2i(5, 7), "return restores saved player cell")
-	_check(main.active_overworld.get_player_facing() == Vector2i.LEFT, "return restores saved facing")
+	_check(main.active_overworld.get_player_cell() == Vector2i(5, 5), "return restores saved player cell")
+	_check(main.active_overworld.get_player_facing() == Vector2i.RIGHT, "return restores saved facing")
 	_check(main.active_overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "result dialogue opens automatically after return")
 	main.queue_free()
 	await get_tree().process_frame

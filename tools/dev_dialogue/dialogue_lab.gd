@@ -1,12 +1,8 @@
 extends Node
 
-const DIALOGUE_VIEW_SCENE := preload("res://scenes/ui/dialogue_view.tscn")
+const DIALOGUE_PRESENTER_SCENE := preload("res://scenes/ui/dialogue_presenter.tscn")
 const DialogueParserScript := preload("res://scripts/dialogue/dialogue_parser.gd")
-const SessionRunnerScript := preload("res://scripts/dialogue/dialogue_session_runner.gd")
 const TextSpanScript := preload("res://scripts/dialogue/dialogue_text_span.gd")
-const VoiceEmitterScript := preload("res://scripts/dialogue/dialogue_voice_emitter.gd")
-const VoicePlayerScript := preload("res://scripts/ui/dialogue_voice_player.gd")
-const ChoiceSoundPlayerScript := preload("res://scripts/ui/dialogue_choice_sound_player.gd")
 const SPEAKER_CATALOG := preload("res://assets/ui/dialogue/dialogue_speaker_catalog.tres")
 const PIXEL_OPERATOR_8 := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8.ttf")
 const PIXEL_OPERATOR_8_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator8-Bold.ttf")
@@ -17,6 +13,7 @@ const PIXEL_OPERATOR_BOLD := preload("res://assets/ui/fonts/pixel_operator/Pixel
 const DIALOGUE_PATH := "res://content/dialogue/hood_greeting.dialog"
 
 var dialogue_view
+var dialogue_presenter: DialoguePresenter
 var lab_skin
 var conversation
 var session_runner
@@ -61,27 +58,16 @@ func _ready() -> void:
 	var parsed = DialogueParserScript.parse_file(DIALOGUE_PATH)
 	conversation = parsed.conversation
 	_build_background()
-	dialogue_view = DIALOGUE_VIEW_SCENE.instantiate()
-	add_child(dialogue_view)
+	dialogue_presenter = DIALOGUE_PRESENTER_SCENE.instantiate() as DialoguePresenter
+	add_child(dialogue_presenter)
+	dialogue_view = dialogue_presenter.dialogue_view
 	lab_skin = dialogue_view.skin.duplicate(true)
-	session_runner = SessionRunnerScript.new()
-	session_runner.name = "DialogueSessionRunner"
-	add_child(session_runner)
-	voice_emitter = VoiceEmitterScript.new()
-	voice_emitter.set_skin(lab_skin)
-	voice_player = VoicePlayerScript.new()
-	voice_player.name = "DialogueVoicePlayer"
-	add_child(voice_player)
-	choice_sound_player = ChoiceSoundPlayerScript.new()
-	choice_sound_player.name = "DialogueChoiceSoundPlayer"
-	choice_sound_player.set_skin(lab_skin)
-	add_child(choice_sound_player)
+	session_runner = dialogue_presenter.session_runner
+	voice_emitter = dialogue_presenter.voice_emitter
+	voice_player = dialogue_presenter.voice_player
+	choice_sound_player = dialogue_presenter.choice_sound_player
 	session_runner.visibility_changed.connect(_on_visibility_changed)
 	session_runner.portrait_changed.connect(_on_portrait_changed)
-	session_runner.character_revealed.connect(voice_emitter.on_character_revealed)
-	session_runner.bulk_reveal_started.connect(voice_emitter.on_bulk_reveal_started)
-	session_runner.bulk_reveal_finished.connect(voice_emitter.on_bulk_reveal_finished)
-	voice_emitter.voice_requested.connect(voice_player.play_request)
 	voice_emitter.voice_requested.connect(_on_voice_requested)
 	session_runner.page_started.connect(_on_page_started)
 	session_runner.page_completed.connect(_on_page_completed)
@@ -89,7 +75,6 @@ func _ready() -> void:
 	session_runner.choice_confirmed.connect(_on_choice_confirmed)
 	session_runner.target_emitted.connect(_on_target_emitted)
 	session_runner.choice_cancel_requested.connect(_on_choice_cancel_requested)
-	session_runner.choice_sound_requested.connect(choice_sound_player.play_cue)
 	session_runner.setting_changed.connect(_on_setting_changed)
 	session_runner.conversation_finished.connect(_on_conversation_finished)
 	_build_controls()
@@ -100,11 +85,6 @@ func _ready() -> void:
 		_refresh_page()
 	else:
 		status_label.text = "Fixture errors:\n%s" % "\n".join(parsed.errors)
-
-
-func _process(delta: float) -> void:
-	if playing and session_runner != null:
-		session_runner.advance(delta)
 
 
 func _build_background() -> void:
@@ -324,7 +304,7 @@ func _apply_shadow_tuning() -> void:
 	lab_skin.portrait_shadow_color = shadow_color_picker.color
 	lab_skin.portrait_shadow_frame_overlap = roundi(shadow_overlap_control.value)
 	lab_skin.portrait_shadow_bottom_offset = roundi(shadow_bottom_offset_control.value)
-	dialogue_view.set_skin(lab_skin)
+	dialogue_presenter.set_skin(lab_skin)
 
 
 func _reset_shadow_tuning() -> void:
@@ -362,7 +342,7 @@ func _requested_initial_page() -> int:
 func _refresh_page() -> void:
 	if conversation == null or conversation.pages.is_empty():
 		return
-	session_runner.start(conversation, page_selector.selected)
+	dialogue_presenter.start_conversation(conversation, dialogue_view.placement, page_selector.selected)
 
 
 func _on_page_started(page, page_index: int, _page_count: int) -> void:
@@ -375,20 +355,10 @@ func _on_page_started(page, page_index: int, _page_count: int) -> void:
 		event_selector.add_item("@%d → %s" % [event.visible_character_index, event.value])
 		event_selector.set_item_metadata(event_selector.item_count - 1, event.value)
 	event_selector.select(0)
-	var choices := PackedStringArray()
-	for index in range(page.choices.size()):
-		choices.append(page.choices[index].text)
-	var speaker_profile = SPEAKER_CATALOG.profile(page.speaker_id)
-	voice_emitter.set_profile(speaker_profile)
-	voice_emitter.set_page(page)
 	last_voice_description = "none"
 	last_choice_result = "none"
 	current_portrait_id = page.initial_portrait_id
 	current_portrait_event_index = -1
-	var display_name: String = page.speaker_name if not page.speaker_name.is_empty() else (speaker_profile.default_display_name if speaker_profile != null else "")
-	dialogue_view.configure(display_name, page.speaker_known, page.text, _resolve_portrait(page.initial_portrait_id), choices, page.presentation_spans)
-	dialogue_view.set_page_complete(false)
-	dialogue_view.set_visible_character_count(0)
 	playing = not session_runner.settings.instant_text
 	play_button.text = "Pause" if playing else "Play"
 
@@ -457,28 +427,32 @@ func _apply_font_candidate(index: int) -> void:
 			current_font_label = "Engine default"
 			lab_skin.body_font = null
 			lab_skin.name_font = null
+			lab_skin.choice_font = null
 		1:
 			current_font_label = "Pixel Operator 8"
 			lab_skin.body_font = PIXEL_OPERATOR_8
 			lab_skin.name_font = PIXEL_OPERATOR_8
+			lab_skin.choice_font = PIXEL_OPERATOR_8
 		2:
 			current_font_label = "Pixel Operator 8 + Bold plaque"
 			lab_skin.body_font = PIXEL_OPERATOR_8
 			lab_skin.name_font = PIXEL_OPERATOR_8_BOLD
+			lab_skin.choice_font = PIXEL_OPERATOR_8
 		3:
 			current_font_label = "Pixel Operator Mono 8 + Bold"
 			lab_skin.body_font = PIXEL_OPERATOR_MONO_8
 			lab_skin.name_font = PIXEL_OPERATOR_MONO_8_BOLD
+			lab_skin.choice_font = PIXEL_OPERATOR_MONO_8
 		4:
 			current_font_label = "Pixel Operator + Bold"
 			lab_skin.body_font = PIXEL_OPERATOR
 			lab_skin.name_font = PIXEL_OPERATOR_BOLD
+			lab_skin.choice_font = PIXEL_OPERATOR
 	lab_skin.body_font_size = logical_font_size
 	lab_skin.name_font_size = logical_font_size
 	lab_skin.choice_font_size = logical_font_size
 	lab_skin.semantic_size_values = PackedInt32Array([maxi(1, roundi(logical_font_size * 0.75)), logical_font_size, maxi(1, roundi(logical_font_size * 1.5))])
-	dialogue_view.set_skin(lab_skin)
-	choice_sound_player.set_skin(lab_skin)
+	dialogue_presenter.set_skin(lab_skin)
 	if page_selector != null and page_selector.item_count > 0:
 		_restart_page()
 
@@ -489,7 +463,6 @@ func _on_font_size_selected(index: int) -> void:
 
 
 func _on_visibility_changed(count: int) -> void:
-	dialogue_view.set_visible_character_count(count)
 	if conversation != null and not conversation.pages.is_empty():
 		_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
@@ -618,15 +591,6 @@ func _on_setting_changed(setting: StringName, value: Variant) -> void:
 			if bool(value):
 				playing = false
 				play_button.text = "Play"
-		&"animated_text_enabled":
-			dialogue_view.set_animated_text_enabled(bool(value))
-		&"reduced_motion":
-			dialogue_view.set_reduced_motion(bool(value))
-		&"voice_enabled":
-			voice_emitter.enabled = bool(value)
-			voice_player.enabled = bool(value)
-		&"ui_sounds_enabled":
-			choice_sound_player.enabled = bool(value)
 	if conversation != null and not conversation.pages.is_empty() and page_selector.item_count > 0:
 		_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, current_portrait_event_index)
 
@@ -644,25 +608,10 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("move_left") and session_runner.choices_are_active():
-		_move_choice(-1)
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("move_right") and session_runner.choices_are_active():
-		_move_choice(1)
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("interact"):
-		_confirm_page()
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("back") and session_runner.choices_are_active():
-		_cancel_choice()
-		get_viewport().set_input_as_handled()
-
-
 func _resolve_portrait(portrait_id: String) -> Texture2D:
 	if portrait_id.is_empty() or conversation == null or conversation.pages.is_empty():
 		return null
-	return SPEAKER_CATALOG.portrait(conversation.pages[page_selector.selected].speaker_id, portrait_id)
+	return dialogue_presenter.speaker_catalog.portrait(conversation.pages[page_selector.selected].speaker_id, portrait_id)
 
 
 func _portrait_label(portrait_id: String) -> String:

@@ -16,3 +16,10 @@ func play_request(stream: AudioStream, pitch: float, volume_db: float, _visible_
 	played_count += 1
 	player.finished.connect(player.queue_free)
 	player.play()
+
+
+func stop_all() -> void:
+	for child in get_children():
+		if child is AudioStreamPlayer:
+			child.stop()
+			child.free()

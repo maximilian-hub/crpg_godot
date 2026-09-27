@@ -6,6 +6,7 @@ class_name ChessEncounterProfile
 ## without teaching GameFlow about individual NPC types.
 
 @export var encounter_id: StringName
+@export_file("*.dialog", "*.dialogue") var pre_battle_dialogue_path := ""
 @export var battle_presentation: ChessBattlePresentationProfile
 @export var opponent_presentation: Resource
 ## Compatibility fallback for older encounter resources.

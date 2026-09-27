@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://d21dn7nqd484h"]
+[gd_scene load_steps=3 format=3 uid="uid://d21dn7nqd484h"]
 
 [ext_resource type="Script" uid="uid://dv1fimv1wdiux" path="res://scripts/main.gd" id="1_jjgbg"]
+[ext_resource type="PackedScene" path="res://scenes/ui/dialogue_presenter.tscn" id="2_dialogue"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_jjgbg")
@@ -17,6 +18,11 @@ mouse_filter = 2
 color = Color(0.025, 0.02, 0.035, 1)
 
 [node name="ActiveContent" type="Node" parent="."]
+
+[node name="DialoguePresentationLayer" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="DialoguePresenter" parent="DialoguePresentationLayer" instance=ExtResource("2_dialogue")]
 
 [node name="TransitionLayer" type="CanvasLayer" parent="."]
 layer = 1000

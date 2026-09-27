@@ -11,6 +11,7 @@ class_name DialogueSkin
 @export var continue_indicator_texture: Texture2D
 @export var body_font: Font
 @export var name_font: Font
+@export var choice_font: Font
 @export var choice_navigation_sound: AudioStream
 @export var choice_confirm_sound: AudioStream
 @export var choice_cancel_sound: AudioStream
