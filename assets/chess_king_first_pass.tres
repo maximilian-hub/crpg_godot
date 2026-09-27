@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://bvgq83ch06gp1"]
+[gd_resource type="Resource" script_class="ChessKingPresentationProfile" load_steps=9 format=3 uid="uid://cxjdtllich4c"]
 
 [ext_resource type="Script" uid="uid://bkgp3d5v5d2c8" path="res://scripts/view/chess_king_presentation_profile.gd" id="1"]
 [ext_resource type="Script" uid="uid://gqp83xqbbxey" path="res://scripts/view/chess_aura_profile.gd" id="2"]
@@ -16,7 +16,7 @@ approach_arrival_handle = Vector2(120, 180)
 invocation_duration = 0.8
 response_duration = 1.0
 buildup_duration = 2.5
-climax_duration = 1.0
+climax_duration = 2.0
 afterimage_duration = 1.5
 aura_release_duration = 3.0
 resolve_duration = 0.2
@@ -33,7 +33,7 @@ crackle_hand_shift_distance = 16.0
 crackle_hand_hold_duration = 0.05
 crackle_hand_return_duration = 0.16
 beam_width = 40.0
-climax_beam_count = 12
+climax_beam_count = 24
 climax_hand_shift_distance = 64.0
 climax_hand_return_duration = 1.0
 post_climax_retreat_delay = 0.18

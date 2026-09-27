@@ -183,6 +183,8 @@ func _ready() -> void:
 	_check(impact_radii_valid, "Radial hit bolts originate at impact and respect configured minimum/maximum radii")
 	_check(impact_tapers_valid, "Radial hit bolts taper to pixel-sized outer points")
 	lab.sequence._enter_phase(lab.sequence.Phase.CLIMAX)
+	var activation_beam_player := lab.sequence.audio_players.get(&"beam") as AudioStreamPlayer
+	_check(activation_beam_player != null and activation_beam_player.stream == lab.sequence.ACTIVATION_BEAM_STREAM and activation_beam_player.playing, "Climax begins the authored activation beam sound with the first bolt")
 	var first_beam_position: Vector2 = lab.preview_hand.position
 	var first_beam_target: Vector2 = lab.lightning.points[lab.lightning.points.size() - 1]
 	lab.sequence._show_climax_beam(1)
@@ -199,7 +201,8 @@ func _ready() -> void:
 	lab.sequence._show_climax_beam(2)
 	lab.sequence._update_hand_motion()
 	_check(lab.sequence.tremor_offset == Vector2(2.0, 1.0) and lab.preview_hand.position == trembling_climax_position, "Climax sustains additive tremor across successive beam redraws")
-	lab.sequence.current_phase = lab.sequence.Phase.AFTERIMAGE
+	lab.sequence._enter_phase(lab.sequence.Phase.AFTERIMAGE)
+	_check(not activation_beam_player.playing, "Activation beam sound stops when the transformation enters its afterimage")
 	lab.sequence._update_tremor()
 	_check(lab.sequence.tremor_offset == Vector2.ZERO, "Afterimage entry clears climax tremor before the slower hand return")
 	lab.sequence.elapsed = tremor_boundaries[5] + lab.activation_profile.climax_hand_return_duration
@@ -235,7 +238,8 @@ func _ready() -> void:
 	for expected_phase in [lab.sequence.Phase.APPROACH, lab.sequence.Phase.INVOCATION, lab.sequence.Phase.RESPONSE, lab.sequence.Phase.BUILDUP, lab.sequence.Phase.CLIMAX, lab.sequence.Phase.AFTERIMAGE, lab.sequence.Phase.COMPLETE]:
 		_check(expected_phase in phases, "Activation ritual enters phase %s" % lab.sequence.Phase.keys()[expected_phase])
 	_check(&"hand_hum" in cues and &"king_hum" in cues and &"crackle" in cues and &"beam" in cues and &"resolve" in cues, "Activation ritual exposes every planned audio hook")
-	_check(cues.count(&"crackle") == 3 + lab.activation_profile.climax_beam_count, "Response, in-range buildup, and every climax bolt play crackles while overflow timing remains stored and silent")
+	var expected_crackle_cues: int = 3 + lab.activation_profile.climax_beam_count
+	_check(cues.count(&"crackle") == expected_crackle_cues, "Response, in-range buildup, and every climax bolt play crackles while overflow timing remains stored and silent (got %d, expected %d)" % [cues.count(&"crackle"), expected_crackle_cues])
 	_check(is_equal_approx(lab.preview_king.sprite.self_modulate.a, 1.0) and not lab.stone_sprite.visible, "Completion leaves the authored army-colored king revealed")
 	_check(is_equal_approx(lab.king_aura.silhouette_power, lab.activation_profile.resting_aura_power) and is_equal_approx(lab.king_aura.particle_power, lab.activation_profile.resting_particle_power) and is_zero_approx(lab.hand_aura.power) and lab.lightning.points.is_empty(), "Completion retains the King's independently configured resting aura channels")
 	_check(lab.preview_hand.position == lab.sequence.hand_rest_position and not lab.preview_hand.visible, "Completion clears tremor and hides the hand at its off-board rest position")

@@ -316,7 +316,7 @@ func _build_controls() -> void:
 	_add_profile_spin(controls, &"crackle_hand_hold_duration", "Crackle hand hold", 0, 0.5, 0.01)
 	_add_profile_spin(controls, &"crackle_hand_return_duration", "Hand return time", 0.01, 1, 0.01)
 	_add_profile_spin(controls, &"beam_width", "Beam width", 1, 500, 0.5)
-	_add_profile_spin(controls, &"climax_beam_count", "Climax beams", 1, 12, 1)
+	_add_profile_spin(controls, &"climax_beam_count", "Climax beams", 1, 100, 1)
 	_add_profile_spin(controls, &"climax_hand_shift_distance", "Climax hand shift", 0, 240, 1)
 	_add_profile_spin(controls, &"climax_hand_return_duration", "Climax hand return", 0.01, 2, 0.01)
 	_add_profile_spin(controls, &"post_climax_retreat_delay", "Retreat delay", 0.0, 4.0, 0.01)

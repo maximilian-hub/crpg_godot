@@ -14,8 +14,10 @@ const CRACKLE_STREAMS := [
 	preload("res://assets/audio/chess/activation/crackle_2.wav"),
 	preload("res://assets/audio/chess/activation/crackle_3.wav"),
 ]
+const ACTIVATION_BEAM_STREAM := preload("res://assets/audio/chess/activation/activation_beam_0.wav")
 const BUILDUP_CRACKLE_VOLUME_DB := -3.0
 const CLIMAX_CRACKLE_VOLUME_DB := 0
+const ACTIVATION_BEAM_VOLUME_DB := -6.0
 const CRACKLE_PLAYER_COUNT := 4
 
 var profile: Resource
@@ -79,6 +81,7 @@ func configure(
 	audio_players = players
 	crackle_audio_rng.randomize()
 	_ensure_crackle_players()
+	_ensure_beam_player()
 	base_hand_position = hand_root.position
 	hand_rest_position = rest_position if is_finite(rest_position.x) and is_finite(rest_position.y) else base_hand_position
 	hand_motion_scale = maxf(motion_scale, 0.01)
@@ -238,6 +241,11 @@ func _enter_phase(next_phase: int) -> void:
 		# before its normal per-frame poll. Preserve every authored event that
 		# belongs inside the phase before entering CLIMAX.
 		_fire_crossed_buildup_crackles(profile.buildup_duration)
+	if next_phase == Phase.AFTERIMAGE and current_phase <= Phase.CLIMAX:
+		# Preserve every authored climax bolt and its audio punctuation when a
+		# fast playback step crosses the end of the transformation.
+		for crossed_index in range(active_climax_beam_index + 1, maxi(profile.climax_beam_count, 1)):
+			_show_climax_beam(crossed_index)
 	current_phase = next_phase
 	phase_changed.emit(current_phase)
 	match current_phase:
@@ -257,7 +265,7 @@ func _enter_phase(next_phase: int) -> void:
 			lightning_hand_offset = climax_hand_target
 			_apply_hand_position()
 			_show_climax_beam(0)
-			_play_one_shot(&"beam")
+			_play_loop(&"beam")
 		Phase.AFTERIMAGE:
 			# The final flurry punctuates the conclusion of the full multi-beam
 			# sequence. The hand stops emitting, while the awakened King settles
@@ -266,6 +274,7 @@ func _enter_phase(next_phase: int) -> void:
 			king_aura.emit_burst(profile.burst_multiplier)
 			hand_aura.set_continuous_emission_enabled(false)
 			lightning.clear()
+			_stop_player(&"beam")
 			_stop_player(&"hand_hum")
 			_stop_player(&"king_hum")
 			_play_one_shot(&"resolve")
@@ -501,8 +510,9 @@ func _update_lightning() -> void:
 		var progress := _range_progress(elapsed, boundaries[4], boundaries[5])
 		var beam_count: int = maxi(profile.climax_beam_count, 1)
 		var beam_index := mini(int(floor(progress * beam_count)), beam_count - 1)
-		if beam_index != active_climax_beam_index:
-			_show_climax_beam(beam_index)
+		if beam_index > active_climax_beam_index:
+			for crossed_index in range(active_climax_beam_index + 1, beam_index + 1):
+				_show_climax_beam(crossed_index)
 		lightning.show_strength(sin(progress * PI) * 0.35 + 0.65)
 
 
@@ -642,6 +652,19 @@ func _ensure_crackle_players() -> void:
 		player.volume_db = primary.volume_db
 		add_child(player)
 		crackle_players.append(player)
+
+
+func _ensure_beam_player() -> AudioStreamPlayer:
+	var player := audio_players.get(&"beam") as AudioStreamPlayer
+	if player == null:
+		player = AudioStreamPlayer.new()
+		player.name = "ActivationBeamAudio"
+		player.bus = &"SFX"
+		add_child(player)
+		audio_players[&"beam"] = player
+	player.stream = ACTIVATION_BEAM_STREAM
+	player.volume_db = ACTIVATION_BEAM_VOLUME_DB
+	return player
 
 
 func _stop_player(cue: StringName) -> void:
