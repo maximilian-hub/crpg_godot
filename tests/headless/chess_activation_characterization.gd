@@ -203,6 +203,8 @@ func _ready() -> void:
 	_check(lab.sequence.tremor_offset == Vector2(2.0, 1.0) and lab.preview_hand.position == trembling_climax_position, "Climax sustains additive tremor across successive beam redraws")
 	lab.sequence._enter_phase(lab.sequence.Phase.AFTERIMAGE)
 	_check(not activation_beam_player.playing, "Activation beam sound stops when the transformation enters its afterimage")
+	var activation_complete_player := lab.sequence.audio_players.get(&"resolve") as AudioStreamPlayer
+	_check(activation_complete_player != null and activation_complete_player.stream == lab.sequence.ACTIVATION_COMPLETE_STREAM and activation_complete_player.playing, "Transformation completion plays the authored activation completion sound")
 	lab.sequence._update_tremor()
 	_check(lab.sequence.tremor_offset == Vector2.ZERO, "Afterimage entry clears climax tremor before the slower hand return")
 	lab.sequence.elapsed = tremor_boundaries[5] + lab.activation_profile.climax_hand_return_duration

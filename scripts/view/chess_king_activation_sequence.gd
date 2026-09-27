@@ -15,9 +15,11 @@ const CRACKLE_STREAMS := [
 	preload("res://assets/audio/chess/activation/crackle_3.wav"),
 ]
 const ACTIVATION_BEAM_STREAM := preload("res://assets/audio/chess/activation/activation_beam_0.wav")
+const ACTIVATION_COMPLETE_STREAM := preload("res://assets/audio/chess/activation/activation_complete.wav")
 const BUILDUP_CRACKLE_VOLUME_DB := -3.0
 const CLIMAX_CRACKLE_VOLUME_DB := 0
 const ACTIVATION_BEAM_VOLUME_DB := -6.0
+const ACTIVATION_COMPLETE_VOLUME_DB := -3.0
 const CRACKLE_PLAYER_COUNT := 4
 
 var profile: Resource
@@ -82,6 +84,7 @@ func configure(
 	crackle_audio_rng.randomize()
 	_ensure_crackle_players()
 	_ensure_beam_player()
+	_ensure_completion_player()
 	base_hand_position = hand_root.position
 	hand_rest_position = rest_position if is_finite(rest_position.x) and is_finite(rest_position.y) else base_hand_position
 	hand_motion_scale = maxf(motion_scale, 0.01)
@@ -664,6 +667,19 @@ func _ensure_beam_player() -> AudioStreamPlayer:
 		audio_players[&"beam"] = player
 	player.stream = ACTIVATION_BEAM_STREAM
 	player.volume_db = ACTIVATION_BEAM_VOLUME_DB
+	return player
+
+
+func _ensure_completion_player() -> AudioStreamPlayer:
+	var player := audio_players.get(&"resolve") as AudioStreamPlayer
+	if player == null:
+		player = AudioStreamPlayer.new()
+		player.name = "ActivationCompleteAudio"
+		player.bus = &"SFX"
+		add_child(player)
+		audio_players[&"resolve"] = player
+	player.stream = ACTIVATION_COMPLETE_STREAM
+	player.volume_db = ACTIVATION_COMPLETE_VOLUME_DB
 	return player
 
 
