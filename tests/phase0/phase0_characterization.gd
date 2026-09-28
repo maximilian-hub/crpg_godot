@@ -348,6 +348,7 @@ func _test_arakne_staged_skitter_presentation() -> void:
 	magic.profile.movement_profile.king_move_delay = 0.0
 	magic.profile.movement_profile.travel_duration = 0.15
 	magic.profile.movement_profile.settle_duration = 0.0
+	_expect(context.adapter.arakne_skitter_sound.resource_path.ends_with("arakne_skitter.wav"), "the composed battle assigns Arakne's authored Skitter sound")
 	var placeholder_sound := AudioStreamWAV.new()
 	context.adapter.arakne_skitter_sound = placeholder_sound
 	var landed_view_coordinates: Array[Vector2i] = []
