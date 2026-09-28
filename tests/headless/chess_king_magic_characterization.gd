@@ -89,8 +89,9 @@ func _ready() -> void:
 	var first := ChessKingMagicController.knockoff_side(Vector2.ZERO, Vector2(0, 100), seeded)
 	seeded.seed = 44
 	_check(first in [-1, 1] and first == ChessKingMagicController.knockoff_side(Vector2.ZERO, Vector2(0, 100), seeded), "direct vertical impacts choose a seedable random left/right arc")
-	var above_depths := ChessKingMagicController.capture_collision_depths(Vector2(100, 50), Vector2(100, 100))
+	var above_depths := ChessKingMagicController.capture_collision_depths(Vector2(100, 50), Vector2(100, 100), 40)
 	_check(above_depths.king < above_depths.defender, "King approaching from screen-above preserves the defender-over-King impact stack")
+	_check(above_depths.king < 50 and above_depths.defender < 50, "Charge collision depths stay below the next nearer board row")
 	seeded.seed = 44
 	var ballistic := ChessKingMagicController.build_ballistic_knockoff(Vector2(100, 300), Vector2(200, 300), Vector2(200, 300), Vector2(960, 540), 40.0, 650.0, 480.0, 1200.0, seeded)
 	var initial_velocity: Vector2 = ballistic.initial_velocity

@@ -1032,12 +1032,14 @@ func _test_minotaur_charge_capture_knockoff() -> void:
 	var charging_minotaur := MinotaurKing.new("white", Vector2i(4, 0))
 	charging_minotaur.set_cooldown(0)
 	var target_pawn := Pawn.new("black", Vector2i(4, 4))
+	var nearer_queen := Queen.new("white", Vector2i(5, 4))
 	var defending_king := MinotaurKing.new("black", Vector2i(0, 0))
 	defending_king.stunned = true
-	_reset_battle(model, context.controller, [charging_minotaur, target_pawn, defending_king])
+	_reset_battle(model, context.controller, [charging_minotaur, target_pawn, nearer_queen, defending_king])
 	var charging_magic: ChessKingMagicController = context.adapter.king_magic_controllers[charging_minotaur]
 	var charging_view: PieceView = context.adapter.get_piece_view(charging_minotaur)
 	var target_view: PieceView = context.adapter.get_piece_view(target_pawn)
+	var nearer_view: PieceView = context.adapter.get_piece_view(nearer_queen)
 	await charging_magic.prepare_ability_hand(0.0)
 	context.adapter._begin_ability_windup(charging_minotaur, true, charging_minotaur.get_active_ability_targets())
 	context.adapter.locally_previewed_abilities[charging_minotaur] = MinotaurKing.ACTIVE_ABILITY_ID
@@ -1045,12 +1047,13 @@ func _test_minotaur_charge_capture_knockoff() -> void:
 	_expect(charge_aura.position == charging_view.art_profile.charge_aura_offset and charge_aura.position == Vector2(0, -22), "Charge aura uses the Minotaur art profile's replacement-sprite alignment")
 	_expect(charging_magic._ability_hand_prepared and charging_magic.hand.visible, "local Charge keeps its prepared hand hovering while a target is selected")
 	context.adapter._on_ability_targeting_ended(charging_minotaur, MinotaurKing.ACTIVE_ABILITY_NAME, "confirmed")
-	var observation := {"impact_count": 0, "explosion_count": 0, "aura_at_impact": 0, "command_count": 0}
+	var observation := {"impact_count": 0, "explosion_count": 0, "aura_at_impact": 0, "command_count": 0, "behind_nearer_at_impact": false}
 	charging_magic.hand_command_reached.connect(func(): observation.command_count += 1, CONNECT_ONE_SHOT)
 	charging_magic.capture_impact.connect(func(hit: PieceView):
 		if hit == target_view:
 			observation.impact_count += 1
 			observation.aura_at_impact = context.view._get_descendant_effects_in_group(charging_view, &"aura").size()
+			observation.behind_nearer_at_impact = nearer_view.z_index > target_view.z_index and nearer_view.z_index > charging_view.z_index
 	, CONNECT_ONE_SHOT)
 	context.view.child_entered_tree.connect(func(child: Node):
 		if child.name == "Explosion":
@@ -1059,6 +1062,7 @@ func _test_minotaur_charge_capture_knockoff() -> void:
 	await model.submit_active_ability(charging_minotaur, target_pawn.coordinate)
 	_expect(observation.command_count == 1, "local Charge commands the already-prepared hand exactly once")
 	_expect(observation.impact_count == 1, "lethal Charge knocks its target away at Minotaur collision")
+	_expect(observation.behind_nearer_at_impact and nearer_view.z_index > charging_view.z_index, "Charge target and arriving Minotaur remain behind a tall piece in the nearer row")
 	_expect(observation.aura_at_impact > 0, "Charge aura remains attached until the Minotaur reaches its target")
 	_expect(context.view._get_descendant_effects_in_group(charging_view, &"aura").is_empty(), "Charge aura disperses after collision")
 	_expect(observation.explosion_count == 0, "lethal Charge bypasses the legacy destruction explosion")

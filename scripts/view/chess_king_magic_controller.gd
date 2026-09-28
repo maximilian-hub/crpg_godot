@@ -465,7 +465,7 @@ func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i,
 	var impact_fraction: float = clampf(move.capture_impact_fraction, 0.1, 0.95)
 	var approach_duration := king_duration * impact_fraction
 	var finish_duration := king_duration - approach_duration
-	var capture_depths := capture_collision_depths(king_start, target)
+	var capture_depths := capture_collision_depths(king_start, target, board.get_piece_depth(to))
 	king.z_index = capture_depths.king
 	defender.z_index = capture_depths.defender
 	var start_rotation := defender.rotation
@@ -486,10 +486,12 @@ func _travel_with_knockoff(target: Vector2, defender: PieceView, from: Vector2i,
 		defender.rotation = start_rotation + deg_to_rad(move.knockoff_angular_speed * side) * flight_time
 		if not arrival_state.reported and elapsed + 0.0001 >= finish_duration:
 			arrival_state.reported = true
+			board._update_piece_depth(king)
 			if arrival_callback.is_valid(): arrival_callback.call()
 	, 0.0, total, total * board.animation_duration_scale)
 	await impact.finished
 	king.position = target
+	board._update_piece_depth(king)
 	if not arrival_state.reported:
 		arrival_state.reported = true
 		if arrival_callback.is_valid(): arrival_callback.call()
@@ -650,13 +652,14 @@ static func knockoff_side(origin: Vector2, destination: Vector2, random: RandomN
 	return -1 if random.randi_range(0, 1) == 0 else 1
 
 
-static func capture_collision_depths(king_origin: Vector2, target: Vector2) -> Dictionary:
-	var defender_depth := ChessBoardView.BOARD_EFFECT_Z
-	# A King arriving from screen-below visually crosses in front of its target.
-	# Approaches from above or level retain the defender-over-King impact stack.
+static func capture_collision_depths(king_origin: Vector2, target: Vector2, destination_depth := 0) -> Dictionary:
+	# Keep the collision pair inside the destination row's depth band so a
+	# naturally nearer row continues to occlude both pieces. Only their local
+	# ordering changes with the direction of impact.
+	var arrives_from_below := king_origin.y > target.y + 0.5
 	return {
-		"king": defender_depth + 1 if king_origin.y > target.y + 0.5 else ChessHandRig.ACTIVE_PIECE_Z,
-		"defender": defender_depth,
+		"king": destination_depth + 1 if arrives_from_below else destination_depth,
+		"defender": destination_depth if arrives_from_below else destination_depth + 1,
 	}
 
 
