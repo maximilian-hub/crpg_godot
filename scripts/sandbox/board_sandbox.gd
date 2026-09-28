@@ -327,6 +327,8 @@ func _set_mode(next: Mode) -> void:
 	_apply_ai_configuration()
 	_apply_play_control()
 	_refresh_control_states()
+	if mode == Mode.PLAY:
+		model.resolve_unplayable_turns()
 
 func _on_edit_committed(_before: ChessPosition, after: ChessPosition, label: String) -> void:
 	if not restoring_history:

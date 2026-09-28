@@ -37,6 +37,9 @@ enum ControlMode {
 ## Games that skip the opening normally begin with the same small placement
 ## variation the hands would have produced. Editor-oriented scenes can disable it.
 @export var apply_initial_piece_placement_variation := true
+## Editor hosts can suppress rule progression while rebuilding authored positions.
+## Normal startup and completed gameplay actions still resolve unplayable turns.
+@export var resolve_unplayable_turns_after_rebuild := true
 var completed_player_result: String = ""
 var opening_director: ChessBattleOpeningDirector
 var _white_turn_released := false
@@ -151,7 +154,7 @@ func _on_board_rebuilt(_board: Array) -> void:
 			opening_completed.emit()
 	if not model.battle_over:
 		completed_player_result = ""
-		if not opening_pending:
+		if not opening_pending and resolve_unplayable_turns_after_rebuild:
 			model.resolve_unplayable_turns()
 		return
 	if model.battle_result == "draw":

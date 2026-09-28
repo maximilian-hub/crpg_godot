@@ -135,6 +135,7 @@ func _ready() -> void:
 	sandbox.editor.clear_board()
 	await get_tree().process_frame
 	_check(_count(model) == 0, "sandbox Clear empties authoritative model", failures)
+	_check(model.is_settled() and not model.battle_over and not model.forced_pass_in_progress, "Edit Mode rebuilds do not start gameplay forced-pass resolution", failures)
 	_check(view.get_node("Pieces").get_child_count() == 0 and adapter.piece_views.is_empty(), "whole-board rebuild removes stale PieceViews", failures)
 	_check(is_instance_valid(first_square) and view.get_node("Squares").get_child(0) == first_square, "position rebuild preserves square input nodes", failures)
 	_check(not sandbox.undo_button.disabled and sandbox.redo_button.disabled, "history buttons reflect a committed edit", failures)
@@ -167,7 +168,7 @@ func _ready() -> void:
 	sandbox.interaction._on_square_pressed(Vector2i(6, 0))
 	_check(sandbox.interaction.requested_cursor_shape == Input.CURSOR_DRAG, "picking up a piece displays the drag cursor", failures)
 	_check(is_instance_valid(sandbox.interaction.drag_ghost) and is_equal_approx(sandbox.interaction.drag_ghost.modulate.a, 0.55), "dragging displays a translucent piece ghost", failures)
-	_check(sandbox.interaction.drag_ghost.z_index == ChessBoardView.DRAG_GHOST_Z and sandbox.interaction.drag_ghost.z_index > ChessHandRig.ARM_FOREGROUND_Z, "drag ghost remains above the foreground arm and every row-relative grip layer", failures)
+	_check(is_instance_valid(sandbox.interaction.drag_ghost) and sandbox.interaction.drag_ghost.z_index == ChessBoardView.DRAG_GHOST_Z and sandbox.interaction.drag_ghost.z_index > ChessHandRig.ARM_FOREGROUND_Z, "drag ghost remains above the foreground arm and every row-relative grip layer", failures)
 	sandbox.interaction._on_square_exited(Vector2i(6, 0))
 	_check(sandbox.interaction.requested_cursor_shape == Input.CURSOR_FORBIDDEN, "dragging off-board displays the forbidden cursor", failures)
 	sandbox.interaction._on_square_entered(Vector2i(4, 4))
@@ -256,6 +257,12 @@ func _ready() -> void:
 	sandbox.undo()
 	await get_tree().process_frame
 	_check(model.board[6][0] != null and model.board[4][0] == null, "second gameplay Undo restores the baseline", failures)
+	sandbox._set_mode(sandbox.Mode.EDIT)
+	sandbox._on_preset_selected(1)
+	model.forced_pass_delay_seconds = 0.0
+	sandbox._set_mode(sandbox.Mode.PLAY)
+	await get_tree().process_frame
+	_check(model.battle_over and model.battle_result == "draw" and not model.forced_pass_in_progress, "entering Play Mode explicitly resolves an unplayable authored position", failures)
 	if failures.is_empty():
 		print("BOARD SANDBOX CHARACTERIZATION: PASS")
 		get_tree().quit(0)

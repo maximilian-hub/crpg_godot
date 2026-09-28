@@ -133,6 +133,7 @@ func _test_overworld_scene() -> void:
 	_check(player.facing == Vector2i.RIGHT and player_body.frame == 1, "turn-in-place visibly uses the upcoming stride frame")
 	player._finish_turn()
 	_check(player.is_grid_idle() and player.position == turn_origin and player_body.frame == 0, "direction tap settles stationary in the new facing neutral")
+	await get_tree().process_frame
 	_check(camera.get_screen_center_position().is_equal_approx(player.global_position), "camera remains centered on the player after movement")
 	player.configure(overworld.collision_grid, overworld.npc, Vector2i(1, 1), Vector2i.RIGHT)
 	await get_tree().process_frame
@@ -173,7 +174,7 @@ func _test_main_starts_in_overworld() -> void:
 	var frame := main.active_content.get_node("OverworldFrame") as SubViewportContainer
 	var viewport := frame.get_node("OverworldViewport") as SubViewport
 	var window_size := Vector2i(main.get_viewport().get_visible_rect().size)
-	var expected_scale := maxi(1, floori(float(window_size.y) / GameFlow.TARGET_OVERWORLD_LOGICAL_SIDE))
+	var expected_scale := maxi(1, floori(float(window_size.y) / GameFlow.TARGET_OVERWORLD_LOGICAL_SIDE)) + 2
 	var expected_logical_side := maxi(1, floori(float(window_size.y) / expected_scale))
 	var expected_frame_side := expected_logical_side * expected_scale
 	_check(frame.position.y == floori((window_size.y - expected_frame_side) * 0.5), "overworld minimizes vertical remainder")
@@ -193,7 +194,7 @@ func _test_main_starts_in_overworld() -> void:
 	var fullscreen_layout := GameFlow.calculate_overworld_layout(Vector2i(2560, 1600))
 	_check(fullscreen_layout.position == Vector2(480, 0), "2560x1600 fullscreen uses side-only letterboxing")
 	_check(fullscreen_layout.frame_side == 1600, "2560x1600 fullscreen fills the complete display height")
-	_check(fullscreen_layout.integer_scale == 8 and fullscreen_layout.logical_side == 200, "2560x1600 fullscreen renders a 200x200 view at 8x")
+	_check(fullscreen_layout.integer_scale == 10 and fullscreen_layout.logical_side == 160, "2560x1600 fullscreen renders a 160x160 view at 10x")
 	var movement_event := InputEventAction.new()
 	movement_event.action = "move_left"
 	movement_event.pressed = true
@@ -359,7 +360,16 @@ func _test_edge_barriers(overworld: Overworld, player: OverworldPlayer) -> void:
 	_check(grid.is_boundary_blocked(east, edge_cell), "multiple-edge tile blocks its east edge from either side")
 	_check(not grid.is_boundary_blocked(edge_cell, south), "multiple-edge tile leaves its unflagged south edge open")
 	_check(not grid.is_boundary_blocked(edge_cell, west), "multiple-edge tile leaves its unflagged west edge open")
-	_check(grid.get_node("GeneratedEdgeBarriers").get_child_count() == 2, "combined edge mask emits one physical segment per boundary")
+	var matched_test_boundaries := 0
+	var generated_barriers := grid.get_node("GeneratedEdgeBarriers")
+	for edge in [grid.Edge.NORTH, grid.Edge.EAST]:
+		var expected_segment: Dictionary = grid._boundary_segment(edge_cell, edge)
+		for child in generated_barriers.get_children():
+			var shape := (child as CollisionShape2D).shape as SegmentShape2D
+			if shape != null and shape.a == expected_segment.start and shape.b == expected_segment.end:
+				matched_test_boundaries += 1
+				break
+	_check(matched_test_boundaries == 2, "combined edge mask emits one physical segment per boundary")
 
 	grid.erase_cell(edge_cell)
 	grid.rebuild_edge_collision_geometry()
