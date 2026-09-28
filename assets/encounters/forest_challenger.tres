@@ -8,5 +8,11 @@
 script = ExtResource("1_profile")
 encounter_id = &"forest_challenger"
 pre_battle_dialogue_path = "res://content/dialogue/hood_greeting.dialog"
+player_win_dialogue_path = "res://content/dialogue/hood_player_win.dialog"
+player_loss_dialogue_path = "res://content/dialogue/hood_player_loss.dialog"
+draw_dialogue_path = "res://content/dialogue/hood_draw.dialog"
+rematch_dialogue_path = "res://content/dialogue/hood_rematch.dialog"
+rematch_accept_dialogue_path = "res://content/dialogue/hood_rematch_accept.dialog"
+rematch_decline_dialogue_path = "res://content/dialogue/hood_rematch_decline.dialog"
 opponent_presentation = ExtResource("3_presentation")
 opponent_hand_style = ExtResource("2_hood")

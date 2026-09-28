@@ -17,6 +17,7 @@ func _ready() -> void:
 	_check(main.dialogue_presenter.get_parent() == presentation_layer and presentation_layer.layer < transition_layer.layer, "Main owns the shared presenter above gameplay and below fades")
 	var profile := main.active_overworld.npc.encounter_profile
 	_check(profile.pre_battle_dialogue_path == "res://content/dialogue/hood_greeting.dialog", "forest encounter references the authored Hood conversation")
+	_check(profile.player_win_dialogue_path == "res://content/dialogue/hood_player_win.dialog" and profile.rematch_dialogue_path == "res://content/dialogue/hood_rematch.dialog", "forest encounter owns its authored result and rematch conversations")
 
 	main.active_overworld.player.configure(main.active_overworld.collision_grid, main.active_overworld.npc, Vector2i(5, 5), Vector2i.RIGHT)
 	main.dialogue_presenter.session_runner.set_instant_text(true)
@@ -40,8 +41,42 @@ func _ready() -> void:
 	await main._transition_to_overworld("win")
 	await get_tree().process_frame
 	_check(main.active_overworld != null and main.active_battle == null, "battle flow returns to the overworld")
-	_check(main.active_overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "legacy result dialogue remains active after the migration")
+	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_player_win", "player victory opens Hood's authored result conversation")
+	_check(main.active_overworld.player.movement_state == OverworldPlayer.MovementState.INPUT_LOCKED, "result dialogue locks exploration")
 	_check(main.active_overworld.get_player_cell() == Vector2i(5, 5) and main.active_overworld.get_player_facing() == Vector2i.RIGHT, "dialogue-gated battle preserves overworld position and facing")
+	while main.dialogue_presenter.active:
+		main.dialogue_presenter.confirm()
+	await get_tree().process_frame
+	_check(main.active_overworld.player.movement_state != OverworldPlayer.MovementState.INPUT_LOCKED, "finishing result dialogue restores exploration")
+
+	main.active_overworld._begin_challenge_dialogue()
+	await get_tree().process_frame
+	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_rematch", "later interaction opens the authored rematch choice")
+	while not main.dialogue_presenter.session_runner.choices_are_active():
+		main.dialogue_presenter.confirm()
+	main.dialogue_presenter.move_choice(1)
+	main.dialogue_presenter.confirm()
+	await get_tree().process_frame
+	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_rematch_decline", "No branches to Hood's decline response")
+	while main.dialogue_presenter.active:
+		main.dialogue_presenter.confirm()
+	await get_tree().process_frame
+	_check(main.active_battle == null and main.active_overworld.player.movement_state != OverworldPlayer.MovementState.INPUT_LOCKED, "decline response returns to exploration without starting battle")
+
+	main.active_overworld._begin_challenge_dialogue()
+	await get_tree().process_frame
+	while not main.dialogue_presenter.session_runner.choices_are_active():
+		main.dialogue_presenter.confirm()
+	main.dialogue_presenter.confirm()
+	await get_tree().process_frame
+	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_rematch_accept", "Yes branches to Hood's acceptance response")
+	while main.dialogue_presenter.active:
+		main.dialogue_presenter.confirm()
+	timeout = 60
+	while main.active_battle == null and timeout > 0:
+		await get_tree().process_frame
+		timeout -= 1
+	_check(timeout > 0 and main.active_overworld == null, "battle starts only after the accepted response finishes")
 
 	main.dialogue_presenter.stop()
 	main.queue_free()

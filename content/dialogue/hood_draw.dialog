@@ -1,0 +1,11 @@
+// Hood draws with the player.
+@conversation hood_draw
+
+@page speaker=hood name="Hood" known=false portrait=thinking
+Interesting.
+
+@page speaker=hood name="Hood" known=false portrait=thinking
+It appears there is more to you than I thought.
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+Nonetheless, I insist you leave this place. I have much to ponder.

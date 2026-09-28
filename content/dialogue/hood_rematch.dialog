@@ -1,0 +1,17 @@
+// Hood greets the player after the first battle.
+@conversation hood_rematch
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Excuse me?
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+Another game?
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+I cannot refuse if you insist, but be warned. [portrait=annoyed]You may not survive.
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+Will you persist in troubling me?
+
+@choice text="Yes" target=accept_challenge
+@choice text="No" target=decline_challenge

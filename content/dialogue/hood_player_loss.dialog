@@ -1,0 +1,14 @@
+// Hood defeats the player.
+@conversation hood_player_loss
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+Hmph.
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+I admire your bravery.
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+But you are trifling with forces you do not understand.
+
+@page speaker=hood name="Hood" known=false portrait=neutral
+Now leave me be. I have much to ponder.

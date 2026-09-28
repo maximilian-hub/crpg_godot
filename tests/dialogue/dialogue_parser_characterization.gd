@@ -11,6 +11,7 @@ var checks := 0
 
 func _ready() -> void:
 	_test_valid_fixture()
+	_test_production_conversations()
 	_test_visible_character_indices()
 	_test_invalid_fixture()
 	_test_missing_file()
@@ -21,6 +22,23 @@ func _ready() -> void:
 		for failure in failures:
 			printerr("DIALOGUE PARSER FAILURE: ", failure)
 		get_tree().quit(1)
+
+
+func _test_production_conversations() -> void:
+	var expected_ids := {
+		"res://content/dialogue/hood_greeting.dialog": "hood_greeting",
+		"res://content/dialogue/hood_player_win.dialog": "hood_player_win",
+		"res://content/dialogue/hood_player_loss.dialog": "hood_player_loss",
+		"res://content/dialogue/hood_draw.dialog": "hood_draw",
+		"res://content/dialogue/hood_rematch.dialog": "hood_rematch",
+		"res://content/dialogue/hood_rematch_accept.dialog": "hood_rematch_accept",
+		"res://content/dialogue/hood_rematch_decline.dialog": "hood_rematch_decline",
+	}
+	for path in expected_ids:
+		var result = DialogueParserScript.parse_file(path)
+		_check(result.is_valid(), "%s parses without errors: %s" % [path, "; ".join(result.errors)])
+		if result.is_valid():
+			_check(result.conversation.id == expected_ids[path], "%s retains its file-matched conversation ID" % path)
 
 
 func _test_valid_fixture() -> void:

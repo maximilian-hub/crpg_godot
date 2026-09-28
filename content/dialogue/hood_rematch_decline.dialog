@@ -1,0 +1,5 @@
+// Hood's response if the player declines a rematch.
+@conversation hood_rematch_decline
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+Then leave me be.

@@ -7,6 +7,12 @@ class_name ChessEncounterProfile
 
 @export var encounter_id: StringName
 @export_file("*.dialog", "*.dialogue") var pre_battle_dialogue_path := ""
+@export_file("*.dialog", "*.dialogue") var player_win_dialogue_path := ""
+@export_file("*.dialog", "*.dialogue") var player_loss_dialogue_path := ""
+@export_file("*.dialog", "*.dialogue") var draw_dialogue_path := ""
+@export_file("*.dialog", "*.dialogue") var rematch_dialogue_path := ""
+@export_file("*.dialog", "*.dialogue") var rematch_accept_dialogue_path := ""
+@export_file("*.dialog", "*.dialogue") var rematch_decline_dialogue_path := ""
 @export var battle_presentation: ChessBattlePresentationProfile
 @export var opponent_presentation: Resource
 ## Compatibility fallback for older encounter resources.

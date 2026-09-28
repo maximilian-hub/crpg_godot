@@ -2,14 +2,13 @@ extends Node
 
 class_name GameFlow
 
+signal dialogue_choice_resolved(target: String)
+
 const OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
 const CHESS_SCENE := preload("res://scenes/chess_game.tscn")
 const DEFAULT_BATTLE_PRESENTATION := preload("res://assets/boards/presentations/default_battle_presentation.tres")
 const BATTLE_LOGICAL_SIZE := Vector2i(960, 540)
 const TARGET_OVERWORLD_LOGICAL_SIDE := 180
-const DIALOGUE_LOGICAL_MARGIN := 4
-const DIALOGUE_LOGICAL_HEIGHT := 44
-const DIALOGUE_LOGICAL_BOTTOM_MARGIN := 5
 enum BattlePresentationMode {
 	FLUID_NATIVE,
 	FIXED_LOGICAL,
@@ -30,23 +29,25 @@ var active_battle: ChessGame = null
 var is_transitioning: bool = false
 var overworld_frame: SubViewportContainer = null
 var overworld_viewport: SubViewport = null
-var overworld_dialogue_layer: CanvasLayer = null
 var battle_environment: ChessEnvironmentSurface = null
 var battle_frame: SubViewportContainer = null
 var battle_viewport: SubViewport = null
 var battle_shake_offset := Vector2.ZERO
 var dialogue_pending := false
+var active_encounter_profile: ChessEncounterProfile = null
 
 func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
 	get_viewport().size_changed.connect(_layout_overworld_frame)
 	get_viewport().size_changed.connect(_layout_battle_frame)
 	get_viewport().size_changed.connect(_layout_battle_environment)
+	dialogue_presenter.target_emitted.connect(_on_dialogue_target_emitted)
+	dialogue_presenter.choice_cancel_requested.connect(_on_dialogue_choice_cancel_requested)
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_min_size(BATTLE_LOGICAL_SIZE)
-	_show_overworld("")
+	_show_overworld()
 
-func _show_overworld(pending_result: String) -> void:
+func _show_overworld() -> void:
 	overworld_frame = SubViewportContainer.new()
 	overworld_frame.name = "OverworldFrame"
 	overworld_frame.stretch = true
@@ -61,12 +62,9 @@ func _show_overworld(pending_result: String) -> void:
 	_layout_overworld_frame()
 
 	active_overworld = OVERWORLD_SCENE.instantiate()
-	active_overworld.configure(player_cell, player_facing, encounter_state, pending_result)
+	active_overworld.configure(player_cell, player_facing, encounter_state)
 	active_overworld.challenge_requested.connect(_on_challenge_requested)
 	overworld_viewport.add_child(active_overworld)
-	# Render text at window resolution while retaining the overworld's dialogue logic.
-	overworld_dialogue_layer = active_overworld.get_node("DialogueLayer") as CanvasLayer
-	overworld_dialogue_layer.reparent(self)
 	_layout_overworld_frame()
 
 func _layout_overworld_frame() -> void:
@@ -79,30 +77,6 @@ func _layout_overworld_frame() -> void:
 	overworld_frame.position = layout.position
 	overworld_frame.size = Vector2(layout.frame_side, layout.frame_side)
 	overworld_frame.stretch_shrink = layout.integer_scale
-	if is_instance_valid(overworld_dialogue_layer):
-		_layout_overworld_dialogue(layout)
-
-func _layout_overworld_dialogue(layout: Dictionary) -> void:
-	var scale: int = layout.integer_scale
-	var frame_position: Vector2 = layout.position
-	var frame_side: int = layout.frame_side
-	var panel := overworld_dialogue_layer.get_node("DialoguePanel") as Control
-	var dialogue_label := panel.get_node("DialogueLabel") as Label
-	var choice_label := panel.get_node("ChoiceLabel") as Label
-	var margin := DIALOGUE_LOGICAL_MARGIN * scale
-	var panel_height := DIALOGUE_LOGICAL_HEIGHT * scale
-	panel.position = frame_position + Vector2(
-		margin,
-		frame_side - panel_height - DIALOGUE_LOGICAL_BOTTOM_MARGIN * scale
-	)
-	panel.size = Vector2(frame_side - margin * 2, panel_height)
-	dialogue_label.position = Vector2(6, 4) * scale
-	dialogue_label.size = Vector2(panel.size.x - 12 * scale, 23 * scale)
-	dialogue_label.add_theme_font_size_override("font_size", 8 * scale)
-	choice_label.position = Vector2(6, 29) * scale
-	choice_label.size = Vector2(panel.size.x - 12 * scale, 11 * scale)
-	choice_label.add_theme_font_size_override("font_size", 6 * scale)
-
 static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
 	var integer_scale := maxi(1, floori(float(window_size.y) / TARGET_OVERWORLD_LOGICAL_SIDE)) + 2
 	var logical_side := maxi(1, floori(float(window_size.y) / integer_scale))
@@ -120,18 +94,53 @@ static func calculate_overworld_layout(window_size: Vector2i) -> Dictionary:
 func _on_challenge_requested(encounter_profile: ChessEncounterProfile) -> void:
 	if is_transitioning or dialogue_pending or active_overworld == null:
 		return
+	active_encounter_profile = encounter_profile
 	player_cell = active_overworld.get_player_cell()
 	player_facing = active_overworld.get_player_facing()
 	active_overworld.set_world_input_enabled(false)
-	if encounter_state == "initial" and encounter_profile != null and not encounter_profile.pre_battle_dialogue_path.is_empty():
-		dialogue_pending = true
-		if dialogue_presenter.start_file(encounter_profile.pre_battle_dialogue_path, DialogueView.Placement.BOTTOM):
-			await dialogue_presenter.conversation_finished
+	dialogue_pending = true
+	if encounter_state == "rematchable":
+		var accepted := await _run_rematch_dialogue(encounter_profile)
 		dialogue_pending = false
-		if active_overworld == null:
+		if not accepted:
+			if active_overworld != null:
+				active_overworld.set_world_input_enabled(true)
 			return
+	elif encounter_profile != null:
+		await _play_linear_dialogue(encounter_profile.pre_battle_dialogue_path)
+		dialogue_pending = false
+	if active_overworld == null:
+		return
 	encounter_state = "awaiting_result"
 	await _transition_to_battle(encounter_profile)
+
+func _run_rematch_dialogue(encounter_profile: ChessEncounterProfile) -> bool:
+	if encounter_profile == null or encounter_profile.rematch_dialogue_path.is_empty():
+		return true
+	if not dialogue_presenter.start_file(encounter_profile.rematch_dialogue_path, DialogueView.Placement.BOTTOM):
+		return false
+	var target: String = await dialogue_choice_resolved
+	dialogue_presenter.stop()
+	match target:
+		"accept_challenge":
+			return await _play_linear_dialogue(encounter_profile.rematch_accept_dialogue_path)
+		"decline_challenge", "":
+			await _play_linear_dialogue(encounter_profile.rematch_decline_dialogue_path)
+	return false
+
+func _play_linear_dialogue(path: String) -> bool:
+	if path.is_empty():
+		return true
+	if not dialogue_presenter.start_file(path, DialogueView.Placement.BOTTOM):
+		return false
+	await dialogue_presenter.conversation_finished
+	return true
+
+func _on_dialogue_target_emitted(target: String) -> void:
+	dialogue_choice_resolved.emit(target)
+
+func _on_dialogue_choice_cancel_requested() -> void:
+	dialogue_choice_resolved.emit("")
 
 func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> void:
 	is_transitioning = true
@@ -261,9 +270,27 @@ func _transition_to_overworld(player_result: String) -> void:
 	await _fade_to(1.0)
 	_clear_active_content()
 	encounter_state = "rematchable"
-	_show_overworld(player_result)
+	_show_overworld()
+	active_overworld.set_world_input_enabled(false)
 	await _fade_to(0.0)
 	is_transitioning = false
+	_present_result_dialogue(player_result)
+
+func _present_result_dialogue(player_result: String) -> void:
+	if active_overworld == null:
+		return
+	dialogue_pending = true
+	active_overworld.npc.face_toward(active_overworld.player.grid_cell)
+	var path := ""
+	if active_encounter_profile != null:
+		match player_result:
+			"win": path = active_encounter_profile.player_win_dialogue_path
+			"loss": path = active_encounter_profile.player_loss_dialogue_path
+			"draw": path = active_encounter_profile.draw_dialogue_path
+	await _play_linear_dialogue(path)
+	dialogue_pending = false
+	if active_overworld != null:
+		active_overworld.set_world_input_enabled(true)
 
 func _clear_active_content() -> void:
 	active_overworld = null
@@ -274,10 +301,6 @@ func _clear_active_content() -> void:
 	battle_shake_offset = Vector2.ZERO
 	overworld_frame = null
 	overworld_viewport = null
-	if is_instance_valid(overworld_dialogue_layer):
-		overworld_dialogue_layer.get_parent().remove_child(overworld_dialogue_layer)
-		overworld_dialogue_layer.queue_free()
-	overworld_dialogue_layer = null
 	for child in active_content.get_children():
 		child.queue_free()
 		active_content.remove_child(child)

@@ -1,0 +1,11 @@
+// Hood's response if the player insists on a rematch.
+@conversation hood_rematch_accept
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+[size=small]Uugggghghghghghhh.....[/size]
+
+@page speaker=hood name="Hood" known=false portrait=wistful
+Why can't these peons leave me alone?
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+Curse these devilish charms...

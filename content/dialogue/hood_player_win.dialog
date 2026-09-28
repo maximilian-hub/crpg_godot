@@ -1,0 +1,11 @@
+// Hood greets the player.
+@conversation hood_player_win
+
+@page speaker=hood name="Hood" known=false portrait=disappointed
+What...?
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+I'm distracted.
+
+@page speaker=hood name="Hood" known=false portrait=annoyed
+Leave me be. I have much to ponder.

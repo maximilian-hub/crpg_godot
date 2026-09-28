@@ -19,7 +19,7 @@ func _ready() -> void:
 
 func _test_overworld_scene() -> void:
 	var overworld: Overworld = OVERWORLD.instantiate()
-	overworld.configure(Vector2i(1, 1), Vector2i.LEFT, "initial", "")
+	overworld.configure(Vector2i(1, 1), Vector2i.LEFT, "initial")
 	add_child(overworld)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -53,7 +53,7 @@ func _test_overworld_scene() -> void:
 	_check(overworld.npc.encounter_profile.opponent_presentation != null and overworld.npc.encounter_profile.opponent_presentation.hand_style == overworld.npc.encounter_profile.opponent_hand_style, "forest encounter owns a complete opponent presentation loadout")
 	var requested_profiles: Array[ChessEncounterProfile] = []
 	overworld.challenge_requested.connect(func(profile: ChessEncounterProfile): requested_profiles.append(profile))
-	overworld._accept_challenge()
+	overworld._begin_challenge_dialogue()
 	_check(requested_profiles == [overworld.npc.encounter_profile], "challenge passes the NPC encounter profile without reducing it to a global ID")
 	overworld.player.set_input_enabled(true)
 	var npc_cell := overworld.npc.grid_cell
@@ -143,19 +143,14 @@ func _test_overworld_scene() -> void:
 	_check(overworld._can_talk_to_npc(), "idle adjacent player facing NPC can interact")
 	requested_profiles.clear()
 	overworld._begin_challenge_dialogue()
-	_check(overworld.dialogue_mode == Overworld.DialogueMode.CLOSED and requested_profiles == [overworld.npc.encounter_profile], "initial challenge delegates authored pre-battle dialogue to the game flow")
+	_check(requested_profiles == [overworld.npc.encounter_profile], "initial challenge delegates authored pre-battle dialogue to the game flow")
 	_check(overworld.player.movement_state == overworld.player.MovementState.INPUT_LOCKED, "initial challenge locks overworld movement while the shared presenter runs")
 	_check(overworld.npc.facing == Vector2i.DOWN and npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "challenge dialogue turns the NPC toward the player")
 	overworld.encounter_state = "rematchable"
 	overworld.player.set_input_enabled(true)
 	overworld._begin_challenge_dialogue()
-	_check(overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "rematch keeps the legacy page dialogue")
-	overworld._advance_page()
-	_check(overworld.dialogue_mode == Overworld.DialogueMode.CHOICE, "rematch pages lead to the legacy yes/no choice")
-	overworld._decline_challenge()
-	_check(overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "decline shows configured response")
-	overworld._advance_page()
-	_check(overworld.dialogue_mode == Overworld.DialogueMode.CLOSED, "decline response returns to exploration")
+	_check(requested_profiles == [overworld.npc.encounter_profile, overworld.npc.encounter_profile], "rematch also delegates authored dialogue and choice handling to the game flow")
+	_check(overworld.player.movement_state == overworld.player.MovementState.INPUT_LOCKED, "rematch interaction remains locked while the shared presenter runs")
 	_check(overworld.npc.facing == Vector2i.DOWN and npc_body.texture.resource_path.ends_with("hood_down_0001.png"), "NPC keeps its last facing after dialogue closes")
 
 	overworld.queue_free()
@@ -183,12 +178,7 @@ func _test_main_starts_in_overworld() -> void:
 	_check(frame.stretch_shrink == expected_scale, "overworld selects an integer presentation scale")
 	_check(viewport.size == Vector2i(expected_logical_side, expected_logical_side), "overworld logical view adapts to the window height")
 	_check(viewport.snap_2d_transforms_to_pixel, "overworld viewport snaps rendered transforms to logical pixels")
-	var dialogue_layer := main.get_node("DialogueLayer") as CanvasLayer
-	var dialogue_panel := dialogue_layer.get_node("DialoguePanel") as Control
-	_check(dialogue_layer.get_parent() == main, "dialogue renders in full-resolution application space")
-	_check(dialogue_panel.position.x == frame.position.x + 4 * expected_scale, "dialogue aligns with the displayed overworld frame")
-	_check(dialogue_panel.size.x == frame.size.x - 8 * expected_scale, "dialogue width follows the displayed overworld frame")
-	_check((dialogue_panel.get_node("DialogueLabel") as Label).get_theme_font_size("font_size") == 8 * expected_scale, "dialogue font is rendered at presentation resolution")
+	_check(not main.active_overworld.has_node("DialogueLayer"), "overworld no longer carries the placeholder dialogue panel")
 	var embedded_background := main.active_overworld.get_node("BackgroundLayer/Background") as ColorRect
 	_check(embedded_background.size == Vector2(expected_logical_side, expected_logical_side), "viewport-fixed background fills the logical viewport")
 	var fullscreen_layout := GameFlow.calculate_overworld_layout(Vector2i(2560, 1600))
@@ -282,7 +272,9 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_overworld != null and main.active_battle == null, "confirmed result returns to a fresh overworld")
 	_check(main.active_overworld.get_player_cell() == Vector2i(5, 5), "return restores saved player cell")
 	_check(main.active_overworld.get_player_facing() == Vector2i.RIGHT, "return restores saved facing")
-	_check(main.active_overworld.dialogue_mode == Overworld.DialogueMode.PAGES, "result dialogue opens automatically after return")
+	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_player_win", "authored result dialogue opens automatically after return")
+	while main.dialogue_presenter.active:
+		main.dialogue_presenter.confirm()
 	main.queue_free()
 	await get_tree().process_frame
 

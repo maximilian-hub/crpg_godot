@@ -12,6 +12,7 @@ const DEFAULT_SPEAKER_CATALOG := preload("res://assets/ui/dialogue/dialogue_spea
 signal conversation_started(conversation_id: String)
 signal conversation_finished(conversation_id: String)
 signal target_emitted(target: String)
+signal choice_cancel_requested()
 signal conversation_failed(source_path: String, errors: PackedStringArray)
 
 @export var speaker_catalog: DialogueSpeakerCatalog = DEFAULT_SPEAKER_CATALOG
@@ -126,6 +127,7 @@ func _build_runtime() -> void:
 	session_runner.page_completed.connect(func(_page, _index: int): dialogue_view.set_page_complete(true))
 	session_runner.choice_selection_changed.connect(dialogue_view.set_selected_choice)
 	session_runner.target_emitted.connect(func(target: String): target_emitted.emit(target))
+	session_runner.choice_cancel_requested.connect(func(): choice_cancel_requested.emit())
 	session_runner.choice_sound_requested.connect(choice_sound_player.play_cue)
 	session_runner.setting_changed.connect(_on_setting_changed)
 	session_runner.conversation_finished.connect(_on_conversation_finished)
