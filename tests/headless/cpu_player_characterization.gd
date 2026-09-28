@@ -9,6 +9,9 @@ func _ready() -> void:
 	await _test_cpu_capture_and_tie_breaking()
 	await _test_cpu_preserves_skitter_path_identity()
 	await _test_cpu_active_ability()
+	await _test_cpu_rejects_friendly_charge()
+	await _test_cpu_avoids_doomed_bone_pawn_targets()
+	await _test_damaged_king_prioritizes_safety()
 	await _test_forced_pass_with_no_legal_action()
 	await _test_forced_pass_deadlock_draw()
 	await _test_cpu_owned_reaction()
@@ -94,6 +97,95 @@ func _test_cpu_active_ability() -> void:
 	await _wait_frames(3)
 	_expect(model.board[3][3] == null, "CPU active ability resolves its target")
 	_expect(arakne.coordinate == Vector2i(4, 4) and arakne.cooldown_reset_pending, "CPU used the active ability and scheduled its recharge rather than making a normal capture")
+	cpu.queue_free()
+	model.free()
+
+
+func _test_cpu_rejects_friendly_charge() -> void:
+	var model := _new_empty_model()
+	var minotaur := MinotaurKing.new("white", Vector2i(4, 4))
+	minotaur.set_cooldown(0)
+	var ally := Pawn.new("white", Vector2i(4, 7))
+	var enemy := Pawn.new("black", Vector2i(1, 4))
+	model.add_piece(minotaur, minotaur.coordinate)
+	model.add_piece(ally, ally.coordinate)
+	model.add_piece(enemy, enemy.coordinate)
+	var cpu := _add_cpu(model, "white", false)
+	var actions := model.get_legal_primary_actions("white")
+	for seed_value in range(1, 16):
+		cpu.set_random_seed(seed_value)
+		var selected := cpu.choose_primary_action(actions)
+		_expect(selected.target != ally.coordinate, "CPU never chooses a Charge target occupied by its ally")
+	var selected := cpu.choose_primary_action(actions)
+	_expect(selected.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and selected.target == enemy.coordinate, "hostile Charge remains eligible and beats quiet movement")
+	cpu.queue_free()
+	model.free()
+
+
+func _test_cpu_avoids_doomed_bone_pawn_targets() -> void:
+	var model := _new_empty_model()
+	var necromancer := NecromancerKing.new("white", Vector2i(4, 4))
+	necromancer.set_cooldown(0)
+	model.add_piece(necromancer, necromancer.coordinate)
+	# Extend White's occupied range to the enemy back rank so the active ability
+	# exposes both immediately doomed and useful summon squares.
+	model.add_piece(Rook.new("white", Vector2i(0, 0)), Vector2i(0, 0))
+	var cpu := _add_cpu(model, "white", false)
+	var actions := model.get_legal_primary_actions("white")
+	for seed_value in range(1, 16):
+		cpu.set_random_seed(seed_value)
+		var selected := cpu.choose_primary_action(actions)
+		_expect(selected.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or selected.target.x != 0, "CPU active summon avoids the Bone Pawn death rank")
+	for seed_value in range(1, 8):
+		cpu.set_random_seed(seed_value)
+		_expect(cpu._choose_reaction_target(necromancer, [Vector2i(0, 1), Vector2i(1, 1)]).x == 1, "Raise Dead prefers a surviving target")
+	_expect(cpu._choose_reaction_target(necromancer, [Vector2i(0, 1)]).x == 0, "mandatory Raise Dead retains its doomed fallback when no safe target exists")
+	cpu.queue_free()
+	model.free()
+
+
+func _test_damaged_king_prioritizes_safety() -> void:
+	var model := _new_empty_model()
+	var king := ArakneKing.new("white", Vector2i(4, 4))
+	king.set_cooldown(1)
+	var attacker := Rook.new("black", Vector2i(4, 0))
+	var defender := Rook.new("white", Vector2i(6, 0))
+	var blocker := Rook.new("white", Vector2i(6, 2))
+	var greedy_rook := Rook.new("white", Vector2i(7, 7))
+	var queen := Queen.new("black", Vector2i(7, 4))
+	for piece in [king, attacker, defender, blocker, greedy_rook, queen]:
+		model.add_piece(piece, piece.coordinate)
+	var cpu := _add_cpu(model, "white", false)
+	var actions := model.get_legal_primary_actions("white")
+	var greedy_capture: ChessPrimaryAction
+	var blocking_move: ChessPrimaryAction
+	for action in actions:
+		if action.piece == greedy_rook and action.target == queen.coordinate:
+			greedy_capture = action
+		elif action.piece == blocker and action.target == Vector2i(4, 2):
+			blocking_move = action
+	_expect(greedy_capture != null and cpu.choose_primary_action(actions) == greedy_capture, "normal greedy AI takes the undefensive queen capture")
+	await king.take_damage(1)
+	_expect(cpu.king_safety_turns_remaining == 3, "surviving king damage opens a three-action safety window")
+	var defensive := cpu.choose_primary_action(actions)
+	_expect(defensive != null and defensive != greedy_capture and cpu._projected_king_threat_count(defensive) == 0, "alert AI chooses a capture, block, or escape that removes the rook threat")
+	_expect(blocking_move != null and cpu._projected_king_threat_count(blocking_move) == 1, "projected occupancy recognizes that interposing a blocker removes one of multiple king threats")
+	_expect(cpu._projected_king_threat_count(greedy_capture) == 1, "projected threat scoring recognizes that unrelated material leaves the king attacked")
+	cpu._on_piece_damaged(king, 1, 1, 2)
+	_expect(cpu.king_safety_turns_remaining == 3, "additional king damage refreshes the safety window")
+	cpu.king_safety_turns_remaining = 0
+	_expect(cpu.choose_primary_action(actions) == greedy_capture, "ordinary material scoring resumes when the safety window expires")
+	cpu.king_safety_turns_remaining = 3
+	var thought := ChessAiThought.new()
+	thought.model_revision = model.position_revision
+	thought.color = "white"
+	thought.action_kind = defensive.kind
+	thought.piece_coordinate = defensive.piece.coordinate
+	thought.piece_type_id = defensive.piece.get_position_type_id()
+	thought.target = defensive.target
+	thought.path.assign(defensive.path)
+	cpu.last_thought = thought
+	_expect(await cpu.execute_thought() and cpu.king_safety_turns_remaining == 2, "a successful defensive primary action consumes one safety turn")
 	cpu.queue_free()
 	model.free()
 
