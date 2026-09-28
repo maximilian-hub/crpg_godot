@@ -162,6 +162,10 @@ func set_cooldown_pending(value: bool) -> void:
 	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_recharge_pending(value)
 
 
+func release_initial_cooldown_motes() -> void:
+	if is_instance_valid(cooldown_presentation): cooldown_presentation.release_initial_motes()
+
+
 func set_selected(value: bool) -> void:
 	if is_instance_valid(cooldown_presentation): cooldown_presentation.set_selected(value)
 

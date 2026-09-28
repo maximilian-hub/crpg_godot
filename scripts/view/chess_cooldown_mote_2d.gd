@@ -1,7 +1,7 @@
 extends Node2D
 class_name ChessCooldownMote2D
 
-enum MotionState { ORBITING, EMERGING, ABSORBING }
+enum MotionState { ORBITING, WAITING_RELEASE, EMERGING, ABSORBING }
 
 var identity := 0
 var motion_state := MotionState.ORBITING
@@ -14,6 +14,7 @@ var transition_duration := 0.5
 var transition_start := Vector2.ZERO
 var transition_control_a := Vector2.ZERO
 var transition_control_b_offset := Vector2.ZERO
+var transition_finish := Vector2.ZERO
 var transition_started := false
 var hover_phase := 0.0
 var color := Color.WHITE

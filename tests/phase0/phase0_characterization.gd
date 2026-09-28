@@ -284,6 +284,12 @@ func _test_diegetic_king_cooldown_presentation() -> void:
 	var magic := adapter.get_king_magic_controller("white")
 	var cooldown: ChessKingCooldownPresentation = magic.cooldown_presentation
 	_expect(cooldown.authoritative_count == 3 and cooldown.active_mote_count() == 3 and cooldown.absorbing_mote_count() == 0, "an initialized cooldown constructs its dormant motes without fake transitions")
+	_expect(not cooldown.initial_release_pending and cooldown.release_players.size() == 4 and cooldown.absorption_players.size() == 4, "a playable King releases its initial cooldown through overlapping audio pools")
+	_expect(cooldown.profile.release_sound.resource_path.ends_with("mote_release.wav") and cooldown.profile.absorption_sound.resource_path.ends_with("mote_absorption.wav") and cooldown.profile.completion_sound.resource_path.ends_with("mote_final.wav"), "the universal cooldown profile assigns all three authored mote sounds")
+	var waiting_mote := cooldown.motes[2] as ChessCooldownMote2D
+	_expect(waiting_mote.motion_state == ChessCooldownMote2D.MotionState.WAITING_RELEASE and not waiting_mote.visible and waiting_mote.position.is_equal_approx(cooldown._absorption_anchor_position()) and is_equal_approx(waiting_mote.transition_delay, cooldown.profile.release_stagger * 2.0), "initial motes wait at the absorption anchor with the authored release stagger")
+	cooldown._play_absorption(2)
+	_expect(is_equal_approx(cooldown.absorption_players[0].pitch_scale, pow(2.0, -2.0 / 12.0)), "ordinary mote absorption drops one semitone per remaining cooldown turn")
 	var first_mote := cooldown.motes[0] as ChessCooldownMote2D
 	var expected_white := Color(1.0, 1.0, 1.0, cooldown.profile.mote_opacity)
 	var expected_charged := first_mote.color

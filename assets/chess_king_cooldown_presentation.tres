@@ -1,6 +1,9 @@
-[gd_resource type="Resource" script_class="ChessKingCooldownPresentationProfile" load_steps=2 format=3 uid="uid://b4gu6nkbs77jb"]
+[gd_resource type="Resource" script_class="ChessKingCooldownPresentationProfile" load_steps=5 format=3 uid="uid://b4gu6nkbs77jb"]
 
 [ext_resource type="Script" uid="uid://de1c7gvf6ro5j" path="res://scripts/view/chess_king_cooldown_presentation_profile.gd" id="1"]
+[ext_resource type="AudioStream" uid="uid://dmbicmye88pnx" path="res://assets/audio/chess/cooldown/mote_release.wav" id="2_release"]
+[ext_resource type="AudioStream" uid="uid://defy6nenp4qf2" path="res://assets/audio/chess/cooldown/mote_absorption.wav" id="3_absorption"]
+[ext_resource type="AudioStream" uid="uid://chv7y0b5dvkkv" path="res://assets/audio/chess/cooldown/mote_final.wav" id="4_final"]
 
 [resource]
 script = ExtResource("1")
@@ -21,6 +24,7 @@ follow_acceleration = 900.0
 arrival_smoothing = 40.0
 formation_angular_smoothing = 5.0
 release_duration = 0.55
+release_stagger = 0.2
 absorption_duration = 0.48
 absorption_stagger = 0.1
 absorption_curve_strength = 0.72
@@ -38,7 +42,10 @@ selection_orb_offset = Vector2(0, 10)
 selection_orb_size = 13.0
 selection_orb_opacity = 0.68
 selection_orb_speed = 1.15
-charge_volume_db = -18.0
-absorption_volume_db = -16.0
+release_sound = ExtResource("2_release")
+absorption_sound = ExtResource("3_absorption")
+completion_sound = ExtResource("4_final")
+release_volume_db = 6.0
+absorption_volume_db = -3.0
 completion_volume_db = -12.0
 selection_volume_db = -18.0

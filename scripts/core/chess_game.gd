@@ -102,6 +102,8 @@ func _ready() -> void:
 	controller.is_input_locked = model.battle_over
 	_configure_participants(true)
 	_white_turn_released = true
+	if not model.battle_over and adapter != null:
+		adapter.present_playable_turn(model.current_turn)
 	if opening_director == null or not opening_director.is_pending:
 		opening_completed.emit()
 	else:
@@ -161,10 +163,14 @@ func _on_board_rebuilt(_board: Array) -> void:
 
 
 func _on_settled_action_completed() -> void:
+	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter
+	if not opening_pending:
+		if not model.battle_over and adapter != null:
+			adapter.present_playable_turn(model.current_turn)
+		return
 	if (
 		_black_activation_barrier_started
 		or not _white_turn_released
-		or not opening_pending
 		or opening_director.stage != ChessBattleOpeningDirector.Stage.AWAITING_BLACK_ACTIVATION
 		or (model.current_turn != "black" and not model.battle_over)
 		or not model.is_settled()
@@ -180,6 +186,8 @@ func _on_settled_action_completed() -> void:
 	controller.is_input_locked = model.battle_over
 	if not model.battle_over:
 		_configure_participants(true)
+		if adapter != null:
+			adapter.present_playable_turn(model.current_turn)
 	opening_completed.emit()
 
 func restart_battle() -> void:

@@ -74,13 +74,13 @@ func _build_controls() -> void:
 	_spin(controls, &"follow_base_speed", "Base speed", 0, 500, 1); _spin(controls, &"follow_distance_gain", "Distance gain", 0, 20, 0.05); _spin(controls, &"follow_max_speed", "Maximum speed", 1, 1200, 1); _spin(controls, &"follow_acceleration", "Acceleration", 1, 2400, 1)
 	_spin(controls, &"arrival_smoothing", "Arrival smoothing", 0, 40, 0.1); _spin(controls, &"formation_angular_smoothing", "Formation smoothing", 0, 20, 0.1)
 	_add_heading(controls, "Absorption")
-	_spin(controls, &"release_duration", "Release duration", 0.01, 3, 0.01); _spin(controls, &"absorption_duration", "Absorb duration", 0.01, 3, 0.01); _spin(controls, &"absorption_stagger", "Absorb stagger", 0, 1, 0.01); _spin(controls, &"absorption_curve_strength", "Absorb curve strength", 0, 2, 0.01); _spin(controls, &"absorption_outward_distance", "Absorb outward reach", 0, 200, 1); _spin(controls, &"pulse_scale", "King pulse scale", 1, 1.5, 0.005); _spin(controls, &"pulse_duration", "King pulse duration", 0.01, 1.5, 0.01)
+	_spin(controls, &"release_duration", "Release duration", 0.01, 3, 0.01); _spin(controls, &"release_stagger", "Release stagger", 0, 1, 0.01); _spin(controls, &"absorption_duration", "Absorb duration", 0.01, 3, 0.01); _spin(controls, &"absorption_stagger", "Absorb stagger", 0, 1, 0.01); _spin(controls, &"absorption_curve_strength", "Absorb curve strength", 0, 2, 0.01); _spin(controls, &"absorption_outward_distance", "Absorb outward reach", 0, 200, 1); _spin(controls, &"pulse_scale", "King pulse scale", 1, 1.5, 0.005); _spin(controls, &"pulse_duration", "King pulse duration", 0.01, 1.5, 0.01)
 	_add_heading(controls, "Ready aura and orb")
 	_spin(controls, &"ready_silhouette_power", "Ready silhouette", 0, 1, 0.01); _spin(controls, &"ready_particle_power", "Ready particles", 0, 1, 0.01); _spin(controls, &"ready_density_multiplier", "Ready density", 0, 4, 0.05); _spin(controls, &"ready_speed_multiplier", "Ready speed", 0, 4, 0.05); _spin(controls, &"ready_brightening_intensity", "Brightening", 0, 0.5, 0.01); _spin(controls, &"ready_brightening_period", "Brightening period", 0.1, 12, 0.1)
 	_spin(controls, &"ready_brightening_fraction", "Brightening fraction", 0.05, 1, 0.01)
 	_vector(controls, &"selection_orb_offset", "Orb offset", -150, 150); _spin(controls, &"selection_orb_size", "Orb size", 2, 64, 0.5); _spin(controls, &"selection_orb_opacity", "Orb opacity", 0, 1, 0.01); _spin(controls, &"selection_orb_speed", "Orb speed", 0, 8, 0.05)
 	_add_heading(controls, "Audio levels")
-	_spin(controls, &"charge_volume_db", "Charge volume dB", -60, 6, 0.5); _spin(controls, &"absorption_volume_db", "Absorb volume dB", -60, 6, 0.5); _spin(controls, &"completion_volume_db", "Completion volume dB", -60, 6, 0.5); _spin(controls, &"selection_volume_db", "Selection volume dB", -60, 6, 0.5)
+	_spin(controls, &"release_volume_db", "Release volume dB", -60, 6, 0.5); _spin(controls, &"absorption_volume_db", "Absorb volume dB", -60, 6, 0.5); _spin(controls, &"completion_volume_db", "Completion volume dB", -60, 6, 0.5); _spin(controls, &"selection_volume_db", "Selection volume dB", -60, 6, 0.5)
 	_button(controls, "Reset Runtime Values", _reset_profile)
 	_button(controls, "Publish Universal Cooldown", _publish)
 	status = Label.new(); status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; controls.add_child(status)
@@ -96,6 +96,7 @@ func _rebuild_fixture() -> void:
 	if presentation != null:
 		presentation.set_awakened(awakened)
 		presentation.set_selected(selected)
+		presentation.release_initial_motes()
 	_refresh_count_label()
 
 

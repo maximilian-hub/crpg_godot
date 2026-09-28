@@ -3,6 +3,7 @@ class_name ChessKingCooldownPresentation
 
 const Mote := preload("res://scripts/view/chess_cooldown_mote_2d.gd")
 const SelectionOrb := preload("res://scripts/view/chess_selection_orb_2d.gd")
+const AUDIO_POOL_SIZE := 4
 
 var board: ChessBoardView
 var king: PieceView
@@ -26,8 +27,11 @@ var pulse_tween: Tween
 var pulse_base_scale := Vector2.ONE
 var has_active_ability := true
 var recharge_pending := false
-var charge_player := AudioStreamPlayer.new()
-var absorption_player := AudioStreamPlayer.new()
+var initial_release_pending := true
+var release_players: Array[AudioStreamPlayer] = []
+var absorption_players: Array[AudioStreamPlayer] = []
+var next_release_player := 0
+var next_absorption_player := 0
 var completion_player := AudioStreamPlayer.new()
 var selection_player := AudioStreamPlayer.new()
 
@@ -43,17 +47,26 @@ func configure(board_view: ChessBoardView, king_view: PieceView, king_aura: Ches
 	resting_particles = float(baseline.get("particles", 0.0))
 	resting_density = float(baseline.get("density", 1.0))
 	resting_speed = float(baseline.get("speed", 1.0))
-	for player in [charge_player, absorption_player, completion_player, selection_player]: add_child(player)
+	_configure_audio_player(completion_player, "MoteFinalAudio")
+	_configure_audio_player(selection_player, "CooldownSelectionAudio")
+	for index in range(AUDIO_POOL_SIZE):
+		var release_player := AudioStreamPlayer.new()
+		_configure_audio_player(release_player, "MoteReleaseAudio%d" % (index + 1))
+		release_players.append(release_player)
+		var absorption_player := AudioStreamPlayer.new()
+		_configure_audio_player(absorption_player, "MoteAbsorptionAudio%d" % (index + 1))
+		absorption_players.append(absorption_player)
 	selection_orb = SelectionOrb.new()
 	selection_orb.z_as_relative = false
 	selection_orb.visible = false
 	add_child(selection_orb)
 	selection_orb.configure(profile.selection_orb_size * board.get_world_scale(), profile.selection_orb_opacity, profile.selection_orb_speed, aura_profile.core_color, aura_profile.accent_color)
-	sync_immediate(cooldown)
+	_sync_deferred(cooldown)
 	set_process(true)
 
 
 func sync_immediate(count: int) -> void:
+	initial_release_pending = false
 	recharge_pending = false
 	authoritative_count = maxi(count, 0)
 	_clear_motes()
@@ -68,16 +81,38 @@ func sync_immediate(count: int) -> void:
 	_apply_visibility_and_aura()
 
 
+func _sync_deferred(count: int) -> void:
+	initial_release_pending = true
+	authoritative_count = maxi(count, 0)
+	_clear_motes()
+	for index in range(authoritative_count):
+		var mote := _create_mote()
+		mote.motion_state = Mote.MotionState.WAITING_RELEASE
+		mote.visible = false
+		mote.position = _absorption_anchor_position()
+		mote.set_visual_charge(0.0)
+		motes.append(mote)
+	_assign_formation(true)
+	_apply_visibility_and_aura()
+
+
+func release_initial_motes() -> void:
+	if not initial_release_pending:
+		return
+	initial_release_pending = false
+	_schedule_release_batch(motes.filter(func(mote): return mote.motion_state == Mote.MotionState.WAITING_RELEASE))
+
+
 func set_cooldown(count: int, animate := true) -> void:
 	recharge_pending = false
-	var previous := authoritative_count
 	authoritative_count = maxi(count, 0)
 	if not animate:
 		sync_immediate(authoritative_count)
 		return
+	if initial_release_pending:
+		_sync_deferred(authoritative_count)
+		return
 	_reconcile_motes()
-	if authoritative_count < previous:
-		_play(charge_player, profile.charge_sound, profile.charge_volume_db)
 	_apply_visibility_and_aura()
 
 
@@ -142,7 +177,7 @@ func shutdown() -> void:
 	if pulse_tween != null and pulse_tween.is_valid():
 		pulse_tween.kill()
 		if is_instance_valid(king) and is_instance_valid(king.sprite): king.sprite.scale = pulse_base_scale
-	for player in [charge_player, absorption_player, completion_player, selection_player]: player.stop()
+	for player in release_players + absorption_players + [completion_player, selection_player]: player.stop()
 	_clear_motes()
 	if is_instance_valid(selection_orb): selection_orb.visible = false
 
@@ -175,11 +210,15 @@ func _reconcile_motes() -> void:
 		active.append(reclaimed)
 	while active.size() < authoritative_count:
 		var mote := _create_mote()
-		mote.position = _anchor_position()
-		mote.motion_state = Mote.MotionState.EMERGING
-		mote.transition_duration = profile.release_duration
+		mote.position = _absorption_anchor_position()
+		mote.motion_state = Mote.MotionState.WAITING_RELEASE
+		mote.visible = false
 		motes.append(mote)
 		active.append(mote)
+	var new_motes: Array[ChessCooldownMote2D] = []
+	for mote in active:
+		if mote.motion_state == Mote.MotionState.WAITING_RELEASE and not mote.transition_started:
+			new_motes.append(mote)
 	while active.size() > authoritative_count:
 		var mote: ChessCooldownMote2D = active.pop_back() as ChessCooldownMote2D
 		mote.motion_state = Mote.MotionState.ABSORBING
@@ -190,6 +229,23 @@ func _reconcile_motes() -> void:
 		mote.transition_start = mote.position
 		absorbing.append(mote)
 	_assign_formation(false)
+	_schedule_release_batch(new_motes)
+
+
+func _schedule_release_batch(batch: Array) -> void:
+	var release_index := 0
+	for candidate in batch:
+		var mote := candidate as ChessCooldownMote2D
+		if not is_instance_valid(mote):
+			continue
+		mote.motion_state = Mote.MotionState.WAITING_RELEASE
+		mote.transition_elapsed = 0.0
+		mote.transition_delay = float(release_index) * profile.release_stagger
+		mote.transition_duration = profile.release_duration
+		mote.transition_started = true
+		mote.visible = false
+		mote.position = _absorption_anchor_position()
+		release_index += 1
 
 
 func _assign_formation(immediate: bool) -> void:
@@ -226,16 +282,29 @@ func _update_motes(delta: float) -> void:
 			if p >= 1.0:
 				motes.remove_at(index)
 				mote.queue_free()
-				_play(absorption_player, profile.absorption_sound, profile.absorption_volume_db)
 				_pulse_king()
-				if authoritative_count == 0 and not _has_absorbing_motes():
-					_play(completion_player, profile.completion_sound, profile.completion_volume_db)
+				var remaining_motes := motes.size()
+				if remaining_motes == 0 and authoritative_count == 0:
+					_play(completion_player, profile.completion_sound, profile.completion_volume_db, 1.0)
+				else:
+					_play_absorption(remaining_motes)
 			continue
 		mote.formation_angle = lerp_angle(mote.formation_angle, mote.target_angle, 1.0 - exp(-profile.formation_angular_smoothing * delta))
+		if mote.motion_state == Mote.MotionState.WAITING_RELEASE:
+			mote.transition_elapsed += delta
+			mote.position = _absorption_anchor_position()
+			if mote.transition_elapsed >= mote.transition_delay:
+				_begin_release_curve(mote)
+			continue
 		if mote.motion_state == Mote.MotionState.EMERGING:
 			mote.transition_elapsed += delta
-			if mote.transition_elapsed >= mote.transition_duration: mote.motion_state = Mote.MotionState.ORBITING
-		_follow(mote, _desired_position(mote), delta)
+			var release_progress := clampf(mote.transition_elapsed / maxf(mote.transition_duration, 0.001), 0.0, 1.0)
+			mote.position = _cubic_bezier(mote.transition_start, mote.transition_control_a, mote.transition_control_b_offset, mote.transition_finish, smoothstep(0.0, 1.0, release_progress)).round()
+			if release_progress >= 1.0:
+				mote.motion_state = Mote.MotionState.ORBITING
+				mote.velocity = Vector2.ZERO
+		else:
+			_follow(mote, _desired_position(mote), delta)
 		mote.set_visual_charge(0.0)
 		var anchor_y := _anchor_position().y
 		mote.z_as_relative = false
@@ -278,6 +347,31 @@ func _begin_absorption_curve(mote: ChessCooldownMote2D) -> void:
 	mote.velocity = Vector2.ZERO
 	mote.z_as_relative = false
 	mote.z_index = king.z_index + 1
+
+
+func _begin_release_curve(mote: ChessCooldownMote2D) -> void:
+	var anchor := _absorption_anchor_position()
+	var finish := _desired_position(mote)
+	var radial := finish - anchor
+	var radius := maxf(radial.length(), 1.0)
+	var orbit_sign := signf(profile.orbit_speed)
+	if is_zero_approx(orbit_sign): orbit_sign = 1.0
+	var tangent := Vector2(-radial.y, radial.x).normalized() * orbit_sign
+	var side := signf(radial.x)
+	if is_zero_approx(side): side = signf(tangent.x)
+	if is_zero_approx(side): side = 1.0
+	var outward_distance := profile.absorption_outward_distance * board.get_world_scale() * profile.absorption_curve_strength
+	mote.motion_state = Mote.MotionState.EMERGING
+	mote.transition_elapsed = 0.0
+	mote.transition_start = anchor
+	mote.transition_control_a = anchor + Vector2(side * outward_distance, 0.0)
+	mote.transition_control_b_offset = finish - tangent * maxf(radius * 0.6, outward_distance * 0.55)
+	mote.transition_finish = finish
+	mote.visible = true
+	mote.velocity = Vector2.ZERO
+	mote.z_as_relative = false
+	mote.z_index = king.z_index + 1
+	_play_release()
 
 
 static func _cubic_bezier(start: Vector2, control_a: Vector2, control_b: Vector2, finish: Vector2, progress: float) -> Vector2:
@@ -385,8 +479,30 @@ func _clear_motes() -> void:
 	motes.clear()
 
 
-func _play(player: AudioStreamPlayer, stream: AudioStream, volume_db: float) -> void:
+func _configure_audio_player(player: AudioStreamPlayer, player_name: String) -> void:
+	player.name = player_name
+	player.bus = &"SFX"
+	add_child(player)
+
+
+func _play_release() -> void:
+	if release_players.is_empty(): return
+	var player := release_players[next_release_player % release_players.size()]
+	next_release_player += 1
+	_play(player, profile.release_sound, profile.release_volume_db, 1.0)
+
+
+func _play_absorption(remaining_turns: int) -> void:
+	if absorption_players.is_empty(): return
+	var player := absorption_players[next_absorption_player % absorption_players.size()]
+	next_absorption_player += 1
+	var pitch_scale := pow(2.0, -float(maxi(remaining_turns, 0)) / 12.0)
+	_play(player, profile.absorption_sound, profile.absorption_volume_db, pitch_scale)
+
+
+func _play(player: AudioStreamPlayer, stream: AudioStream, volume_db: float, pitch_scale := 1.0) -> void:
 	if stream == null: return
 	player.stream = stream
 	player.volume_db = volume_db
+	player.pitch_scale = pitch_scale
 	player.play()

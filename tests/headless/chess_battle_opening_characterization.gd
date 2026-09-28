@@ -34,6 +34,7 @@ func _test_staggered_opening(player_color: String) -> void:
 	_check(not game.controller.is_input_locked and not game.white_cpu_player.is_enabled and not game.black_cpu_player.is_enabled, "%s view releases a player-controlled White turn while Black remains pending" % player_color)
 	var white_magic := adapter.get_king_magic_controller("white")
 	var black_magic := adapter.get_king_magic_controller("black")
+	_check(not white_magic.cooldown_presentation.initial_release_pending and black_magic.cooldown_presentation.initial_release_pending, "%s view releases White's motes on its playable turn while Black remains deferred" % player_color)
 	_check(white_magic.resolved_aura_profile.core_color.is_equal_approx(Color(0.65625, 0.65625, 0.65625, 1)) and black_magic.resolved_aura_profile.core_color.is_equal_approx(Color(0.364044, 0, 0.589844, 1)), "%s view resolves Arakne and Necromancer Auras by King type rather than player/opponent army" % player_color)
 	_check(white_magic.hand_aura.profile.core_color.is_equal_approx(white_magic.king_aura.profile.core_color) and black_magic.hand_aura.profile.core_color.is_equal_approx(black_magic.king_aura.profile.core_color), "%s view applies each King's universal Aura identity to both King and ritual hand" % player_color)
 	_check(white_magic.king_aura.silhouette_power > 0.0 and black_magic.stone_sprite.visible and is_zero_approx(black_magic.king.sprite.self_modulate.a) and is_zero_approx(black_magic.king_aura.silhouette_power) and is_zero_approx(black_magic.king_aura.particle_power), "%s view leaves White awakened while Black remains inert stone during White's first turn" % player_color)
@@ -52,6 +53,7 @@ func _test_staggered_opening(player_color: String) -> void:
 	_check(moved and black_boundary.started and black_boundary.locked and black_boundary.settled and black_boundary.black_turn, "%s view gates the settled Black turn before starting Black activation" % player_color)
 	_check(final_completed.value and not game.opening_pending and not game.controller.is_input_locked, "%s view unlocks Black only after its ritual completes" % player_color)
 	_check(not adapter.get_king_magic_controller("black").running and adapter.get_king_magic_controller("black").king_aura.silhouette_power > 0.0, "%s view finishes with Black's resting Aura active" % player_color)
+	_check(not adapter.get_king_magic_controller("black").cooldown_presentation.initial_release_pending, "%s view releases Black's initial motes only after its activation barrier" % player_color)
 	await _destroy_game(game)
 
 

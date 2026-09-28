@@ -23,6 +23,7 @@ class_name ChessKingCooldownPresentationProfile
 
 @export_group("Transitions")
 @export_range(0.01, 3.0, 0.01) var release_duration := 0.55
+@export_range(0.0, 1.0, 0.01) var release_stagger := 0.2
 @export_range(0.01, 3.0, 0.01) var absorption_duration := 0.48
 @export_range(0.0, 1.0, 0.01) var absorption_stagger := 0.1
 @export_range(0.0, 2.0, 0.01) var absorption_curve_strength := 0.72
@@ -46,11 +47,11 @@ class_name ChessKingCooldownPresentationProfile
 @export_range(0.0, 8.0, 0.05) var selection_orb_speed := 1.15
 
 @export_group("Audio")
-@export var charge_sound: AudioStream
+@export var release_sound: AudioStream
 @export var absorption_sound: AudioStream
 @export var completion_sound: AudioStream
 @export var selection_sound: AudioStream
-@export_range(-60.0, 6.0, 0.5) var charge_volume_db := -18.0
+@export_range(-60.0, 6.0, 0.5) var release_volume_db := -18.0
 @export_range(-60.0, 6.0, 0.5) var absorption_volume_db := -16.0
 @export_range(-60.0, 6.0, 0.5) var completion_volume_db := -12.0
 @export_range(-60.0, 6.0, 0.5) var selection_volume_db := -18.0

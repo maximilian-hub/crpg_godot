@@ -68,6 +68,7 @@ var locally_previewed_abilities: Dictionary = {}
 var retained_capture_piece_views: Dictionary = {}
 var pending_damage_reactions: Dictionary = {}
 var raise_dead_skull_anchors: Dictionary = {}
+var playable_turn_colors: Dictionary = {}
 
 
 func _ready() -> void:
@@ -142,6 +143,13 @@ func get_king_magic_controller(color: String) -> ChessKingMagicController:
 		return null
 	var king := model.get_king(color)
 	return _get_king_magic(king) as ChessKingMagicController if king != null else null
+
+
+func present_playable_turn(color: String) -> void:
+	playable_turn_colors[color] = true
+	var magic := get_king_magic_controller(color)
+	if is_instance_valid(magic):
+		magic.release_initial_cooldown_motes()
 
 
 func _on_board_initialized(board: Array) -> void:
@@ -914,6 +922,8 @@ func _register_king_magic(piece: KingPiece, piece_node: PieceView) -> void:
 	view.add_child(magic)
 	magic.configure(view, view.get_hand_rig_for_color(piece.color), piece_node, king_profile, piece.get_position_type_id(), cooldown_presentation_profile)
 	king_magic_controllers[piece] = magic
+	if playable_turn_colors.has(piece.color):
+		magic.release_initial_cooldown_motes()
 
 
 func _get_king_magic(piece: ModelPiece) -> Node:
