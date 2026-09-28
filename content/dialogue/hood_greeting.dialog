@@ -11,7 +11,7 @@ Hello.
 I was just pondering these statues.
 
 @page speaker=hood name="Hood" known=false portrait=thinking
-Do you know anything of them?
+Do you know anything about them?
 
 @page speaker=hood name="Hood" known=false portrait=thinking
 ...
@@ -23,7 +23,7 @@ Of course not.
 Some say these figures represent a king and queen from long ago.
 
 @page speaker=hood name="Hood" known=false portrait=neutral
-They abandoned their power and wealth, their kingdom... they stopped playing the game.
+Apparently they abandoned their kingdom. All that power and wealth... but they stopped playing the game.
 
 @page speaker=hood name="Hood" known=false portrait=neutral
 Legend says they settled deep in these woods, to live a quiet natural life in solitude.
@@ -47,4 +47,4 @@ I see that look in your eyes. You wish to play.
 Very well.
 
 @page speaker=hood name="Hood" known=false portrait=annoyed
-I shall end this quickly.
+But you may regret this.
