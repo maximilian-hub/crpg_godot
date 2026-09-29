@@ -208,6 +208,26 @@ func _on_palette_piece_drag_requested(type_id: StringName, color: String) -> voi
 func _release_gui_focus(_coordinate := Vector2i.ZERO) -> void:
 	get_viewport().gui_release_focus()
 
+
+func _input(event: InputEvent) -> void:
+	if (
+		event is InputEventMouseButton
+		and event.button_index == MOUSE_BUTTON_LEFT
+		and event.pressed
+	):
+		_release_text_focus_if_scene_clicked(get_viewport().gui_get_hovered_control())
+
+
+func _release_text_focus_if_scene_clicked(hovered_control: Control) -> void:
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	if _is_text_input(focus_owner) and hovered_control == null:
+		_release_gui_focus()
+
+
+func _is_text_input(control: Control) -> bool:
+	return control is LineEdit or control is TextEdit
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not event is InputEventKey:
 		return
@@ -223,7 +243,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_release_gui_focus()
 			_restore_cursor_tool()
 			get_viewport().set_input_as_handled()
-		return
+			return
+		if _is_text_input(focus_owner):
+			return
 
 	match key_event.keycode:
 		KEY_LEFT:
