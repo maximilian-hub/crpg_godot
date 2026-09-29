@@ -82,7 +82,7 @@ func _test_static_states() -> void:
 	font_skin.name_font = PIXEL_OPERATOR_8_BOLD
 	font_skin.choice_font = PIXEL_OPERATOR_8
 	view.set_skin(font_skin)
-	_check(view.dialogue_text.get_theme_font("normal_font") == PIXEL_OPERATOR_8 and view.speaker_label.get_theme_font("font") == PIXEL_OPERATOR_8_BOLD and view.choice_label.get_theme_font("font") == PIXEL_OPERATOR_8, "DialogueSkin independently applies body, plaque, and choice font candidates")
+	_check(view.dialogue_text.get_theme_font("normal_font") == PIXEL_OPERATOR_8 and view.speaker_label.get_theme_font("font") == PIXEL_OPERATOR_8_BOLD and view.choice_label.get_theme_font("normal_font") == PIXEL_OPERATOR_8, "DialogueSkin independently applies body, plaque, and choice font candidates")
 	_check(font_skin.has_semantic_color("warning") and font_skin.semantic_color("warning") != font_skin.body_color, "DialogueSkin resolves named semantic colors independently of authored text")
 	_check(font_skin.has_semantic_size("large") and font_skin.semantic_size("large") > font_skin.semantic_size("normal"), "DialogueSkin resolves semantic sizes independently of authored text")
 	_check(font_skin.has_semantic_jiggle("strong") and font_skin.semantic_jiggle("strong").amplitude > font_skin.semantic_jiggle("standard").amplitude, "DialogueSkin resolves named jiggle motion independently of authored text")
@@ -149,9 +149,10 @@ func _test_static_states() -> void:
 	view.configure("", true, "Off-screen speaker.", null, PackedStringArray(["Listen", "Leave"]))
 	_check(view.speaker_label.text == "???", "empty speaker name safely falls back to question marks")
 	_check(view.choice_label.visible and not view.continue_indicator.visible, "choice state replaces the continue indicator")
-	_check(view.choice_label.text.begins_with(DIALOGUE_SKIN.choice_cursor + " Listen"), "first choice receives the skin-defined selection cursor")
+	var stable_choice_layout: String = view.choice_label.get_parsed_text()
+	_check(stable_choice_layout.begins_with(DIALOGUE_SKIN.choice_cursor + " Listen"), "choice layout reserves the skin-defined cursor glyph before every option")
 	view.set_selected_choice(1)
-	_check(view.choice_label.text.contains(DIALOGUE_SKIN.choice_cursor + " Leave") and not view.choice_label.text.begins_with(DIALOGUE_SKIN.choice_cursor), "selected-choice rendering moves the cursor without changing authored labels")
+	_check(view.choice_label.get_parsed_text() == stable_choice_layout and view.selected_choice_index == 1, "moving selection changes cursor visibility without reflowing either choice label")
 	view.set_page_complete(false)
 	_check(not view.choice_label.visible and not view.continue_indicator.visible and not view.continue_indicator_texture.visible, "incomplete reveal hides choices and all continue indicators")
 	view.set_page_complete(true)

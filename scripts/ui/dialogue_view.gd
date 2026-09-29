@@ -25,7 +25,7 @@ var speaker_plate: Panel
 var speaker_label: Label
 var dialogue_text: RichTextLabel
 var text_interior: TextureRect
-var choice_label: Label
+var choice_label: RichTextLabel
 var continue_indicator: Label
 var continue_indicator_texture: TextureRect
 var page_has_choices := false
@@ -152,11 +152,19 @@ func set_selected_choice(index: int) -> void:
 
 
 func _render_choices() -> void:
-	var rendered := PackedStringArray()
+	choice_label.clear()
 	for index in range(choice_texts.size()):
-		var cursor: String = skin.choice_cursor if index == selected_choice_index else " ".repeat(skin.choice_cursor.length())
-		rendered.append("%s %s" % [cursor, choice_texts[index]])
-	choice_label.text = "   ".join(rendered)
+		if index > 0:
+			choice_label.add_text("   ")
+		if index != selected_choice_index:
+			# Reserve the exact cursor glyph width for every choice. Replacing it
+			# with spaces changes the following label's x-position in proportional
+			# pixel fonts such as Pixel Operator.
+			choice_label.push_color(Color.TRANSPARENT)
+		choice_label.add_text(skin.choice_cursor)
+		if index != selected_choice_index:
+			choice_label.pop()
+		choice_label.add_text(" " + choice_texts[index])
 
 
 func set_skin(value: Resource) -> void:
@@ -293,8 +301,11 @@ func _build_view() -> void:
 	dialogue_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	jiggle_effect = JiggleEffectScript.new()
 	dialogue_panel.add_child(dialogue_text)
-	choice_label = Label.new()
+	choice_label = RichTextLabel.new()
 	choice_label.name = "ChoiceList"
+	choice_label.fit_content = false
+	choice_label.scroll_active = false
+	choice_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	choice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	dialogue_panel.add_child(choice_label)
 	continue_indicator = Label.new()
@@ -342,15 +353,15 @@ func _apply_skin() -> void:
 	else:
 		speaker_label.remove_theme_font_override("font")
 	if skin.choice_font != null:
-		choice_label.add_theme_font_override("font", skin.choice_font)
+		choice_label.add_theme_font_override("normal_font", skin.choice_font)
 	else:
-		choice_label.remove_theme_font_override("font")
+		choice_label.remove_theme_font_override("normal_font")
 	dialogue_text.add_theme_font_size_override("normal_font_size", skin.body_font_size)
 	dialogue_text.add_theme_color_override("default_color", skin.body_color)
 	speaker_label.add_theme_font_size_override("font_size", skin.name_font_size)
 	speaker_label.add_theme_color_override("font_color", skin.name_color)
-	choice_label.add_theme_font_size_override("font_size", skin.choice_font_size)
-	choice_label.modulate = skin.choice_color
+	choice_label.add_theme_font_size_override("normal_font_size", skin.choice_font_size)
+	choice_label.add_theme_color_override("default_color", skin.choice_color)
 	var silhouette := empty_portrait.get_node("Silhouette") as Label
 	silhouette.visible = skin.empty_portrait_texture == null
 	silhouette.modulate = skin.empty_portrait_color
