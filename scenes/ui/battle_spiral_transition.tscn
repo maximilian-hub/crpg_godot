@@ -1,0 +1,32 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/battle_spiral_transition.gd" id="1_transition"]
+[ext_resource type="Script" path="res://scripts/ui/battle_spiral_renderer.gd" id="2_renderer"]
+[ext_resource type="Script" path="res://scripts/ui/transition_letterbox_blackout.gd" id="3_letterbox"]
+[ext_resource type="AudioStream" uid="uid://bpap1e4nj7u4" path="res://assets/audio/cues/transition_0.wav" id="4_transition_audio"]
+
+[node name="BattleSpiralTransition" type="Node"]
+script = ExtResource("1_transition")
+transition_audio = ExtResource("4_transition_audio")
+
+[node name="AudioPlayer" type="AudioStreamPlayer" parent="."]
+bus = &"Music"
+
+[node name="LogicalCanvas" type="CanvasLayer" parent="."]
+layer = 1000
+
+[node name="SpiralRenderer" type="Control" parent="LogicalCanvas"]
+mouse_filter = 2
+script = ExtResource("2_renderer")
+
+[node name="RootBlackoutLayer" type="CanvasLayer" parent="."]
+layer = 999
+
+[node name="LetterboxBlackout" type="Control" parent="RootBlackoutLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_letterbox")
