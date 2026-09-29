@@ -74,6 +74,36 @@ func _test_overworld_scene() -> void:
 	_check(not player._try_begin_step(Vector2i.LEFT), "grid check rejects blocked destination")
 	_check(player.facing == Vector2i.LEFT, "blocked direction still changes facing")
 	_check(player_body.animation == &"walk_left" and player_body.frame == 0 and not player_body.is_playing(), "blocked movement remains in the facing neutral pose")
+	var bump_sound := player.get_node("BumpSound") as AudioStreamPlayer
+	_check(bump_sound != null and bump_sound.stream.resource_path.ends_with("bump.wav") and bump_sound.bus == &"SFX", "blocked movement uses the authored bump sound on the SFX bus")
+	_check(player.blocked_walk_active and bump_sound.playing, "an initial blocked attempt immediately starts bump feedback")
+
+	player.configure(overworld.collision_grid, overworld.npc, Vector2i(1, 1), Vector2i.LEFT)
+	Input.action_press("move_left")
+	_check(not player._try_begin_step(Vector2i.LEFT), "holding toward a wall starts the stationary walk cycle")
+	var blocked_phase_duration := (
+		player.walking_distance_per_gait_phase
+		/ (float(player.CELL_SIZE) / player.step_duration)
+		/ player.blocked_walk_speed_scale
+	)
+	player._process_blocked_walk(blocked_phase_duration * 0.99)
+	_check(player_body.frame == 0 and player.position == player.cell_center(Vector2i(1, 1)), "blocked gait waits for its half-speed frame interval without translating")
+	player._process_blocked_walk(blocked_phase_duration * 0.02)
+	_check(player_body.frame == 1 and not player.skip_next_blocked_bump, "the first blocked frame cue is consumed by the immediate bump instead of replaying")
+	player._process_blocked_walk(blocked_phase_duration)
+	_check(player_body.frame == 2 and player.position == player.cell_center(Vector2i(1, 1)), "blocked frame 0003 advances without movement")
+	player._process_blocked_walk(blocked_phase_duration)
+	_check(player_body.frame == 3 and bump_sound.playing, "entering blocked frame 0004 replays the bump cue at an even interval")
+	Input.action_release("move_left")
+	player._process_blocked_walk(0.01)
+	_check(not player.blocked_walk_active and player_body.frame == 0, "releasing blocked movement settles on the next neutral gait frame")
+
+	var npc_approach_cell := overworld.npc.grid_cell + Vector2i.DOWN
+	player.configure(overworld.collision_grid, overworld.npc, npc_approach_cell, Vector2i.UP)
+	Input.action_press("move_up")
+	_check(not player._try_begin_step(Vector2i.UP) and player.blocked_walk_active, "blocking NPCs use the same bump feedback as walls")
+	Input.action_release("move_up")
+	player._process_blocked_walk(0.01)
 	await _test_edge_barriers(overworld, player)
 
 	var open_run := _find_open_horizontal_run(overworld)

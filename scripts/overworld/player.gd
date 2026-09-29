@@ -14,12 +14,16 @@ const DIRECTIONS := {
 }
 
 @onready var body: AnimatedSprite2D = $Body
+@onready var bump_sound: AudioStreamPlayer = $BumpSound
 
 @export_range(0.05, 1.0, 0.01) var step_duration: float = 0.14
 ## Actual pixels travelled before advancing to the next of the four gait phases.
 @export_range(1.0, 32.0, 0.5) var walking_distance_per_gait_phase: float = 8.0
 ## Standstill direction changes anticipate movement for this long.
 @export_range(0.01, 0.3, 0.01) var turn_in_place_duration: float = 0.08
+## Relative gait speed while held against an obstruction.
+@export_range(0.05, 1.0, 0.05) var blocked_walk_speed_scale: float = 0.5
+@export_range(-80.0, 24.0, 0.5) var bump_volume_db: float = 0.0
 
 var movement_state := MovementState.INPUT_LOCKED
 var grid_cell := Vector2i.ZERO
@@ -35,6 +39,10 @@ var turn_time_remaining: float = 0.0
 var turn_direction := Vector2i.ZERO
 var collision_grid: OverworldCollisionGrid
 var blocking_npc: OverworldNpc
+var blocked_walk_active: bool = false
+var blocked_walk_direction := Vector2i.ZERO
+var blocked_walk_time: float = 0.0
+var skip_next_blocked_bump: bool = false
 
 func configure(
 	p_collision_grid: OverworldCollisionGrid,
@@ -57,10 +65,12 @@ func configure(
 	walking_distance_accumulator = 0.0
 	turn_time_remaining = 0.0
 	turn_direction = Vector2i.ZERO
+	_reset_blocked_walk(false)
 	movement_state = MovementState.GRID_IDLE
 	_sync_animation()
 
 func set_input_enabled(enabled: bool) -> void:
+	_reset_blocked_walk()
 	if enabled:
 		input_lock_pending = false
 		if movement_state == MovementState.INPUT_LOCKED:
@@ -96,6 +106,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 func _physics_process(delta: float) -> void:
+	if movement_state == MovementState.GRID_IDLE and blocked_walk_active:
+		_process_blocked_walk(delta)
+		if movement_state != MovementState.GRID_IDLE or blocked_walk_active:
+			velocity = Vector2.ZERO
+			return
 	if movement_state == MovementState.TURNING:
 		velocity = Vector2.ZERO
 		turn_time_remaining -= delta
@@ -144,8 +159,10 @@ func _try_begin_step(direction: Vector2i) -> bool:
 	facing = direction
 	var requested_cell := grid_cell + direction
 	if not _is_traversable(requested_cell):
+		_begin_blocked_walk(direction)
 		_sync_animation()
 		return false
+	_reset_blocked_walk(false)
 	step_origin_cell = grid_cell
 	step_origin_gait_phase = gait_phase
 	step_origin_gait_distance = walking_distance_accumulator
@@ -155,6 +172,7 @@ func _try_begin_step(direction: Vector2i) -> bool:
 	return true
 
 func _begin_turn(direction: Vector2i) -> void:
+	_reset_blocked_walk()
 	facing = direction
 	turn_direction = direction
 	turn_time_remaining = turn_in_place_duration
@@ -207,7 +225,57 @@ func _cancel_step_after_contact() -> void:
 	movement_state = MovementState.INPUT_LOCKED if input_lock_pending else MovementState.GRID_IDLE
 	input_lock_pending = false
 	_settle_gait_to_neutral()
+	if movement_state == MovementState.GRID_IDLE:
+		_begin_blocked_walk(facing)
 	_sync_animation()
+
+func _begin_blocked_walk(direction: Vector2i) -> void:
+	if blocked_walk_active and blocked_walk_direction == direction:
+		return
+	blocked_walk_active = true
+	blocked_walk_direction = direction
+	blocked_walk_time = 0.0
+	skip_next_blocked_bump = true
+	_play_bump_sound()
+
+func _process_blocked_walk(delta: float) -> void:
+	if not _is_direction_held(blocked_walk_direction):
+		_reset_blocked_walk()
+		return
+	if _is_traversable(grid_cell + blocked_walk_direction):
+		var released_direction := blocked_walk_direction
+		_reset_blocked_walk(false)
+		_try_begin_step(released_direction)
+		return
+
+	blocked_walk_time += delta
+	var movement_speed := float(CELL_SIZE) / maxf(step_duration, 0.001)
+	var normal_phase_duration := maxf(walking_distance_per_gait_phase, 0.001) / movement_speed
+	var blocked_phase_duration := normal_phase_duration / maxf(blocked_walk_speed_scale, 0.001)
+	while blocked_walk_time >= blocked_phase_duration:
+		blocked_walk_time -= blocked_phase_duration
+		gait_phase = (gait_phase + 1) % 4
+		_sync_animation()
+		if gait_phase == 1 or gait_phase == 3:
+			if skip_next_blocked_bump:
+				skip_next_blocked_bump = false
+			else:
+				_play_bump_sound()
+
+func _reset_blocked_walk(settle_gait := true) -> void:
+	blocked_walk_active = false
+	blocked_walk_direction = Vector2i.ZERO
+	blocked_walk_time = 0.0
+	skip_next_blocked_bump = false
+	if settle_gait:
+		_settle_gait_to_neutral()
+	_sync_animation()
+
+func _play_bump_sound() -> void:
+	if not is_instance_valid(bump_sound) or bump_sound.stream == null:
+		return
+	bump_sound.volume_db = bump_volume_db
+	bump_sound.play()
 
 func _begin_held_step() -> void:
 	var next_direction := _get_held_direction()
