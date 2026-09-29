@@ -22,6 +22,7 @@ enum BattlePresentationMode {
 @onready var dialogue_presenter: DialoguePresenter = $DialoguePresentationLayer/DialoguePresenter
 @onready var battle_spiral_transition: Node = $BattleSpiralTransition
 @onready var music_controller: Node = $GameMusicController
+@onready var mobile_controls: MobileGameControls = $MobileControlsLayer/MobileGameControls
 
 var player_cell := Vector2i(-1, -1)
 var player_facing := Vector2i.UP
@@ -45,12 +46,35 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout_battle_environment)
 	dialogue_presenter.target_emitted.connect(_on_dialogue_target_emitted)
 	dialogue_presenter.choice_cancel_requested.connect(_on_dialogue_choice_cancel_requested)
+	dialogue_presenter.conversation_started.connect(func(_id: String): mobile_controls.set_dialogue_controls_requested(true))
+	dialogue_presenter.conversation_finished.connect(func(_id: String): mobile_controls.set_dialogue_controls_requested(false))
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_min_size(BATTLE_LOGICAL_SIZE)
 	_show_overworld()
 	music_controller.play_overworld()
 
+
+func _unhandled_input(event: InputEvent) -> void:
+	if (
+		battle_presentation_mode != BattlePresentationMode.FIXED_LOGICAL
+		or not event is InputEventScreenTouch
+		or not event.pressed
+		or not is_instance_valid(active_battle)
+		or not is_instance_valid(battle_frame)
+		or is_transitioning
+	):
+		return
+	var touch := event as InputEventScreenTouch
+	var frame_rect := Rect2(battle_frame.position, battle_frame.size)
+	if not frame_rect.has_point(touch.position):
+		return
+	var logical_position := (touch.position - battle_frame.position) / float(battle_frame.stretch_shrink)
+	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
+	if board_view != null and board_view.select_square_at_viewport_position(logical_position):
+		get_viewport().set_input_as_handled()
+
 func _show_overworld() -> void:
+	mobile_controls.set_gameplay_controls_requested(true)
 	overworld_frame = SubViewportContainer.new()
 	overworld_frame.name = "OverworldFrame"
 	overworld_frame.stretch = true
@@ -149,6 +173,8 @@ func _on_dialogue_choice_cancel_requested() -> void:
 
 func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> void:
 	is_transitioning = true
+	mobile_controls.set_gameplay_controls_requested(false)
+	mobile_controls.set_dialogue_controls_requested(false)
 	dialogue_pending = false
 	dialogue_presenter.stop()
 	active_overworld.set_world_input_enabled(false)
@@ -291,6 +317,7 @@ func _on_battle_exit_requested(player_result: String) -> void:
 
 func _transition_to_overworld(player_result: String) -> void:
 	is_transitioning = true
+	mobile_controls.set_gameplay_controls_requested(false)
 	music_controller.stop_bgm()
 	await _fade_to(1.0)
 	_clear_active_content()

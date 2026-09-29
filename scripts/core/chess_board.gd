@@ -432,6 +432,18 @@ func _uses_material_surface() -> bool:
 func _on_square_selected(coordinate: Vector2i) -> void:
 	square_selected.emit(coordinate)
 
+## SubViewportContainer forwards mouse picking to a fixed logical viewport, but
+## native screen-touch events are not consistently forwarded on Android. Main
+## uses this geometry path only for that fixed-logical presentation mode.
+func select_square_at_viewport_position(viewport_position: Vector2) -> bool:
+	for row in range(projection.rows):
+		for column in range(projection.columns):
+			var coordinate := Vector2i(row, column)
+			if Geometry2D.is_point_in_polygon(viewport_position, projection.get_cell_polygon(coordinate)):
+				square_selected.emit(coordinate)
+				return true
+	return false
+
 func draw_piece(piece_data: ModelPiece) -> Node:
 	if piece_data == null: return null # no need to draw a piece that doesn't exist!
 	var pieces = $Pieces

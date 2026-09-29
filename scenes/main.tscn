@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://d21dn7nqd484h"]
+[gd_scene load_steps=9 format=3 uid="uid://d21dn7nqd484h"]
 
 [ext_resource type="Script" uid="uid://dv1fimv1wdiux" path="res://scripts/main.gd" id="1_jjgbg"]
 [ext_resource type="PackedScene" path="res://scenes/ui/dialogue_presenter.tscn" id="2_dialogue"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://b7a4ypbxgcjm2" path="res://scripts/audio/game_music_controller.gd" id="5_music_controller"]
 [ext_resource type="AudioStream" uid="uid://6uo4hbectys8" path="res://assets/audio/bgm/forest.wav" id="6_overworld_music"]
 [ext_resource type="AudioStream" uid="uid://cx65hshlo75r2" path="res://assets/audio/bgm/forest_battle.wav" id="7_battle_music"]
+[ext_resource type="PackedScene" path="res://scenes/ui/mobile_game_controls.tscn" id="8_mobile_controls"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_jjgbg")
@@ -54,3 +55,8 @@ mouse_filter = 2
 color = Color(0, 0, 0, 1)
 
 [node name="DevCommandConsole" parent="." instance=ExtResource("3_console")]
+
+[node name="MobileControlsLayer" type="CanvasLayer" parent="."]
+layer = 900
+
+[node name="MobileGameControls" parent="MobileControlsLayer" instance=ExtResource("8_mobile_controls")]

@@ -2,12 +2,16 @@ extends Node
 
 const OVERWORLD := preload("res://scenes/overworld/overworld.tscn")
 const MAIN := preload("res://scenes/main.tscn")
+const MOBILE_CONTROLS := preload("res://scenes/ui/mobile_game_controls.tscn")
+const SQUARE := preload("res://scenes/square.tscn")
 
 var failures: Array[String] = []
 var checks: int = 0
 
 func _ready() -> void:
 	await _test_overworld_scene()
+	await _test_mobile_controls()
+	await _test_chess_square_touch()
 	await _test_main_starts_in_overworld()
 	if failures.is_empty():
 		print("OVERWORLD CHARACTERIZATION: PASS (", checks, " checks)")
@@ -186,6 +190,70 @@ func _test_overworld_scene() -> void:
 	overworld.queue_free()
 	await get_tree().process_frame
 
+
+func _test_mobile_controls() -> void:
+	var controls := MOBILE_CONTROLS.instantiate() as MobileGameControls
+	add_child(controls)
+	controls.set_force_visible_for_testing(true)
+	controls.set_gameplay_controls_requested(true)
+	await get_tree().process_frame
+	_check(controls.visible, "mobile controls can be forced visible for desktop verification")
+
+	var safe_rect := Rect2(Vector2(32, 24), Vector2(1856, 1032))
+	var layout := MobileGameControls.calculate_layout(Vector2(1920, 1080), safe_rect)
+	var radius: float = layout.button_radius
+	for action: StringName in layout.regions:
+		var center: Vector2 = layout.regions[action]
+		_check(safe_rect.grow(-radius).has_point(center), "mobile %s control remains inside the display safe area" % action)
+
+	var left_center: Vector2 = controls.action_regions[&"move_left"]
+	var interact_center: Vector2 = controls.action_regions[&"interact"]
+	var left_touch := InputEventScreenTouch.new()
+	left_touch.index = 3
+	left_touch.position = left_center
+	left_touch.pressed = true
+	controls._input(left_touch)
+	await get_tree().process_frame
+	_check(Input.is_action_pressed("move_left"), "touching the mobile D-pad emits the existing movement action")
+	var interact_touch := InputEventScreenTouch.new()
+	interact_touch.index = 4
+	interact_touch.position = interact_center
+	interact_touch.pressed = true
+	controls._input(interact_touch)
+	await get_tree().process_frame
+	_check(Input.is_action_pressed("move_left") and Input.is_action_pressed("interact"), "mobile controls preserve simultaneous direction and A-button input")
+	left_touch.pressed = false
+	controls._input(left_touch)
+	interact_touch.pressed = false
+	controls._input(interact_touch)
+	await get_tree().process_frame
+	_check(not Input.is_action_pressed("move_left") and not Input.is_action_pressed("interact"), "releasing touch pointers releases their mapped actions")
+
+	left_touch.pressed = true
+	controls._input(left_touch)
+	await get_tree().process_frame
+	controls.set_gameplay_controls_requested(false)
+	controls.set_dialogue_controls_requested(false)
+	await get_tree().process_frame
+	_check(not controls.visible and not Input.is_action_pressed("move_left"), "hiding mobile controls safely releases held actions")
+	controls.queue_free()
+	await get_tree().process_frame
+
+
+func _test_chess_square_touch() -> void:
+	var square := SQUARE.instantiate() as SquareView
+	add_child(square)
+	square.coordinate = Vector2i(3, 4)
+	var selected_coordinates: Array[Vector2i] = []
+	square.square_clicked.connect(func(coord: Vector2i): selected_coordinates.append(coord))
+	var touch := InputEventScreenTouch.new()
+	touch.index = 0
+	touch.pressed = true
+	square._on_input_event(get_viewport(), touch, 0)
+	_check(selected_coordinates == [Vector2i(3, 4)], "chess squares accept a direct screen touch without mouse emulation")
+	square.queue_free()
+	await get_tree().process_frame
+
 func _test_main_starts_in_overworld() -> void:
 	var main: GameFlow = MAIN.instantiate()
 	main.transition_duration = 0.0
@@ -296,6 +364,17 @@ func _test_main_starts_in_overworld() -> void:
 	Input.parse_input_event(click_event)
 	await get_tree().physics_frame
 	_check(controller.selected_piece == model.board[6][0], "fluid native viewport routes pointer selection to projected square collision")
+	controller.deselect_piece()
+	var touch_event := InputEventScreenTouch.new()
+	touch_event.index = 0
+	touch_event.position = click_position
+	touch_event.pressed = true
+	Input.parse_input_event(touch_event)
+	await get_tree().physics_frame
+	touch_event.pressed = false
+	Input.parse_input_event(touch_event)
+	await get_tree().physics_frame
+	_check(controller.selected_piece == model.board[6][0], "fluid native battle routes direct screen touches without mouse emulation")
 
 	var exit_results: Array[String] = []
 	main.active_battle.battle_exit_requested.connect(func(result: String): exit_results.append(result))
@@ -336,6 +415,18 @@ func _test_main_starts_in_overworld() -> void:
 	_check(fixed_viewport.physics_object_picking, "fixed comparison viewport retains square picking")
 	_check(not fixed_board.scale_world_with_projection, "fixed comparison mode leaves world assets at logical 1x")
 	_check(fixed_main.active_battle.opponent_presentation != null and fixed_board.far_hand_rig.can_animate(), "battle without an encounter profile uses the scene's default opponent presentation")
+	var fixed_controller := fixed_main.active_battle.get_node("ChessController") as ChessBoardController
+	var fixed_model := fixed_main.active_battle.get_node("ChessModel") as ChessBoardModel
+	var fixed_touch := InputEventScreenTouch.new()
+	fixed_touch.index = 1
+	fixed_touch.position = fixed_frame.position + fixed_board.grid_to_screen(6, 0) * float(fixed_frame.stretch_shrink)
+	fixed_touch.pressed = true
+	Input.parse_input_event(fixed_touch)
+	await get_tree().physics_frame
+	fixed_touch.pressed = false
+	Input.parse_input_event(fixed_touch)
+	await get_tree().physics_frame
+	_check(fixed_controller.selected_piece == fixed_model.board[6][0], "fixed logical battle maps direct screen touches through its scaled SubViewport")
 	var override_profile := load("res://assets/boards/presentations/legacy_flat_battle_presentation.tres") as ChessBattlePresentationProfile
 	var override_encounter := ChessEncounterProfile.new()
 	override_encounter.battle_presentation = override_profile

@@ -13,7 +13,12 @@ var console_enabled := true
 
 
 func _ready() -> void:
-	console_enabled = bool(ProjectSettings.get_setting(ENABLED_SETTING, true))
+	# The keyboard-oriented developer console is intentionally unavailable in
+	# Android builds even when it remains enabled for desktop development.
+	console_enabled = (
+		bool(ProjectSettings.get_setting(ENABLED_SETTING, true))
+		and not OS.has_feature("android")
+	)
 	panel.visible = false
 	set_process_input(console_enabled)
 	command_input.text_submitted.connect(_on_command_submitted)

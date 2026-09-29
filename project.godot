@@ -24,6 +24,7 @@ MCPRuntimeServer="*res://addons/godot_mcp_toolkit/runtime/mcp_runtime_server.gd"
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/size/mode=3
+window/handheld/orientation=4
 
 [dev_console]
 
@@ -72,6 +73,10 @@ back={
 ]
 }
 
+[input_devices]
+
+pointing/emulate_mouse_from_touch=false
+
 [mcp_toolkit]
 
 status="No .mcp.json found — use Project > Tools > MCP Toolkit > Write .mcp.json to create one.
@@ -81,3 +86,4 @@ NODE.JS v18.12.1 FOUND BUT 22+ REQUIRED — Update from https://nodejs.org"
 [rendering]
 
 renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true

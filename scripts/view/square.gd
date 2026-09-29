@@ -16,6 +16,9 @@ func _on_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -> voi
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		square_clicked.emit(coordinate)
 		editor_pointer_pressed.emit(coordinate)
+	elif event is InputEventScreenTouch and event.pressed:
+		square_clicked.emit(coordinate)
+		editor_pointer_pressed.emit(coordinate)
 
 func configure_geometry(model_coordinate: Vector2i, points: PackedVector2Array) -> void:
 	coordinate = model_coordinate
