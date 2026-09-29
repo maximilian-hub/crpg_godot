@@ -154,6 +154,11 @@ func load_position(position: ChessPosition) -> bool:
 	for piece in created:
 		inject_dependencies(piece)
 	current_turn = position.current_turn
+	# A loaded/editor-authored position is already in progress. Do not grant
+	# either side the one-time starting-cooldown hold used by a fresh battle.
+	for piece in created:
+		if piece is KingPiece:
+			(piece as KingPiece).mark_initial_turn_entered()
 	battle_over = position.battle_over
 	battle_result = position.battle_result
 	defeated_king_colors.assign(position.defeated_king_colors)
@@ -274,6 +279,8 @@ func inject_dependencies(piece: ModelPiece):
 		connect("piece_destroyed", death_callback)
 	if piece is KingPiece:
 		var king_piece: KingPiece = piece
+		if king_piece.color == current_turn:
+			king_piece.mark_initial_turn_entered()
 		if active_ability_cooldowns_disabled:
 			king_piece.set_cooldown(0)
 		king_piece.announce_cooldown_state()

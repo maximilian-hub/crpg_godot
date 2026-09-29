@@ -9,6 +9,7 @@ signal battle_completed(player_result: String)
 signal battle_exit_requested(player_result: String)
 signal opening_completed()
 signal white_activation_completed()
+signal opening_start_requested()
 
 const OpeningDirector := preload("res://scripts/view/chess_battle_opening_director.gd")
 const DEFAULT_PLAYER_PRESENTATION := preload("res://assets/player_army_presentation.tres")
@@ -34,6 +35,9 @@ enum ControlMode {
 @export var opponent_presentation: Resource
 @export var battle_presentation: ChessBattlePresentationProfile
 @export var play_opening_presentation := true
+## Persistent scene hosts may stage the initialized battle behind a blackout,
+## then explicitly release its opening on the visual reveal frame.
+@export var defer_opening_start := false
 ## Games that skip the opening normally begin with the same small placement
 ## variation the hands would have produced. Editor-oriented scenes can disable it.
 @export var apply_initial_piece_placement_variation := true
@@ -45,6 +49,7 @@ var opening_director: ChessBattleOpeningDirector
 var _white_turn_released := false
 var _black_activation_barrier_started := false
 var presentation_seed := 0
+var _opening_start_released := false
 
 var opening_in_progress: bool:
 	get:
@@ -98,6 +103,10 @@ func _ready() -> void:
 		add_child(opening_director)
 		opening_director.configure(model, board_view, adapter, adapter.presentation_policy, player_color, player_presentation, opponent_presentation)
 		opening_director.opening_seed = presentation_seed
+		if defer_opening_start and not _opening_start_released:
+			await opening_start_requested
+		else:
+			_opening_start_released = true
 		await opening_director.play()
 	elif board_view != null and apply_initial_piece_placement_variation:
 		board_view.ensure_all_hand_placements()
@@ -111,6 +120,13 @@ func _ready() -> void:
 		opening_completed.emit()
 	else:
 		white_activation_completed.emit()
+
+
+func start_opening_presentation() -> void:
+	if _opening_start_released:
+		return
+	_opening_start_released = true
+	opening_start_requested.emit()
 
 
 func _configure_participants(enable_automatic_players: bool) -> void:

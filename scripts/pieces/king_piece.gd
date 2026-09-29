@@ -20,6 +20,9 @@ signal cooldown_scheduled(king: KingPiece)
 var current_cooldown: int = base_cooldown
 ## A spent ability schedules its visible cooldown for the King's next turn.
 var cooldown_reset_pending := false
+## Starting cooldowns remain intact through each King's first playable turn.
+## The side already on move is marked entered when it joins the model.
+var initial_cooldown_turn_pending := true
 
 var active_ability_name: String = "Active Ability" 
 var active_ability_id: StringName = &"active_ability"
@@ -104,6 +107,10 @@ func decrement_cooldown():
 	if current_cooldown > 0:
 		set_cooldown(current_cooldown - 1)
 
+
+func mark_initial_turn_entered() -> void:
+	initial_cooldown_turn_pending = false
+
 ## A newly scheduled recharge emits its motes on the first turn entry; existing
 ## cooldowns begin absorbing a mote on each later turn entry.
 func _on_turn_changed(current_turn: String):
@@ -114,7 +121,11 @@ func _on_turn_changed(current_turn: String):
 		set_cooldown(0)
 		return
 	if cooldown_reset_pending:
+		initial_cooldown_turn_pending = false
 		set_cooldown(base_cooldown)
+		return
+	if initial_cooldown_turn_pending:
+		initial_cooldown_turn_pending = false
 		return
 	decrement_cooldown()
 

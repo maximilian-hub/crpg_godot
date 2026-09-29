@@ -7,6 +7,7 @@ var checks := 0
 
 
 func _ready() -> void:
+	await _test_deferred_opening_gate()
 	await _test_staggered_opening("white")
 	await _test_staggered_opening("black")
 	await _test_reactions_precede_black_activation()
@@ -18,6 +19,28 @@ func _ready() -> void:
 	else:
 		printerr("CHESS BATTLE OPENING CHARACTERIZATION: FAIL (%d/%d)" % [failures, checks])
 	get_tree().quit(0 if failures == 0 else 1)
+
+
+func _test_deferred_opening_gate() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	add_child(viewport)
+	var game := GAME.instantiate() as ChessGame
+	game.control_mode = ChessGame.ControlMode.PLAYER_VS_PLAYER
+	game.player_presentation = _fast_profile(load("res://assets/player_army_presentation.tres"))
+	game.opponent_presentation = _fast_profile(load("res://assets/opponent_army_presentation.tres"))
+	game.defer_opening_start = true
+	viewport.add_child(game)
+	await get_tree().process_frame
+	var director: ChessBattleOpeningDirector = game.opening_director
+	_check(director != null and director.stage == ChessBattleOpeningDirector.Stage.IDLE and not director.is_running and director.setup_sequences.is_empty(), "staged battle initializes without starting setup hands or audio")
+	_check(game.controller.is_input_locked and not game.white_cpu_player.is_enabled and not game.black_cpu_player.is_enabled, "staged battle remains input-locked with automatic players disabled")
+	game.start_opening_presentation()
+	await get_tree().process_frame
+	_check(director.is_running and director.stage == ChessBattleOpeningDirector.Stage.SETUP and not director.setup_sequences.is_empty(), "explicit reveal releases the opening presentation")
+	director.finish_immediately()
+	await get_tree().process_frame
+	await _destroy_game(game)
 
 
 func _test_staggered_opening(player_color: String) -> void:

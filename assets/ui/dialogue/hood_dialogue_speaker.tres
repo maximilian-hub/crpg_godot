@@ -20,5 +20,5 @@ voice_enabled = true
 voice_clips = Array[AudioStream]([ExtResource("5_voice")])
 minimum_pitch = 0.92
 maximum_pitch = 1.08
-volume_db = 0.0
+volume_db = 9.0
 voice_seed = 1701

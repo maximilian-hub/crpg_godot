@@ -20,6 +20,8 @@ enum BattlePresentationMode {
 @onready var active_content: Node = $ActiveContent
 @onready var fade_overlay: ColorRect = $TransitionLayer/FadeOverlay
 @onready var dialogue_presenter: DialoguePresenter = $DialoguePresentationLayer/DialoguePresenter
+@onready var battle_spiral_transition: Node = $BattleSpiralTransition
+@onready var music_controller: Node = $GameMusicController
 
 var player_cell := Vector2i(-1, -1)
 var player_facing := Vector2i.UP
@@ -46,6 +48,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_min_size(BATTLE_LOGICAL_SIZE)
 	_show_overworld()
+	music_controller.play_overworld()
 
 func _show_overworld() -> void:
 	overworld_frame = SubViewportContainer.new()
@@ -69,6 +72,8 @@ func _show_overworld() -> void:
 
 func _layout_overworld_frame() -> void:
 	if not is_instance_valid(overworld_frame) or not is_instance_valid(overworld_viewport):
+		return
+	if is_instance_valid(battle_spiral_transition) and battle_spiral_transition.is_playing:
 		return
 	var window_size := Vector2i(get_viewport().get_visible_rect().size)
 	if window_size.x <= 0 or window_size.y <= 0:
@@ -147,7 +152,17 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	dialogue_pending = false
 	dialogue_presenter.stop()
 	active_overworld.set_world_input_enabled(false)
-	await _fade_to(1.0)
+	music_controller.stop_bgm()
+	var immediate := transition_duration <= 0.0
+	await battle_spiral_transition.play_inward(
+		overworld_viewport,
+		overworld_frame,
+		immediate
+	)
+	# The logical spiral plus its letterbox is now visually identical to this
+	# full-window black cover. Hand off before freeing its target SubViewport.
+	fade_overlay.modulate.a = 1.0
+	battle_spiral_transition.release_visual_cover()
 	_clear_active_content()
 
 	var resolved_presentation := _resolve_battle_presentation(encounter_profile)
@@ -156,6 +171,7 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.player_color = "white"
 	active_battle.battle_presentation = resolved_presentation
+	active_battle.defer_opening_start = true
 	# @onready fields on the instantiated ChessGame are not populated until it
 	# enters the tree. The authored child is already available immediately.
 	var battle_screen_shake := active_battle.get_node("ScreenShake")
@@ -167,6 +183,9 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
 	battle_screen_shake.offset_changed.connect(_on_battle_shake_offset_changed)
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
+	# Let _ready configure the staged battle when it enters the tree, but keep
+	# all gameplay, animation, and input frozen until the audio reveal cue.
+	active_battle.process_mode = Node.PROCESS_MODE_DISABLED
 	if battle_presentation_mode == BattlePresentationMode.FLUID_NATIVE:
 		active_content.add_child(active_battle)
 	else:
@@ -175,7 +194,12 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 		board_view.scale_world_with_projection = false
 		_create_fixed_battle_frame()
 		battle_viewport.add_child(active_battle)
-	await _fade_to(0.0)
+	if not immediate:
+		await battle_spiral_transition.wait_for_reveal_cue()
+	active_battle.process_mode = Node.PROCESS_MODE_INHERIT
+	active_battle.start_opening_presentation()
+	music_controller.play_battle()
+	fade_overlay.modulate.a = 0.0
 	is_transitioning = false
 
 func _create_battle_environment(style: ChessEnvironmentVisualStyle) -> void:
@@ -267,11 +291,13 @@ func _on_battle_exit_requested(player_result: String) -> void:
 
 func _transition_to_overworld(player_result: String) -> void:
 	is_transitioning = true
+	music_controller.stop_bgm()
 	await _fade_to(1.0)
 	_clear_active_content()
 	encounter_state = "rematchable"
 	_show_overworld()
 	active_overworld.set_world_input_enabled(false)
+	music_controller.play_overworld()
 	await _fade_to(0.0)
 	is_transitioning = false
 	_present_result_dialogue(player_result)

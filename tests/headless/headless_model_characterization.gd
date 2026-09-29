@@ -101,6 +101,11 @@ func _test_initialization_and_move() -> void:
 	var pawn: ModelPiece = model.board[6][0]
 	_expect(await model.submit_move(pawn, Vector2i(4, 0)), "standalone Model accepts a legal move")
 	_expect(model.board[4][0] == pawn and model.current_turn == "black", "headless move resolves state and turn")
+	var black_king := model.get_king("black") as KingPiece
+	_expect(black_king.current_cooldown == black_king.base_cooldown, "Black's authored cooldown remains full on its first playable turn")
+	model.switch_turn()
+	model.switch_turn()
+	_expect(black_king.current_cooldown == black_king.base_cooldown - 1, "Black's starting cooldown first decrements on its second playable turn")
 	_expect(not model.action_in_progress, "unobserved movement gate completes immediately")
 	_expect(not (await model.submit_move(pawn, Vector2i(3, 0))), "wrong-turn command is rejected")
 	model.free()

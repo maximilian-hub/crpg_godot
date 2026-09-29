@@ -163,7 +163,11 @@ func _test_main_starts_in_overworld() -> void:
 	await get_tree().process_frame
 	_check(main.active_overworld != null, "main starts with an overworld instance")
 	_check(main.active_battle == null, "main does not start directly in battle")
+	_check(main.music_controller.current_track == &"overworld", "persistent music controller starts the overworld BGM")
+	var initial_music_stream := main.music_controller.player.stream as AudioStreamWAV
+	_check(initial_music_stream != null and initial_music_stream.loop_mode == AudioStreamWAV.LOOP_FORWARD and initial_music_stream.loop_end > initial_music_stream.loop_begin, "overworld BGM has a valid forward loop range")
 	_check(main.dialogue_presenter.get_parent() == main.get_node("DialoguePresentationLayer"), "Main owns one persistent shared dialogue presenter outside active gameplay content")
+	_check(main.battle_spiral_transition.get_parent() == main, "Main owns one persistent battle-transition presenter outside active gameplay content")
 	_check((main.dialogue_presenter.get_parent() as CanvasLayer).layer < (main.get_node("TransitionLayer") as CanvasLayer).layer, "shared dialogue renders above gameplay and below the transition fade")
 	_check(main.active_overworld.get_player_cell() == Vector2i(6, 7), "main applies the scene-marker default player position")
 	var frame := main.active_content.get_node("OverworldFrame") as SubViewportContainer
@@ -218,6 +222,8 @@ func _test_main_starts_in_overworld() -> void:
 		await get_tree().process_frame
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
+	_check(main.music_controller.current_track == &"battle", "battle BGM starts when the staged battle is revealed")
+	_check(is_zero_approx(main.fade_overlay.modulate.a), "battle reveal removes the black cover as a hard cut")
 	_check(is_instance_valid(main.dialogue_presenter) and main.dialogue_presenter.get_parent() == main.get_node("DialoguePresentationLayer"), "shared presenter survives the transition and remains available over chess")
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as ChessEnvironmentSurface
 	var environment_quad := battle_environment.mesh as QuadMesh
@@ -270,6 +276,7 @@ func _test_main_starts_in_overworld() -> void:
 		await get_tree().process_frame
 	_check(exit_results == ["win"], "confirmed battle exit carries the player result")
 	_check(main.active_overworld != null and main.active_battle == null, "confirmed result returns to a fresh overworld")
+	_check(main.music_controller.current_track == &"overworld", "returning beneath black restarts the overworld BGM")
 	_check(main.active_overworld.get_player_cell() == Vector2i(5, 5), "return restores saved player cell")
 	_check(main.active_overworld.get_player_facing() == Vector2i.RIGHT, "return restores saved facing")
 	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_player_win", "authored result dialogue opens automatically after return")
