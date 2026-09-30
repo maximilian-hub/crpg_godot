@@ -182,10 +182,7 @@ func _on_board_rebuilt(board: Array) -> void:
 				if piece.stunned:
 					view.spawn_stun_stars(piece_views.get(piece))
 	if result_view != null:
-		if model.battle_over:
-			result_view.show_battle_result(model.battle_result)
-		else:
-			result_view.reset_result()
+		result_view.reset_result()
 
 
 func _on_piece_added(piece: ModelPiece) -> void:
@@ -445,13 +442,12 @@ func _dispose_king_magic(magic: Node) -> void:
 	magic.queue_free()
 
 
-func _on_battle_finished(winner_color: String) -> void:
+func _on_battle_finished(_winner_color: String) -> void:
 	_clear_raise_dead_skull_anchors()
 	for effect in active_king_deaths:
 		if is_instance_valid(effect) and not effect.result_ready:
 			await effect.result_ready_for_display
 	active_king_deaths.clear()
-	result_view.show_battle_result(winner_color)
 
 
 func _on_piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece) -> void:

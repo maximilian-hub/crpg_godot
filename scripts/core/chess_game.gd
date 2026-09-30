@@ -44,6 +44,10 @@ enum ControlMode {
 ## Editor hosts can suppress rule progression while rebuilding authored positions.
 ## Normal startup and completed gameplay actions still resolve unplayable turns.
 @export var resolve_unplayable_turns_after_rebuild := true
+## Production battles return to their host after briefly holding on the final
+## position. Developer surfaces leave this disabled so the board remains editable.
+@export var automatically_request_exit := false
+@export_range(0.0, 10.0, 0.1) var automatic_exit_delay := 3.0
 var completed_player_result: String = ""
 var opening_director: ChessBattleOpeningDirector
 var _white_turn_released := false
@@ -91,10 +95,6 @@ func _ready() -> void:
 		model.board_rebuilt.connect(_on_board_rebuilt)
 	if not model.settled_action_completed.is_connected(_on_settled_action_completed):
 		model.settled_action_completed.connect(_on_settled_action_completed)
-	var result_view := get_node_or_null("CanvasLayer/ResultOverlay") as BattleResultView
-	if result_view != null and not result_view.result_confirmed.is_connected(_on_result_confirmed):
-		result_view.result_confirmed.connect(_on_result_confirmed)
-
 	_configure_participants(false)
 	controller.is_input_locked = play_opening_presentation
 	if play_opening_presentation and board_view != null and adapter != null:
@@ -157,6 +157,16 @@ func _on_battle_finished(winner_color: String) -> void:
 
 	completed_player_result = player_result
 	battle_completed.emit(player_result)
+	if automatically_request_exit:
+		_request_automatic_exit(player_result)
+
+
+func _request_automatic_exit(player_result: String) -> void:
+	if automatic_exit_delay > 0.0:
+		await get_tree().create_timer(automatic_exit_delay).timeout
+	if completed_player_result != player_result or not automatically_request_exit:
+		return
+	battle_exit_requested.emit(player_result)
 
 func _on_result_confirmed() -> void:
 	if completed_player_result.is_empty():

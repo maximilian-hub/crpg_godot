@@ -377,14 +377,15 @@ func _test_main_starts_in_overworld() -> void:
 	_check(controller.selected_piece == model.board[6][0], "fluid native battle routes direct screen touches without mouse emulation")
 
 	var exit_results: Array[String] = []
-	main.active_battle.battle_exit_requested.connect(func(result: String): exit_results.append(result))
-	main.active_battle._on_battle_finished("white")
-	_check(main.active_battle.completed_player_result == "win", "battle maps White victory to player win")
-	main.active_battle._on_result_confirmed()
+	var completed_battle := main.active_battle
+	completed_battle.battle_exit_requested.connect(func(result: String): exit_results.append(result))
+	completed_battle.automatic_exit_delay = 0.0
+	completed_battle._on_battle_finished("white")
+	_check(completed_battle.completed_player_result == "win", "battle maps White victory to player win")
 	for index in range(4):
 		await get_tree().process_frame
-	_check(exit_results == ["win"], "confirmed battle exit carries the player result")
-	_check(main.active_overworld != null and main.active_battle == null, "confirmed result returns to a fresh overworld")
+	_check(exit_results == ["win"], "automatic battle exit carries the player result")
+	_check(main.active_overworld != null and main.active_battle == null, "completed battle returns to a fresh overworld")
 	_check(main.music_controller.current_track == &"overworld", "returning beneath black restarts the overworld BGM")
 	_check(main.active_overworld.get_player_cell() == Vector2i(5, 5), "return restores saved player cell")
 	_check(main.active_overworld.get_player_facing() == Vector2i.RIGHT, "return restores saved facing")

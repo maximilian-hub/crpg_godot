@@ -196,6 +196,7 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 	active_battle = CHESS_SCENE.instantiate()
 	active_battle.control_mode = ChessGame.ControlMode.PLAYER_VS_CPU
 	active_battle.player_color = "white"
+	active_battle.automatically_request_exit = true
 	active_battle.battle_presentation = resolved_presentation
 	active_battle.defer_opening_start = true
 	# @onready fields on the instantiated ChessGame are not populated until it

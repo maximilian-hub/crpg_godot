@@ -272,6 +272,8 @@ func _ready() -> void:
 	sandbox._set_mode(sandbox.Mode.PLAY)
 	await get_tree().process_frame
 	_check(model.battle_over and model.battle_result == "draw" and not model.forced_pass_in_progress, "entering Play Mode explicitly resolves an unplayable authored position", failures)
+	_check(not sandbox.game.automatically_request_exit and not sandbox.game.get_node("CanvasLayer/ResultOverlay").visible, "completed sandbox battles remain on the final board without a result popup", failures)
+	_check(not sandbox.mode_button.disabled and not sandbox.view_side_button.disabled, "sandbox controls remain available after battle completion", failures)
 	if failures.is_empty():
 		print("BOARD SANDBOX CHARACTERIZATION: PASS")
 		get_tree().quit(0)
