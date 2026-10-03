@@ -25,7 +25,7 @@ const DIRECTIONS := {
 @export_range(0.05, 1.0, 0.05) var blocked_walk_speed_scale: float = 0.5
 ## Maximum bump cadence while held against an obstruction.
 @export_range(30.0, 600.0, 1.0) var bump_repeat_bpm: float = 200.0
-@export_range(-80.0, 24.0, 0.5) var bump_volume_db: float = 0.0
+@export_range(-80.0, 24.0, 0.5) var bump_volume_db: float = -6.0
 
 var movement_state := MovementState.INPUT_LOCKED
 var grid_cell := Vector2i.ZERO

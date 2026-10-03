@@ -10,6 +10,7 @@ signal battle_exit_requested(player_result: String)
 signal opening_completed()
 signal white_activation_completed()
 signal opening_start_requested()
+signal king_fatal_impact_presented()
 
 const OpeningDirector := preload("res://scripts/view/chess_battle_opening_director.gd")
 const DEFAULT_PLAYER_PRESENTATION := preload("res://assets/player_army_presentation.tres")
@@ -84,6 +85,7 @@ func _ready() -> void:
 	var adapter := get_node_or_null("ChessPresentationAdapter") as ChessPresentationAdapter
 	if adapter != null:
 		adapter.configure_army_presentations(player_color, player_presentation, opponent_presentation)
+		adapter.king_fatal_impact_presented.connect(func(): king_fatal_impact_presented.emit())
 	set_viewing_color(player_color)
 	if model == null:
 		printerr("ChessGame has no ChessBoardModel assigned.")

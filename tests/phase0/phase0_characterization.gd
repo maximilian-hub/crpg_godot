@@ -908,7 +908,10 @@ func _test_arakne_spike_burst_lethal_king() -> void:
 	death_profile.result_delay = 0.03
 	death_profile.rift_speed = 10000.0
 	context.adapter.king_death_profile = death_profile
-	var observation := {"splatter_count": 0, "splatter_before_death": false, "motes_before_beat": 0, "death_effect": null}
+	var observation := {"splatter_count": 0, "splatter_before_death": false, "splatter_count_at_fatal_impact": 0, "fatal_impacts": 0, "motes_before_beat": 0, "death_effect": null}
+	context.adapter.king_fatal_impact_presented.connect(func():
+		observation.fatal_impacts += 1
+		observation.splatter_count_at_fatal_impact = observation.splatter_count)
 	context.view.child_entered_tree.connect(func(child: Node):
 		if child.name == "BloodSplatter":
 			observation.splatter_count += 1
@@ -922,6 +925,7 @@ func _test_arakne_spike_burst_lethal_king() -> void:
 		await death_effect.completed
 	await get_tree().process_frame
 	_expect(observation.splatter_count == 1 and observation.splatter_before_death, "lethal Spike Burst presents one blood splatter before King death begins")
+	_expect(observation.fatal_impacts == 1 and observation.splatter_count_at_fatal_impact == 1, "lethal King impact publishes the music cue on the initial blood splatter beat")
 	_expect(observation.motes_before_beat == 3 and not is_instance_valid(target_magic), "projectile-fatal King motes persist until the shared death beat")
 	_expect(is_instance_valid(target_view) and target_view.sprite.material is ShaderMaterial and (target_view.sprite.material as ShaderMaterial).shader.resource_path == "res://effects/chess_stone_piece.gdshader", "lethal Spike Burst completes the normal King stone-death transition")
 	await _destroy_game(context.game)

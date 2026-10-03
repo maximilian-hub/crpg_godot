@@ -341,6 +341,11 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.active_overworld == null, "battle transition removes the overworld")
 	_check(main.active_battle != null, "battle transition creates a chess game")
 	_check(main.music_controller.current_track == &"battle", "battle BGM starts when the staged battle is revealed")
+	main.music_controller.battle_defeat_fade_duration = 0.01
+	main.active_battle.king_fatal_impact_presented.emit()
+	_check(main.music_controller.fade_tween != null and main.music_controller.fade_tween.is_valid(), "fatal King impact begins the battle-music fade immediately")
+	main.music_controller.fade_tween.custom_step(0.02)
+	_check(main.music_controller.current_track == &"" and not main.music_controller.player.playing, "battle music stops after the short fatal-impact fade")
 	_check(is_zero_approx(main.fade_overlay.modulate.a), "battle reveal removes the black cover as a hard cut")
 	_check(is_instance_valid(main.dialogue_presenter) and main.dialogue_presenter.get_parent() == main.get_node("DialoguePresentationLayer"), "shared presenter survives the transition and remains available over chess")
 	var battle_environment := main.active_content.get_node("BattleEnvironment") as ChessEnvironmentSurface

@@ -163,7 +163,10 @@ func _ready() -> void:
 	var lethal_attacker_view := adapter.get_piece_view(lethal_attacker) as PieceView
 	var lethal_origin := lethal_attacker_view.position
 	black_magic.cooldown_presentation.sync_immediate(3)
-	var lethal_hit_feedback := {"count": 0, "motes_at_grab": -1, "death_beats": 0}
+	var lethal_hit_feedback := {"count": 0, "count_at_fatal_impact": 0, "fatal_impacts": 0, "motes_at_grab": -1, "death_beats": 0}
+	adapter.king_fatal_impact_presented.connect(func():
+		lethal_hit_feedback.fatal_impacts += 1
+		lethal_hit_feedback.count_at_fatal_impact = lethal_hit_feedback.count)
 	view.child_entered_tree.connect(func(child: Node):
 		if child.name == "BloodSplatter": lethal_hit_feedback.count += 1
 		if child is ChessKingDeathEffect:
@@ -179,6 +182,7 @@ func _ready() -> void:
 	await lethal_presentation.wait_for_aftermath()
 	_check(lethal_attacker_view.position.is_equal_approx(lethal_origin), "lethal King capture reuses the long-range attack slam and returns the attacker to its original square")
 	_check(lethal_hit_feedback.count == 1, "lethal King impact preserves the ordinary blood splatter and hurt-sound feedback")
+	_check(lethal_hit_feedback.fatal_impacts == 1 and lethal_hit_feedback.count_at_fatal_impact == 1, "lethal King capture publishes the music cue on the initial blood splatter beat")
 	_check(lethal_hit_feedback.motes_at_grab == 3, "defending King cooldown motes remain visible while the attacking hand grabs its piece")
 	_check(lethal_hit_feedback.death_beats == 1 and black_magic.cooldown_presentation.motes.is_empty(), "the death beat fires once and dismisses the defending King's cooldown motes")
 	game.screen_shake.cancel_all()

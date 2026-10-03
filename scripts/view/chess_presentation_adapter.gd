@@ -1,6 +1,8 @@
 extends Node
 class_name ChessPresentationAdapter
 
+signal king_fatal_impact_presented()
+
 const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
 const DEFAULT_KING_DEATH_PROFILE := preload("res://assets/chess_king_death.tres")
 const DEFAULT_ABILITY_PRESENTATIONS := preload("res://assets/chess_ability_presentations.tres")
@@ -300,6 +302,7 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 			# ordinary hit feedback explicitly at physical contact. The splatter
 			# scene owns the universal hurt sound as well as the blood animation.
 			_present_damage_splatter(defender, defender_node)
+			king_fatal_impact_presented.emit()
 			presentation.mark_impact()
 			if is_charge_impact:
 				_disperse_pending_charge_aura(attacker, attacker_node)
@@ -511,6 +514,8 @@ func _present_piece_damage(piece: ModelPiece, current_hp: int) -> void:
 	if not is_instance_valid(piece_node) or not should_present_damage_feedback(piece):
 		return
 	_present_damage_splatter(piece, piece_node)
+	if piece is KingPiece and current_hp <= 0:
+		king_fatal_impact_presented.emit()
 	piece_node.update_hp(current_hp)
 
 

@@ -208,6 +208,7 @@ func _transition_to_battle(encounter_profile: ChessEncounterProfile = null) -> v
 		active_battle.opponent_presentation = encounter_profile.opponent_presentation
 	active_battle.opponent_hand_style = encounter_profile.opponent_hand_style if encounter_profile != null else null
 	active_battle.battle_exit_requested.connect(_on_battle_exit_requested)
+	active_battle.king_fatal_impact_presented.connect(music_controller.fade_out_battle)
 	battle_screen_shake.offset_changed.connect(_on_battle_shake_offset_changed)
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	# Let _ready configure the staged battle when it enters the tree, but keep
