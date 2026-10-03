@@ -1,0 +1,7 @@
+@conversation forest_mushrooms
+
+@page mode=inspect
+Mushrooms!
+
+@page mode=inspect
+Are they poisonous?

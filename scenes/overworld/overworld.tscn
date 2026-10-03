@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=4 uid="uid://piuej0d1064"]
+[gd_scene load_steps=24 format=4 uid="uid://piuej0d1064"]
 
 [ext_resource type="Script" uid="uid://bf5oj43hu2dm4" path="res://scripts/overworld/overworld.gd" id="1_overworld"]
 [ext_resource type="Texture2D" uid="uid://bl6kvqrccy6rn" path="res://assets/overworld/test_map.png" id="2_map"]
@@ -9,13 +9,15 @@
 [ext_resource type="SpriteFrames" path="res://assets/overworld/characters/skeleton/skeleton_overworld_frames.tres" id="7_player_frames"]
 [ext_resource type="Texture2D" uid="uid://c42mhus46brga" path="res://assets/overworld/collision_edges.svg" id="8_edge_collision"]
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/mushroom_log.tscn" id="9_mushroom_log"]
-[ext_resource type="PackedScene" path="res://scenes/overworld/props/rock_faces.tscn" id="10_rock_faces"]
+[ext_resource type="PackedScene" uid="uid://cwropq7jjenfd" path="res://scenes/overworld/props/rock_faces.tscn" id="10_rock_faces"]
 [ext_resource type="PackedScene" path="res://scenes/overworld/props/pine_tree.tscn" id="11_pine_tree"]
 [ext_resource type="Texture2D" uid="uid://drb71dllp55k6" path="res://assets/overworld/characters/hood/hood_down_0001.png" id="12_hood_down"]
 [ext_resource type="Texture2D" uid="uid://ds25rs4ncei8m" path="res://assets/overworld/characters/hood/hood_right_0001.png" id="13_hood_right"]
 [ext_resource type="Texture2D" uid="uid://dxt7icybgfyhl" path="res://assets/overworld/characters/hood/hood_up_0001.png" id="14_hood_up"]
 [ext_resource type="Resource" uid="uid://uwh6fie1lsqq" path="res://assets/encounters/forest_challenger.tres" id="15_encounter"]
+[ext_resource type="Script" uid="uid://yktf8nx886i1" path="res://scripts/overworld/inspectable.gd" id="15_kn0ur"]
 [ext_resource type="AudioStream" uid="uid://dexasrqpsawiq" path="res://assets/audio/overworld/bump.wav" id="16_bump"]
+[ext_resource type="Script" uid="uid://dvhlngisugorf" path="res://scripts/overworld/inspectable_interaction_point.gd" id="17_interaction_point"]
 
 [sub_resource type="TileSetAtlasSource" id="CollisionAtlas"]
 resource_name = "Fully Blocked Cells"
@@ -76,22 +78,19 @@ texture_filter = 1
 texture = ExtResource("2_map")
 centered = false
 
-[node name="PineTree" parent="Map" instance=ExtResource("11_pine_tree")]
-position = Vector2(8.25881, 21.7657)
-
 [node name="CollisionGrid" type="TileMapLayer" parent="."]
 tile_map_data = PackedByteArray("AAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAACAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAJAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAkAAAAAAAAAAAABAAkAAAAAAAAAAAACAAkAAAAAAAAAAAADAAkAAAAAAAAAAAAEAAkAAAAAAAAAAAAFAAkAAAAAAAAAAAAIAAkAAAAAAAAAAAAJAAkAAAAAAAAAAAAJAAEAAAAAAAAAAAAJAAIAAAAAAAAAAAAJAAMAAAAAAAAAAAAJAAQAAAAAAAAAAAAJAAUAAAAAAAAAAAAJAAYAAAAAAAAAAAAJAAcAAAAAAAAAAAAJAAgAAAAAAAAAAAAAAAIAAAAAAAAAAAAGAAIAAQAAAAEAAAAHAAIAAQAAAAEAAAACAAYAAQAAAAEAAAADAAYAAQAAAAEAAAAAAAEAAAAAAAAAAAA=")
 tile_set = SubResource("CollisionTileSet")
 script = ExtResource("3_grid")
 
 [node name="PlayerSpawn" type="Marker2D" parent="."]
-position = Vector2(104, 120)
+position = Vector2(118, 153)
 
 [node name="YSortedWorld" type="Node2D" parent="."]
 y_sort_enabled = true
 
 [node name="Player" type="CharacterBody2D" parent="YSortedWorld"]
-position = Vector2(104, 120)
+position = Vector2(118, 153)
 collision_layer = 2
 script = ExtResource("4_player")
 step_duration = 0.34
@@ -132,8 +131,60 @@ shape = SubResource("NpcShape")
 [node name="MushroomLog" parent="YSortedWorld" instance=ExtResource("9_mushroom_log")]
 position = Vector2(48, 116)
 
+[node name="OverworldInspectable" type="Node2D" parent="YSortedWorld/MushroomLog"]
+position = Vector2(1, -8)
+script = ExtResource("15_kn0ur")
+dialogue_path = "res://content/inspection/forest_king_statue.dialog"
+
+[node name="Behind" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable"]
+script = ExtResource("17_interaction_point")
+required_facing = 1
+
+[node name="Front" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable"]
+position = Vector2(0, 16)
+script = ExtResource("17_interaction_point")
+
+[node name="OverworldInspectable2" type="Node2D" parent="YSortedWorld/MushroomLog"]
+position = Vector2(-10, -10)
+script = ExtResource("15_kn0ur")
+dialogue_path = "res://content/inspection/forest_queen_statue.dialog"
+
+[node name="Behind" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable2"]
+script = ExtResource("17_interaction_point")
+required_facing = 1
+
+[node name="Front" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable2"]
+position = Vector2(0, 16)
+script = ExtResource("17_interaction_point")
+
 [node name="RockFaces" parent="YSortedWorld" instance=ExtResource("10_rock_faces")]
 position = Vector2(112, 50)
+
+[node name="OverworldInspectable" type="Node2D" parent="YSortedWorld/RockFaces"]
+position = Vector2(-4, -10)
+script = ExtResource("15_kn0ur")
+dialogue_path = "res://content/inspection/forest_king_statue.dialog"
+
+[node name="Behind" type="Node2D" parent="YSortedWorld/RockFaces/OverworldInspectable"]
+script = ExtResource("17_interaction_point")
+required_facing = 1
+
+[node name="Front" type="Node2D" parent="YSortedWorld/RockFaces/OverworldInspectable"]
+position = Vector2(0, 16)
+script = ExtResource("17_interaction_point")
+
+[node name="OverworldInspectable2" type="Node2D" parent="YSortedWorld/RockFaces"]
+position = Vector2(6, -9)
+script = ExtResource("15_kn0ur")
+dialogue_path = "res://content/inspection/forest_queen_statue.dialog"
+
+[node name="Behind" type="Node2D" parent="YSortedWorld/RockFaces/OverworldInspectable2"]
+script = ExtResource("17_interaction_point")
+required_facing = 1
+
+[node name="Front" type="Node2D" parent="YSortedWorld/RockFaces/OverworldInspectable2"]
+position = Vector2(0, 16)
+script = ExtResource("17_interaction_point")
 
 [node name="PineTree" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
 position = Vector2(8, 105)
@@ -153,9 +204,6 @@ position = Vector2(11, 147)
 [node name="PineTree5" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
 position = Vector2(23, 156)
 
-[node name="PineTree6" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
-position = Vector2(4, 164)
-
 [node name="PineTree7" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
 position = Vector2(36, 152)
 
@@ -172,10 +220,7 @@ position = Vector2(68, 158)
 position = Vector2(79, 156)
 
 [node name="PineTree12" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
-position = Vector2(90, 149)
-
-[node name="PineTree13" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
-position = Vector2(87, 169)
+position = Vector2(90, 154)
 
 [node name="PineTree14" parent="YSortedWorld" instance=ExtResource("11_pine_tree")]
 position = Vector2(10, 17)
@@ -263,3 +308,12 @@ position = Vector2(11.3255, 28.8676)
 
 [node name="NpcSpawn" type="Marker2D" parent="."]
 position = Vector2(121, 72)
+
+[node name="OverworldInspectable" type="Node2D" parent="."]
+position = Vector2(25, 12)
+script = ExtResource("15_kn0ur")
+dialogue_path = "res://content/inspection/forest_child_statue.dialog"
+
+[node name="Front" type="Node2D" parent="OverworldInspectable"]
+position = Vector2(0, 16)
+script = ExtResource("17_interaction_point")

@@ -150,7 +150,8 @@ func _on_page_started(page: DialoguePage, _page_index: int, _page_count: int) ->
 		page.text,
 		_resolve_portrait(page.speaker_id, page.initial_portrait_id),
 		choices,
-		page.presentation_spans
+		page.presentation_spans,
+		page.presentation_mode
 	)
 	dialogue_view.set_page_complete(false)
 	dialogue_view.set_visible_character_count(0)

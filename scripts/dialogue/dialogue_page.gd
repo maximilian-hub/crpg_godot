@@ -1,6 +1,10 @@
 extends RefCounted
 class_name DialoguePage
 
+const MODE_DIALOGUE := &"dialogue"
+const MODE_INSPECT := &"inspect"
+
+var presentation_mode: StringName = MODE_DIALOGUE
 var speaker_id := ""
 var speaker_name := ""
 var speaker_known := true

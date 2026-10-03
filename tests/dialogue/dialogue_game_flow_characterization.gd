@@ -18,9 +18,20 @@ func _ready() -> void:
 	var profile := main.active_overworld.npc.encounter_profile
 	_check(profile.pre_battle_dialogue_path == "res://content/dialogue/hood_greeting.dialog", "forest encounter references the authored Hood conversation")
 	_check(profile.player_win_dialogue_path == "res://content/dialogue/hood_player_win.dialog" and profile.rematch_dialogue_path == "res://content/dialogue/hood_rematch.dialog", "forest encounter owns its authored result and rematch conversations")
+	var left_statue := main.active_overworld.get_inspectable_at(Vector2i(6, 2))
+	main.active_overworld.player.configure(main.active_overworld.collision_grid, main.active_overworld.npc, left_statue.get_grid_cell() + Vector2i.DOWN, Vector2i.UP)
+	main.dialogue_presenter.session_runner.set_instant_text(true)
+	main.active_overworld._begin_inspection(left_statue)
+	await get_tree().process_frame
+	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "forest_king_statue", "inspection opens the marker's authored dialogue through the shared presenter")
+	_check(main.active_overworld.player.movement_state == OverworldPlayer.MovementState.INPUT_LOCKED, "inspection locks overworld movement")
+	_check(not main.dialogue_presenter.dialogue_view.speaker_label.visible and not main.dialogue_presenter.dialogue_view.empty_portrait.visible, "inspection leaves the nameplate and portrait panels empty")
+	while main.dialogue_presenter.active:
+		main.dialogue_presenter.confirm()
+	await get_tree().process_frame
+	_check(main.active_overworld.player.is_grid_idle() and not main.dialogue_pending, "finishing inspection restores overworld movement")
 
 	main.active_overworld.player.configure(main.active_overworld.collision_grid, main.active_overworld.npc, Vector2i(5, 5), Vector2i.RIGHT)
-	main.dialogue_presenter.session_runner.set_instant_text(true)
 	main.active_overworld._begin_challenge_dialogue()
 	await get_tree().process_frame
 	_check(main.dialogue_presenter.active and main.dialogue_presenter.conversation.id == "hood_greeting", "initial interaction opens Hood's authored conversation")

@@ -2,6 +2,7 @@ extends Node2D
 class_name Overworld
 
 signal challenge_requested(encounter_profile: ChessEncounterProfile)
+signal inspection_requested(dialogue_path: String)
 
 @onready var collision_grid: OverworldCollisionGrid = $CollisionGrid
 @onready var player: OverworldPlayer = $YSortedWorld/Player
@@ -26,9 +27,16 @@ func _ready() -> void:
 	player.configure(collision_grid, npc, start_cell, configured_facing)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("interact") and _can_talk_to_npc():
+	if not event.is_action_pressed("interact"):
+		return
+	if _can_talk_to_npc():
 		get_viewport().set_input_as_handled()
 		_begin_challenge_dialogue()
+		return
+	var inspectable := get_inspectable_for_player()
+	if inspectable != null:
+		get_viewport().set_input_as_handled()
+		_begin_inspection(inspectable)
 
 func set_world_input_enabled(enabled: bool) -> void:
 	player.set_input_enabled(enabled)
@@ -45,6 +53,29 @@ func _can_talk_to_npc() -> bool:
 	if not player.is_grid_idle():
 		return false
 	return player.grid_cell + player.facing == npc.grid_cell
+
+func get_inspectable_in_front() -> OverworldInspectable:
+	return get_inspectable_for_player()
+
+func get_inspectable_for_player() -> OverworldInspectable:
+	if not player.is_grid_idle():
+		return null
+	for candidate in get_tree().get_nodes_in_group(&"overworld_inspectable"):
+		if candidate is OverworldInspectable and is_ancestor_of(candidate) and candidate.can_interact(player.grid_cell, player.facing):
+			return candidate
+	return null
+
+func get_inspectable_at(cell: Vector2i) -> OverworldInspectable:
+	for candidate in get_tree().get_nodes_in_group(&"overworld_inspectable"):
+		if candidate is OverworldInspectable and is_ancestor_of(candidate) and candidate.get_grid_cell() == cell:
+			return candidate
+	return null
+
+func _begin_inspection(inspectable: OverworldInspectable) -> void:
+	if inspectable == null:
+		return
+	player.set_input_enabled(false)
+	inspection_requested.emit(inspectable.dialogue_path)
 
 func _begin_challenge_dialogue() -> void:
 	npc.face_toward(player.grid_cell)

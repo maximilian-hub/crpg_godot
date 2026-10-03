@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=2 format=3 uid="uid://cwropq7jjenfd"]
 
 [ext_resource type="Texture2D" uid="uid://begh382gdjboj" path="res://assets/overworld/rock_faces.png" id="1_texture"]
 

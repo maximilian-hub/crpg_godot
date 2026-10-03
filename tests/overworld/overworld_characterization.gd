@@ -55,6 +55,24 @@ func _test_overworld_scene() -> void:
 	_check(overworld.npc.encounter_profile != null and overworld.npc.encounter_profile.encounter_id == &"forest_challenger", "forest NPC owns its encounter profile")
 	_check(overworld.npc.encounter_profile.opponent_hand_style.resource_path.ends_with("hood_hand_style.tres"), "forest encounter owns the Hood hand style")
 	_check(overworld.npc.encounter_profile.opponent_presentation != null and overworld.npc.encounter_profile.opponent_presentation.hand_style == overworld.npc.encounter_profile.opponent_hand_style, "forest encounter owns a complete opponent presentation loadout")
+	var left_statue := overworld.get_inspectable_at(Vector2i(6, 2))
+	var right_statue := overworld.get_inspectable_at(Vector2i(7, 2))
+	_check(left_statue != null and right_statue != null, "the shared rock-face prop exposes one grid marker per statue")
+	_check(left_statue.get_grid_cell() == Vector2i(6, 2) and right_statue.get_grid_cell() == Vector2i(7, 2), "the shared rock-face prop exposes one grid marker per statue")
+	_check(left_statue.dialogue_path != right_statue.dialogue_path and overworld.get_inspectable_at(Vector2i(6, 2)) == left_statue, "each statue resolves its independently authored inspection")
+	player.configure(overworld.collision_grid, overworld.npc, Vector2i(6, 2), Vector2i.DOWN)
+	_check(overworld.get_inspectable_for_player() == left_statue, "a player sharing the statue's walkable rear cell can inspect while facing down")
+	player.configure(overworld.collision_grid, overworld.npc, Vector2i(6, 1), Vector2i.DOWN)
+	_check(overworld.get_inspectable_for_player() == null, "the old cell-ahead lookup cannot trigger an inspection from one square too far behind")
+	player.configure(overworld.collision_grid, overworld.npc, Vector2i(6, 3), Vector2i.UP)
+	_check(overworld.get_inspectable_for_player() == left_statue, "the statue remains inspectable from its authored front approach")
+	player.configure(overworld.collision_grid, overworld.npc, Vector2i(1, 1), Vector2i.LEFT)
+	var hidden_inspectable := OverworldInspectable.new()
+	hidden_inspectable.position = Vector2(8, 8)
+	hidden_inspectable.dialogue_path = "res://content/inspection/forest_child_statue.dialog"
+	overworld.add_child(hidden_inspectable)
+	_check(overworld.get_inspectable_at(Vector2i.ZERO) == hidden_inspectable, "a standalone marker can define an inspectable inside an arbitrary wall cell")
+	hidden_inspectable.queue_free()
 	var requested_profiles: Array[ChessEncounterProfile] = []
 	overworld.challenge_requested.connect(func(profile: ChessEncounterProfile): requested_profiles.append(profile))
 	overworld._begin_challenge_dialogue()
@@ -287,7 +305,9 @@ func _test_main_starts_in_overworld() -> void:
 	_check(main.dialogue_presenter.get_parent() == main.get_node("DialoguePresentationLayer"), "Main owns one persistent shared dialogue presenter outside active gameplay content")
 	_check(main.battle_spiral_transition.get_parent() == main, "Main owns one persistent battle-transition presenter outside active gameplay content")
 	_check((main.dialogue_presenter.get_parent() as CanvasLayer).layer < (main.get_node("TransitionLayer") as CanvasLayer).layer, "shared dialogue renders above gameplay and below the transition fade")
-	_check(main.active_overworld.get_player_cell() == Vector2i(6, 7), "main applies the scene-marker default player position")
+	var player_spawn := main.active_overworld.get_node("PlayerSpawn") as Marker2D
+	var expected_spawn_cell := Vector2i(floor(player_spawn.position.x / 16.0), floor(player_spawn.position.y / 16.0))
+	_check(main.active_overworld.get_player_cell() == expected_spawn_cell, "main applies the scene-marker default player position")
 	var frame := main.active_content.get_node("OverworldFrame") as SubViewportContainer
 	var viewport := frame.get_node("OverworldViewport") as SubViewport
 	var window_size := Vector2i(main.get_viewport().get_visible_rect().size)
@@ -307,18 +327,25 @@ func _test_main_starts_in_overworld() -> void:
 	_check(fullscreen_layout.position == Vector2(480, 0), "2560x1600 fullscreen uses side-only letterboxing")
 	_check(fullscreen_layout.frame_side == 1600, "2560x1600 fullscreen fills the complete display height")
 	_check(fullscreen_layout.integer_scale == 10 and fullscreen_layout.logical_side == 160, "2560x1600 fullscreen renders a 160x160 view at 10x")
+	var movement_action := ""
+	for action in main.active_overworld.player.DIRECTIONS:
+		var direction: Vector2i = main.active_overworld.player.DIRECTIONS[action]
+		if main.active_overworld.player._is_traversable(expected_spawn_cell + direction):
+			movement_action = action
+			break
+	_check(not movement_action.is_empty(), "scene-marker player spawn has an adjacent traversable cell")
 	var movement_event := InputEventAction.new()
-	movement_event.action = "move_left"
+	movement_event.action = movement_action
 	movement_event.pressed = true
 	Input.parse_input_event(movement_event)
 	for index in range(60):
 		await get_tree().physics_frame
-		if main.active_overworld.get_player_cell().x < 6:
+		if main.active_overworld.get_player_cell() != expected_spawn_cell:
 			break
 	movement_event.pressed = false
 	Input.parse_input_event(movement_event)
 	await get_tree().physics_frame
-	_check(main.active_overworld.get_player_cell().x < 6, "embedded overworld receives configured movement input")
+	_check(main.active_overworld.get_player_cell() != expected_spawn_cell, "embedded overworld receives configured movement input")
 
 	var forest_profile := main.active_overworld.npc.encounter_profile
 	_check(forest_profile.pre_battle_dialogue_path == "res://content/dialogue/hood_greeting.dialog", "forest encounter owns the authored Hood introduction")

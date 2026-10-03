@@ -35,6 +35,7 @@ var selected_choice_index := -1
 var presented_text := ""
 var presented_spans: Array = []
 var construction_preview := false
+var inspection_page := false
 var jiggle_effect
 var transparent_panel_style := StyleBoxEmpty.new()
 
@@ -53,8 +54,9 @@ func _process(delta: float) -> void:
 		jiggle_effect.advance(delta)
 
 
-func configure(speaker: String, identified: bool, text: String, portrait: Texture2D = null, choices: PackedStringArray = PackedStringArray(), presentation_spans: Array = []) -> void:
+func configure(speaker: String, identified: bool, text: String, portrait: Texture2D = null, choices: PackedStringArray = PackedStringArray(), presentation_spans: Array = [], presentation_mode: StringName = &"dialogue") -> void:
 	_ensure_built()
+	inspection_page = presentation_mode == &"inspect"
 	speaker_label.text = speaker if identified and not speaker.is_empty() else "???"
 	presented_text = text
 	presented_spans = presentation_spans.duplicate()
@@ -382,11 +384,11 @@ func _apply_content_visibility() -> void:
 	if dialogue_text == null:
 		return
 	var show_content := not construction_preview
-	speaker_label.visible = show_content
+	speaker_label.visible = show_content and not inspection_page
 	dialogue_text.visible = show_content
 	text_interior.visible = show_content and skin.text_interior_texture != null
-	portrait_texture.visible = show_content and portrait_texture.texture != null
-	empty_portrait.visible = show_content and portrait_texture.texture == null
+	portrait_texture.visible = show_content and not inspection_page and portrait_texture.texture != null
+	empty_portrait.visible = show_content and not inspection_page and portrait_texture.texture == null
 	choice_label.visible = show_content and page_is_complete and page_has_choices
 	continue_indicator.visible = show_content and page_is_complete and not page_has_choices and skin.continue_indicator_texture == null
 	continue_indicator_texture.visible = show_content and page_is_complete and not page_has_choices and skin.continue_indicator_texture != null

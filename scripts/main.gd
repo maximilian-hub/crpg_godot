@@ -91,6 +91,7 @@ func _show_overworld() -> void:
 	active_overworld = OVERWORLD_SCENE.instantiate()
 	active_overworld.configure(player_cell, player_facing, encounter_state)
 	active_overworld.challenge_requested.connect(_on_challenge_requested)
+	active_overworld.inspection_requested.connect(_on_inspection_requested)
 	overworld_viewport.add_child(active_overworld)
 	_layout_overworld_frame()
 
@@ -142,6 +143,21 @@ func _on_challenge_requested(encounter_profile: ChessEncounterProfile) -> void:
 		return
 	encounter_state = "awaiting_result"
 	await _transition_to_battle(encounter_profile)
+
+func _on_inspection_requested(dialogue_path: String) -> void:
+	if is_transitioning or dialogue_pending or active_overworld == null:
+		return
+	dialogue_pending = true
+	active_overworld.set_world_input_enabled(false)
+	if not dialogue_presenter.start_file(dialogue_path, DialogueView.Placement.BOTTOM):
+		dialogue_pending = false
+		if active_overworld != null:
+			active_overworld.set_world_input_enabled(true)
+		return
+	await dialogue_presenter.conversation_finished
+	dialogue_pending = false
+	if active_overworld != null and not is_transitioning:
+		active_overworld.set_world_input_enabled(true)
 
 func _run_rematch_dialogue(encounter_profile: ChessEncounterProfile) -> bool:
 	if encounter_profile == null or encounter_profile.rematch_dialogue_path.is_empty():

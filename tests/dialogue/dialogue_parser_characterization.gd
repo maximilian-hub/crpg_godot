@@ -11,6 +11,7 @@ var checks := 0
 
 func _ready() -> void:
 	_test_valid_fixture()
+	_test_inspection_pages()
 	_test_production_conversations()
 	_test_visible_character_indices()
 	_test_invalid_fixture()
@@ -69,6 +70,17 @@ func _test_valid_fixture() -> void:
 	_check(opening_spans.size() == 2, "nested size and color ranges share final visible-character indices")
 	_check(font_page.presentation_spans.any(func(span): return span.kind == TextSpanScript.Kind.FONT_SIZE and span.value == "small"), "fixture retains its semantic small-text span")
 	_check(font_page.presentation_spans.any(func(span): return span.kind == TextSpanScript.Kind.JIGGLE and span.value == "strong"), "fixture retains its semantic strong-jiggle span")
+
+
+func _test_inspection_pages() -> void:
+	var result = DialogueParserScript.parse_text("@conversation inspection\n@page mode=inspect\nA weathered monument.", "inspection.dialog")
+	_check(result.is_valid(), "inspection pages parse without speaker metadata: %s" % "; ".join(result.errors))
+	_check(result.conversation.pages[0].presentation_mode == &"inspect", "inspection presentation mode is retained")
+	var invalid_mode = DialogueParserScript.parse_text("@conversation inspection\n@page mode=unknown\nText.", "inspection_invalid.dialog")
+	_check(not invalid_mode.is_valid() and "\n".join(invalid_mode.errors).contains("page 'mode' must be dialogue or inspect"), "unknown page presentation modes are rejected")
+	for path in ["res://content/inspection/forest_king_statue.dialog", "res://content/inspection/forest_queen_statue.dialog", "res://content/inspection/forest_child_statue.dialog"]:
+		var authored = DialogueParserScript.parse_file(path)
+		_check(authored.is_valid() and authored.conversation.pages.all(func(page): return page.presentation_mode == &"inspect"), "%s is valid inspection content" % path)
 
 
 func _test_visible_character_indices() -> void:

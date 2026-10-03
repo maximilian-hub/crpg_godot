@@ -59,7 +59,12 @@ static func parse_text(source: String, source_name: String = "<memory>") -> Dial
 				page_start_line = line_number
 				conversation.pages.append(current_page)
 				var attributes := _parse_attributes(stripped.trim_prefix("@page").strip_edges(), result, source_name, line_number)
-				_reject_unknown_attributes(attributes, PackedStringArray(["speaker", "name", "known", "portrait"]), result, source_name, line_number, "@page")
+				_reject_unknown_attributes(attributes, PackedStringArray(["mode", "speaker", "name", "known", "portrait"]), result, source_name, line_number, "@page")
+				var page_mode: String = attributes.get("mode", "dialogue").to_lower()
+				if page_mode not in ["dialogue", "inspect"]:
+					_add_error(result, source_name, line_number, "page 'mode' must be dialogue or inspect")
+				else:
+					current_page.presentation_mode = StringName(page_mode)
 				current_page.speaker_id = attributes.get("speaker", "")
 				current_page.speaker_name = attributes.get("name", "")
 				current_page.initial_portrait_id = _normalize_optional_id(attributes.get("portrait", ""))
@@ -67,11 +72,11 @@ static func parse_text(source: String, source_name: String = "<memory>") -> Dial
 				if known_value != "true" and known_value != "false":
 					_add_error(result, source_name, line_number, "page 'known' must be true or false")
 				current_page.speaker_known = known_value == "true"
-				if current_page.speaker_id.is_empty():
+				if current_page.presentation_mode == PageScript.MODE_DIALOGUE and current_page.speaker_id.is_empty():
 					_add_error(result, source_name, line_number, "@page requires speaker=<ID>")
-				elif not _is_valid_id(current_page.speaker_id):
+				elif not current_page.speaker_id.is_empty() and not _is_valid_id(current_page.speaker_id):
 					_add_error(result, source_name, line_number, "speaker ID must use only letters, numbers, underscores, dots, or hyphens")
-				if current_page.speaker_name.is_empty():
+				if current_page.presentation_mode == PageScript.MODE_DIALOGUE and current_page.speaker_name.is_empty():
 					_add_error(result, source_name, line_number, "@page requires name=<display name>")
 				if not current_page.initial_portrait_id.is_empty() and not _is_valid_id(current_page.initial_portrait_id):
 					_add_error(result, source_name, line_number, "portrait ID must use only letters, numbers, underscores, dots, or hyphens")
