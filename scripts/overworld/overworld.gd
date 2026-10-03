@@ -32,6 +32,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func set_world_input_enabled(enabled: bool) -> void:
 	player.set_input_enabled(enabled)
+	if enabled:
+		npc.return_to_original_facing_after_delay()
 
 func get_player_cell() -> Vector2i:
 	return player.grid_cell

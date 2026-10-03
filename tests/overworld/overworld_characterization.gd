@@ -51,7 +51,7 @@ func _test_overworld_scene() -> void:
 	var npc_body := overworld.npc.get_node("Body") as Sprite2D
 	_check(npc_body.position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
 	_check(overworld.npc.get_node("CollisionShape2D").position == Vector2.ZERO, "NPC collision remains rooted at the gameplay position")
-	_check(npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "NPC starts in its authored down-facing pose")
+	_check(npc_body.texture.resource_path.ends_with("hood_up_0001.png") and not npc_body.flip_h, "NPC starts in its authored up-facing pose")
 	_check(overworld.npc.encounter_profile != null and overworld.npc.encounter_profile.encounter_id == &"forest_challenger", "forest NPC owns its encounter profile")
 	_check(overworld.npc.encounter_profile.opponent_hand_style.resource_path.ends_with("hood_hand_style.tres"), "forest encounter owns the Hood hand style")
 	_check(overworld.npc.encounter_profile.opponent_presentation != null and overworld.npc.encounter_profile.opponent_presentation.hand_style == overworld.npc.encounter_profile.opponent_hand_style, "forest encounter owns a complete opponent presentation loadout")
@@ -69,6 +69,11 @@ func _test_overworld_scene() -> void:
 	_check(overworld.npc.facing == Vector2i.LEFT and npc_body.texture.resource_path.ends_with("hood_right_0001.png") and npc_body.flip_h, "NPC mirrors its right-facing sprite when looking left")
 	overworld.npc.face_toward(npc_cell)
 	_check(overworld.npc.facing == Vector2i.LEFT and npc_body.flip_h, "NPC ignores a request to face its own cell")
+	overworld.set_world_input_enabled(true)
+	overworld.npc._physics_process(overworld.npc.return_facing_delay - 0.01)
+	_check(overworld.npc.facing == Vector2i.LEFT, "NPC keeps facing the player during the post-dialogue delay")
+	overworld.npc._physics_process(0.02)
+	_check(overworld.npc.facing == overworld.npc.original_facing, "NPC returns to its original facing after the post-dialogue delay")
 	var camera := player.get_node("Camera2D") as Camera2D
 	_check(camera != null and camera.enabled, "player camera is active")
 	_check(camera.position == Vector2.ZERO, "camera follows the authoritative player root without an artwork offset")
@@ -83,24 +88,39 @@ func _test_overworld_scene() -> void:
 	_check(player.blocked_walk_active and bump_sound.playing, "an initial blocked attempt immediately starts bump feedback")
 
 	player.configure(overworld.collision_grid, overworld.npc, Vector2i(1, 1), Vector2i.LEFT)
+	player.blocked_walk_speed_scale = 1.0
 	Input.action_press("move_left")
 	_check(not player._try_begin_step(Vector2i.LEFT), "holding toward a wall starts the stationary walk cycle")
+	var bump_interval := 60.0 / player.bump_repeat_bpm
+	_check(is_equal_approx(player.bump_cooldown_remaining, bump_interval), "the immediate bump starts the 200 BPM cooldown")
+	bump_sound.stop()
 	var blocked_phase_duration := (
 		player.walking_distance_per_gait_phase
 		/ (float(player.CELL_SIZE) / player.step_duration)
 		/ player.blocked_walk_speed_scale
 	)
-	player._process_blocked_walk(blocked_phase_duration * 0.99)
-	_check(player_body.frame == 0 and player.position == player.cell_center(Vector2i(1, 1)), "blocked gait waits for its half-speed frame interval without translating")
-	player._process_blocked_walk(blocked_phase_duration * 0.02)
-	_check(player_body.frame == 1 and not player.skip_next_blocked_bump, "the first blocked frame cue is consumed by the immediate bump instead of replaying")
-	player._process_blocked_walk(blocked_phase_duration)
-	_check(player_body.frame == 2 and player.position == player.cell_center(Vector2i(1, 1)), "blocked frame 0003 advances without movement")
-	player._process_blocked_walk(blocked_phase_duration)
-	_check(player_body.frame == 3 and bump_sound.playing, "entering blocked frame 0004 replays the bump cue at an even interval")
+	player._physics_process(blocked_phase_duration * 1.01)
+	_check(player_body.frame == 1 and not bump_sound.playing, "blocked animation advances without triggering a frame-tied bump")
+	_check(player.position == player.cell_center(Vector2i(1, 1)), "blocked gait remains stationary")
+	player._physics_process(bump_interval - blocked_phase_duration * 1.01 - 0.001)
+	_check(not bump_sound.playing, "a held obstruction does not replay before the 200 BPM interval")
+	player._physics_process(0.002)
+	_check(bump_sound.playing and is_equal_approx(player.bump_cooldown_remaining, bump_interval), "a held obstruction replays after the 200 BPM interval")
+
+	bump_sound.stop()
 	Input.action_release("move_left")
-	player._process_blocked_walk(0.01)
-	_check(not player.blocked_walk_active and player_body.frame == 0, "releasing blocked movement settles on the next neutral gait frame")
+	player._physics_process(0.01)
+	_check(not player.blocked_walk_active and player_body.frame % 2 == 0, "releasing blocked movement settles on the next neutral gait frame")
+	Input.action_press("move_left")
+	_check(not player._try_begin_step(Vector2i.LEFT), "rapidly pressing into the wall starts blocked feedback again")
+	_check(not bump_sound.playing, "a rapid re-press cannot bypass the shared bump cooldown")
+	player._physics_process(player.bump_cooldown_remaining - 0.001)
+	_check(not bump_sound.playing, "button mashing remains silent until the existing cooldown expires")
+	player._physics_process(0.002)
+	_check(bump_sound.playing, "a suppressed re-press joins the cadence while the direction remains held")
+	Input.action_release("move_left")
+	player._physics_process(0.01)
+	player.blocked_walk_speed_scale = 0.5
 
 	var npc_approach_cell := overworld.npc.grid_cell + Vector2i.DOWN
 	player.configure(overworld.collision_grid, overworld.npc, npc_approach_cell, Vector2i.UP)
@@ -173,7 +193,7 @@ func _test_overworld_scene() -> void:
 	await get_tree().process_frame
 	_check(camera.get_screen_center_position().is_equal_approx(player.global_position), "camera does not clamp at the map edge")
 
-	player.configure(overworld.collision_grid, overworld.npc, Vector2i(6, 6), Vector2i.UP)
+	player.configure(overworld.collision_grid, overworld.npc, overworld.npc.grid_cell + Vector2i.DOWN, Vector2i.UP)
 	_check(overworld._can_talk_to_npc(), "idle adjacent player facing NPC can interact")
 	requested_profiles.clear()
 	overworld._begin_challenge_dialogue()

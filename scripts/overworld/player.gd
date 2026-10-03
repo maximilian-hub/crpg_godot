@@ -23,6 +23,8 @@ const DIRECTIONS := {
 @export_range(0.01, 0.3, 0.01) var turn_in_place_duration: float = 0.08
 ## Relative gait speed while held against an obstruction.
 @export_range(0.05, 1.0, 0.05) var blocked_walk_speed_scale: float = 0.5
+## Maximum bump cadence while held against an obstruction.
+@export_range(30.0, 600.0, 1.0) var bump_repeat_bpm: float = 200.0
 @export_range(-80.0, 24.0, 0.5) var bump_volume_db: float = 0.0
 
 var movement_state := MovementState.INPUT_LOCKED
@@ -42,7 +44,7 @@ var blocking_npc: OverworldNpc
 var blocked_walk_active: bool = false
 var blocked_walk_direction := Vector2i.ZERO
 var blocked_walk_time: float = 0.0
-var skip_next_blocked_bump: bool = false
+var bump_cooldown_remaining: float = 0.0
 
 func configure(
 	p_collision_grid: OverworldCollisionGrid,
@@ -65,6 +67,7 @@ func configure(
 	walking_distance_accumulator = 0.0
 	turn_time_remaining = 0.0
 	turn_direction = Vector2i.ZERO
+	bump_cooldown_remaining = 0.0
 	_reset_blocked_walk(false)
 	movement_state = MovementState.GRID_IDLE
 	_sync_animation()
@@ -106,6 +109,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 func _physics_process(delta: float) -> void:
+	bump_cooldown_remaining = maxf(0.0, bump_cooldown_remaining - delta)
 	if movement_state == MovementState.GRID_IDLE and blocked_walk_active:
 		_process_blocked_walk(delta)
 		if movement_state != MovementState.GRID_IDLE or blocked_walk_active:
@@ -235,7 +239,6 @@ func _begin_blocked_walk(direction: Vector2i) -> void:
 	blocked_walk_active = true
 	blocked_walk_direction = direction
 	blocked_walk_time = 0.0
-	skip_next_blocked_bump = true
 	_play_bump_sound()
 
 func _process_blocked_walk(delta: float) -> void:
@@ -256,26 +259,25 @@ func _process_blocked_walk(delta: float) -> void:
 		blocked_walk_time -= blocked_phase_duration
 		gait_phase = (gait_phase + 1) % 4
 		_sync_animation()
-		if gait_phase == 1 or gait_phase == 3:
-			if skip_next_blocked_bump:
-				skip_next_blocked_bump = false
-			else:
-				_play_bump_sound()
+	if bump_cooldown_remaining <= 0.0:
+		_play_bump_sound()
 
 func _reset_blocked_walk(settle_gait := true) -> void:
 	blocked_walk_active = false
 	blocked_walk_direction = Vector2i.ZERO
 	blocked_walk_time = 0.0
-	skip_next_blocked_bump = false
 	if settle_gait:
 		_settle_gait_to_neutral()
 	_sync_animation()
 
 func _play_bump_sound() -> void:
+	if bump_cooldown_remaining > 0.0:
+		return
 	if not is_instance_valid(bump_sound) or bump_sound.stream == null:
 		return
 	bump_sound.volume_db = bump_volume_db
 	bump_sound.play()
+	bump_cooldown_remaining = 60.0 / maxf(bump_repeat_bpm, 0.001)
 
 func _begin_held_step() -> void:
 	var next_direction := _get_held_direction()
