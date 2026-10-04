@@ -131,29 +131,30 @@ shape = SubResource("NpcShape")
 [node name="MushroomLog" parent="YSortedWorld" instance=ExtResource("9_mushroom_log")]
 position = Vector2(48, 116)
 
-[node name="OverworldInspectable" type="Node2D" parent="YSortedWorld/MushroomLog"]
-position = Vector2(1, -8)
+[node name="MushroomInspectable" type="Node2D" parent="YSortedWorld/MushroomLog"]
+position = Vector2(4, -8)
 script = ExtResource("15_kn0ur")
-dialogue_path = "res://content/inspection/forest_king_statue.dialog"
+dialogue_path = "res://content/inspection/forest_mushrooms.dialog"
 
-[node name="Behind" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable"]
+[node name="Behind" type="Node2D" parent="YSortedWorld/MushroomLog/MushroomInspectable"]
+position = Vector2(4, 0)
 script = ExtResource("17_interaction_point")
 required_facing = 1
 
-[node name="Front" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable"]
+[node name="Front" type="Node2D" parent="YSortedWorld/MushroomLog/MushroomInspectable"]
 position = Vector2(0, 16)
 script = ExtResource("17_interaction_point")
 
-[node name="OverworldInspectable2" type="Node2D" parent="YSortedWorld/MushroomLog"]
+[node name="LogInspectable" type="Node2D" parent="YSortedWorld/MushroomLog"]
 position = Vector2(-10, -10)
 script = ExtResource("15_kn0ur")
-dialogue_path = "res://content/inspection/forest_queen_statue.dialog"
+dialogue_path = "res://content/inspection/forest_log.dialog"
 
-[node name="Behind" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable2"]
+[node name="Behind" type="Node2D" parent="YSortedWorld/MushroomLog/LogInspectable"]
 script = ExtResource("17_interaction_point")
 required_facing = 1
 
-[node name="Front" type="Node2D" parent="YSortedWorld/MushroomLog/OverworldInspectable2"]
+[node name="Front" type="Node2D" parent="YSortedWorld/MushroomLog/LogInspectable"]
 position = Vector2(0, 16)
 script = ExtResource("17_interaction_point")
 
