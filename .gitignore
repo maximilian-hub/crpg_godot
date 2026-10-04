@@ -1,11 +1,14 @@
 # Godot 4+ specific ignores
 .godot/
 
-# Generated Android builds and local signing credentials
+# Generated builds and local signing credentials
 /android/
 *.apk
 *.aab
 *.keystore
+/build/
+
+
 
 .import/
 .cache/

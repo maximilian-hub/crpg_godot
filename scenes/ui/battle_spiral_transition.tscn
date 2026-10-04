@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/ui/battle_spiral_transition.gd" id="1_transition"]
 [ext_resource type="Script" path="res://scripts/ui/battle_spiral_renderer.gd" id="2_renderer"]
 [ext_resource type="Script" path="res://scripts/ui/transition_letterbox_blackout.gd" id="3_letterbox"]
-[ext_resource type="AudioStream" uid="uid://bpap1e4nj7u4" path="res://assets/audio/cues/transition_0.wav" id="4_transition_audio"]
+[ext_resource type="AudioStream" uid="uid://cwf2ofj6nge37" path="res://assets/audio/cues/transition_0.wav" id="4_transition_audio"]
 
 [node name="BattleSpiralTransition" type="Node"]
 script = ExtResource("1_transition")

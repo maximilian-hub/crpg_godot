@@ -89,9 +89,9 @@ func _ready() -> void:
 	lab.visual_style.reference_shadow_softness = 27.0
 	_check(is_equal_approx(lab.visual_style.reference_shadow_softness, 27.0), "Board Lab exposes contact-shadow softness")
 	var placement_coordinate := Vector2i(5, 3)
-	var centered_anchor := lab.projection.get_piece_ground_anchor(placement_coordinate, 0.0)
+	var centered_anchor: Vector2 = lab.projection.get_piece_ground_anchor(placement_coordinate, 0.0)
 	lab.visual_style.piece_forward_bias = 0.62
-	var tuned_anchor := lab.projection.get_piece_ground_anchor(placement_coordinate, lab.visual_style.piece_forward_bias)
+	var tuned_anchor: Vector2 = lab.projection.get_piece_ground_anchor(placement_coordinate, lab.visual_style.piece_forward_bias)
 	_check(tuned_anchor.y > centered_anchor.y and is_equal_approx(lab.visual_style.piece_forward_bias, 0.62), "Board Lab tunes piece ground contact toward the viewer through the shared board style")
 	var board_publish_path := "user://chess_board_publish_characterization.tres"
 	var environment_publish_path := "user://chess_environment_publish_characterization.tres"
