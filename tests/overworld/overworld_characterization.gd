@@ -421,12 +421,8 @@ func _test_main_starts_in_overworld() -> void:
 	touch_event.index = 0
 	touch_event.position = click_position
 	touch_event.pressed = true
-	Input.parse_input_event(touch_event)
-	await get_tree().physics_frame
-	touch_event.pressed = false
-	Input.parse_input_event(touch_event)
-	await get_tree().physics_frame
-	_check(controller.selected_piece == model.board[6][0], "fluid native battle routes direct screen touches without mouse emulation")
+	main._unhandled_input(touch_event)
+	_check(controller.selected_piece == model.board[6][0], "fluid native battle routes screen touches through board geometry without relying on Area2D picking")
 
 	var exit_results: Array[String] = []
 	var completed_battle := main.active_battle

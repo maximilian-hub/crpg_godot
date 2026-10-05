@@ -56,21 +56,24 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if (
-		battle_presentation_mode != BattlePresentationMode.FIXED_LOGICAL
-		or not event is InputEventScreenTouch
+		not event is InputEventScreenTouch
 		or not event.pressed
 		or not is_instance_valid(active_battle)
-		or not is_instance_valid(battle_frame)
 		or is_transitioning
 	):
 		return
 	var touch := event as InputEventScreenTouch
-	var frame_rect := Rect2(battle_frame.position, battle_frame.size)
-	if not frame_rect.has_point(touch.position):
-		return
-	var logical_position := (touch.position - battle_frame.position) / float(battle_frame.stretch_shrink)
+	var board_position := touch.position
+	if battle_presentation_mode == BattlePresentationMode.FIXED_LOGICAL:
+		if not is_instance_valid(battle_frame):
+			return
+		var frame_rect := Rect2(battle_frame.position, battle_frame.size)
+		if not frame_rect.has_point(touch.position):
+			return
+		board_position = (touch.position - battle_frame.position) / float(battle_frame.stretch_shrink)
+	board_position -= battle_shake_offset
 	var board_view := active_battle.get_node("CanvasLayer/ChessBoard") as ChessBoardView
-	if board_view != null and board_view.select_square_at_viewport_position(logical_position):
+	if board_view != null and board_view.select_square_at_viewport_position(board_position):
 		get_viewport().set_input_as_handled()
 
 func _show_overworld() -> void:

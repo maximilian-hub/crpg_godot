@@ -1,0 +1,143 @@
+CRPG iPHONE 7 DEVICE-TEST ROADMAP
+Last updated: October 4, 2026
+
+CURRENT STATUS
+
+- Godot 4.5.2 and its matching iOS export templates are installed.
+- Xcode 14.2 is installed and selected as the active developer toolchain.
+- Test device: iPhone 7, currently running iOS 15.8.3.
+- The Godot iOS preset exists but still needs its identity, signing, icon, version,
+  export path, and resource-filter settings completed.
+- Current blocker: Xcode reports "Failed to prepare the device for development."
+- Most likely immediate cause: the iPhone has only about 530 MB free.
+
+
+PHASE 1: PREPARE THE IPHONE
+
+[ ] Open Settings > General > iPhone Storage.
+[ ] Free at least 3 GB; 5 GB or more is preferable.
+[ ] Update the phone to the latest iOS 15 release offered (currently iOS 15.8.7).
+[ ] Restart the iPhone.
+[ ] Restart the Mac.
+[ ] Connect the phone directly by USB without a hub.
+[ ] Keep the phone unlocked and accept "Trust This Computer" if prompted.
+[ ] Open Xcode > Window > Devices and Simulators.
+[ ] Leave the phone connected for several minutes while Xcode prepares it.
+[ ] Keep "Connect via network" disabled until USB development works reliably.
+
+If preparation still fails:
+
+[ ] Disconnect the phone.
+[ ] On the phone, open Settings > General > Transfer or Reset iPhone > Reset.
+[ ] Choose Reset Location & Privacy. Do not erase the phone.
+[ ] Reconnect it and accept the trust prompt again.
+[ ] Make sure the Mac is connected to the internet, then retry in Xcode.
+[ ] If it still fails, save the complete error details, including Domain, Code,
+    and MobileDeviceErrorCode, for diagnosis.
+
+
+PHASE 2: CONFIGURE APPLE SIGNING
+
+[ ] In Xcode, open Xcode > Preferences > Accounts.
+[ ] Add the Apple ID that will be used for development.
+[ ] Confirm that a Personal Team or paid Apple Developer team appears.
+[ ] Allow Xcode to create an Apple Development certificate if requested.
+[ ] Record the ten-character Apple Team ID.
+[ ] Choose a permanent, unique bundle identifier, for example:
+    com.yourname.crpg
+
+A free Apple ID is sufficient for installing a test build on a personal phone.
+A paid Apple Developer membership is needed later for App Store/TestFlight
+distribution and less temporary provisioning.
+
+
+PHASE 3: COMPLETE THE GODOT iOS PRESET
+
+In Godot, open Project > Export > iOS and set:
+
+[ ] App Store Team ID: the Apple Team ID from Xcode.
+[ ] Bundle Identifier: the chosen reverse-domain identifier.
+[ ] Short Version: 0.1.0
+[ ] Version: 1
+[ ] Minimum iOS Version: 14.0
+[ ] Architecture: ARM64
+[ ] Export path: build/ios/crpg.xcodeproj
+[ ] Debug export method: Development
+[ ] Game Center: disabled
+[ ] Push Notifications: disabled
+[ ] Increased Memory Limit: disabled
+[ ] Camera, microphone, and photo-library descriptions: empty, because the game
+    does not currently use those capabilities.
+
+The iOS preset should exclude development-only content:
+
+    res://tests/*,res://tools/*,res://addons/godot_mcp_toolkit/*
+
+Codex can complete and validate these project settings after the Team ID, bundle
+identifier, and icon source are supplied.
+
+
+PHASE 4: PREPARE AN APPLICATION ICON
+
+[ ] Provide a square 1024x1024 PNG.
+[ ] Do not include transparency.
+[ ] Do not bake rounded corners into the image; iOS applies its own mask.
+[ ] Keep important artwork away from the edges.
+[ ] Generate and connect the required iOS icon sizes.
+
+Codex can generate the icon variants and connect them to the export preset after
+the source image is available.
+
+
+PHASE 5: EXPORT THE XCODE PROJECT
+
+[ ] In Godot, select Project > Export > iOS.
+[ ] Enable Export Project Only if signing inside Godot causes trouble.
+[ ] Export to build/ios/crpg.xcodeproj.
+[ ] Open the resulting Xcode project.
+[ ] Select the application target and open Signing & Capabilities.
+[ ] Enable Automatically Manage Signing.
+[ ] Select the correct Personal Team or paid development team.
+[ ] Confirm that the bundle identifier is accepted and signing warnings clear.
+
+
+PHASE 6: INSTALL AND RUN ON THE IPHONE
+
+[ ] Select the connected iPhone 7 in Xcode's run-destination selector.
+[ ] Keep the phone unlocked.
+[ ] Press Run or Command-R.
+[ ] Allow Xcode to compile, sign, install, and launch the game.
+
+If iOS reports an untrusted developer:
+
+[ ] Open Settings > General > VPN & Device Management.
+[ ] Select the developer identity and tap Trust.
+[ ] Return to Xcode and run again.
+
+
+PHASE 7: DEVICE SMOKE TEST
+
+[ ] Launch the game without Xcode attached.
+[ ] Confirm landscape orientation.
+[ ] Confirm the overworld is centered and fills the expected area.
+[ ] Check that touch controls fit comfortably on the 4.7-inch display.
+[ ] Test simultaneous direction and action-button input.
+[ ] Test wall-bump cadence and button-mashing suppression.
+[ ] Test NPC conversations and inspectable objects from every authored side.
+[ ] Test dialogue progression and choices.
+[ ] Test chess-square selection accuracy.
+[ ] Test overworld-to-battle and battle-to-overworld transitions.
+[ ] Verify music playback, looping, battle fade-out, and sound effects.
+[ ] Exercise particles, screen shake, blood splatters, and king effects.
+[ ] Watch for frame-rate drops and excessive device heat.
+[ ] Suspend and reopen the app; confirm audio and controls recover correctly.
+[ ] Open and close Control Center during play; confirm controls do not remain stuck.
+
+
+APP STORE NOTE
+
+This roadmap reaches a locally installed test build. It does not complete an App
+Store release. As of April 28, 2026, App Store uploads require Xcode 26 or newer
+and the iOS 26 SDK. This Mac currently runs macOS 12.6.5 and cannot use that
+toolchain. Final App Store submission will require a newer supported Mac/macOS
+environment or a hosted macOS build service.
