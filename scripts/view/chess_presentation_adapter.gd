@@ -71,6 +71,8 @@ var retained_capture_piece_views: Dictionary = {}
 var pending_damage_reactions: Dictionary = {}
 var raise_dead_skull_anchors: Dictionary = {}
 var playable_turn_colors: Dictionary = {}
+var tile_effect_views: Dictionary = {}
+var autonomous_entity_views: Dictionary = {}
 
 
 func _ready() -> void:
@@ -106,6 +108,11 @@ func _ready() -> void:
 	model.reaction_finished.connect(_on_reaction_finished)
 	model.ability_effect_resolved.connect(_on_ability_effect_resolved)
 	model.battle_finished.connect(_on_battle_finished)
+	model.tile_effect_added.connect(_on_tile_effect_added)
+	model.tile_effect_removed.connect(_on_tile_effect_removed)
+	model.autonomous_entity_added.connect(_on_autonomous_entity_added)
+	model.autonomous_entity_moved.connect(_on_autonomous_entity_moved)
+	model.autonomous_entity_removed.connect(_on_autonomous_entity_removed)
 	controller.ability_targeting_started.connect(_on_ability_targeting_started)
 	controller.ability_targeting_preparing.connect(_on_ability_targeting_preparing)
 	controller.ability_targeting_ended.connect(_on_ability_targeting_ended)
@@ -160,8 +167,10 @@ func _on_board_initialized(board: Array) -> void:
 		for piece in row:
 			if piece != null:
 					_register_piece(piece, view.get_piece_node(piece.coordinate))
+	_rebuild_nonphysical_views()
 
 func _on_board_rebuilt(board: Array) -> void:
+	_clear_nonphysical_views()
 	_clear_magic_controllers()
 	piece_views.clear()
 	necromancer_auras.clear()
@@ -185,6 +194,91 @@ func _on_board_rebuilt(board: Array) -> void:
 					view.spawn_stun_stars(piece_views.get(piece))
 	if result_view != null:
 		result_view.reset_result()
+	_rebuild_nonphysical_views()
+
+func _clear_nonphysical_views() -> void:
+	for node in tile_effect_views.values():
+		if is_instance_valid(node): node.queue_free()
+	for node in autonomous_entity_views.values():
+		if is_instance_valid(node): node.queue_free()
+	tile_effect_views.clear(); autonomous_entity_views.clear()
+
+func _rebuild_nonphysical_views() -> void:
+	for effect in model.tile_effects: _on_tile_effect_added(effect)
+	for entity in model.autonomous_entities: _create_autonomous_entity_view(entity)
+
+func _on_tile_effect_added(effect: ChessTileEffectState) -> void:
+	if effect.type_id != &"cursed_mark" or tile_effect_views.has(effect.effect_id): return
+	var mark := Node2D.new()
+	mark.name = "CursedMark_%s" % effect.effect_id
+	var center := view.cell_to_screen_center(effect.coordinate.x, effect.coordinate.y)
+	var cell_polygon := view.projection.get_cell_polygon(effect.coordinate)
+	var inset_polygon := PackedVector2Array()
+	for point in cell_polygon:
+		inset_polygon.append(center + (point - center) * 0.82)
+	var stain := Polygon2D.new()
+	stain.name = "Stain"
+	stain.polygon = inset_polygon
+	stain.color = Color(0.34, 0.02, 0.52, 0.48)
+	mark.add_child(stain)
+	var outline := Line2D.new()
+	outline.name = "Outline"
+	outline.points = PackedVector2Array([inset_polygon[0], inset_polygon[1], inset_polygon[2], inset_polygon[3], inset_polygon[0]])
+	outline.width = 2.0
+	outline.default_color = Color(0.86, 0.32, 1.0, 0.92)
+	outline.antialiased = true
+	mark.add_child(outline)
+	var rune := Line2D.new()
+	rune.name = "Rune"
+	var rune_x := (cell_polygon[1].x - cell_polygon[3].x) * 0.14
+	var rune_y := (cell_polygon[2].y - cell_polygon[0].y) * 0.22
+	rune.points = PackedVector2Array([
+		center + Vector2(-rune_x, -rune_y), center + Vector2(rune_x, rune_y),
+		center, center + Vector2(rune_x, -rune_y), center + Vector2(-rune_x, rune_y),
+	])
+	rune.width = 2.5
+	rune.default_color = Color(0.95, 0.72, 1.0, 0.95)
+	rune.antialiased = true
+	mark.add_child(rune)
+	mark.z_index = view.get_piece_depth(effect.coordinate) - 1
+	view.add_child(mark); tile_effect_views[effect.effect_id] = mark
+
+func _on_tile_effect_removed(effect: ChessTileEffectState) -> void:
+	var node: Node = tile_effect_views.get(effect.effect_id)
+	tile_effect_views.erase(effect.effect_id)
+	if is_instance_valid(node): node.queue_free()
+
+func _create_autonomous_entity_view(entity: ChessAutonomousEntityState) -> Sprite2D:
+	if autonomous_entity_views.has(entity.entity_id): return autonomous_entity_views[entity.entity_id]
+	var sprite := Sprite2D.new()
+	sprite.name = "Wraith_%s" % entity.entity_id
+	sprite.texture = load("res://assets/pieces/kings/%s_wraith.png" % entity.owner_color)
+	if sprite.texture != null: sprite.scale = Vector2.ONE * (64.0 / float(sprite.texture.get_height())) * view.get_world_scale()
+	sprite.modulate.a = 0.5
+	sprite.position = view.grid_to_screen(entity.coordinate.x, entity.coordinate.y)
+	sprite.z_index = view.get_piece_depth(entity.coordinate) + 1
+	view.add_child(sprite); autonomous_entity_views[entity.entity_id] = sprite
+	return sprite
+
+func _on_autonomous_entity_added(entity: ChessAutonomousEntityState, completion: CompletionGate) -> void:
+	_create_autonomous_entity_view(entity)
+	# Creation is immediate; the gate remains available for future authored summon animation.
+
+func _on_autonomous_entity_moved(entity: ChessAutonomousEntityState, _from: Vector2i, to: Vector2i, completion: CompletionGate) -> void:
+	var sprite := _create_autonomous_entity_view(entity)
+	if not presentation_policy.should_hold_completion_gate():
+		sprite.position = view.grid_to_screen(to.x, to.y); return
+	completion.hold()
+	var tween := create_tween()
+	tween.tween_property(sprite, "position", view.grid_to_screen(to.x, to.y), 0.25)
+	await tween.finished
+	sprite.z_index = view.get_piece_depth(to) + 1
+	completion.release()
+
+func _on_autonomous_entity_removed(entity: ChessAutonomousEntityState, _reason: StringName, completion: CompletionGate) -> void:
+	var sprite: Node = autonomous_entity_views.get(entity.entity_id)
+	autonomous_entity_views.erase(entity.entity_id)
+	if is_instance_valid(sprite): sprite.queue_free()
 
 
 func _on_piece_added(piece: ModelPiece) -> void:
@@ -902,12 +996,16 @@ func _register_piece(piece: ModelPiece, piece_node: Node) -> void:
 			king.cooldown_ready.connect(_on_cooldown_ready)
 		if not king.cooldown_scheduled.is_connected(_on_cooldown_scheduled):
 			king.cooldown_scheduled.connect(_on_cooldown_scheduled)
+		if not king.active_availability_changed.is_connected(_on_active_availability_changed):
+			king.active_availability_changed.connect(_on_active_availability_changed)
 		if king.cooldown_reset_pending:
 			_on_cooldown_scheduled(king)
 		elif king.current_cooldown > 0:
 			_on_cooldown_changed(king, king.current_cooldown)
 		else:
 			_on_cooldown_ready(king)
+		if king is WraithKing and model.has_autonomous_entity_from_source(king.piece_id, &"wraith"):
+			_on_active_availability_changed(king, false, "Wraith Active")
 		_register_king_magic(piece, piece_node)
 
 
@@ -967,6 +1065,9 @@ func _on_cooldown_scheduled(king: KingPiece) -> void:
 	view.pending_cooldown_display(king)
 	var magic := _get_king_magic(king)
 	if is_instance_valid(magic): magic.set_cooldown_pending(true)
+
+func _on_active_availability_changed(king: KingPiece, available: bool, reason: String) -> void:
+	view.update_active_availability_display(king, available, reason)
 
 func set_presentation_speed(speed: int) -> void:
 	presentation_policy.speed = speed

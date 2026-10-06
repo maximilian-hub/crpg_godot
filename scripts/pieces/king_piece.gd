@@ -11,6 +11,7 @@ signal cooldown_changed(king: KingPiece, new_cooldown: int)
 signal cooldown_ready(king: KingPiece)
 ## Emitted after an ability is spent but before its cooldown begins next turn.
 signal cooldown_scheduled(king: KingPiece)
+signal active_availability_changed(king: KingPiece, available: bool, reason: String)
 
 ## The base number of turns for the active ability cooldown.
 ## Subclasses should override this in their _init or set it directly.

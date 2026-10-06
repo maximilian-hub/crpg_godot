@@ -2,6 +2,7 @@ extends Resource
 class_name ChessPieceState
 
 @export var type_id: StringName = &"pawn"
+@export var piece_id: String = ""
 @export_enum("white", "black") var color: String = "white"
 @export var coordinate: Vector2i = Vector2i.ZERO
 @export var max_hp: int = 1
@@ -17,6 +18,7 @@ class_name ChessPieceState
 func copy() -> ChessPieceState:
 	var result := ChessPieceState.new()
 	result.type_id = type_id
+	result.piece_id = piece_id
 	result.color = color
 	result.coordinate = coordinate
 	result.max_hp = max_hp

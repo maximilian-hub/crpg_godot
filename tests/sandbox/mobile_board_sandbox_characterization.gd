@@ -31,6 +31,9 @@ func _ready() -> void:
 	_route_touch_button(sandbox, sandbox.piece_palette.king_select_button, 12)
 	await get_tree().process_frame
 	_check(sandbox.piece_palette.king_picker.visible, "Select King opens the in-scene mobile picker", failures)
+	_check(sandbox.piece_palette.king_picker_scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_AUTO, "king picker is vertically scrollable", failures)
+	_drag_king_picker(sandbox, 15)
+	_check(sandbox.piece_palette.king_picker_scroll.scroll_vertical > 0, "king picker responds to a vertical touch drag", failures)
 	sandbox.piece_palette.king_picker.visible = false
 	sandbox.piece_palette._select_mobile_king(1)
 	_check(sandbox.piece_palette.king_selector.selected == 1 and sandbox.piece_palette.king_select_button.text.contains("Arakne"), "mobile king picker changes both king tiles", failures)
@@ -38,37 +41,35 @@ func _ready() -> void:
 	_route_touch_button(sandbox, pawn_item, 13)
 	_check(sandbox.editor.selected_type_id == &"pawn" and sandbox.editor.selected_color == "white", "root touch routing selects a piece from the tray", failures)
 
-	sandbox.editor.select_palette_piece(&"queen", "black")
-	sandbox.interaction._on_square_pressed(Vector2i(4, 4))
-	_check(model.board[4][4] != null and model.board[4][4].get_position_type_id() == &"queen", "tap-to-place remains available", failures)
+	_route_board_tap(sandbox, view.to_global(view.projection.get_cell_center(Vector2i(4, 4))), 14)
+	_check(model.board[4][4] != null and model.board[4][4].get_position_type_id() == &"pawn", "root-routed board tap places the selected palette piece", failures)
 	sandbox.undo()
 	sandbox.editor.select_cursor_tool()
 
 	var source := Vector2i(6, 0)
 	var destination := Vector2i(4, 0)
-	var source_point := view.projection.get_cell_center(source)
-	var destination_point := view.projection.get_cell_center(destination)
+	var source_point := view.to_global(view.projection.get_cell_center(source))
+	var destination_point := view.to_global(view.projection.get_cell_center(destination))
 	var press := InputEventScreenTouch.new()
 	press.index = 3
 	press.position = source_point
 	press.pressed = true
-	sandbox.interaction._input(press)
-	sandbox.interaction._on_square_pressed(source)
+	sandbox._route_mobile_board_touch(press)
 	var drag := InputEventScreenDrag.new()
 	drag.index = 3
 	drag.position = destination_point
-	sandbox.interaction._input(drag)
+	sandbox._route_mobile_board_touch(drag)
 	var unrelated_release := InputEventScreenTouch.new()
 	unrelated_release.index = 4
 	unrelated_release.position = destination_point
 	unrelated_release.pressed = false
-	sandbox.interaction._input(unrelated_release)
+	sandbox._route_mobile_board_touch(unrelated_release)
 	_check(sandbox.interaction.drag_source != BoardEditorInteraction.DragSource.NONE, "an unrelated finger cannot finish a drag", failures)
 	var release := InputEventScreenTouch.new()
 	release.index = 3
 	release.position = destination_point
 	release.pressed = false
-	sandbox.interaction._input(release)
+	sandbox._route_mobile_board_touch(release)
 	_check(model.board[destination.x][destination.y] != null and model.board[destination.x][destination.y].get_position_type_id() == &"pawn" and model.board[source.x][source.y] == null, "touch drag moves an existing board piece", failures)
 	sandbox.undo()
 
@@ -76,7 +77,7 @@ func _ready() -> void:
 	sandbox.interaction.begin_palette_drag(&"rook", "white", 7)
 	var palette_drag := InputEventScreenDrag.new()
 	palette_drag.index = 7
-	palette_drag.position = view.projection.get_cell_center(Vector2i(4, 4))
+	palette_drag.position = view.to_global(view.projection.get_cell_center(Vector2i(4, 4)))
 	sandbox.interaction._input(palette_drag)
 	var palette_release := InputEventScreenTouch.new()
 	palette_release.index = 7
@@ -119,5 +120,37 @@ func _route_touch_button(sandbox, button: Control, pointer_index: int) -> void:
 	var release := InputEventScreenTouch.new()
 	release.index = pointer_index
 	release.position = position
+	release.pressed = false
+	sandbox._input(release)
+
+
+func _route_board_tap(sandbox, position: Vector2, pointer_index: int) -> void:
+	var press := InputEventScreenTouch.new()
+	press.index = pointer_index
+	press.position = position
+	press.pressed = true
+	sandbox._route_mobile_board_touch(press)
+	var release := InputEventScreenTouch.new()
+	release.index = pointer_index
+	release.position = position
+	release.pressed = false
+	sandbox._route_mobile_board_touch(release)
+
+
+func _drag_king_picker(sandbox, pointer_index: int) -> void:
+	var picker: Control = sandbox.piece_palette.king_picker
+	var start := picker.get_global_rect().get_center()
+	var press := InputEventScreenTouch.new()
+	press.index = pointer_index
+	press.position = start
+	press.pressed = true
+	sandbox._input(press)
+	var drag := InputEventScreenDrag.new()
+	drag.index = pointer_index
+	drag.position = start + Vector2.UP * 120.0
+	sandbox._input(drag)
+	var release := InputEventScreenTouch.new()
+	release.index = pointer_index
+	release.position = drag.position
 	release.pressed = false
 	sandbox._input(release)

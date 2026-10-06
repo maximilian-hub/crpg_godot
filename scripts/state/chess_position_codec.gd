@@ -9,6 +9,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 	for piece in sorted_pieces:
 		piece_dicts.append({
 			"type": String(piece.type_id), "color": piece.color,
+			"id": piece.piece_id,
 			"coordinate": [piece.coordinate.x, piece.coordinate.y],
 			"max_hp": piece.max_hp, "current_hp": piece.current_hp,
 			"attack_power": piece.attack_power, "has_moved": piece.has_moved,
@@ -25,12 +26,22 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 			"piece_type": String(position.last_move.piece_type_id),
 			"piece_color": position.last_move.piece_color,
 		}
+	var effect_dicts: Array[Dictionary] = []
+	var sorted_effects := position.tile_effects.duplicate()
+	sorted_effects.sort_custom(func(a: ChessTileEffectState, b: ChessTileEffectState): return a.effect_id < b.effect_id)
+	for effect in sorted_effects:
+		effect_dicts.append({"id": effect.effect_id, "type": String(effect.type_id), "coordinate": [effect.coordinate.x, effect.coordinate.y], "owner_color": effect.owner_color, "source_piece_id": effect.source_piece_id, "custom": effect.custom_state.duplicate(true)})
+	var entity_dicts: Array[Dictionary] = []
+	var sorted_entities := position.autonomous_entities.duplicate()
+	sorted_entities.sort_custom(func(a: ChessAutonomousEntityState, b: ChessAutonomousEntityState): return a.entity_id < b.entity_id)
+	for entity in sorted_entities:
+		entity_dicts.append({"id": entity.entity_id, "type": String(entity.type_id), "coordinate": [entity.coordinate.x, entity.coordinate.y], "owner_color": entity.owner_color, "source_piece_id": entity.source_piece_id, "target_piece_id": entity.target_piece_id, "custom": entity.custom_state.duplicate(true)})
 	return {
 		"schema": "crpg_chess_position", "version": position.schema_version,
 		"board": {"rows": position.board_size.x, "columns": position.board_size.y, "type": String(position.board_type)},
 		"current_turn": position.current_turn, "last_move": last,
 		"battle": {"over": position.battle_over, "result": position.battle_result, "defeated_king_colors": position.defeated_king_colors.duplicate()},
-		"pieces": piece_dicts,
+		"pieces": piece_dicts, "tile_effects": effect_dicts, "autonomous_entities": entity_dicts,
 	}
 
 static func to_json(position: ChessPosition, pretty := true) -> String:
@@ -49,14 +60,15 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	var errors: Array[String] = []
 	if data.get("schema", "") != "crpg_chess_position":
 		errors.append("Unknown position schema.")
-	if int(data.get("version", -1)) != ChessPosition.CURRENT_SCHEMA_VERSION:
+	var input_version := int(data.get("version", -1))
+	if input_version not in [1, ChessPosition.CURRENT_SCHEMA_VERSION]:
 		errors.append("Unsupported position version.")
 	var board_data = data.get("board", {})
 	if not board_data is Dictionary:
 		errors.append("Board must be an object.")
 		board_data = {}
 	var position := ChessPosition.new()
-	position.schema_version = int(data.get("version", ChessPosition.CURRENT_SCHEMA_VERSION))
+	position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION if input_version == 1 else input_version
 	position.board_size = Vector2i(int(board_data.get("rows", 0)), int(board_data.get("columns", 0)))
 	position.board_type = StringName(board_data.get("type", "default"))
 	position.current_turn = String(data.get("current_turn", ""))
@@ -84,6 +96,7 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 			continue
 		var piece := ChessPieceState.new()
 		piece.type_id = StringName(raw.get("type", ""))
+		piece.piece_id = String(raw.get("id", ""))
 		piece.color = String(raw.get("color", ""))
 		piece.coordinate = _decode_coord(raw.get("coordinate", []), errors, "pieces[%s].coordinate" % index)
 		piece.max_hp = int(raw.get("max_hp", 1))
@@ -97,6 +110,24 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 		var custom = raw.get("custom", {})
 		piece.custom_state = custom.duplicate(true) if custom is Dictionary else {}
 		position.pieces.append(piece)
+	for raw in data.get("tile_effects", []):
+		if not raw is Dictionary: continue
+		var effect := ChessTileEffectState.new()
+		effect.effect_id = String(raw.get("id", "")); effect.type_id = StringName(raw.get("type", ""))
+		effect.coordinate = _decode_coord(raw.get("coordinate", []), errors, "tile_effect.coordinate")
+		effect.owner_color = String(raw.get("owner_color", "")); effect.source_piece_id = String(raw.get("source_piece_id", ""))
+		var effect_custom = raw.get("custom", {})
+		effect.custom_state = effect_custom.duplicate(true) if effect_custom is Dictionary else {}
+		position.tile_effects.append(effect)
+	for raw in data.get("autonomous_entities", []):
+		if not raw is Dictionary: continue
+		var entity := ChessAutonomousEntityState.new()
+		entity.entity_id = String(raw.get("id", "")); entity.type_id = StringName(raw.get("type", ""))
+		entity.coordinate = _decode_coord(raw.get("coordinate", []), errors, "autonomous_entity.coordinate")
+		entity.owner_color = String(raw.get("owner_color", "")); entity.source_piece_id = String(raw.get("source_piece_id", "")); entity.target_piece_id = String(raw.get("target_piece_id", ""))
+		var entity_custom = raw.get("custom", {})
+		entity.custom_state = entity_custom.duplicate(true) if entity_custom is Dictionary else {}
+		position.autonomous_entities.append(entity)
 	var validation := ChessPositionValidator.validate(position)
 	errors.append_array(validation.structural_errors)
 	return {"position": position if errors.is_empty() else null, "errors": errors}

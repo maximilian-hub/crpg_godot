@@ -13,6 +13,9 @@ static func validate(position: ChessPosition) -> ChessPositionValidation:
 	if position.current_turn not in ["white", "black"]:
 		report.structural_errors.append("Invalid current turn: %s" % position.current_turn)
 	var occupied := {}
+	var piece_ids := {}
+	var effect_ids := {}
+	var entity_ids := {}
 	var kings := {"white": 0, "black": 0}
 	for piece in position.pieces:
 		if piece == null:
@@ -27,6 +30,9 @@ static func validate(position: ChessPosition) -> ChessPositionValidation:
 		if occupied.has(piece.coordinate):
 			report.structural_errors.append("Duplicate occupancy at %s" % piece.coordinate)
 		occupied[piece.coordinate] = true
+		if not piece.piece_id.is_empty():
+			if piece_ids.has(piece.piece_id): report.structural_errors.append("Duplicate piece id: %s" % piece.piece_id)
+			piece_ids[piece.piece_id] = true
 		if piece.max_hp <= 0 or piece.current_hp < 0 or piece.current_hp > piece.max_hp:
 			report.structural_errors.append("Invalid HP at %s" % piece.coordinate)
 		if piece.stun_timer < 0 or piece.current_cooldown < 0:
@@ -36,6 +42,23 @@ static func validate(position: ChessPosition) -> ChessPositionValidation:
 		if String(piece.type_id).ends_with("king") or piece.type_id == &"king":
 			if kings.has(piece.color):
 				kings[piece.color] += 1
+	for effect in position.tile_effects:
+		if effect == null or effect.effect_id.is_empty() or effect.type_id == &"" or effect.coordinate.x < 0 or effect.coordinate.y < 0 or effect.coordinate.x >= position.board_size.x or effect.coordinate.y >= position.board_size.y:
+			report.structural_errors.append("Invalid tile effect.")
+			continue
+		if effect_ids.has(effect.effect_id): report.structural_errors.append("Duplicate tile effect id: %s" % effect.effect_id)
+		effect_ids[effect.effect_id] = true
+		if effect.owner_color not in ["white", "black"]: report.structural_errors.append("Invalid tile effect owner color.")
+		if not effect.source_piece_id.is_empty() and not piece_ids.has(effect.source_piece_id): report.structural_errors.append("Tile effect source does not exist: %s" % effect.source_piece_id)
+	for entity in position.autonomous_entities:
+		if entity == null or entity.entity_id.is_empty() or entity.type_id == &"" or entity.coordinate.x < 0 or entity.coordinate.y < 0 or entity.coordinate.x >= position.board_size.x or entity.coordinate.y >= position.board_size.y:
+			report.structural_errors.append("Invalid autonomous entity.")
+			continue
+		if entity_ids.has(entity.entity_id): report.structural_errors.append("Duplicate autonomous entity id: %s" % entity.entity_id)
+		entity_ids[entity.entity_id] = true
+		if entity.owner_color not in ["white", "black"]: report.structural_errors.append("Invalid autonomous entity owner color.")
+		if not piece_ids.has(entity.source_piece_id): report.structural_errors.append("Autonomous entity source does not exist: %s" % entity.source_piece_id)
+		if not piece_ids.has(entity.target_piece_id): report.structural_errors.append("Autonomous entity target does not exist: %s" % entity.target_piece_id)
 	for color in ["white", "black"]:
 		if kings[color] != 1:
 			report.playability_errors.append("%s must have exactly one king (found %s)." % [color.capitalize(), kings[color]])

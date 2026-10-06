@@ -15,6 +15,7 @@ var king_items: Dictionary = {}
 var king_selector: OptionButton
 var king_select_button: Button
 var king_picker: PanelContainer
+var king_picker_scroll: ScrollContainer
 var king_type_ids: Array[StringName] = []
 var palette_enabled := true
 var mobile_layout := false
@@ -27,6 +28,10 @@ var mobile_pointer_index := -1
 var mobile_press_position := Vector2.ZERO
 var mobile_drag_started := false
 var king_picker_buttons: Dictionary = {}
+var mobile_picker_pointer := -1
+var mobile_pressed_king_button: Button
+var mobile_picker_last_position := Vector2.ZERO
+var mobile_picker_scrolling := false
 
 func configure_mobile_layout() -> void:
 	mobile_layout = true
@@ -93,22 +98,24 @@ func _build_mobile() -> void:
 func _sync_mobile_row_width() -> void:
 	if mobile_scroll != null and mobile_row != null:
 		mobile_row.custom_minimum_size.x = mobile_scroll.size.x
+	_layout_king_picker()
 
 func _build_king_picker() -> void:
 	king_picker = PanelContainer.new()
 	king_picker.name = "KingPicker"
 	king_picker.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	var picker_height := maxf(160.0, king_type_ids.size() * 58.0)
 	king_picker.offset_left = -340.0
-	king_picker.offset_top = -picker_height - 8.0
 	king_picker.offset_right = 0.0
-	king_picker.offset_bottom = -8.0
 	king_picker.visible = false
 	add_child(king_picker)
+	king_picker_scroll = ScrollContainer.new()
+	king_picker_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	king_picker_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	king_picker.add_child(king_picker_scroll)
 	var column := VBoxContainer.new()
 	column.custom_minimum_size.x = 300.0
 	column.add_theme_constant_override("separation", 6)
-	king_picker.add_child(column)
+	king_picker_scroll.add_child(column)
 	for index in range(king_type_ids.size()):
 		var type_id := king_type_ids[index]
 		var button := Button.new()
@@ -118,6 +125,15 @@ func _build_king_picker() -> void:
 		_enable_touch_activation(button)
 		column.add_child(button)
 		king_picker_buttons[button] = index
+
+func _layout_king_picker() -> void:
+	if king_picker == null:
+		return
+	var total_height := maxf(160.0, king_type_ids.size() * 58.0 + 12.0)
+	var available_height := maxf(180.0, global_position.y - 78.0)
+	var picker_height := minf(total_height, available_height)
+	king_picker.offset_top = -picker_height - 8.0
+	king_picker.offset_bottom = -8.0
 
 func _show_king_picker() -> void:
 	king_picker.visible = not king_picker.visible
@@ -146,10 +162,21 @@ func handle_mobile_touch_pressed(position: Vector2, pointer_index: int) -> bool:
 	if king_picker != null and king_picker.visible:
 		for button: Button in king_picker_buttons:
 			if button.get_global_rect().has_point(position):
-				_select_mobile_king(int(king_picker_buttons[button]))
+				mobile_picker_pointer = pointer_index
+				mobile_pressed_king_button = button
+				mobile_press_position = position
+				mobile_picker_last_position = position
+				mobile_picker_scrolling = false
 				return true
+		if king_picker.get_global_rect().has_point(position):
+			mobile_picker_pointer = pointer_index
+			mobile_pressed_king_button = null
+			mobile_press_position = position
+			mobile_picker_last_position = position
+			mobile_picker_scrolling = false
+			return true
 		king_picker.visible = false
-		return true
+		return false
 	if king_select_button != null and king_select_button.get_global_rect().has_point(position):
 		_show_king_picker()
 		return true
@@ -164,6 +191,13 @@ func handle_mobile_touch_pressed(position: Vector2, pointer_index: int) -> bool:
 	return false
 
 func handle_mobile_touch_drag(position: Vector2, pointer_index: int) -> bool:
+	if pointer_index == mobile_picker_pointer:
+		var delta := position - mobile_picker_last_position
+		if position.distance_to(mobile_press_position) >= PaletteItem.DRAG_THRESHOLD or mobile_picker_scrolling:
+			mobile_picker_scrolling = true
+			king_picker_scroll.scroll_vertical -= int(delta.y)
+		mobile_picker_last_position = position
+		return true
 	if pointer_index != mobile_pointer_index or mobile_pressed_item == null:
 		return false
 	if not mobile_drag_started and not mobile_pressed_item.is_cursor_tool and not mobile_pressed_item.is_delete_tool and position.distance_to(mobile_press_position) >= PaletteItem.DRAG_THRESHOLD:
@@ -173,7 +207,14 @@ func handle_mobile_touch_drag(position: Vector2, pointer_index: int) -> bool:
 		piece_drag_requested.emit(mobile_pressed_item.type_id, mobile_pressed_item.color)
 	return true
 
-func handle_mobile_touch_released(pointer_index: int) -> bool:
+func handle_mobile_touch_released(pointer_index: int, position := Vector2.INF) -> bool:
+	if pointer_index == mobile_picker_pointer:
+		if not mobile_picker_scrolling and mobile_pressed_king_button != null and mobile_pressed_king_button.get_global_rect().has_point(position):
+			_select_mobile_king(int(king_picker_buttons[mobile_pressed_king_button]))
+		mobile_picker_pointer = -1
+		mobile_pressed_king_button = null
+		mobile_picker_scrolling = false
+		return true
 	if pointer_index != mobile_pointer_index:
 		return false
 	mobile_pressed_item = null

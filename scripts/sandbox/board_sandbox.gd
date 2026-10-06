@@ -75,6 +75,7 @@ var clear_confirmation: ConfirmationDialog
 var mobile_ui_pointer := -1
 var mobile_ui_touch_target: Variant = null
 var mobile_button_callbacks: Dictionary = {}
+var mobile_board_pointer := -1
 
 func _ready() -> void:
 	mobile_layout = force_mobile_layout_for_testing or OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
@@ -359,8 +360,11 @@ func _release_gui_focus(_coordinate := Vector2i.ZERO) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if mobile_layout and _route_mobile_ui_touch(event):
-		return
+	if mobile_layout:
+		if _route_mobile_ui_touch(event):
+			return
+		if _route_mobile_board_touch(event):
+			return
 	if (
 		event is InputEventMouseButton
 		and event.button_index == MOUSE_BUTTON_LEFT
@@ -391,7 +395,7 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 		if mobile_ui_touch_target == piece_palette:
 			if interaction.drag_source != BoardEditorInteraction.DragSource.NONE:
 				interaction._input(touch)
-			piece_palette.handle_mobile_touch_released(touch.index)
+			piece_palette.handle_mobile_touch_released(touch.index, touch.position)
 		elif mobile_ui_touch_target is Button:
 			var button := mobile_ui_touch_target as Button
 			if not button.disabled and button.get_global_rect().has_point(touch.position):
@@ -419,6 +423,43 @@ func _mobile_button_at(position: Vector2) -> Button:
 		if candidate.is_visible_in_tree() and candidate.get_global_rect().has_point(position):
 			return candidate
 	return null
+
+func _route_mobile_board_touch(event: InputEvent) -> bool:
+	var board := $ChessGame/CanvasLayer/ChessBoard as ChessBoardView
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			if mobile_board_pointer >= 0:
+				return false
+			var coordinate := board.coordinate_at_viewport_position(touch.position)
+			if coordinate.x < 0:
+				return false
+			if piece_palette != null and piece_palette.king_picker != null:
+				piece_palette.king_picker.visible = false
+			mobile_board_pointer = touch.index
+			if mode == Mode.EDIT:
+				interaction._input(touch)
+				interaction._on_square_pressed(coordinate)
+			else:
+				board.select_square_at_viewport_position(touch.position)
+			get_viewport().set_input_as_handled()
+			return true
+		if touch.index != mobile_board_pointer:
+			return false
+		if mode == Mode.EDIT and interaction.drag_source != BoardEditorInteraction.DragSource.NONE:
+			interaction._input(touch)
+		mobile_board_pointer = -1
+		get_viewport().set_input_as_handled()
+		return true
+	if event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if drag.index != mobile_board_pointer:
+			return false
+		if mode == Mode.EDIT and interaction.drag_source != BoardEditorInteraction.DragSource.NONE:
+			interaction._input(drag)
+		get_viewport().set_input_as_handled()
+		return true
+	return false
 
 
 func _release_text_focus_if_scene_clicked(hovered_control: Control) -> void:

@@ -49,6 +49,11 @@ signal reaction_selection_committed(calling_piece: ModelPiece, action_type: Stri
 signal reaction_selection_resolved(calling_piece: ModelPiece, action_type: String, target: Vector2i)
 signal reaction_queued(calling_piece: ModelPiece, action_type: String, event_data, sequence: int)
 signal reaction_finished(calling_piece: ModelPiece, action_type: String, event_data, sequence: int, resolved: bool)
+signal tile_effect_added(effect: ChessTileEffectState)
+signal tile_effect_removed(effect: ChessTileEffectState)
+signal autonomous_entity_added(entity: ChessAutonomousEntityState, completion: CompletionGate)
+signal autonomous_entity_moved(entity: ChessAutonomousEntityState, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal autonomous_entity_removed(entity: ChessAutonomousEntityState, reason: StringName, completion: CompletionGate)
 
 var battle_over: bool = false
 var battle_result: String = ""
@@ -59,6 +64,10 @@ var selection_sequence: int = 0
 var pending_reaction: Dictionary = {}
 var is_initialized: bool = false
 var position_revision: int = 0
+var tile_effects: Array[ChessTileEffectState] = []
+var autonomous_entities: Array[ChessAutonomousEntityState] = []
+var _next_state_id := 1
+var autonomous_phase_in_progress := false
 
 # Runtime policy used by developer surfaces such as the board sandbox. This is
 # deliberately not part of ChessPosition, so test conveniences never leak into
@@ -100,7 +109,7 @@ func initialize_battle() -> bool:
 	return true
 
 func is_settled() -> bool:
-	return not action_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and selection_queue.is_empty()
+	return not action_in_progress and not autonomous_phase_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and selection_queue.is_empty()
 
 func capture_position() -> ChessPosition:
 	var position := ChessPosition.new()
@@ -114,6 +123,8 @@ func capture_position() -> ChessPosition:
 		for piece in row:
 			if piece != null:
 				position.pieces.append(piece.capture_piece_state())
+	for effect in tile_effects: position.tile_effects.append(effect.copy())
+	for entity in autonomous_entities: position.autonomous_entities.append(entity.copy())
 	if last_move.has("piece"):
 		var moved_piece: ModelPiece = last_move.get("piece")
 		position.last_move.is_present = true
@@ -127,6 +138,8 @@ func load_position(position: ChessPosition) -> bool:
 	if not is_settled():
 		printerr("load_position: Model must be settled.")
 		return false
+	# Schema 1 positions predate non-physical board state and migrate as empty layers.
+	if position.schema_version == 1: position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION
 	var validation := ChessPositionValidator.validate(position)
 	if not validation.is_structurally_valid():
 		printerr("load_position: ", "; ".join(validation.structural_errors))
@@ -138,11 +151,13 @@ func load_position(position: ChessPosition) -> bool:
 		row.fill(null)
 		replacement.append(row)
 	var created: Array[ModelPiece] = []
+	_next_state_id = 1
 	for state in position.pieces:
 		var piece := ChessPieceCatalog.create_piece(state.type_id, state.color, state.coordinate)
 		if piece == null:
 			return false
 		piece.restore_piece_state(state)
+		_reserve_state_id(piece.piece_id)
 		replacement[state.coordinate.x][state.coordinate.y] = piece
 		created.append(piece)
 	for row in board:
@@ -151,6 +166,12 @@ func load_position(position: ChessPosition) -> bool:
 				unregister_piece(old_piece)
 				old_piece.free()
 	board = replacement
+	tile_effects.clear()
+	for effect in position.tile_effects: tile_effects.append(effect.copy())
+	autonomous_entities.clear()
+	for entity in position.autonomous_entities: autonomous_entities.append(entity.copy())
+	for effect in tile_effects: _reserve_state_id(effect.effect_id)
+	for entity in autonomous_entities: _reserve_state_id(entity.entity_id)
 	for piece in created:
 		inject_dependencies(piece)
 	current_turn = position.current_turn
@@ -187,6 +208,8 @@ func load_position(position: ChessPosition) -> bool:
 
 func initialize_board():
 	board.clear()
+	tile_effects.clear()
+	autonomous_entities.clear()
 	if BOARD_TYPE == "default": # the normal 8x8 board
 		for x in range(8):
 			var row = []
@@ -268,6 +291,8 @@ func inject_all_dependencies():
 				inject_dependencies(piece)
 
 func inject_dependencies(piece: ModelPiece):
+	if piece.piece_id.is_empty():
+		piece.piece_id = _allocate_state_id("piece")
 	piece.model = self
 
 	var turn_callback := Callable(piece, "_on_turn_changed")
@@ -339,6 +364,7 @@ func add_piece(piece: ModelPiece, coord: Vector2i) -> bool:
 		return false
 
 	piece.coordinate = coord
+	if piece.piece_id.is_empty(): piece.piece_id = _allocate_state_id("piece")
 	board[coord.x][coord.y] = piece
 	inject_dependencies(piece)
 	piece_added.emit(piece)
@@ -417,6 +443,8 @@ func begin_action(owner_color: String) -> bool:
 	consecutive_forced_passes = 0
 	print("ACTION START — ", action_owner_color)
 	action_started.emit(action_owner_color)
+	var king := get_king(owner_color)
+	if king is WraithKing: (king as WraithKing).begin_primary_action()
 	return true
 
 func cancel_action() -> void:
@@ -434,6 +462,13 @@ func finish_action() -> void:
 		complete_battle()
 		return
 
+	await run_autonomous_phase(action_owner_color)
+	if has_defeated_king():
+		complete_battle()
+		return
+	if not selection_queue.is_empty():
+		await continue_action_resolution()
+		return
 	print("ACTION END — ", action_owner_color)
 	action_in_progress = false
 	action_owner_color = ""
@@ -667,6 +702,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callab
 		if arrival_effect.is_valid():
 			arrival_effect.call()
 		await _announce_piece_landed(piece, from, to)
+		if piece is WraithKing: (piece as WraithKing).on_landed_on_mark(to)
 		await presentation.wait_for_aftermath()
 		print("Animation finished for piece: ", piece.type)
 		if not is_piece_active(piece) or piece.coordinate != to:
@@ -702,6 +738,7 @@ func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: V
 	destroy_piece(captured_piece, false)
 	await presentation.wait_for_arrival(piece)
 	await _announce_piece_landed(piece, from, to)
+	if piece is WraithKing and is_piece_active(piece): (piece as WraithKing).on_direct_capture(captured_at)
 	await presentation.wait_for_aftermath()
 
 	if piece is BonePawn and piece._on_dead_row():
@@ -1015,6 +1052,7 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 		print("KING DEFEATED — ", piece.color)
 
 	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
+	_remove_autonomous_entities_referencing(piece.piece_id)
 	
 	
 	# Only nullify if requested AND the piece is actually where we think it is
@@ -1024,6 +1062,14 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 		printerr("destroy_piece: Requested to nullify square ", piece_coord, " but the piece wasn't found there in the model.")
 	
 	unregister_piece(piece)
+
+func _remove_autonomous_entities_referencing(piece_id: String) -> void:
+	for entity in autonomous_entities.duplicate():
+		if entity.source_piece_id != piece_id and entity.target_piece_id != piece_id: continue
+		autonomous_entities.erase(entity)
+		var completion := CompletionGate.new()
+		autonomous_entity_removed.emit(entity, &"source_destroyed" if entity.source_piece_id == piece_id else &"target_destroyed", completion)
+		completion.close()
 
 func transform_piece(piece: ModelPiece, transformed_type: String, present_promotion := false) -> void:
 	if not is_instance_valid(piece):
@@ -1190,3 +1236,77 @@ func submit_reaction_selection(coord: Vector2i) -> bool:
 func get_other_color(color: String) -> String:
 	if color == "white": return "black"
 	else: return "white"
+
+func _allocate_state_id(prefix: String) -> String:
+	var result := "%s_%s" % [prefix, _next_state_id]
+	_next_state_id += 1
+	return result
+
+func _reserve_state_id(id: String) -> void:
+	var suffix := id.get_slice("_", id.get_slice_count("_") - 1)
+	if suffix.is_valid_int(): _next_state_id = maxi(_next_state_id, suffix.to_int() + 1)
+
+func find_piece_by_id(id: String) -> ModelPiece:
+	for row in board:
+		for piece in row:
+			if piece != null and piece.piece_id == id: return piece
+	return null
+
+func add_tile_effect(type_id: StringName, coord: Vector2i, owner_color: String, source_piece_id: String, custom_state := {}) -> ChessTileEffectState:
+	remove_tile_effect(type_id, coord, source_piece_id)
+	var effect := ChessTileEffectState.new()
+	effect.effect_id = _allocate_state_id("effect"); effect.type_id = type_id; effect.coordinate = coord
+	effect.owner_color = owner_color; effect.source_piece_id = source_piece_id; effect.custom_state = custom_state.duplicate(true)
+	tile_effects.append(effect); tile_effect_added.emit(effect)
+	return effect
+
+func has_tile_effect(type_id: StringName, coord: Vector2i, source_piece_id := "") -> bool:
+	return tile_effects.any(func(effect): return effect.type_id == type_id and effect.coordinate == coord and (source_piece_id.is_empty() or effect.source_piece_id == source_piece_id))
+
+func remove_tile_effect(type_id: StringName, coord: Vector2i, source_piece_id := "") -> bool:
+	for effect in tile_effects.duplicate():
+		if effect.type_id == type_id and effect.coordinate == coord and (source_piece_id.is_empty() or effect.source_piece_id == source_piece_id):
+			tile_effects.erase(effect); tile_effect_removed.emit(effect); return true
+	return false
+
+func has_autonomous_entity_from_source(source_piece_id: String, type_id: StringName = &"") -> bool:
+	return autonomous_entities.any(func(entity): return entity.source_piece_id == source_piece_id and (type_id == &"" or entity.type_id == type_id))
+
+func summon_wraith(source: WraithKing, target: ModelPiece) -> void:
+	var entity := ChessAutonomousEntityState.new()
+	entity.entity_id = _allocate_state_id("entity"); entity.type_id = &"wraith"; entity.coordinate = source.coordinate
+	entity.owner_color = source.color; entity.source_piece_id = source.piece_id; entity.target_piece_id = target.piece_id
+	autonomous_entities.append(entity)
+	source.active_availability_changed.emit(source, false, "Wraith Active")
+	var completion := CompletionGate.new(); autonomous_entity_added.emit(entity, completion); completion.close(); await completion.wait_until_released()
+
+func run_autonomous_phase(owner_color: String = "") -> void:
+	if autonomous_entities.is_empty() or battle_over: return
+	autonomous_phase_in_progress = true
+	for entity in autonomous_entities.duplicate():
+		if entity not in autonomous_entities: continue
+		if not owner_color.is_empty() and entity.owner_color != owner_color: continue
+		if entity.type_id == &"wraith": await _advance_wraith(entity)
+		if has_defeated_king(): break
+	autonomous_phase_in_progress = false
+
+func _advance_wraith(entity: ChessAutonomousEntityState) -> void:
+	var source := find_piece_by_id(entity.source_piece_id)
+	var target := find_piece_by_id(entity.target_piece_id)
+	if source == null or target == null or not is_piece_active(source) or not is_piece_active(target):
+		await remove_autonomous_entity(entity, &"invalid_target")
+		return
+	var delta := target.coordinate - entity.coordinate
+	var next := entity.coordinate + Vector2i(signi(delta.x), signi(delta.y))
+	var from := entity.coordinate; entity.coordinate = next
+	var completion := CompletionGate.new(); autonomous_entity_moved.emit(entity, from, next, completion); completion.close(); await completion.wait_until_released()
+	if next == target.coordinate and is_piece_active(target):
+		destroy_piece(target, true)
+		await remove_autonomous_entity(entity, &"reached_target")
+
+func remove_autonomous_entity(entity: ChessAutonomousEntityState, reason: StringName) -> void:
+	if entity not in autonomous_entities: return
+	autonomous_entities.erase(entity)
+	var source := find_piece_by_id(entity.source_piece_id)
+	if source is WraithKing: (source as WraithKing).active_availability_changed.emit(source, true, "")
+	var completion := CompletionGate.new(); autonomous_entity_removed.emit(entity, reason, completion); completion.close(); await completion.wait_until_released()

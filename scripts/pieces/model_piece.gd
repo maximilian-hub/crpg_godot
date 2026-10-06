@@ -11,6 +11,7 @@ var model: ChessBoardModel = null	# set in inject_dependencies() in chess_model.
 var color: String 	# black, white
 var type: String 	# pawn, knight, bishop, minotaur king, etc
 var coordinate: Vector2i
+var piece_id: String = ""
 
 var max_hp: int = 1
 var current_hp: int = 1
@@ -34,6 +35,7 @@ func get_position_type_id() -> StringName:
 func capture_piece_state() -> ChessPieceState:
 	var state := ChessPieceState.new()
 	state.type_id = get_position_type_id()
+	state.piece_id = piece_id
 	state.color = color
 	state.coordinate = coordinate
 	state.max_hp = max_hp
@@ -49,6 +51,7 @@ func capture_piece_state() -> ChessPieceState:
 	return state
 
 func restore_piece_state(state: ChessPieceState) -> void:
+	piece_id = state.piece_id
 	max_hp = state.max_hp
 	current_hp = state.current_hp
 	attack_power = state.attack_power

@@ -444,10 +444,11 @@ func select_square_at_viewport_position(viewport_position: Vector2) -> bool:
 
 
 func coordinate_at_viewport_position(viewport_position: Vector2) -> Vector2i:
+	var local_position := to_local(viewport_position)
 	for row in range(projection.rows):
 		for column in range(projection.columns):
 			var coordinate := Vector2i(row, column)
-			if Geometry2D.is_point_in_polygon(viewport_position, projection.get_cell_polygon(coordinate)):
+			if Geometry2D.is_point_in_polygon(local_position, projection.get_cell_polygon(coordinate)):
 				return coordinate
 	return Vector2i(-1, -1)
 
@@ -999,3 +1000,7 @@ func ready_cooldown_display(king: KingPiece):
 func pending_cooldown_display(king: KingPiece):
 	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
 	button.text = "%s Recharging…" % king.get_active_ability_name()
+
+func update_active_availability_display(king: KingPiece, available: bool, reason: String) -> void:
+	var button = white_cooldown_button if king.color == "white" else black_cooldown_button
+	button.text = "%s Ready!" % king.get_active_ability_name() if available else "%s — %s" % [king.get_active_ability_name(), reason]
