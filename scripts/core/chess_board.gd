@@ -436,13 +436,20 @@ func _on_square_selected(coordinate: Vector2i) -> void:
 ## native screen-touch events are not consistently forwarded on Android. Main
 ## uses this geometry path only for that fixed-logical presentation mode.
 func select_square_at_viewport_position(viewport_position: Vector2) -> bool:
+	var coordinate := coordinate_at_viewport_position(viewport_position)
+	if coordinate.x < 0:
+		return false
+	square_selected.emit(coordinate)
+	return true
+
+
+func coordinate_at_viewport_position(viewport_position: Vector2) -> Vector2i:
 	for row in range(projection.rows):
 		for column in range(projection.columns):
 			var coordinate := Vector2i(row, column)
 			if Geometry2D.is_point_in_polygon(viewport_position, projection.get_cell_polygon(coordinate)):
-				square_selected.emit(coordinate)
-				return true
-	return false
+				return coordinate
+	return Vector2i(-1, -1)
 
 func draw_piece(piece_data: ModelPiece) -> Node:
 	if piece_data == null: return null # no need to draw a piece that doesn't exist!

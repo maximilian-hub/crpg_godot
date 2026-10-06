@@ -18,6 +18,12 @@ var shortcut_label: Label = null
 var press_position := Vector2.ZERO
 var press_active := false
 var drag_started := false
+var active_pointer_index := -1
+var drag_viewport_position := Vector2.ZERO
+var mobile_layout := false
+
+func configure_mobile_layout() -> void:
+	mobile_layout = true
 
 func configure_piece(piece_type_id: StringName, piece_color: String) -> void:
 	type_id = piece_type_id
@@ -60,7 +66,7 @@ func set_interaction_enabled(value: bool) -> void:
 		drag_started = false
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(62, 54)
+	custom_minimum_size = Vector2(104, 76) if mobile_layout else Vector2(62, 54)
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	resized.connect(_layout_content)
 	_layout_content()
@@ -71,6 +77,7 @@ func _gui_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			active_pointer_index = -1
 			press_active = true
 			drag_started = false
 			press_position = event.position
@@ -79,9 +86,28 @@ func _gui_input(event: InputEvent) -> void:
 		else:
 			press_active = false
 			drag_started = false
+			active_pointer_index = -1
 	elif event is InputEventMouseMotion and press_active and not is_cursor_tool and not is_delete_tool and not drag_started:
 		if event.position.distance_to(press_position) >= DRAG_THRESHOLD:
 			drag_started = true
+			drag_requested.emit(self)
+			accept_event()
+	elif event is InputEventScreenTouch:
+		if event.pressed:
+			active_pointer_index = event.index
+			press_active = true
+			drag_started = false
+			press_position = event.position
+			selected.emit(self)
+			accept_event()
+		elif event.index == active_pointer_index:
+			press_active = false
+			drag_started = false
+			active_pointer_index = -1
+	elif event is InputEventScreenDrag and event.index == active_pointer_index and press_active and not is_cursor_tool and not is_delete_tool and not drag_started:
+		if event.position.distance_to(press_position) >= DRAG_THRESHOLD:
+			drag_started = true
+			drag_viewport_position = get_global_transform_with_canvas() * event.position
 			drag_requested.emit(self)
 			accept_event()
 

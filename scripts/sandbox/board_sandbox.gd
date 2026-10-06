@@ -6,6 +6,8 @@ const BoardPiecePaletteScript = preload("res://scripts/editor/board_piece_palett
 
 enum Mode { EDIT, PLAY }
 
+@export var force_mobile_layout_for_testing := false
+
 const COLOR_INACTIVE := Color("252331")
 const COLOR_EDIT := Color("2878c7")
 const COLOR_PLAY := Color("d36a25")
@@ -63,8 +65,19 @@ var thought_label: Label
 var execute_button: Button
 var grip_profile_ids: Array[StringName] = []
 var syncing_grip_controls := false
+var mobile_layout := false
+var mobile_root: Control
+var mobile_ai_panel: PanelContainer
+var mobile_palette_button: Button
+var mobile_toolbar_panel: PanelContainer
+var reset_confirmation: ConfirmationDialog
+var clear_confirmation: ConfirmationDialog
+var mobile_ui_pointer := -1
+var mobile_ui_touch_target: Variant = null
+var mobile_button_callbacks: Dictionary = {}
 
 func _ready() -> void:
+	mobile_layout = force_mobile_layout_for_testing or OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
 	editor.model = model
 	var board_view: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
 	interaction.configure(model, editor, board_view)
@@ -86,6 +99,12 @@ func _ready() -> void:
 	_refresh_control_states()
 
 func _build_panel() -> void:
+	if mobile_layout:
+		_build_mobile_panel()
+	else:
+		_build_desktop_panel()
+
+func _build_desktop_panel() -> void:
 	mode_button = _add_button("", func(): _set_mode(Mode.PLAY if mode == Mode.EDIT else Mode.EDIT))
 	view_side_button = _add_button("", _toggle_viewing_side)
 	var history_row := HBoxContainer.new()
@@ -201,21 +220,205 @@ func _build_panel() -> void:
 	piece_palette.offset_right = -12.0
 	piece_palette.offset_bottom = 140.0
 
+func _build_mobile_panel() -> void:
+	panel.visible = false
+	mobile_root = Control.new()
+	mobile_root.name = "MobileSandboxControls"
+	mobile_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mobile_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$SandboxLayer.add_child(mobile_root)
+
+	mobile_toolbar_panel = PanelContainer.new()
+	mobile_toolbar_panel.name = "Toolbar"
+	mobile_toolbar_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	mobile_root.add_child(mobile_toolbar_panel)
+	var toolbar := HBoxContainer.new()
+	toolbar.add_theme_constant_override("separation", 6)
+	mobile_toolbar_panel.add_child(toolbar)
+	mode_button = _add_button_to(toolbar, "", func(): _set_mode(Mode.PLAY if mode == Mode.EDIT else Mode.EDIT))
+	undo_button = _add_button_to(toolbar, "Back", undo)
+	redo_button = _add_button_to(toolbar, "Forward", redo)
+	reset_button = _add_button_to(toolbar, "Reset", reset)
+	clear_button = _add_button_to(toolbar, "Clear", func(): editor.clear_board())
+	mobile_palette_button = _add_button_to(toolbar, "Pieces", _toggle_mobile_palette)
+	_add_button_to(toolbar, "AI", _toggle_mobile_ai_panel)
+
+	mobile_ai_panel = PanelContainer.new()
+	mobile_ai_panel.name = "AISettings"
+	mobile_ai_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	mobile_ai_panel.offset_left = -286.0
+	mobile_ai_panel.offset_top = 74.0
+	mobile_ai_panel.offset_right = -16.0
+	mobile_ai_panel.offset_bottom = 238.0
+	mobile_ai_panel.visible = false
+	mobile_root.add_child(mobile_ai_panel)
+	var ai_column := VBoxContainer.new()
+	ai_column.add_theme_constant_override("separation", 6)
+	mobile_ai_panel.add_child(ai_column)
+	var ai_title := Label.new()
+	ai_title.text = "AI Mode"
+	ai_column.add_child(ai_title)
+	var mode_row := HBoxContainer.new()
+	ai_column.add_child(mode_row)
+	_add_ai_mode_button(mode_row, "Off", ChessCpuPlayer.ExecutionMode.DISABLED)
+	_add_ai_mode_button(mode_row, "Auto", ChessCpuPlayer.ExecutionMode.AUTO)
+	var sides_title := Label.new()
+	sides_title.text = "AI Sides"
+	ai_column.add_child(sides_title)
+	var side_row := HBoxContainer.new()
+	ai_column.add_child(side_row)
+	_add_ai_side_button(side_row, "White", "white")
+	_add_ai_side_button(side_row, "Black", "black")
+	cooldowns_check = CheckButton.new()
+	cooldowns_check.text = "Disable Cooldowns"
+	cooldowns_check.toggled.connect(_on_cooldowns_toggled)
+	ai_column.add_child(cooldowns_check)
+
+	piece_palette = BoardPiecePaletteScript.new()
+	piece_palette.name = "PiecePalette"
+	piece_palette.configure_mobile_layout()
+	piece_palette.cursor_selected.connect(editor.select_cursor_tool)
+	piece_palette.delete_selected.connect(editor.select_delete_tool)
+	piece_palette.piece_selected.connect(editor.select_palette_piece)
+	piece_palette.piece_drag_requested.connect(_on_palette_piece_drag_requested)
+	mobile_root.add_child(piece_palette)
+	piece_palette.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	piece_palette.offset_left = 16.0
+	piece_palette.offset_top = -108.0
+	piece_palette.offset_right = -16.0
+	piece_palette.offset_bottom = -12.0
+
+	reset_confirmation = _make_confirmation("Reset position?", "Restore the normal starting position and discard position history.", reset)
+	clear_confirmation = _make_confirmation("Clear position?", "Remove every piece from the board? This can be undone.", func(): editor.clear_board())
+	get_viewport().size_changed.connect(_layout_mobile_controls)
+	_layout_mobile_controls()
+
+func _layout_mobile_controls() -> void:
+	if mobile_root == null:
+		return
+	var left := 16.0
+	var right := 16.0
+	var top := 12.0
+	var bottom := 12.0
+	var screen_size := Vector2(DisplayServer.screen_get_size())
+	var viewport_size := get_viewport().get_visible_rect().size
+	if screen_size.x > 0.0 and screen_size.y > 0.0 and viewport_size.x > 0.0 and viewport_size.y > 0.0:
+		var safe := Rect2(DisplayServer.get_display_safe_area())
+		var scale := viewport_size / screen_size
+		left = maxf(left, safe.position.x * scale.x)
+		right = maxf(right, (screen_size.x - safe.end.x) * scale.x)
+		top = maxf(top, safe.position.y * scale.y)
+		bottom = maxf(bottom, (screen_size.y - safe.end.y) * scale.y)
+	mobile_toolbar_panel.offset_left = left
+	mobile_toolbar_panel.offset_top = top
+	mobile_toolbar_panel.offset_right = -right
+	mobile_toolbar_panel.offset_bottom = top + 54.0
+	mobile_ai_panel.offset_left = -(right + 270.0)
+	mobile_ai_panel.offset_top = top + 62.0
+	mobile_ai_panel.offset_right = -right
+	mobile_ai_panel.offset_bottom = top + 226.0
+	piece_palette.offset_left = left
+	piece_palette.offset_top = -(bottom + 96.0)
+	piece_palette.offset_right = -right
+	piece_palette.offset_bottom = -bottom
+
+func _make_confirmation(title: String, message: String, callback: Callable) -> ConfirmationDialog:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = title
+	dialog.dialog_text = message
+	dialog.confirmed.connect(callback)
+	mobile_root.add_child(dialog)
+	_enable_mobile_touch_activation(dialog.get_ok_button())
+	_enable_mobile_touch_activation(dialog.get_cancel_button())
+	return dialog
+
+func _request_reset() -> void:
+	reset_confirmation.popup_centered(Vector2i(460, 190))
+
+func _request_clear() -> void:
+	clear_confirmation.popup_centered(Vector2i(460, 190))
+
+func _toggle_mobile_palette() -> void:
+	piece_palette.visible = not piece_palette.visible
+	if piece_palette.visible:
+		mobile_ai_panel.visible = false
+
+func _toggle_mobile_ai_panel() -> void:
+	mobile_ai_panel.visible = not mobile_ai_panel.visible
+	if mobile_ai_panel.visible:
+		piece_palette.visible = false
+
 func _on_palette_piece_drag_requested(type_id: StringName, color: String) -> void:
 	if editor.select_palette_piece(type_id, color):
-		interaction.begin_palette_drag(type_id, color)
+		var pointer_index: int = piece_palette.last_drag_pointer_index
+		var initial_position: Vector2 = piece_palette.last_drag_viewport_position if pointer_index >= 0 else Vector2.INF
+		interaction.begin_palette_drag(type_id, color, pointer_index, initial_position)
 
 func _release_gui_focus(_coordinate := Vector2i.ZERO) -> void:
 	get_viewport().gui_release_focus()
 
 
 func _input(event: InputEvent) -> void:
+	if mobile_layout and _route_mobile_ui_touch(event):
+		return
 	if (
 		event is InputEventMouseButton
 		and event.button_index == MOUSE_BUTTON_LEFT
 		and event.pressed
 	):
 		_release_text_focus_if_scene_clicked(get_viewport().gui_get_hovered_control())
+
+func _route_mobile_ui_touch(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			if mobile_ui_pointer >= 0:
+				return false
+			mobile_ui_touch_target = _mobile_button_at(touch.position)
+			if mobile_ui_touch_target != null:
+				pass
+			elif piece_palette != null and piece_palette.mobile_contains(touch.position):
+				if not piece_palette.handle_mobile_touch_pressed(touch.position, touch.index):
+					return false
+				mobile_ui_touch_target = piece_palette
+			else:
+				return false
+			mobile_ui_pointer = touch.index
+			get_viewport().set_input_as_handled()
+			return true
+		if touch.index != mobile_ui_pointer:
+			return false
+		if mobile_ui_touch_target == piece_palette:
+			if interaction.drag_source != BoardEditorInteraction.DragSource.NONE:
+				interaction._input(touch)
+			piece_palette.handle_mobile_touch_released(touch.index)
+		elif mobile_ui_touch_target is Button:
+			var button := mobile_ui_touch_target as Button
+			if not button.disabled and button.get_global_rect().has_point(touch.position):
+				var callback: Callable = mobile_button_callbacks.get(button, Callable())
+				if callback.is_valid():
+					callback.call()
+		mobile_ui_pointer = -1
+		mobile_ui_touch_target = null
+		get_viewport().set_input_as_handled()
+		return true
+	if event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if drag.index != mobile_ui_pointer:
+			return false
+		if mobile_ui_touch_target == piece_palette:
+			piece_palette.handle_mobile_touch_drag(drag.position, drag.index)
+			if interaction.drag_source != BoardEditorInteraction.DragSource.NONE:
+				interaction._input(drag)
+		get_viewport().set_input_as_handled()
+		return true
+	return false
+
+func _mobile_button_at(position: Vector2) -> Button:
+	for candidate: Button in mobile_button_callbacks:
+		if candidate.is_visible_in_tree() and candidate.get_global_rect().has_point(position):
+			return candidate
+	return null
 
 
 func _release_text_focus_if_scene_clicked(hovered_control: Control) -> void:
@@ -337,7 +540,30 @@ func _add_button_to(parent: Node, label: String, callback: Callable) -> Button:
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parent.add_child(button)
 	_style_button(button, false, COLOR_INACTIVE)
+	if mobile_layout:
+		mobile_button_callbacks[button] = callback
+		_enable_mobile_touch_activation(button)
 	return button
+
+func _enable_mobile_touch_activation(button: Button) -> void:
+	if button == null or button.has_meta(&"mobile_touch_enabled"):
+		return
+	button.set_meta(&"mobile_touch_enabled", true)
+	button.gui_input.connect(func(event: InputEvent):
+		if not event is InputEventScreenTouch:
+			return
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			button.set_meta(&"mobile_touch_index", touch.index)
+			button.accept_event()
+			return
+		if int(button.get_meta(&"mobile_touch_index", -1)) != touch.index:
+			return
+		button.set_meta(&"mobile_touch_index", -1)
+		button.accept_event()
+		if not button.disabled and Rect2(Vector2.ZERO, button.size).has_point(touch.position):
+			button.pressed.emit()
+	)
 
 func _set_mode(next: Mode) -> void:
 	if not model.is_settled():
@@ -546,21 +772,29 @@ func _refresh_control_states() -> void:
 		return
 	var settled := model.is_settled()
 	var editing := mode == Mode.EDIT and settled
-	mode_button.text = "Mode: Edit [P]" if mode == Mode.EDIT else "Mode: Play [P]"
+	if mobile_layout:
+		mode_button.text = "Edit" if mode == Mode.EDIT else "Play"
+	else:
+		mode_button.text = "Mode: Edit [P]" if mode == Mode.EDIT else "Mode: Play [P]"
 	mode_button.disabled = not settled
 	_style_button(mode_button, true, COLOR_EDIT if mode == Mode.EDIT else COLOR_PLAY)
 	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
-	view_side_button.text = "View: White" if board.viewing_color == "white" else "View: Black"
-	view_side_button.disabled = not settled
-	_style_button(view_side_button, true, COLOR_WHITE_SIDE if board.viewing_color == "white" else COLOR_BLACK_SIDE, board.viewing_color == "white")
+	if view_side_button != null:
+		view_side_button.text = "View: White" if board.viewing_color == "white" else "View: Black"
+		view_side_button.disabled = not settled
+		_style_button(view_side_button, true, COLOR_WHITE_SIDE if board.viewing_color == "white" else COLOR_BLACK_SIDE, board.viewing_color == "white")
 	undo_button.disabled = not settled or not history.can_undo()
 	redo_button.disabled = not settled or not history.can_redo()
 	reset_button.disabled = not settled or not history.can_undo()
 	clear_button.disabled = not editing
-	copy_button.disabled = not settled
-	paste_button.disabled = not editing
-	preset_option.disabled = not settled
-	turn_option.disabled = not editing
+	if copy_button != null:
+		copy_button.disabled = not settled
+	if paste_button != null:
+		paste_button.disabled = not editing
+	if preset_option != null:
+		preset_option.disabled = not settled
+	if turn_option != null:
+		turn_option.disabled = not editing
 	for value in ai_mode_buttons:
 		ai_mode_buttons[value].disabled = not settled
 		var active: bool = value == ai_mode
@@ -576,31 +810,38 @@ func _refresh_control_states() -> void:
 		var active: bool = ai_sides[color_name]
 		ai_side_buttons[color_name].set_pressed_no_signal(active)
 		_style_button(ai_side_buttons[color_name], active, COLOR_WHITE_SIDE if color_name == "white" else COLOR_BLACK_SIDE, color_name == "white")
-	var adapter: ChessPresentationAdapter = $ChessGame/ChessPresentationAdapter
-	var speed: int = adapter.presentation_policy.speed
-	speed_slider.set_value_no_signal(speed)
-	var speed_names := ["Ultra Slow", "Slow", "Normal", "Fast", "Instant"]
-	var speed_colors := [COLOR_ULTRA_SLOW, COLOR_SLOW, COLOR_EDIT, COLOR_MANUAL, COLOR_INSTANT]
-	speed_value_label.text = speed_names[speed]
-	speed_value_label.add_theme_color_override("font_color", speed_colors[speed])
+	if speed_slider != null:
+		var adapter: ChessPresentationAdapter = $ChessGame/ChessPresentationAdapter
+		var speed: int = adapter.presentation_policy.speed
+		speed_slider.set_value_no_signal(speed)
+		var speed_names := ["Ultra Slow", "Slow", "Normal", "Fast", "Instant"]
+		var speed_colors := [COLOR_ULTRA_SLOW, COLOR_SLOW, COLOR_EDIT, COLOR_MANUAL, COLOR_INSTANT]
+		speed_value_label.text = speed_names[speed]
+		speed_value_label.add_theme_color_override("font_color", speed_colors[speed])
 	cooldowns_check.set_pressed_no_signal(model.active_ability_cooldowns_disabled)
 	cooldowns_check.add_theme_color_override("font_color", COLOR_CYAN if model.active_ability_cooldowns_disabled else Color.WHITE)
-	grip_check.set_pressed_no_signal(board.show_piece_grip_anchors)
-	grip_check.add_theme_color_override("font_color", COLOR_CYAN if board.show_piece_grip_anchors else Color.WHITE)
-	turn_option.select(0 if model.current_turn == "white" else 1)
+	if grip_check != null:
+		grip_check.set_pressed_no_signal(board.show_piece_grip_anchors)
+		grip_check.add_theme_color_override("font_color", COLOR_CYAN if board.show_piece_grip_anchors else Color.WHITE)
+	if turn_option != null:
+		turn_option.select(0 if model.current_turn == "white" else 1)
 	piece_palette.set_palette_enabled(editing)
 	piece_palette.sync_selection(editor.selected_tool, editor.selected_type_id, editor.selected_color)
-	grip_profile_option.disabled = not settled
-	grip_x_spin.editable = settled
-	grip_y_spin.editable = settled
-	grip_save_button.disabled = not settled
+	if grip_profile_option != null:
+		grip_profile_option.disabled = not settled
+		grip_x_spin.editable = settled
+		grip_y_spin.editable = settled
+		grip_save_button.disabled = not settled
 	var manual_ai_available := mode == Mode.PLAY and ai_mode == ChessCpuPlayer.ExecutionMode.MANUAL and _manual_cpu() != null and settled and not model.battle_over
-	think_button.disabled = not manual_ai_available
-	step_button.disabled = not manual_ai_available
-	_refresh_thought_state()
+	if think_button != null:
+		think_button.disabled = not manual_ai_available
+		step_button.disabled = not manual_ai_available
+		_refresh_thought_state()
 	_sync_disabled_focus_states()
 
 func _refresh_thought_state() -> void:
+	if execute_button == null or thought_label == null:
+		return
 	var cpu := _manual_cpu()
 	var thought = cpu.get_last_thought() if cpu != null else null
 	var valid: bool = thought != null and thought.model_revision == model.position_revision and thought.color == model.current_turn
