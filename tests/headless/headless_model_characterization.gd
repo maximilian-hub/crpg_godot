@@ -69,6 +69,7 @@ func _test_wraith_summon_autonomous_lifecycle() -> void:
 	var wraith_king := WraithKing.new("white", Vector2i(4, 4))
 	var overlap_piece := Pawn.new("white", Vector2i(3, 3))
 	var target := Rook.new("black", Vector2i(1, 1))
+	target.max_hp = 2; target.current_hp = 2
 	var black_king := ClassicKing.new("black", Vector2i(0, 7))
 	model.add_piece(wraith_king, wraith_king.coordinate); model.add_piece(overlap_piece, overlap_piece.coordinate)
 	model.add_piece(target, target.coordinate); model.add_piece(black_king, black_king.coordinate)
@@ -86,9 +87,21 @@ func _test_wraith_summon_autonomous_lifecycle() -> void:
 	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(2, 2), "repeated opposing actions do not advance the Wraith")
 	_expect(model.begin_action("white"), "the owning army can take the action that brings its Wraith to the target")
 	await model.continue_action_resolution()
-	_expect(model.board[1][1] == null and model.autonomous_entities.is_empty(), "Wraith destroys its target on arrival and then disappears")
+	_expect(model.board[1][1] == target and target.current_hp == 1 and model.autonomous_entities.is_empty(), "Wraith deals one damage to a durable ordinary target and then disappears")
 	_expect(wraith_king.is_active_ability_ready(), "Summon Wraith becomes available after its Wraith resolves")
 	model.free()
+
+	var king_model := _new_empty_model()
+	var king_hunter := WraithKing.new("white", Vector2i(4, 4))
+	var king_target := MinotaurKing.new("black", Vector2i(3, 3))
+	king_model.add_piece(king_hunter, king_hunter.coordinate)
+	king_model.add_piece(king_target, king_target.coordinate)
+	var king_hp_before := king_target.current_hp
+	await king_model.summon_wraith(king_hunter, king_target)
+	await king_model.run_autonomous_phase("white")
+	_expect(king_model.board[3][3] == king_target and king_target.current_hp == king_hp_before - WraithKing.SUMMON_WRAITH_DAMAGE, "Wraith deals one damage instead of outright destroying a King on arrival")
+	_expect(king_model.autonomous_entities.is_empty() and king_hunter.is_active_ability_ready(), "Wraith disappears and re-enables Summon Wraith after damaging a King")
+	king_model.free()
 
 func _test_wraith_state_round_trip() -> void:
 	var model := _new_empty_model()

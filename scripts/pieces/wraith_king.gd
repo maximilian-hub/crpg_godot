@@ -4,6 +4,7 @@ class_name WraithKing
 const ACTIVE_ABILITY_NAME := "Summon Wraith"
 const ACTIVE_ABILITY_ID: StringName = &"summon_wraith"
 const PASSIVE_ABILITY_NAME := "Lingering Malice"
+const SUMMON_WRAITH_DAMAGE := 1
 
 var bonus_step_used_in_action := false
 

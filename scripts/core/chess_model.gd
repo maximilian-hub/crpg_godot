@@ -1301,7 +1301,7 @@ func _advance_wraith(entity: ChessAutonomousEntityState) -> void:
 	var from := entity.coordinate; entity.coordinate = next
 	var completion := CompletionGate.new(); autonomous_entity_moved.emit(entity, from, next, completion); completion.close(); await completion.wait_until_released()
 	if next == target.coordinate and is_piece_active(target):
-		destroy_piece(target, true)
+		await target.take_damage(WraithKing.SUMMON_WRAITH_DAMAGE)
 		await remove_autonomous_entity(entity, &"reached_target")
 
 func remove_autonomous_entity(entity: ChessAutonomousEntityState, reason: StringName) -> void:
