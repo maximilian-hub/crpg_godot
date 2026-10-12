@@ -39,6 +39,63 @@ func _run() -> void:
 	await _test_wraith_summon_autonomous_lifecycle()
 	_test_wraith_state_round_trip()
 	await _test_wraith_cpu_active_integration()
+	await _test_rhetorician_rules_and_lunacy()
+
+func _test_rhetorician_rules_and_lunacy() -> void:
+	var threat_model := _new_empty_model()
+	var threatened_king := RhetoricianKing.new("white", Vector2i(4, 4))
+	var threatening_rook := Rook.new("black", Vector2i(1, 4))
+	var adjacent_threat := Rook.new("black", Vector2i(4, 3))
+	threat_model.add_piece(threatened_king, threatened_king.coordinate)
+	threat_model.add_piece(threatening_rook, threatening_rook.coordinate)
+	threat_model.add_piece(adjacent_threat, adjacent_threat.coordinate)
+	threat_model.current_turn = "black"
+	threat_model.switch_turn()
+	_expect(int(threat_model.lunacy_by_color["white"]) == 1, "a threatened Rhetorician gains Lunacy on authoritative turn entry")
+	threat_model.unregister_piece(threatening_rook)
+	threat_model.board[1][4] = null
+	threat_model.lunacy_by_color["white"] = 4
+	threat_model.current_turn = "black"
+	threat_model.switch_turn()
+	_expect(int(threat_model.socratic_turns_by_color["white"]) == 2, "an adjacent attacker blocked by the passive still triggers Socratic Lunacy")
+	threat_model.free()
+
+	var model := _new_empty_model()
+	var rhetorician := RhetoricianKing.new("white", Vector2i(4, 4))
+	var adjacent_enemy := Rook.new("black", Vector2i(4, 3))
+	var distant_enemy := Rook.new("black", Vector2i(1, 4))
+	model.add_piece(rhetorician, rhetorician.coordinate)
+	model.add_piece(adjacent_enemy, adjacent_enemy.coordinate)
+	model.add_piece(distant_enemy, distant_enemy.coordinate)
+	_expect(rhetorician.max_hp == 4, "Rhetorician King starts with four HP")
+	_expect(rhetorician.coordinate not in model.get_legal_moves(adjacent_enemy), "adjacent enemies cannot attack the Rhetorician King")
+	_expect(rhetorician.coordinate in model.get_legal_moves(distant_enemy), "non-adjacent enemies may attack the Rhetorician King")
+	rhetorician.set_cooldown(0)
+	var pulled := Pawn.new("black", Vector2i(2, 2))
+	var occupant := Bishop.new("black", Vector2i(3, 3))
+	model.add_piece(pulled, pulled.coordinate)
+	model.add_piece(occupant, occupant.coordinate)
+	_expect(await model.submit_active_ability(rhetorician, pulled.coordinate), "Can Logic Move Them targets an enemy two rows and columns away")
+	_expect(model.board[3][3] == pulled and not model.is_piece_active(occupant), "compelled movement captures the destination occupant with normal capture resolution")
+	model.free()
+
+	var lunacy_model := _new_empty_model()
+	var lunatic := RhetoricianKing.new("white", Vector2i(7, 7))
+	var white_rook := Rook.new("white", Vector2i(6, 0))
+	var black_rook := Rook.new("black", Vector2i(1, 0))
+	lunacy_model.add_piece(lunatic, lunatic.coordinate)
+	lunacy_model.add_piece(white_rook, white_rook.coordinate)
+	lunacy_model.add_piece(black_rook, black_rook.coordinate)
+	lunacy_model.add_lunacy("white", 5)
+	lunacy_model.set_lunacy_random_seed(7)
+	lunacy_model.current_turn = "black"
+	_expect(lunacy_model.begin_action("black"), "opposing setup action begins before Socratic Lunacy")
+	await lunacy_model.continue_action_resolution()
+	_expect(lunacy_model.current_turn == "black" and int(lunacy_model.socratic_turns_by_color["white"]) == 1, "first Socratic turn makes one random move and returns control to the opponent")
+	_expect(lunacy_model.begin_action("black"), "opponent can act between forced Socratic turns")
+	await lunacy_model.continue_action_resolution()
+	_expect(int(lunacy_model.socratic_turns_by_color["white"]) == 0 and int(lunacy_model.lunacy_by_color["white"]) == 0, "second Socratic turn ends the phase and resets Lunacy")
+	lunacy_model.free()
 
 func _test_wraith_king_lingering_malice() -> void:
 	var model := _new_empty_model()

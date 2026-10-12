@@ -55,6 +55,7 @@ var _white_turn_released := false
 var _black_activation_barrier_started := false
 var presentation_seed := 0
 var _opening_start_released := false
+var _lunacy_displays: Dictionary = {}
 
 var opening_in_progress: bool:
 	get:
@@ -90,6 +91,14 @@ func _ready() -> void:
 	if model == null:
 		printerr("ChessGame has no ChessBoardModel assigned.")
 		return
+	_create_lunacy_displays()
+	_layout_side_ui(player_color)
+	if not get_viewport().size_changed.is_connected(_on_lunacy_viewport_resized):
+		get_viewport().size_changed.connect(_on_lunacy_viewport_resized)
+	call_deferred(&"_layout_lunacy_displays")
+	if not model.lunacy_changed.is_connected(_on_lunacy_changed):
+		model.lunacy_changed.connect(_on_lunacy_changed)
+	_refresh_lunacy_displays()
 
 	if not model.battle_finished.is_connected(_on_battle_finished):
 		model.battle_finished.connect(_on_battle_finished)
@@ -176,6 +185,7 @@ func _on_result_confirmed() -> void:
 	battle_exit_requested.emit(completed_player_result)
 
 func _on_board_rebuilt(_board: Array) -> void:
+	_refresh_lunacy_displays()
 	if opening_pending:
 		opening_director.cancel()
 		if _white_turn_released:
@@ -268,6 +278,78 @@ func _layout_side_ui(viewing_color: String) -> void:
 		return
 	_place_side_ui(white_container, viewing_color == "white")
 	_place_side_ui(black_container, viewing_color == "black")
+	_layout_lunacy_display("white", viewing_color == "white")
+	_layout_lunacy_display("black", viewing_color == "black")
+
+func _create_lunacy_displays() -> void:
+	var ui := get_node_or_null("LunacyLayer/LunacyUI") as Control
+	if ui == null:
+		return
+	for color in ["white", "black"]:
+		var panel := ui.get_node_or_null("%sLunacyDisplay" % color.capitalize()) as PanelContainer
+		if panel == null:
+			panel = PanelContainer.new()
+			panel.name = "%sLunacyDisplay" % color.capitalize()
+			panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			panel.z_index = 50
+			var label := Label.new()
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			label.custom_minimum_size = Vector2(150.0, 54.0)
+			panel.add_child(label)
+			ui.add_child(panel)
+		_lunacy_displays[color] = panel
+
+func _layout_lunacy_display(color: String, near_player: bool) -> void:
+	var panel := _lunacy_displays.get(color) as PanelContainer
+	if panel == null:
+		return
+	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
+	if board_view == null or board_view.projection.corners.is_empty():
+		return
+	var outline := board_view.projection.get_board_outline()
+	var minimum := outline[0]
+	var maximum := outline[0]
+	for point in outline:
+		minimum = minimum.min(point)
+		maximum = maximum.max(point)
+	var panel_size := Vector2(150.0, 54.0)
+	var gap := 16.0
+	var screen_edge_margin := 26.0
+	var viewport_height := get_viewport().get_visible_rect().size.y
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	if near_player:
+		panel.position = Vector2(maximum.x + gap, viewport_height - panel_size.y - screen_edge_margin)
+	else:
+		panel.position = Vector2(minimum.x - panel_size.x - gap, screen_edge_margin)
+
+func _layout_lunacy_displays() -> void:
+	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
+	var viewing_color := board_view.viewing_color if board_view != null else player_color
+	_layout_lunacy_display("white", viewing_color == "white")
+	_layout_lunacy_display("black", viewing_color == "black")
+
+func _on_lunacy_viewport_resized() -> void:
+	call_deferred(&"_layout_lunacy_displays")
+
+func _on_lunacy_changed(_color: String, _value: int, _remaining: int) -> void:
+	_refresh_lunacy_displays()
+
+func _refresh_lunacy_displays() -> void:
+	if model == null:
+		return
+	for color in ["white", "black"]:
+		var panel := _lunacy_displays.get(color) as PanelContainer
+		if panel == null:
+			continue
+		var king := model.get_king(color)
+		panel.visible = king is RhetoricianKing
+		if not panel.visible:
+			continue
+		var value := int(model.lunacy_by_color.get(color, 0))
+		var remaining := int(model.socratic_turns_by_color.get(color, 0))
+		var label := panel.get_child(0) as Label
+		label.text = "Socratic Lunacy: %d turn%s" % [remaining, "" if remaining == 1 else "s"] if remaining > 0 else "Lunacy: %d / 5" % value
 
 
 func _place_side_ui(container: MarginContainer, near_player: bool) -> void:

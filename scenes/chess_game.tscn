@@ -204,6 +204,61 @@ size_flags_vertical = 0
 text = "\"Ability Name\"
 CD: 4 turns"
 
+[node name="LunacyLayer" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="LunacyUI" type="Control" parent="LunacyLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="WhiteLunacyDisplay" type="PanelContainer" parent="LunacyLayer/LunacyUI"]
+visible = false
+z_index = 50
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -175.0
+offset_top = -80.0
+offset_right = -25.0
+offset_bottom = -26.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_qi3br")
+
+[node name="Label" type="Label" parent="LunacyLayer/LunacyUI/WhiteLunacyDisplay"]
+custom_minimum_size = Vector2(150, 54)
+layout_mode = 2
+text = "Lunacy: 0 / 5"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BlackLunacyDisplay" type="PanelContainer" parent="LunacyLayer/LunacyUI"]
+visible = false
+z_index = 50
+layout_mode = 1
+offset_left = 25.0
+offset_top = 25.0
+offset_right = 175.0
+offset_bottom = 79.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_qi3br")
+
+[node name="Label" type="Label" parent="LunacyLayer/LunacyUI/BlackLunacyDisplay"]
+custom_minimum_size = Vector2(150, 54)
+layout_mode = 2
+text = "Lunacy: 0 / 5"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="ScreenShake" type="Node" parent="."]
 script = ExtResource("17_screen_shake")
 

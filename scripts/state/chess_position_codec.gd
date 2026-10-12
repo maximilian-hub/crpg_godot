@@ -41,6 +41,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 		"board": {"rows": position.board_size.x, "columns": position.board_size.y, "type": String(position.board_type)},
 		"current_turn": position.current_turn, "last_move": last,
 		"battle": {"over": position.battle_over, "result": position.battle_result, "defeated_king_colors": position.defeated_king_colors.duplicate()},
+		"lunacy": {"white": int(position.lunacy_by_color.get("white", 0)), "black": int(position.lunacy_by_color.get("black", 0)), "socratic_turns": position.socratic_turns_by_color.duplicate(true)},
 		"pieces": piece_dicts, "tile_effects": effect_dicts, "autonomous_entities": entity_dicts,
 	}
 
@@ -78,6 +79,12 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 		position.battle_result = String(battle.get("result", ""))
 		for color in battle.get("defeated_king_colors", []):
 			position.defeated_king_colors.append(String(color))
+	var lunacy = data.get("lunacy", {})
+	if lunacy is Dictionary:
+		position.lunacy_by_color = {"white": int(lunacy.get("white", 0)), "black": int(lunacy.get("black", 0))}
+		var turns = lunacy.get("socratic_turns", {})
+		if turns is Dictionary:
+			position.socratic_turns_by_color = {"white": int(turns.get("white", 0)), "black": int(turns.get("black", 0))}
 	var last = data.get("last_move")
 	if last is Dictionary:
 		position.last_move.is_present = true

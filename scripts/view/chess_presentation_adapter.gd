@@ -315,6 +315,11 @@ func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, p
 	var report_arrival := func():
 		_disperse_pending_charge_aura(piece, piece_node)
 		presentation.mark_arrived(piece)
+	if presentation.self_propelled:
+		await view.move_piece_node(piece_node, to)
+		report_arrival.call()
+		presentation.finish_aftermath()
+		return
 	if piece.type == "pawn" and (to.x == 0 or to.x == model.board.size() - 1):
 		report_arrival.call()
 		await view.remove_promoting_pawn_with_hand(piece_node)
@@ -384,6 +389,15 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 
 	retained_capture_piece_views[defender] = true
 	presentation.claim()
+	if presentation.self_propelled:
+		await view.capture_piece_node_self_propelled(
+			attacker_node, defender_node, to,
+			func(): presentation.mark_arrived(attacker),
+			func(): presentation.mark_impact()
+		)
+		_finalize_retained_capture_view(defender, defender_node, false)
+		presentation.finish_aftermath()
+		return
 	if defender is KingPiece and is_instance_valid(defender_node):
 		var is_charge_impact := is_committed_charge
 		var defender_magic := _get_king_magic(defender)

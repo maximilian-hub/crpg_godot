@@ -617,6 +617,37 @@ func move_piece_node_with_hand(
 func capture_piece_node_with_player_hand(attacker_node: Node, defender_node: Node, from: Vector2i, to: Vector2i) -> bool:
 	return await capture_piece_node_with_hand(attacker_node, defender_node, from, to)
 
+func capture_piece_node_self_propelled(attacker_node: Node2D, defender_node: Node2D, to: Vector2i, arrival_callback: Callable = Callable(), impact_callback: Callable = Callable()) -> void:
+	if not is_instance_valid(attacker_node):
+		return
+	var destination := get_piece_rest_position(attacker_node, to)
+	attacker_node.coordinate = to
+	clear_piece_placement(attacker_node)
+	var tween := create_tween()
+	tween.tween_property(attacker_node, "position", destination, 0.22 * animation_duration_scale).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await tween.finished
+	if impact_callback.is_valid():
+		impact_callback.call()
+	spawn_capture_clack(defender_node, true)
+	if is_instance_valid(defender_node):
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		var trajectory := ChessKingMagicController.build_ballistic_knockoff(
+			attacker_node.position, destination, defender_node.position, get_viewport_rect().size,
+			ChessKingMagicController.piece_visual_radius(defender_node), 650.0 * get_world_scale(),
+			480.0 * get_world_scale(), 1200.0 * get_world_scale(), rng)
+		var origin := defender_node.position
+		var start_rotation := defender_node.rotation
+		var flight := create_tween()
+		flight.tween_method(func(time: float):
+			defender_node.position = ChessKingMagicController.ballistic_position(origin, trajectory.initial_velocity, trajectory.gravity, time)
+			defender_node.rotation = start_rotation + deg_to_rad(1200.0 * trajectory.side) * time
+		, 0.0, trajectory.duration, trajectory.duration * animation_duration_scale)
+		await flight.finished
+	_update_piece_depth(attacker_node)
+	if arrival_callback.is_valid():
+		arrival_callback.call()
+
 
 func remove_promoting_pawn_with_hand(pawn_node: Node2D) -> void:
 	if not is_instance_valid(pawn_node):

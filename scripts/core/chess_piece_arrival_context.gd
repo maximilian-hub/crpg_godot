@@ -9,10 +9,12 @@ var arrival_gates: Dictionary = {}
 var aftermath_gate := CompletionGate.new()
 var impact_gate := CompletionGate.new()
 var tracks_impact := false
+var self_propelled := false
 
 
-func _init(pieces: Array, include_impact := false) -> void:
+func _init(pieces: Array, include_impact := false, p_self_propelled := false) -> void:
 	tracks_impact = include_impact
+	self_propelled = p_self_propelled
 	for piece in pieces:
 		arrival_gates[piece] = CompletionGate.new()
 

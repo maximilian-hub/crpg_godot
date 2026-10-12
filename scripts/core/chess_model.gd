@@ -54,6 +54,7 @@ signal tile_effect_removed(effect: ChessTileEffectState)
 signal autonomous_entity_added(entity: ChessAutonomousEntityState, completion: CompletionGate)
 signal autonomous_entity_moved(entity: ChessAutonomousEntityState, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal autonomous_entity_removed(entity: ChessAutonomousEntityState, reason: StringName, completion: CompletionGate)
+signal lunacy_changed(color: String, value: int, socratic_turns_remaining: int)
 
 var battle_over: bool = false
 var battle_result: String = ""
@@ -68,6 +69,10 @@ var tile_effects: Array[ChessTileEffectState] = []
 var autonomous_entities: Array[ChessAutonomousEntityState] = []
 var _next_state_id := 1
 var autonomous_phase_in_progress := false
+var lunacy_by_color := {"white": 0, "black": 0}
+var socratic_turns_by_color := {"white": 0, "black": 0}
+var _resolving_socratic_turn := false
+var _lunacy_rng := RandomNumberGenerator.new()
 
 # Runtime policy used by developer surfaces such as the board sandbox. This is
 # deliberately not part of ChessPosition, so test conveniences never leak into
@@ -98,6 +103,7 @@ const NecromancerKing = preload("res://scripts/pieces/necromancer_king.gd")
 var custom_size = 16
 
 func _ready():
+	_lunacy_rng.randomize()
 	initialize_battle()
 
 func initialize_battle() -> bool:
@@ -119,6 +125,8 @@ func capture_position() -> ChessPosition:
 	position.battle_over = battle_over
 	position.battle_result = battle_result
 	position.defeated_king_colors.assign(defeated_king_colors)
+	position.lunacy_by_color = lunacy_by_color.duplicate(true)
+	position.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
 	for row in board:
 		for piece in row:
 			if piece != null:
@@ -183,6 +191,8 @@ func load_position(position: ChessPosition) -> bool:
 	battle_over = position.battle_over
 	battle_result = position.battle_result
 	defeated_king_colors.assign(position.defeated_king_colors)
+	lunacy_by_color = position.lunacy_by_color.duplicate(true)
+	socratic_turns_by_color = position.socratic_turns_by_color.duplicate(true)
 	last_destroyed_piece = null
 	last_move = {}
 	if position.last_move != null and position.last_move.is_present:
@@ -376,7 +386,11 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 		printerr("Attempted to get moves for invalid piece instance.")
 		return []
 	if piece.has_method("get_legal_moves"):
-		return piece.get_legal_moves()
+		var moves: Array = []
+		for destination in piece.get_legal_moves():
+			if not is_rhetorician_attack_blocked(piece, destination):
+				moves.append(destination)
+		return moves
 	else:
 		printerr("Piece type %s does not have get_legal_moves method!" % piece.type)
 		return []
@@ -404,7 +418,7 @@ func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 			for raw_path in piece.get_legal_move_paths():
 				var path: Array[Vector2i] = []
 				path.assign(raw_path)
-				if not path.is_empty():
+				if not path.is_empty() and not is_rhetorician_attack_blocked(piece, path.back()):
 					actions.append(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, path.back(), path))
 
 			if piece is KingPiece:
@@ -474,6 +488,8 @@ func finish_action() -> void:
 	action_owner_color = ""
 	switch_turn()
 	position_revision += 1
+	if not _resolving_socratic_turn and await _resolve_socratic_turn_if_needed():
+		return
 	await resolve_unplayable_turns()
 	if battle_over:
 		return
@@ -680,7 +696,7 @@ func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
 ## Moves a piece from one square to another.
 # Assumes empty destination square for normal moves.
 # Validation is handled in move_piece() or callers like handle_combat.
-func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callable = Callable()): # <-- Added 'async'
+func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callable = Callable(), self_propelled := false): # <-- Added 'async'
 		# ... (existing safety checks) ...
 		if not is_instance_valid(piece):
 			printerr("actually_move_piece: Invalid piece instance provided.")
@@ -695,7 +711,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callab
 		piece.coordinate = to # Update model coordinate *before* animation starts
 		piece.has_moved = true
 
-		var presentation := PieceArrivalContext.new([piece])
+		var presentation := PieceArrivalContext.new([piece], false, self_propelled)
 		piece_move_committed.emit(piece, from, to, presentation)
 		presentation.close_claims()
 		await presentation.wait_for_arrival(piece)
@@ -718,7 +734,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callab
 			await promotion_check(piece)
 
 ## Commits a lethal capture while leaving presentation time to carry both views.
-func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: Vector2i, captured_at: Vector2i) -> void:
+func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: Vector2i, captured_at: Vector2i, self_propelled := false) -> void:
 	if not is_instance_valid(piece) or not is_instance_valid(captured_piece):
 		printerr("actually_capture_piece: Invalid attacker or defender.")
 		return
@@ -731,7 +747,7 @@ func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: V
 	piece.coordinate = to
 	piece.has_moved = true
 
-	var presentation := PieceArrivalContext.new([piece], true)
+	var presentation := PieceArrivalContext.new([piece], true, self_propelled)
 	piece_capture_committed.emit(piece, captured_piece, from, to, captured_at, presentation)
 	presentation.close_claims()
 	await presentation.wait_for_impact()
@@ -781,6 +797,91 @@ func switch_turn():
 	
 	print("switching turns.")
 	emit_signal("turn_changed", current_turn)
+	_apply_lunacy_turn_start(current_turn)
+
+func _apply_lunacy_turn_start(color: String) -> void:
+	var king := get_king(color)
+	if king is RhetoricianKing and is_rhetorician_threatened(king):
+		add_lunacy(color, 1)
+
+func add_lunacy(color: String, amount: int = 1) -> void:
+	if color not in ["white", "black"] or amount <= 0 or int(socratic_turns_by_color.get(color, 0)) > 0:
+		return
+	var value := int(lunacy_by_color.get(color, 0)) + amount
+	lunacy_by_color[color] = value
+	if value >= 5:
+		socratic_turns_by_color[color] = 2
+	lunacy_changed.emit(color, value, int(socratic_turns_by_color[color]))
+
+func is_rhetorician_attack_blocked(attacker: ModelPiece, destination: Vector2i) -> bool:
+	if not is_instance_valid(attacker) or not is_in_bounds(destination.x, destination.y):
+		return false
+	var defender: ModelPiece = board[destination.x][destination.y]
+	if not defender is RhetoricianKing or defender.color == attacker.color:
+		return false
+	var delta: Vector2i = attacker.coordinate - defender.coordinate
+	return maxi(absi(delta.x), absi(delta.y)) == 1
+
+func is_rhetorician_threatened(king: RhetoricianKing) -> bool:
+	if not is_piece_active(king):
+		return false
+	for row in board:
+		for enemy in row:
+			if enemy == null or enemy.color == king.color or enemy.stunned or not is_piece_active(enemy):
+				continue
+			# Threat is based on the piece's underlying targeting geometry. Do not
+			# filter through Can Words Prevent Harm?: an adjacent attacker still
+			# threatens the King even though the passive prevents the attack.
+			if king.coordinate in enemy.get_legal_moves():
+				return true
+	return false
+
+func compel_piece_toward(piece: ModelPiece, king: RhetoricianKing) -> void:
+	if not is_piece_active(piece) or not is_piece_active(king) or piece.color == king.color:
+		return
+	var delta: Vector2i = king.coordinate - piece.coordinate
+	var destination := piece.coordinate + Vector2i(signi(delta.x), signi(delta.y))
+	if destination == king.coordinate or not is_in_bounds(destination.x, destination.y):
+		return
+	var occupant: ModelPiece = board[destination.x][destination.y]
+	if occupant == null:
+		await actually_move_piece(piece, destination, Callable(), true)
+	else:
+		await actually_capture_piece(piece, occupant, destination, destination, true)
+	ability_effect_resolved.emit(king, king.get_active_ability_name(), [destination])
+
+func set_lunacy_random_seed(seed: int) -> void:
+	_lunacy_rng.seed = seed
+
+func _resolve_socratic_turn_if_needed() -> bool:
+	var forced_color := current_turn
+	if int(socratic_turns_by_color.get(forced_color, 0)) <= 0 or battle_over:
+		return false
+	var moves: Array[ChessPrimaryAction] = []
+	for action in _collect_legal_primary_actions(forced_color):
+		if action.kind == ChessPrimaryAction.Kind.MOVE:
+			moves.append(action)
+	_resolving_socratic_turn = true
+	if moves.is_empty():
+		switch_turn()
+		position_revision += 1
+	else:
+		var chosen: ChessPrimaryAction = moves[_lunacy_rng.randi_range(0, moves.size() - 1)]
+		if chosen.path.size() == 2:
+			await submit_move_path(chosen.piece, chosen.path)
+		else:
+			await submit_move(chosen.piece, chosen.target)
+	_resolving_socratic_turn = false
+	var remaining := maxi(0, int(socratic_turns_by_color.get(forced_color, 0)) - 1)
+	socratic_turns_by_color[forced_color] = remaining
+	if remaining == 0:
+		lunacy_by_color[forced_color] = 0
+	lunacy_changed.emit(forced_color, int(lunacy_by_color[forced_color]), remaining)
+	if moves.is_empty():
+		await resolve_unplayable_turns()
+		action_finished.emit()
+		settled_action_completed.emit()
+	return true
 		
 func promotion_check(piece: ModelPiece) -> void:
 	if piece.type != "pawn": return
@@ -883,6 +984,8 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 			return
 		if attacker.color == defender.color:
 			printerr("handle_combat: Attacker ", attacker.type, " attempted to attack friendly piece ", defender.type, " at ", to)
+			return
+		if is_rhetorician_attack_blocked(attacker, to):
 			return
 		# --- End of added checks ---
 

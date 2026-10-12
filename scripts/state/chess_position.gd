@@ -14,6 +14,8 @@ const CURRENT_SCHEMA_VERSION := 2
 @export var battle_over := false
 @export var battle_result := ""
 @export var defeated_king_colors: Array[String] = []
+@export var lunacy_by_color := {"white": 0, "black": 0}
+@export var socratic_turns_by_color := {"white": 0, "black": 0}
 
 func copy() -> ChessPosition:
 	var result := ChessPosition.new()
@@ -31,4 +33,6 @@ func copy() -> ChessPosition:
 	result.battle_over = battle_over
 	result.battle_result = battle_result
 	result.defeated_king_colors.assign(defeated_king_colors)
+	result.lunacy_by_color = lunacy_by_color.duplicate(true)
+	result.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
 	return result
