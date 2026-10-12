@@ -54,6 +54,7 @@ signal tile_effect_removed(effect: ChessTileEffectState)
 signal autonomous_entity_added(entity: ChessAutonomousEntityState, completion: CompletionGate)
 signal autonomous_entity_moved(entity: ChessAutonomousEntityState, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal autonomous_entity_removed(entity: ChessAutonomousEntityState, reason: StringName, completion: CompletionGate)
+signal arc_mortar_impact(entity: ChessAutonomousEntityState, affected_coords: Array, completion: CompletionGate)
 signal lunacy_changed(color: String, value: int, socratic_turns_remaining: int)
 
 var battle_over: bool = false
@@ -84,6 +85,7 @@ var active_ability_cooldowns_disabled := false
 var action_in_progress: bool = false
 var action_owner_color: String = ""
 var forced_pass_in_progress := false
+var turn_entry_consequence_in_progress := false
 var consecutive_forced_passes := 0
 var forced_pass_delay_seconds := 0.5
 
@@ -484,10 +486,29 @@ func finish_action() -> void:
 		await continue_action_resolution()
 		return
 	print("ACTION END — ", action_owner_color)
+	var completed_action_owner := action_owner_color
 	action_in_progress = false
 	action_owner_color = ""
 	switch_turn()
 	position_revision += 1
+	# Delayed effects land on the newly entered turn, but any reactions they
+	# create still need an action context for human and CPU selection.
+	turn_entry_consequence_in_progress = true
+	action_in_progress = true
+	action_owner_color = completed_action_owner
+	await resolve_arc_mortars_at_turn_start(current_turn)
+	if not selection_queue.is_empty():
+		await continue_action_resolution()
+		return
+	await _finish_turn_entry_consequences()
+
+func _finish_turn_entry_consequences() -> void:
+	turn_entry_consequence_in_progress = false
+	action_in_progress = false
+	action_owner_color = ""
+	if has_defeated_king():
+		complete_battle()
+		return
 	if not _resolving_socratic_turn and await _resolve_socratic_turn_if_needed():
 		return
 	await resolve_unplayable_turns()
@@ -524,6 +545,12 @@ func resolve_unplayable_turns() -> bool:
 			forced_pass_sequence_finished.emit()
 			return true
 		switch_turn()
+		await resolve_arc_mortars_at_turn_start(current_turn)
+		if has_defeated_king():
+			forced_pass_in_progress = false
+			complete_battle()
+			forced_pass_sequence_finished.emit()
+			return true
 		position_revision += 1
 
 	consecutive_forced_passes = 0
@@ -1303,7 +1330,10 @@ func continue_action_resolution() -> void:
 		reaction_selection_requested.emit(calling_piece, action_type, targets.duplicate())
 		return
 
-	await finish_action()
+	if turn_entry_consequence_in_progress:
+		await _finish_turn_entry_consequences()
+	else:
+		await finish_action()
 
 func has_pending_reaction() -> bool:
 	return not pending_reaction.is_empty()
@@ -1374,6 +1404,46 @@ func remove_tile_effect(type_id: StringName, coord: Vector2i, source_piece_id :=
 
 func has_autonomous_entity_from_source(source_piece_id: String, type_id: StringName = &"") -> bool:
 	return autonomous_entities.any(func(entity): return entity.source_piece_id == source_piece_id and (type_id == &"" or entity.type_id == type_id))
+
+func get_mortar_area(anchor: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for offset: Vector2i in [Vector2i.ZERO, Vector2i(0, 1), Vector2i(1, 0), Vector2i(1, 1)]:
+		var coord: Vector2i = anchor + offset
+		if is_in_bounds(coord.x, coord.y):
+			result.append(coord)
+	return result
+
+func launch_arc_mortar(source: CannonKing, anchor: Vector2i) -> void:
+	var area := get_mortar_area(anchor)
+	if area.size() != 4:
+		return
+	var entity := ChessAutonomousEntityState.new()
+	entity.entity_id = _allocate_state_id("entity")
+	entity.type_id = &"arc_mortar"
+	entity.coordinate = anchor
+	entity.owner_color = source.color
+	autonomous_entities.append(entity)
+	var completion := CompletionGate.new()
+	autonomous_entity_added.emit(entity, completion)
+	completion.close()
+	await completion.wait_until_released()
+
+func resolve_arc_mortars_at_turn_start(color: String) -> void:
+	for entity in autonomous_entities.duplicate():
+		if entity.type_id != &"arc_mortar" or entity.owner_color != color:
+			continue
+		var area := get_mortar_area(entity.coordinate)
+		var completion := CompletionGate.new()
+		arc_mortar_impact.emit(entity, area, completion)
+		completion.close()
+		await completion.wait_until_released()
+		for coord in area:
+			if not is_in_bounds(coord.x, coord.y):
+				continue
+			var target: ModelPiece = board[coord.x][coord.y]
+			if target != null and is_piece_active(target):
+				await target.take_damage(CannonKing.ARC_MORTAR_DAMAGE)
+		await remove_autonomous_entity(entity, &"impact")
 
 func summon_wraith(source: WraithKing, target: ModelPiece) -> void:
 	var entity := ChessAutonomousEntityState.new()

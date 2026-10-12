@@ -13,6 +13,7 @@ const CaptureClackEffect := preload("res://scripts/view/chess_capture_clack_effe
 
 signal rage_intro_animation_completed()
 signal square_selected(coordinate: Vector2i)
+signal square_touch_selected(coordinate: Vector2i)
 signal editor_square_pressed(coordinate: Vector2i)
 signal editor_square_entered(coordinate: Vector2i)
 signal editor_square_exited(coordinate: Vector2i)
@@ -73,6 +74,7 @@ var square_scene = preload("res://scenes/square.tscn")
 var piece_scene = preload("res://scenes/piece.tscn")
 @export_enum("white", "black") var viewing_color: String = "white"
 var board: Array
+var _base_highlight_squares: Array = []
 var projection := ChessBoardProjection.new()
 var animation_duration_scale := 1.0
 var piece_placement_profiles := {"white": null, "black": null}
@@ -420,6 +422,7 @@ func draw_square(row: int, col: int):
 		projection.get_cell_polygon(Vector2i(row, col))
 	)
 	square.connect("square_clicked", _on_square_selected)
+	square.square_touch_clicked.connect(func(coord: Vector2i): square_touch_selected.emit(coord))
 	square.editor_pointer_pressed.connect(func(coord: Vector2i): editor_square_pressed.emit(coord))
 	square.editor_pointer_entered.connect(func(coord: Vector2i): editor_square_entered.emit(coord))
 	square.editor_pointer_exited.connect(func(coord: Vector2i): editor_square_exited.emit(coord))
@@ -439,7 +442,7 @@ func select_square_at_viewport_position(viewport_position: Vector2) -> bool:
 	var coordinate := coordinate_at_viewport_position(viewport_position)
 	if coordinate.x < 0:
 		return false
-	square_selected.emit(coordinate)
+	square_touch_selected.emit(coordinate)
 	return true
 
 
@@ -543,15 +546,33 @@ func show_legal_moves(legal_moves: Array):
 	highlight_squares(legal_moves)
 
 func highlight_squares(squares_to_highlight: Array):
+	_base_highlight_squares = squares_to_highlight.duplicate()
 	var squares = $Squares.get_children()
 	for square in squares:
-		if square.coordinate in squares_to_highlight: 
+		if square.coordinate in squares_to_highlight:
 			square.highlight()
 
 func clear_highlights():
+	_base_highlight_squares.clear()
 	var squares = $Squares.get_children()
 	for square in squares:
 		square.clear_highlight()
+
+func preview_area(squares_to_preview: Array) -> void:
+	for square in $Squares.get_children():
+		if square.coordinate in squares_to_preview:
+			square.highlight_area_preview()
+		elif square.coordinate in _base_highlight_squares:
+			square.highlight()
+		else:
+			square.clear_highlight()
+
+func clear_area_preview() -> void:
+	for square in $Squares.get_children():
+		if square.coordinate in _base_highlight_squares:
+			square.highlight()
+		else:
+			square.clear_highlight()
 
 func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 	if not is_instance_valid(piece_node):

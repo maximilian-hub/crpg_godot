@@ -19,6 +19,7 @@ const PIECE_ART_PROFILES := {
 	&"necromancer_king": preload("res://assets/pieces/profiles/necromancer_king.tres"),
 	&"wraith_king": preload("res://assets/pieces/profiles/wraith_king.tres"),
 	&"rhetorician_king": preload("res://assets/pieces/profiles/rhetorician_king.tres"),
+	&"cannon_king": preload("res://assets/pieces/profiles/cannon_king.tres"),
 }
 
 var coordinate: Vector2i

@@ -113,9 +113,11 @@ func _ready() -> void:
 	model.autonomous_entity_added.connect(_on_autonomous_entity_added)
 	model.autonomous_entity_moved.connect(_on_autonomous_entity_moved)
 	model.autonomous_entity_removed.connect(_on_autonomous_entity_removed)
+	model.arc_mortar_impact.connect(_on_arc_mortar_impact)
 	controller.ability_targeting_started.connect(_on_ability_targeting_started)
 	controller.ability_targeting_preparing.connect(_on_ability_targeting_preparing)
 	controller.ability_targeting_ended.connect(_on_ability_targeting_ended)
+	controller.ability_footprint_preview_changed.connect(_on_ability_footprint_preview_changed)
 	controller.selection_piece_processing.connect(_on_selection_piece_processing)
 	controller.selection_piece_processed.connect(_on_selection_piece_processed)
 	controller.selection_targets_changed.connect(_on_selection_targets_changed)
@@ -124,6 +126,8 @@ func _ready() -> void:
 	controller.ordinary_move_submission_started.connect(_on_ordinary_move_submission_started)
 	controller.ordinary_move_submission_finished.connect(_on_ordinary_move_submission_finished)
 	view.square_selected.connect(controller._on_square_clicked)
+	view.square_touch_selected.connect(controller._on_touch_square_clicked)
+	view.editor_square_entered.connect(_on_board_square_entered)
 
 	if not model.board.is_empty():
 		_on_board_initialized(model.board)
@@ -248,8 +252,28 @@ func _on_tile_effect_removed(effect: ChessTileEffectState) -> void:
 	tile_effect_views.erase(effect.effect_id)
 	if is_instance_valid(node): node.queue_free()
 
-func _create_autonomous_entity_view(entity: ChessAutonomousEntityState) -> Sprite2D:
+func _create_autonomous_entity_view(entity: ChessAutonomousEntityState) -> Node2D:
 	if autonomous_entity_views.has(entity.entity_id): return autonomous_entity_views[entity.entity_id]
+	if entity.type_id == &"arc_mortar":
+		var marker := Node2D.new()
+		marker.name = "ArcMortar_%s" % entity.entity_id
+		for coord in model.get_mortar_area(entity.coordinate):
+			var cell := Polygon2D.new()
+			cell.polygon = view.projection.get_cell_polygon(coord)
+			cell.color = Color(0.95, 0.22, 0.08, 0.28)
+			marker.add_child(cell)
+		var outline := Line2D.new()
+		var area := model.get_mortar_area(entity.coordinate)
+		var a := view.projection.get_cell_polygon(area[0])
+		var b := view.projection.get_cell_polygon(area[3])
+		outline.points = PackedVector2Array([a[0], a[1], b[1], b[2], b[3], a[3], a[0]])
+		outline.width = 3.0
+		outline.default_color = Color(1.0, 0.42, 0.12, 0.9)
+		marker.add_child(outline)
+		marker.z_index = ChessBoardView.BOARD_EFFECT_Z - 1
+		view.add_child(marker)
+		autonomous_entity_views[entity.entity_id] = marker
+		return marker
 	var sprite := Sprite2D.new()
 	sprite.name = "Wraith_%s" % entity.entity_id
 	sprite.texture = load("res://assets/pieces/kings/%s_wraith.png" % entity.owner_color)
@@ -265,7 +289,9 @@ func _on_autonomous_entity_added(entity: ChessAutonomousEntityState, completion:
 	# Creation is immediate; the gate remains available for future authored summon animation.
 
 func _on_autonomous_entity_moved(entity: ChessAutonomousEntityState, _from: Vector2i, to: Vector2i, completion: CompletionGate) -> void:
-	var sprite := _create_autonomous_entity_view(entity)
+	var sprite := _create_autonomous_entity_view(entity) as Sprite2D
+	if sprite == null:
+		return
 	if not presentation_policy.should_hold_completion_gate():
 		sprite.position = view.grid_to_screen(to.x, to.y); return
 	completion.hold()
@@ -279,6 +305,31 @@ func _on_autonomous_entity_removed(entity: ChessAutonomousEntityState, _reason: 
 	var sprite: Node = autonomous_entity_views.get(entity.entity_id)
 	autonomous_entity_views.erase(entity.entity_id)
 	if is_instance_valid(sprite): sprite.queue_free()
+
+func _on_arc_mortar_impact(_entity: ChessAutonomousEntityState, affected_coords: Array, completion: CompletionGate) -> void:
+	if affected_coords.is_empty() or not presentation_policy.should_hold_completion_gate():
+		return
+	completion.hold()
+	var center := Vector2.ZERO
+	for coord in affected_coords:
+		center += view.cell_to_screen_center(coord.x, coord.y)
+	center /= affected_coords.size()
+	var ball := Polygon2D.new()
+	ball.name = "ArcMortarBall"
+	ball.polygon = PackedVector2Array([
+		Vector2(-10, -8), Vector2(-4, -13), Vector2(5, -12), Vector2(11, -5),
+		Vector2(12, 5), Vector2(5, 12), Vector2(-5, 12), Vector2(-12, 5)
+	])
+	ball.color = Color(0.08, 0.07, 0.06, 1.0)
+	ball.position = Vector2(center.x, -32.0)
+	ball.z_index = ChessBoardView.BOARD_EFFECT_Z + 5
+	view.add_child(ball)
+	var tween := create_tween()
+	tween.tween_property(ball, "position", center, 0.48 * view.animation_duration_scale).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await tween.finished
+	view.play_default_capture_clack_sound()
+	ball.queue_free()
+	completion.release()
 
 
 func _on_piece_added(piece: ModelPiece) -> void:
@@ -758,6 +809,21 @@ func _on_ability_targeting_started(king: KingPiece, _ability_name: String, _targ
 	if is_instance_valid(magic): magic.set_targeting(true)
 	view.clear_highlights()
 	view.show_legal_moves(_targets)
+	view.clear_area_preview()
+
+func _on_board_square_entered(coord: Vector2i) -> void:
+	if not controller.active_ability_selected or not controller.active_king is CannonKing:
+		return
+	if coord not in controller.legal_moves:
+		view.clear_area_preview()
+		return
+	view.preview_area(model.get_mortar_area(coord))
+
+func _on_ability_footprint_preview_changed(area: Array) -> void:
+	if area.is_empty():
+		view.clear_area_preview()
+	else:
+		view.preview_area(area)
 
 
 func _on_ability_targeting_preparing(king: KingPiece, _ability_name: String, _targets: Array, completion: CompletionGate) -> void:
@@ -794,6 +860,7 @@ func _reveal_ability_windup(king: KingPiece) -> void:
 
 
 func _on_ability_targeting_ended(king: KingPiece, _ability_name: String, reason: String) -> void:
+	view.clear_area_preview()
 	if reason == "confirmed":
 		_confirm_ability_windup(king, true)
 		return
@@ -966,6 +1033,7 @@ func _on_selection_targets_changed(targets: Array) -> void:
 
 func _on_selection_cleared() -> void:
 	view.clear_highlights()
+	view.clear_area_preview()
 	for magic in king_magic_controllers.values():
 		if is_instance_valid(magic): magic.set_selected(false)
 

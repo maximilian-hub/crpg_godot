@@ -15,6 +15,7 @@ var skitter_intermediate := Vector2i(-1, -1)
 var skitter_destinations: Array[Vector2i] = []
 var is_input_locked: bool = false
 var active_ability_selected: bool = false
+var cannon_touch_preview_anchor := Vector2i(-1, -1)
 var non_move_selection_mode: bool = false
 var player_controlled_colors: Array[String] = ["white", "black"]
 
@@ -23,6 +24,7 @@ signal selection_piece_processed()
 signal ability_targeting_started(king: KingPiece, ability_name: String, targets: Array)
 signal ability_targeting_preparing(king: KingPiece, ability_name: String, targets: Array, completion: CompletionGate)
 signal ability_targeting_ended(king: KingPiece, ability_name: String, reason: String)
+signal ability_footprint_preview_changed(area: Array)
 signal selection_targets_changed(targets: Array)
 signal selection_cleared()
 signal piece_selected(piece: ModelPiece)
@@ -111,6 +113,23 @@ func _handle_active_ability_selected_click(coord: Vector2i):
 	else:
 		# Clicked outside valid targets: cancel ability selection.
 		deselect_active_ability(true)
+
+func _on_touch_square_clicked(coord: Vector2i) -> void:
+	if active_ability_selected and active_king is CannonKing:
+		if coord not in legal_moves:
+			cannon_touch_preview_anchor = Vector2i(-1, -1)
+			ability_footprint_preview_changed.emit([])
+			await _on_square_clicked(coord)
+			return
+		if cannon_touch_preview_anchor != coord:
+			cannon_touch_preview_anchor = coord
+			ability_footprint_preview_changed.emit(model.get_mortar_area(coord))
+			return
+		cannon_touch_preview_anchor = Vector2i(-1, -1)
+		ability_footprint_preview_changed.emit([])
+		await _handle_active_ability_selected_click(coord)
+		return
+	await _on_square_clicked(coord)
 
 func select_piece(piece: ModelPiece):
 	if piece.stunned == false and is_player_controlled(piece.color):
@@ -249,6 +268,8 @@ func deselect_active_ability(play_powerdown_sound: bool):
 		ability_targeting_ended.emit(active_king, active_king.get_active_ability_name(), reason)
 
 	active_king = null
+	cannon_touch_preview_anchor = Vector2i(-1, -1)
+	ability_footprint_preview_changed.emit([])
 	active_ability_selected = false
 	legal_moves.clear()
 
