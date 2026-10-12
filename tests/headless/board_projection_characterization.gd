@@ -154,6 +154,16 @@ func _test_piece_ground_anchors() -> void:
 		else:
 			_expect(piece.sprite.material is ShaderMaterial, "%s receives the fallback White palette" % model.type)
 		piece.queue_free()
+	var elevated_model := Knight.new("white", Vector2i.ZERO)
+	elevated_model.grant_movement_type(&"rook")
+	var elevated_piece := PIECE_SCENE.instantiate() as PieceView
+	add_child(elevated_piece)
+	elevated_piece.set_model(elevated_model)
+	var badges := elevated_piece.get_node("MovementGrantBadges")
+	_expect(badges.visible and badges.movement_types == [&"rook"], "restored movement grants create a visible procedural badge")
+	elevated_model.grant_movement_type(&"bishop")
+	_expect(badges.movement_types == [&"rook", &"bishop"], "new movement grants update the piece badge immediately")
+	elevated_piece.queue_free()
 	var black_piece := PIECE_SCENE.instantiate() as PieceView
 	add_child(black_piece)
 	black_piece.set_model(Queen.new("black", Vector2i.ZERO))

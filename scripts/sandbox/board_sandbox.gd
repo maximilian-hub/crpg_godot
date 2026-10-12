@@ -402,6 +402,8 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 				var callback: Callable = mobile_button_callbacks.get(button, Callable())
 				if callback.is_valid():
 					callback.call()
+				else:
+					button.pressed.emit()
 		mobile_ui_pointer = -1
 		mobile_ui_touch_target = null
 		get_viewport().set_input_as_handled()
@@ -422,6 +424,12 @@ func _mobile_button_at(position: Vector2) -> Button:
 	for candidate: Button in mobile_button_callbacks:
 		if candidate.is_visible_in_tree() and candidate.get_global_rect().has_point(position):
 			return candidate
+	var grant_panel := game.get_node_or_null("LunacyLayer/LunacyUI/MovementGrantPanel")
+	if grant_panel != null:
+		for child in grant_panel.find_children("*", "Button", true, false):
+			var candidate := child as Button
+			if candidate.is_visible_in_tree() and candidate.get_global_rect().has_point(position):
+				return candidate
 	return null
 
 func _route_mobile_board_touch(event: InputEvent) -> bool:

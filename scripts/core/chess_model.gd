@@ -55,6 +55,7 @@ signal autonomous_entity_added(entity: ChessAutonomousEntityState, completion: C
 signal autonomous_entity_moved(entity: ChessAutonomousEntityState, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal autonomous_entity_removed(entity: ChessAutonomousEntityState, reason: StringName, completion: CompletionGate)
 signal arc_mortar_impact(entity: ChessAutonomousEntityState, affected_coords: Array, completion: CompletionGate)
+signal movement_type_selection_requested(king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName])
 signal lunacy_changed(color: String, value: int, socratic_turns_remaining: int)
 
 var battle_over: bool = false
@@ -74,6 +75,9 @@ var lunacy_by_color := {"white": 0, "black": 0}
 var socratic_turns_by_color := {"white": 0, "black": 0}
 var _resolving_socratic_turn := false
 var _lunacy_rng := RandomNumberGenerator.new()
+var global_turn_number := 1
+var pending_movement_type_grant: Dictionary = {}
+signal movement_type_selection_resolved(movement_type: StringName)
 
 # Runtime policy used by developer surfaces such as the board sandbox. This is
 # deliberately not part of ChessPosition, so test conveniences never leak into
@@ -129,6 +133,7 @@ func capture_position() -> ChessPosition:
 	position.defeated_king_colors.assign(defeated_king_colors)
 	position.lunacy_by_color = lunacy_by_color.duplicate(true)
 	position.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
+	position.global_turn_number = global_turn_number
 	for row in board:
 		for piece in row:
 			if piece != null:
@@ -195,6 +200,7 @@ func load_position(position: ChessPosition) -> bool:
 	defeated_king_colors.assign(position.defeated_king_colors)
 	lunacy_by_color = position.lunacy_by_color.duplicate(true)
 	socratic_turns_by_color = position.socratic_turns_by_color.duplicate(true)
+	global_turn_number = position.global_turn_number
 	last_destroyed_piece = null
 	last_move = {}
 	if position.last_move != null and position.last_move.is_present:
@@ -392,10 +398,44 @@ func get_legal_moves(piece: ModelPiece) -> Array:
 		for destination in piece.get_legal_moves():
 			if not is_rhetorician_attack_blocked(piece, destination):
 				moves.append(destination)
+		for granted_type in piece.granted_movement_types:
+			for destination in _get_moves_as(piece, granted_type):
+				if destination not in moves and not is_rhetorician_attack_blocked(piece, destination):
+					moves.append(destination)
 		return moves
-	else:
-		printerr("Piece type %s does not have get_legal_moves method!" % piece.type)
+	printerr("Piece type %s does not have get_legal_moves method!" % piece.type)
+	return []
+
+func _get_moves_as(piece: ModelPiece, movement_type: StringName) -> Array:
+	if movement_type not in [&"pawn", &"knight", &"bishop", &"rook"]:
 		return []
+	var proxy := ChessPieceCatalog.create_piece(movement_type, piece.color, piece.coordinate)
+	if proxy == null:
+		return []
+	proxy.model = self
+	proxy.has_moved = piece.has_moved
+	var result: Array = proxy.get_legal_moves()
+	proxy.free()
+	return result
+
+func request_movement_type_grant(king: QuarterlyInitiativeKing, target: ModelPiece) -> StringName:
+	if not pending_movement_type_grant.is_empty():
+		return &""
+	var options: Array[StringName] = [&"pawn", &"knight", &"bishop", &"rook"]
+	pending_movement_type_grant = {"king": king, "target": target, "options": options}
+	movement_type_selection_requested.emit(king, target, options)
+	var selected: StringName = await movement_type_selection_resolved
+	return selected
+
+func submit_movement_type_grant(movement_type: StringName) -> bool:
+	if pending_movement_type_grant.is_empty():
+		return false
+	var options: Array = pending_movement_type_grant.get("options", [])
+	if movement_type not in options:
+		return false
+	pending_movement_type_grant.clear()
+	movement_type_selection_resolved.emit(movement_type)
+	return true
 
 ## Returns every primary command that color may legally submit right now.
 ## Command methods remain the final authority and revalidate their inputs.
@@ -417,7 +457,11 @@ func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 			if piece == null or piece.color != color or piece.stunned or not is_piece_active(piece):
 				continue
 
-			for raw_path in piece.get_legal_move_paths():
+			var legal_paths: Array = piece.get_legal_move_paths()
+			for movement_type in piece.granted_movement_types:
+				for destination in _get_moves_as(piece, movement_type):
+					legal_paths.append([destination])
+			for raw_path in legal_paths:
 				var path: Array[Vector2i] = []
 				path.assign(raw_path)
 				if not path.is_empty() and not is_rhetorician_attack_blocked(piece, path.back()):
@@ -821,6 +865,7 @@ func switch_turn():
 		current_turn = "black"
 	else:
 		current_turn = "white"
+		global_turn_number += 1
 	
 	print("switching turns.")
 	emit_signal("turn_changed", current_turn)
@@ -1009,7 +1054,7 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 		if not is_instance_valid(defender):
 			printerr("handle_combat: No defender found at target coordinate ", to)
 			return
-		if attacker.color == defender.color:
+		if attacker.color == defender.color and not attacker is QuarterlyInitiativeKing:
 			printerr("handle_combat: Attacker ", attacker.type, " attempted to attack friendly piece ", defender.type, " at ", to)
 			return
 		if is_rhetorician_attack_blocked(attacker, to):

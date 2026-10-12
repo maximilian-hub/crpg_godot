@@ -13,6 +13,7 @@ class_name ChessPieceState
 @export var stun_timer: int = 0
 @export var current_cooldown: int = 0
 @export var cooldown_reset_pending: bool = false
+@export var granted_movement_types: Array[StringName] = []
 @export var custom_state: Dictionary = {}
 
 func copy() -> ChessPieceState:
@@ -29,5 +30,6 @@ func copy() -> ChessPieceState:
 	result.stun_timer = stun_timer
 	result.current_cooldown = current_cooldown
 	result.cooldown_reset_pending = cooldown_reset_pending
+	result.granted_movement_types.assign(granted_movement_types)
 	result.custom_state = custom_state.duplicate(true)
 	return result

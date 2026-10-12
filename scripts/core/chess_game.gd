@@ -56,6 +56,9 @@ var _black_activation_barrier_started := false
 var presentation_seed := 0
 var _opening_start_released := false
 var _lunacy_displays: Dictionary = {}
+var _movement_grant_panel: PanelContainer
+var _performance_cycle_panel: PanelContainer
+var _performance_cycle_label: Label
 
 var opening_in_progress: bool:
 	get:
@@ -92,13 +95,19 @@ func _ready() -> void:
 		printerr("ChessGame has no ChessBoardModel assigned.")
 		return
 	_create_lunacy_displays()
+	_create_performance_cycle_display()
 	_layout_side_ui(player_color)
 	if not get_viewport().size_changed.is_connected(_on_lunacy_viewport_resized):
 		get_viewport().size_changed.connect(_on_lunacy_viewport_resized)
 	call_deferred(&"_layout_lunacy_displays")
 	if not model.lunacy_changed.is_connected(_on_lunacy_changed):
 		model.lunacy_changed.connect(_on_lunacy_changed)
+	if not model.turn_changed.is_connected(_on_performance_turn_changed):
+		model.turn_changed.connect(_on_performance_turn_changed)
+	if not model.movement_type_selection_requested.is_connected(_on_movement_type_selection_requested):
+		model.movement_type_selection_requested.connect(_on_movement_type_selection_requested)
 	_refresh_lunacy_displays()
+	_refresh_performance_cycle_display()
 
 	if not model.battle_finished.is_connected(_on_battle_finished):
 		model.battle_finished.connect(_on_battle_finished)
@@ -186,6 +195,7 @@ func _on_result_confirmed() -> void:
 
 func _on_board_rebuilt(_board: Array) -> void:
 	_refresh_lunacy_displays()
+	_refresh_performance_cycle_display()
 	if opening_pending:
 		opening_director.cancel()
 		if _white_turn_released:
@@ -300,6 +310,37 @@ func _create_lunacy_displays() -> void:
 			ui.add_child(panel)
 		_lunacy_displays[color] = panel
 
+func _create_performance_cycle_display() -> void:
+	var ui := get_node_or_null("LunacyLayer/LunacyUI") as Control
+	if ui == null:
+		return
+	_performance_cycle_panel = PanelContainer.new()
+	_performance_cycle_panel.name = "PerformanceCycleDisplay"
+	_performance_cycle_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_performance_cycle_panel.z_index = 50
+	_performance_cycle_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_performance_cycle_panel.offset_left = -300.0
+	_performance_cycle_panel.offset_top = -198.0
+	_performance_cycle_panel.offset_right = 300.0
+	_performance_cycle_panel.offset_bottom = -54.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.07, 0.055, 0.10, 0.92)
+	panel_style.border_color = Color(0.66, 0.52, 0.24, 0.95)
+	panel_style.set_border_width_all(3)
+	panel_style.set_corner_radius_all(21)
+	panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	panel_style.shadow_size = 15
+	_performance_cycle_panel.add_theme_stylebox_override("panel", panel_style)
+	_performance_cycle_label = Label.new()
+	_performance_cycle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_performance_cycle_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_performance_cycle_label.add_theme_font_size_override("font_size", 36)
+	_performance_cycle_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
+	_performance_cycle_label.add_theme_constant_override("shadow_offset_x", 3)
+	_performance_cycle_label.add_theme_constant_override("shadow_offset_y", 3)
+	_performance_cycle_panel.add_child(_performance_cycle_label)
+	ui.add_child(_performance_cycle_panel)
+
 func _layout_lunacy_display(color: String, near_player: bool) -> void:
 	var panel := _lunacy_displays.get(color) as PanelContainer
 	if panel == null:
@@ -335,6 +376,40 @@ func _on_lunacy_viewport_resized() -> void:
 func _on_lunacy_changed(_color: String, _value: int, _remaining: int) -> void:
 	_refresh_lunacy_displays()
 
+func _on_performance_turn_changed(_current_turn: String) -> void:
+	_refresh_performance_cycle_display()
+
+func _on_movement_type_selection_requested(king: QuarterlyInitiativeKing, _target: ModelPiece, options: Array[StringName]) -> void:
+	if not controller.is_player_controlled(king.color):
+		return
+	if is_instance_valid(_movement_grant_panel):
+		_movement_grant_panel.queue_free()
+	_movement_grant_panel = PanelContainer.new()
+	_movement_grant_panel.name = "MovementGrantPanel"
+	get_node("LunacyLayer/LunacyUI").add_child(_movement_grant_panel)
+	_movement_grant_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_movement_grant_panel.offset_left = -190.0
+	_movement_grant_panel.offset_top = -40.0
+	_movement_grant_panel.offset_right = 190.0
+	_movement_grant_panel.offset_bottom = 40.0
+	_movement_grant_panel.z_index = 100
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	_movement_grant_panel.add_child(row)
+	for option in options:
+		var button := Button.new()
+		button.text = String(option).capitalize()
+		button.custom_minimum_size = Vector2(88.0, 64.0)
+		button.pressed.connect(_submit_movement_type_grant.bind(option))
+		row.add_child(button)
+
+func _submit_movement_type_grant(movement_type: StringName) -> void:
+	if not model.submit_movement_type_grant(movement_type):
+		return
+	if is_instance_valid(_movement_grant_panel):
+		_movement_grant_panel.queue_free()
+	_movement_grant_panel = null
+
 func _refresh_lunacy_displays() -> void:
 	if model == null:
 		return
@@ -350,6 +425,22 @@ func _refresh_lunacy_displays() -> void:
 		var remaining := int(model.socratic_turns_by_color.get(color, 0))
 		var label := panel.get_child(0) as Label
 		label.text = "Socratic Lunacy: %d turn%s" % [remaining, "" if remaining == 1 else "s"] if remaining > 0 else "Lunacy: %d / 5" % value
+
+func _refresh_performance_cycle_display() -> void:
+	if model == null or _performance_cycle_panel == null or _performance_cycle_label == null:
+		return
+	var quarterly_in_play := model.get_king("white") is QuarterlyInitiativeKing or model.get_king("black") is QuarterlyInitiativeKing
+	_performance_cycle_panel.visible = quarterly_in_play
+	if not quarterly_in_play:
+		return
+	var upcoming_turn := model.global_turn_number
+	var turns_until_cycle := posmod(4 - posmod(upcoming_turn, 4), 4)
+	if turns_until_cycle == 0:
+		_performance_cycle_label.text = "TURN %d\nPERFORMANCE CYCLE" % upcoming_turn
+		_performance_cycle_label.add_theme_color_override("font_color", Color(1.0, 0.80, 0.32))
+	else:
+		_performance_cycle_label.text = "TURN %d  •  CYCLE IN %d" % [upcoming_turn, turns_until_cycle]
+		_performance_cycle_label.add_theme_color_override("font_color", Color(0.92, 0.87, 0.74))
 
 
 func _place_side_ui(container: MarginContainer, near_player: bool) -> void:

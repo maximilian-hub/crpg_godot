@@ -2,6 +2,8 @@
 extends Node
 class_name ModelPiece
 
+signal movement_type_granted(movement_type: StringName)
+
 # Base class for all pieces.
 # Considered part of the Model component of the chess game scene.
 
@@ -23,6 +25,7 @@ var stun_timer: int = 0
 var cooldown: int = 0
 
 var is_king: bool = false
+var granted_movement_types: Array[StringName] = []
 
 func _init(_color: String, _coordinate: Vector2i):
 	color = _color
@@ -44,6 +47,7 @@ func capture_piece_state() -> ChessPieceState:
 	state.has_moved = has_moved
 	state.stunned = stunned
 	state.stun_timer = stun_timer
+	state.granted_movement_types.assign(granted_movement_types)
 	if self is KingPiece:
 		state.current_cooldown = (self as KingPiece).current_cooldown
 		state.cooldown_reset_pending = (self as KingPiece).cooldown_reset_pending
@@ -58,6 +62,7 @@ func restore_piece_state(state: ChessPieceState) -> void:
 	has_moved = state.has_moved
 	stunned = state.stunned
 	stun_timer = state.stun_timer
+	granted_movement_types.assign(state.granted_movement_types)
 	if self is KingPiece:
 		(self as KingPiece).current_cooldown = state.current_cooldown
 		(self as KingPiece).cooldown_reset_pending = state.cooldown_reset_pending
@@ -82,6 +87,11 @@ func get_legal_move_paths() -> Array:
 	for destination in get_legal_moves():
 		paths.append([destination])
 	return paths
+
+func grant_movement_type(movement_type: StringName) -> void:
+	if movement_type in [&"pawn", &"knight", &"bishop", &"rook"] and movement_type not in granted_movement_types:
+		granted_movement_types.append(movement_type)
+		movement_type_granted.emit(movement_type)
 
 func take_damage(damage: int = 1):
 	current_hp -= damage

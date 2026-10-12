@@ -16,6 +16,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 			"stunned": piece.stunned, "stun_timer": piece.stun_timer,
 			"current_cooldown": piece.current_cooldown,
 			"cooldown_reset_pending": piece.cooldown_reset_pending,
+			"granted_movement_types": Array(piece.granted_movement_types).map(func(value): return String(value)),
 			"custom": piece.custom_state.duplicate(true),
 		})
 	var last = null
@@ -40,6 +41,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 		"schema": "crpg_chess_position", "version": position.schema_version,
 		"board": {"rows": position.board_size.x, "columns": position.board_size.y, "type": String(position.board_type)},
 		"current_turn": position.current_turn, "last_move": last,
+		"global_turn_number": position.global_turn_number,
 		"battle": {"over": position.battle_over, "result": position.battle_result, "defeated_king_colors": position.defeated_king_colors.duplicate()},
 		"lunacy": {"white": int(position.lunacy_by_color.get("white", 0)), "black": int(position.lunacy_by_color.get("black", 0)), "socratic_turns": position.socratic_turns_by_color.duplicate(true)},
 		"pieces": piece_dicts, "tile_effects": effect_dicts, "autonomous_entities": entity_dicts,
@@ -73,6 +75,12 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	position.board_size = Vector2i(int(board_data.get("rows", 0)), int(board_data.get("columns", 0)))
 	position.board_type = StringName(board_data.get("type", "default"))
 	position.current_turn = String(data.get("current_turn", ""))
+	if data.has("global_turn_number"):
+		position.global_turn_number = maxi(1, int(data.get("global_turn_number", 1)))
+	else:
+		# Positions saved before shared rounds derived Quarterly's cycle from
+		# individual player actions. Preserve their approximate battle progress.
+		position.global_turn_number = maxi(1, floori(float(data.get("global_ply_count", 0)) / 2.0) + 1)
 	var battle = data.get("battle", {})
 	if battle is Dictionary:
 		position.battle_over = bool(battle.get("over", false))
@@ -114,6 +122,8 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 		piece.stun_timer = int(raw.get("stun_timer", 0))
 		piece.current_cooldown = int(raw.get("current_cooldown", 0))
 		piece.cooldown_reset_pending = bool(raw.get("cooldown_reset_pending", false))
+		for movement_type in raw.get("granted_movement_types", []):
+			piece.granted_movement_types.append(StringName(movement_type))
 		var custom = raw.get("custom", {})
 		piece.custom_state = custom.duplicate(true) if custom is Dictionary else {}
 		position.pieces.append(piece)

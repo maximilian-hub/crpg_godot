@@ -34,6 +34,7 @@ func _ready() -> void:
 	model.reaction_selection_requested.connect(_on_reaction_selection_requested)
 	model.battle_finished.connect(_on_battle_finished)
 	model.piece_damaged.connect(_on_piece_damaged)
+	model.movement_type_selection_requested.connect(_on_movement_type_selection_requested)
 
 
 func configure(enabled: bool, color: String) -> void:
@@ -458,6 +459,14 @@ func _on_forced_pass_sequence_finished() -> void:
 func _on_reaction_selection_requested(calling_piece: ModelPiece, _action_type: String, _targets: Array) -> void:
 	if execution_mode == ExecutionMode.AUTO and calling_piece.color == controlled_color:
 		_schedule_reaction()
+
+func _on_movement_type_selection_requested(king: QuarterlyInitiativeKing, _target: ModelPiece, options: Array[StringName]) -> void:
+	if execution_mode != ExecutionMode.AUTO or king.color != controlled_color or options.is_empty():
+		return
+	call_deferred("_submit_movement_type_choice", options[rng.randi_range(0, options.size() - 1)])
+
+func _submit_movement_type_choice(choice: StringName) -> void:
+	model.submit_movement_type_grant(choice)
 
 
 func _on_piece_damaged(piece: ModelPiece, _amount: int, current_hp: int, _max_hp: int) -> void:

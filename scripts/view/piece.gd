@@ -6,6 +6,7 @@ extends Area2D
 class_name PieceView
 
 const WHITE_PALETTE_SHADER := preload("res://assets/pieces/profiles/white_piece_palette.gdshader")
+const MOVEMENT_GRANT_BADGES_SCRIPT := preload("res://scripts/view/movement_grant_badges.gd")
 const PIECE_ART_PROFILES := {
 	&"pawn": preload("res://assets/pieces/profiles/pawn.tres"),
 	&"bone_pawn": preload("res://assets/pieces/profiles/bone_pawn.tres"),
@@ -20,6 +21,7 @@ const PIECE_ART_PROFILES := {
 	&"wraith_king": preload("res://assets/pieces/profiles/wraith_king.tres"),
 	&"rhetorician_king": preload("res://assets/pieces/profiles/rhetorician_king.tres"),
 	&"cannon_king": preload("res://assets/pieces/profiles/cannon_king.tres"),
+	&"quarterly_initiative_king": preload("res://assets/pieces/profiles/quarterly_initiative_king.tres"),
 }
 
 var coordinate: Vector2i
@@ -27,14 +29,20 @@ var model: ModelPiece
 var art_profile: Resource
 var show_grip_anchor_debug := false
 var grip_anchor_debug_overlay: Node2D = null
+var movement_grant_badges: Node2D = null
 
 var sprite: Sprite2D:
 	get:
 		return get_node("Sprite2D") as Sprite2D
 
 func set_model(model_data: ModelPiece) -> void:
+	if model != null and model.movement_type_granted.is_connected(_on_movement_type_granted):
+		model.movement_type_granted.disconnect(_on_movement_type_granted)
 	model = model_data
+	if model != null and not model.movement_type_granted.is_connected(_on_movement_type_granted):
+		model.movement_type_granted.connect(_on_movement_type_granted)
 	update_sprite()
+	_sync_movement_grant_badges()
 
 func set_sprite(sprite_name: String) -> void: # "white_queen"
 	var color := model.color if model != null else "white"
@@ -83,6 +91,27 @@ func _update_effect_anchors() -> void:
 	get_head_anchor().position = Vector2(0.0, get_sprite_top_local_y())
 	get_grip_anchor().position = art_profile.grip_anchor if art_profile != null else get_head_anchor().position
 	_sync_grip_anchor_debug_overlay()
+	_position_movement_grant_badges()
+
+func _sync_movement_grant_badges(animate := false) -> void:
+	if movement_grant_badges == null:
+		movement_grant_badges = MOVEMENT_GRANT_BADGES_SCRIPT.new()
+		movement_grant_badges.name = "MovementGrantBadges"
+		movement_grant_badges.z_index = 50
+		add_child(movement_grant_badges)
+	_position_movement_grant_badges()
+	var grants: Array[StringName] = []
+	if model != null:
+		grants.assign(model.granted_movement_types)
+	movement_grant_badges.set_movement_types(grants, animate)
+
+func _position_movement_grant_badges() -> void:
+	if movement_grant_badges == null:
+		return
+	movement_grant_badges.position = get_head_anchor().position + Vector2(12.0, 7.0)
+
+func _on_movement_type_granted(_movement_type: StringName) -> void:
+	_sync_movement_grant_badges(true)
 
 func get_ground_anchor() -> Marker2D:
 	return get_node("GroundAnchor") as Marker2D

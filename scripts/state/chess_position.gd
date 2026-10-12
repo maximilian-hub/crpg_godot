@@ -16,6 +16,7 @@ const CURRENT_SCHEMA_VERSION := 2
 @export var defeated_king_colors: Array[String] = []
 @export var lunacy_by_color := {"white": 0, "black": 0}
 @export var socratic_turns_by_color := {"white": 0, "black": 0}
+@export var global_turn_number := 1
 
 func copy() -> ChessPosition:
 	var result := ChessPosition.new()
@@ -35,4 +36,5 @@ func copy() -> ChessPosition:
 	result.defeated_king_colors.assign(defeated_king_colors)
 	result.lunacy_by_color = lunacy_by_color.duplicate(true)
 	result.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
+	result.global_turn_number = global_turn_number
 	return result
