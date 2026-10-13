@@ -673,7 +673,10 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 	var is_combat := move_is_combat(is_en_passant, to)
 
 	if is_en_passant:
-		await handle_en_passant(piece, from, to)
+		var en_passant_committed := await handle_en_passant(piece, from, to)
+		if not en_passant_committed:
+			cancel_action()
+			return
 	elif is_combat:
 		await handle_combat(piece, to)
 	elif is_castling:
@@ -1002,16 +1005,17 @@ func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
 	await _announce_piece_landed(king, from, to)
 	await presentation.wait_for_aftermath()
 
-func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i):
+func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
 	var captured_row := from.x
 	var captured_col := to.y
 	var captured_piece: ModelPiece = board[captured_row][captured_col]
-	if captured_piece == null:
-		printerr("handle_en_passant: No pawn to capture.")
-		return
+	if not is_instance_valid(captured_piece) or captured_piece.type != "pawn" or captured_piece.color == piece.color:
+		printerr("handle_en_passant: Eligible pawn is no longer available to capture.")
+		return false
 
 	var captured_at := Vector2i(captured_row, captured_col)
 	await actually_capture_piece(piece, captured_piece, to, captured_at)
+	return true
 
 # Assumes a piece is moving to attack another piece.
 #func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
@@ -1093,7 +1097,21 @@ func can_castle_move(king: KingPiece, from: Vector2i, to: Vector2i) -> bool:
 	return can_castle_through(home_row, 4, home_row, rook_col, king.color)
 
 func move_is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
-	return piece.type == "pawn" and from.y != to.y and board[to.x][to.y] == null
+	if piece.type != "pawn" or not is_in_bounds(to.x, to.y) or board[to.x][to.y] != null:
+		return false
+	var direction := -1 if piece.color == "white" else 1
+	if to.x != from.x + direction or absi(to.y - from.y) != 1:
+		return false
+	if not last_move.has("piece") or not last_move.has("from") or not last_move.has("to"):
+		return false
+	var previous_pawn: ModelPiece = last_move.get("piece")
+	if not is_instance_valid(previous_pawn) or previous_pawn.type != "pawn" or previous_pawn.color == piece.color:
+		return false
+	var previous_from: Vector2i = last_move.get("from")
+	var previous_to: Vector2i = last_move.get("to")
+	if absi(previous_to.x - previous_from.x) != 2 or previous_to != Vector2i(from.x, to.y):
+		return false
+	return board[from.x][to.y] == previous_pawn
 
 func move_is_combat(is_en_passant: bool, to: Vector2i) -> bool:
 	return not is_en_passant and board[to.x][to.y] != null
