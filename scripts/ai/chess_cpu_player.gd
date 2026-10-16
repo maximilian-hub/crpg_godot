@@ -8,6 +8,12 @@ const RHETORICIAN_BACK_UP_PENALTY := 16.0
 const RHETORICIAN_PULL_THREAT_REWARD := 14.0
 const RHETORICIAN_PULL_ALLY_ATTACK_BONUS := 8.0
 const RHETORICIAN_KNIGHT_CAPTURE_BONUS := 5.0
+const QUARTERLY_FREE_CYCLE_REWARD := 24.0
+const QUARTERLY_OFF_CYCLE_COST := 12.0
+const QUARTERLY_PAWN_UPGRADE_REWARD := 8.0
+const QUARTERLY_QUEEN_HYBRID_REWARD := 11.0
+const QUARTERLY_UNPROTECTED_TARGET_REWARD := 12.0
+const QUARTERLY_KING_TARGET_REWARD := 40.0
 
 signal thought_changed(thought)
 
@@ -185,6 +191,12 @@ func _is_acceptable_primary_action(action: ChessPrimaryAction) -> bool:
 		return occupant == null or occupant.color != action.piece.color
 	if action.piece is NecromancerKing:
 		return not _is_doomed_bone_pawn_square(action.piece.color, action.target)
+	if action.piece is QuarterlyInitiativeKing:
+		var quarterly := action.piece as QuarterlyInitiativeKing
+		if model.global_turn_number % 4 != 0 and quarterly.current_hp <= 2:
+			return false
+		var recipient: ModelPiece = model.board[action.target.x][action.target.y]
+		return recipient != null and _best_quarterly_grant(recipient, [&"pawn", &"knight", &"bishop", &"rook"]).score > -INF
 	return true
 
 
@@ -213,7 +225,81 @@ func _score_primary_action(action: ChessPrimaryAction) -> float:
 	var friendly_king := model.get_king(controlled_color)
 	if friendly_king is RhetoricianKing:
 		score += _score_rhetorician_action(action, friendly_king as RhetoricianKing, target_piece)
+	elif friendly_king is QuarterlyInitiativeKing and action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.piece == friendly_king and target_piece != null:
+		score += _score_quarterly_action(target_piece)
 	return score
+
+
+func _score_quarterly_action(recipient: ModelPiece) -> float:
+	var best := _best_quarterly_grant(recipient, [&"pawn", &"knight", &"bishop", &"rook"])
+	if float(best.score) == -INF:
+		return -INF
+	var cycle_score := QUARTERLY_FREE_CYCLE_REWARD if model.global_turn_number % 4 == 0 else -QUARTERLY_OFF_CYCLE_COST
+	return cycle_score + float(best.score)
+
+
+func _best_quarterly_grant(recipient: ModelPiece, options: Array) -> Dictionary:
+	var best_score := -INF
+	var best_options: Array[StringName] = []
+	for raw_option in options:
+		var option := StringName(raw_option)
+		var score := _score_quarterly_grant(recipient, option)
+		if score > best_score:
+			best_score = score
+			best_options.assign([option])
+		elif is_equal_approx(score, best_score):
+			best_options.append(option)
+	return {"score": best_score, "options": best_options}
+
+
+func _score_quarterly_grant(recipient: ModelPiece, movement_type: StringName) -> float:
+	if _quarterly_grant_is_redundant(recipient, movement_type):
+		return -INF
+	var score := 1.0
+	if recipient.type == "pawn":
+		score += QUARTERLY_PAWN_UPGRADE_REWARD
+	elif (recipient.type == "rook" and movement_type == &"bishop") or (recipient.type == "bishop" and movement_type == &"rook"):
+		score += QUARTERLY_QUEEN_HYBRID_REWARD
+
+	var native_moves: Array = recipient.get_legal_moves()
+	var board := _current_board_state()
+	for destination in model._get_moves_as(recipient, movement_type):
+		if destination in native_moves:
+			continue
+		var target: ModelPiece = model.board[destination.x][destination.y]
+		if target == null or target.color == recipient.color:
+			continue
+		if target.is_king:
+			score += QUARTERLY_KING_TARGET_REWARD
+		elif not _piece_is_protected(target, board):
+			score += QUARTERLY_UNPROTECTED_TARGET_REWARD + _get_piece_value(target)
+		else:
+			score += _get_piece_value(target) * 0.5
+	return score
+
+
+func _quarterly_grant_is_redundant(recipient: ModelPiece, movement_type: StringName) -> bool:
+	if movement_type in recipient.granted_movement_types:
+		return true
+	match movement_type:
+		&"pawn":
+			return recipient.type == "pawn"
+		&"knight":
+			return recipient.type == "knight"
+		&"bishop":
+			return recipient.type in ["bishop", "queen"]
+		&"rook":
+			return recipient.type in ["rook", "queen"]
+	return true
+
+
+func _piece_is_protected(piece: ModelPiece, board: Dictionary) -> bool:
+	for coordinate in board:
+		var defender = board[coordinate]
+		if defender is ModelPiece and defender != piece and defender.color == piece.color:
+			if _piece_attacks_square(defender, coordinate, piece.coordinate, board):
+				return true
+	return false
 
 
 func _score_rhetorician_action(action: ChessPrimaryAction, king: RhetoricianKing, target_piece: ModelPiece) -> float:
@@ -533,10 +619,14 @@ func _on_reaction_selection_requested(calling_piece: ModelPiece, _action_type: S
 	if execution_mode == ExecutionMode.AUTO and calling_piece.color == controlled_color:
 		_schedule_reaction()
 
-func _on_movement_type_selection_requested(king: QuarterlyInitiativeKing, _target: ModelPiece, options: Array[StringName]) -> void:
-	if execution_mode != ExecutionMode.AUTO or king.color != controlled_color or options.is_empty():
+func _on_movement_type_selection_requested(king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName]) -> void:
+	if execution_mode == ExecutionMode.DISABLED or king.color != controlled_color or options.is_empty():
 		return
-	call_deferred("_submit_movement_type_choice", options[rng.randi_range(0, options.size() - 1)])
+	var best := _best_quarterly_grant(target, options)
+	var best_options: Array = best.options
+	if best_options.is_empty():
+		return
+	call_deferred("_submit_movement_type_choice", best_options[rng.randi_range(0, best_options.size() - 1)])
 
 func _submit_movement_type_choice(choice: StringName) -> void:
 	model.submit_movement_type_grant(choice)

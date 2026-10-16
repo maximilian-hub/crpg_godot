@@ -13,6 +13,7 @@ func _ready() -> void:
 	await _test_cpu_avoids_doomed_bone_pawn_targets()
 	await _test_damaged_king_prioritizes_safety()
 	await _test_rhetorician_ai_layer()
+	await _test_quarterly_initiative_ai_layer()
 	await _test_forced_pass_with_no_legal_action()
 	await _test_forced_pass_deadlock_draw()
 	await _test_cpu_owned_reaction()
@@ -273,6 +274,65 @@ func _test_rhetorician_ai_layer() -> void:
 	_expect(knight_capture != null and bishop_capture != null and knight_cpu._score_primary_action(knight_capture) > knight_cpu._score_primary_action(bishop_capture), "Rhetorician army gives enemy Knights extra capture priority over equal-value pieces")
 	knight_cpu.queue_free()
 	knight_model.free()
+
+
+func _test_quarterly_initiative_ai_layer() -> void:
+	var cycle_model := _new_empty_model()
+	cycle_model.global_turn_number = 4
+	var quarterly := QuarterlyInitiativeKing.new("white", Vector2i(7, 7))
+	var hybrid_rook := Rook.new("white", Vector2i(5, 5))
+	var enemy_king := ClassicKing.new("black", Vector2i(0, 0))
+	quarterly.set_cooldown(0)
+	cycle_model.add_piece(quarterly, quarterly.coordinate)
+	cycle_model.add_piece(hybrid_rook, hybrid_rook.coordinate)
+	cycle_model.add_piece(enemy_king, enemy_king.coordinate)
+	var cycle_cpu := _add_cpu(cycle_model, "white", false)
+	cycle_cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	var free_cycle_choice := cycle_cpu.choose_primary_action(cycle_model.get_legal_primary_actions("white"))
+	_expect(free_cycle_choice.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and free_cycle_choice.target == hybrid_rook.coordinate, "Quarterly AI casts Stakeholder Pandering on a free fourth turn")
+	_expect(await cycle_cpu.step(), "manual Quarterly CPU completes its movement-type selection")
+	_expect(&"bishop" in hybrid_rook.granted_movement_types, "Quarterly AI turns a Rook into a Rook-Bishop hybrid")
+	await get_tree().process_frame
+	cycle_cpu.queue_free()
+	cycle_model.free()
+
+	var tactical_model := _new_empty_model()
+	var tactical_quarterly := QuarterlyInitiativeKing.new("white", Vector2i(7, 7))
+	var tactical_pawn := Pawn.new("white", Vector2i(6, 0))
+	var exposed_king := ClassicKing.new("black", Vector2i(0, 0))
+	tactical_quarterly.set_cooldown(0)
+	tactical_model.add_piece(tactical_quarterly, tactical_quarterly.coordinate)
+	tactical_model.add_piece(tactical_pawn, tactical_pawn.coordinate)
+	tactical_model.add_piece(exposed_king, exposed_king.coordinate)
+	var tactical_cpu := _add_cpu(tactical_model, "white", false)
+	var off_cycle_actions := tactical_model.get_legal_primary_actions("white")
+	var tactical_choice := tactical_cpu.choose_primary_action(off_cycle_actions)
+	_expect(tactical_choice.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and tactical_choice.target == tactical_pawn.coordinate, "Quarterly AI accepts off-cycle HP cost when a new moveset attacks the enemy King")
+	tactical_quarterly.current_hp = 2
+	var gated_choice := tactical_cpu.choose_primary_action(off_cycle_actions)
+	_expect(gated_choice.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY, "Quarterly AI never casts off-cycle at two or fewer HP, even for a King-targeting grant")
+	tactical_cpu.queue_free()
+	tactical_model.free()
+
+	var priority_model := _new_empty_model()
+	var priority_quarterly := QuarterlyInitiativeKing.new("white", Vector2i(7, 7))
+	var priority_pawn := Pawn.new("white", Vector2i(6, 6))
+	var priority_rook := Rook.new("white", Vector2i(5, 5))
+	var ordinary_knight := Knight.new("white", Vector2i(6, 3))
+	var redundant_queen := Queen.new("white", Vector2i(5, 2))
+	priority_model.add_piece(priority_quarterly, priority_quarterly.coordinate)
+	for ally in [priority_pawn, priority_rook, ordinary_knight, redundant_queen]:
+		priority_model.add_piece(ally, ally.coordinate)
+	priority_model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	var priority_cpu := _add_cpu(priority_model, "white", false)
+	var pawn_best: Dictionary = priority_cpu._best_quarterly_grant(priority_pawn, [&"pawn", &"knight", &"bishop", &"rook"])
+	var rook_best: Dictionary = priority_cpu._best_quarterly_grant(priority_rook, [&"pawn", &"knight", &"bishop", &"rook"])
+	var knight_best: Dictionary = priority_cpu._best_quarterly_grant(ordinary_knight, [&"pawn", &"knight", &"bishop", &"rook"])
+	_expect(float(pawn_best.score) > float(knight_best.score), "Quarterly AI prioritizes movement upgrades for Pawns over ordinary hybrid grants")
+	_expect(rook_best.options == [&"bishop"], "Quarterly AI specifically prioritizes Bishop movement for Rooks")
+	_expect(priority_cpu._quarterly_grant_is_redundant(redundant_queen, &"bishop") and priority_cpu._quarterly_grant_is_redundant(redundant_queen, &"rook"), "Quarterly AI rejects redundant Bishop and Rook grants for Queens")
+	priority_cpu.queue_free()
+	priority_model.free()
 
 
 func _test_cpu_preserves_skitter_path_identity() -> void:
