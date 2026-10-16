@@ -1504,6 +1504,7 @@ func launch_arc_mortar(source: CannonKing, anchor: Vector2i) -> void:
 	entity.type_id = &"arc_mortar"
 	entity.coordinate = anchor
 	entity.owner_color = source.color
+	entity.custom_state["landing_turn"] = global_turn_number + CannonKing.ARC_MORTAR_DELAY_ROUNDS
 	autonomous_entities.append(entity)
 	var completion := CompletionGate.new()
 	autonomous_entity_added.emit(entity, completion)
@@ -1513,6 +1514,14 @@ func launch_arc_mortar(source: CannonKing, anchor: Vector2i) -> void:
 func resolve_arc_mortars_at_turn_start(color: String) -> void:
 	for entity in autonomous_entities.duplicate():
 		if entity.type_id != &"arc_mortar" or entity.owner_color != color:
+			continue
+		var landing_turn := int(entity.custom_state.get("landing_turn", 0))
+		if landing_turn <= 0:
+			# Legacy saved mortars had no schedule and landed on the next owner
+			# turn. Give restored warnings the complete new delay instead.
+			entity.custom_state["landing_turn"] = global_turn_number + CannonKing.ARC_MORTAR_DELAY_ROUNDS
+			continue
+		if global_turn_number < landing_turn:
 			continue
 		var area := get_mortar_area(entity.coordinate)
 		var completion := CompletionGate.new()

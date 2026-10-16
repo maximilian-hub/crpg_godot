@@ -6,6 +6,7 @@ const ACTIVE_ABILITY_ID: StringName = &"arc_mortar"
 const PASSIVE_ABILITY_NAME := "Calculated Trajectory"
 const ARC_MORTAR_DAMAGE := 1
 const ARC_MORTAR_RANGE := 5
+const ARC_MORTAR_DELAY_ROUNDS := 3
 
 var scheduled_arc_cooldown := 4
 
