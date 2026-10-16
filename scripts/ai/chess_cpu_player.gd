@@ -3,6 +3,12 @@ class_name ChessCpuPlayer
 
 const ChessAiThoughtData = preload("res://scripts/ai/chess_ai_thought.gd")
 
+const RHETORICIAN_CLOSE_THREAT_REWARD := 12.0
+const RHETORICIAN_BACK_UP_PENALTY := 16.0
+const RHETORICIAN_PULL_THREAT_REWARD := 14.0
+const RHETORICIAN_PULL_ALLY_ATTACK_BONUS := 8.0
+const RHETORICIAN_KNIGHT_CAPTURE_BONUS := 5.0
+
 signal thought_changed(thought)
 
 ## Headless client that chooses actions for one color and submits Model commands.
@@ -204,7 +210,57 @@ func _score_primary_action(action: ChessPrimaryAction) -> float:
 		score += 0.25
 	elif action.kind == ChessPrimaryAction.Kind.MOVE:
 		score += _score_movement_path(action.piece, action.path)
+	var friendly_king := model.get_king(controlled_color)
+	if friendly_king is RhetoricianKing:
+		score += _score_rhetorician_action(action, friendly_king as RhetoricianKing, target_piece)
 	return score
+
+
+func _score_rhetorician_action(action: ChessPrimaryAction, king: RhetoricianKing, target_piece: ModelPiece) -> float:
+	var score := 0.0
+	if action.kind == ChessPrimaryAction.Kind.MOVE and target_piece != null and target_piece.color != controlled_color and target_piece.type == "knight":
+		score += RHETORICIAN_KNIGHT_CAPTURE_BONUS
+
+	var current_board := _current_board_state()
+	if action.kind == ChessPrimaryAction.Kind.MOVE and action.piece == king:
+		var destination := action.target
+		var projected := _project_board_after(action)
+		for coordinate in current_board:
+			var enemy = current_board[coordinate]
+			if not enemy is ModelPiece or enemy.color == controlled_color:
+				continue
+			var old_distance := _grid_distance(coordinate, king.coordinate)
+			var new_distance := _grid_distance(coordinate, destination)
+			if old_distance == 2 and _piece_attacks_square(enemy, coordinate, king.coordinate, current_board):
+				if new_distance == 1 and projected.has(coordinate):
+					score += RHETORICIAN_CLOSE_THREAT_REWARD
+			if old_distance == 1 and enemy.type in ["queen", "rook", "bishop"] and new_distance == 2:
+				score -= RHETORICIAN_BACK_UP_PENALTY
+
+	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.piece == king and target_piece != null:
+		var target_origin := target_piece.coordinate
+		if _grid_distance(target_origin, king.coordinate) == 2 and _piece_attacks_square(target_piece, target_origin, king.coordinate, current_board):
+			score += RHETORICIAN_PULL_THREAT_REWARD
+			var delta := king.coordinate - target_origin
+			var pulled_coordinate := target_origin + Vector2i(signi(delta.x), signi(delta.y))
+			var projected := _project_board_after(action)
+			if _friendly_nonking_attacks_square(pulled_coordinate, projected, king):
+				score += RHETORICIAN_PULL_ALLY_ATTACK_BONUS
+	return score
+
+
+func _friendly_nonking_attacks_square(target: Vector2i, board: Dictionary, king: RhetoricianKing) -> bool:
+	for coordinate in board:
+		var ally = board[coordinate]
+		if ally is ModelPiece and ally.color == controlled_color and ally != king:
+			if _piece_attacks_square(ally, coordinate, target, board):
+				return true
+	return false
+
+
+func _grid_distance(first: Vector2i, second: Vector2i) -> int:
+	var delta := second - first
+	return maxi(absi(delta.x), absi(delta.y))
 
 
 ## Future terrain evaluators can override or extend this without collapsing
@@ -267,6 +323,9 @@ func _projected_king_threat_count(action: ChessPrimaryAction) -> int:
 		var piece = board[coordinate]
 		if not piece is ModelPiece or piece.color == controlled_color:
 			continue
+		var projected_king = board.get(king_coordinate)
+		if projected_king is RhetoricianKing and _is_adjacent(coordinate, king_coordinate):
+			continue
 		if _piece_attacks_square(piece, coordinate, king_coordinate, board):
 			threats += 1
 			continue
@@ -278,12 +337,7 @@ func _projected_king_threat_count(action: ChessPrimaryAction) -> int:
 
 
 func _project_board_after(action: ChessPrimaryAction) -> Dictionary:
-	var projected := {}
-	for row in range(model.board.size()):
-		for column in range(model.board[row].size()):
-			var piece: ModelPiece = model.board[row][column]
-			if piece != null:
-				projected[Vector2i(row, column)] = piece
+	var projected := _current_board_state()
 
 	var origin := action.piece.coordinate
 	if action.kind == ChessPrimaryAction.Kind.MOVE:
@@ -326,7 +380,26 @@ func _project_board_after(action: ChessPrimaryAction) -> Dictionary:
 		# Only occupancy and allegiance matter for threat rays; avoid constructing
 		# a live ModelPiece merely to represent the prospective blocker.
 		projected[action.target] = {"color": action.piece.color}
+	elif action.piece is RhetoricianKing:
+		var compelled: ModelPiece = model.board[action.target.x][action.target.y]
+		if compelled != null:
+			var delta := action.piece.coordinate - compelled.coordinate
+			var destination := compelled.coordinate + Vector2i(signi(delta.x), signi(delta.y))
+			if destination != action.piece.coordinate and model.is_in_bounds(destination.x, destination.y):
+				projected.erase(compelled.coordinate)
+				projected.erase(destination)
+				projected[destination] = compelled
 	return projected
+
+
+func _current_board_state() -> Dictionary:
+	var result := {}
+	for row in range(model.board.size()):
+		for column in range(model.board[row].size()):
+			var piece: ModelPiece = model.board[row][column]
+			if piece != null:
+				result[Vector2i(row, column)] = piece
+	return result
 
 
 func _piece_attacks_square(piece: ModelPiece, origin: Vector2i, target: Vector2i, board: Dictionary) -> bool:

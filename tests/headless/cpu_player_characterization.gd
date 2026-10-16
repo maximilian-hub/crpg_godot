@@ -12,6 +12,7 @@ func _ready() -> void:
 	await _test_cpu_rejects_friendly_charge()
 	await _test_cpu_avoids_doomed_bone_pawn_targets()
 	await _test_damaged_king_prioritizes_safety()
+	await _test_rhetorician_ai_layer()
 	await _test_forced_pass_with_no_legal_action()
 	await _test_forced_pass_deadlock_draw()
 	await _test_cpu_owned_reaction()
@@ -188,6 +189,90 @@ func _test_damaged_king_prioritizes_safety() -> void:
 	_expect(await cpu.execute_thought() and cpu.king_safety_turns_remaining == 2, "a successful defensive primary action consumes one safety turn")
 	cpu.queue_free()
 	model.free()
+
+
+func _test_rhetorician_ai_layer() -> void:
+	var approach_model := _new_empty_model()
+	var approach_king := RhetoricianKing.new("white", Vector2i(4, 4))
+	approach_king.set_cooldown(1)
+	var ranged_rook := Rook.new("black", Vector2i(4, 2))
+	approach_model.add_piece(approach_king, approach_king.coordinate)
+	approach_model.add_piece(ranged_rook, ranged_rook.coordinate)
+	approach_model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	var approach_cpu := _add_cpu(approach_model, "white", false)
+	var approach_actions := approach_model.get_legal_primary_actions("white")
+	var close_threat_action := approach_cpu.choose_primary_action(approach_actions)
+	var close_delta: Vector2i = close_threat_action.target - ranged_rook.coordinate
+	_expect(close_threat_action.piece == approach_king and maxi(absi(close_delta.x), absi(close_delta.y)) == 1, "Rhetorician AI closes a two-square line threat into passive-blocked adjacency")
+	_expect(approach_cpu._projected_king_threat_count(close_threat_action) == 0, "projected safety recognizes that adjacent enemies cannot attack the Rhetorician")
+	approach_cpu.queue_free()
+	approach_model.free()
+
+	var retreat_model := _new_empty_model()
+	var retreat_king := RhetoricianKing.new("white", Vector2i(4, 4))
+	retreat_king.set_cooldown(1)
+	var adjacent_queen := Queen.new("black", Vector2i(4, 3))
+	retreat_model.add_piece(retreat_king, retreat_king.coordinate)
+	retreat_model.add_piece(adjacent_queen, adjacent_queen.coordinate)
+	retreat_model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	var retreat_cpu := _add_cpu(retreat_model, "white", false)
+	var back_up_action: ChessPrimaryAction
+	var hold_adjacency_action: ChessPrimaryAction
+	for action in retreat_model.get_legal_primary_actions("white"):
+		if action.piece != retreat_king:
+			continue
+		if action.target == Vector2i(4, 5): back_up_action = action
+		if action.target == Vector2i(3, 4): hold_adjacency_action = action
+	_expect(back_up_action != null and hold_adjacency_action != null and retreat_cpu._score_primary_action(back_up_action) < retreat_cpu._score_primary_action(hold_adjacency_action), "Rhetorician AI heavily penalizes backing away from an adjacent Queen")
+	retreat_cpu.queue_free()
+	retreat_model.free()
+
+	var pull_model := _new_empty_model()
+	var pull_king := RhetoricianKing.new("white", Vector2i(4, 4))
+	pull_king.set_cooldown(0)
+	var supported_threat := Rook.new("black", Vector2i(4, 2))
+	var unsupported_threat := Rook.new("black", Vector2i(2, 4))
+	var allied_rook := Rook.new("white", Vector2i(7, 3))
+	pull_model.add_piece(pull_king, pull_king.coordinate)
+	pull_model.add_piece(supported_threat, supported_threat.coordinate)
+	pull_model.add_piece(unsupported_threat, unsupported_threat.coordinate)
+	pull_model.add_piece(allied_rook, allied_rook.coordinate)
+	pull_model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	var pull_cpu := _add_cpu(pull_model, "white", false)
+	var supported_pull: ChessPrimaryAction
+	var unsupported_pull: ChessPrimaryAction
+	var pull_actions := pull_model.get_legal_primary_actions("white")
+	for action in pull_actions:
+		if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or action.piece != pull_king:
+			continue
+		if action.target == supported_threat.coordinate: supported_pull = action
+		if action.target == unsupported_threat.coordinate: unsupported_pull = action
+	_expect(supported_pull != null and unsupported_pull != null and pull_cpu._score_primary_action(supported_pull) > pull_cpu._score_primary_action(unsupported_pull), "Rhetorician pull gains extra priority when an ally attacks the compelled square")
+	_expect(pull_cpu.choose_primary_action(pull_actions) == supported_pull, "Rhetorician AI prioritizes pulling a supported two-square threat into adjacency")
+	pull_cpu.queue_free()
+	pull_model.free()
+
+	var knight_model := _new_empty_model()
+	var knight_king := RhetoricianKing.new("white", Vector2i(7, 7))
+	knight_king.set_cooldown(1)
+	var hunting_rook := Rook.new("white", Vector2i(4, 4))
+	var enemy_knight := Knight.new("black", Vector2i(4, 1))
+	var enemy_bishop := Bishop.new("black", Vector2i(4, 7))
+	knight_model.add_piece(knight_king, knight_king.coordinate)
+	knight_model.add_piece(hunting_rook, hunting_rook.coordinate)
+	knight_model.add_piece(enemy_knight, enemy_knight.coordinate)
+	knight_model.add_piece(enemy_bishop, enemy_bishop.coordinate)
+	knight_model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	var knight_cpu := _add_cpu(knight_model, "white", false)
+	var knight_actions := knight_model.get_legal_primary_actions("white")
+	var knight_capture: ChessPrimaryAction
+	var bishop_capture: ChessPrimaryAction
+	for action in knight_actions:
+		if action.piece == hunting_rook and action.target == enemy_knight.coordinate: knight_capture = action
+		if action.piece == hunting_rook and action.target == enemy_bishop.coordinate: bishop_capture = action
+	_expect(knight_capture != null and bishop_capture != null and knight_cpu._score_primary_action(knight_capture) > knight_cpu._score_primary_action(bishop_capture), "Rhetorician army gives enemy Knights extra capture priority over equal-value pieces")
+	knight_cpu.queue_free()
+	knight_model.free()
 
 
 func _test_cpu_preserves_skitter_path_identity() -> void:
