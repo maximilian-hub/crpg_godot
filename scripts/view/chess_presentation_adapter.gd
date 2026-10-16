@@ -48,6 +48,9 @@ const SKULL_BURST_SCENE := preload("res://effects/skull_burst.tscn")
 @export_range(0.1, 4.0, 0.05) var wraith_move_duration := 1.35
 @export_range(0.0, 48.0, 1.0) var wraith_float_height := 12.0
 @export_range(0.0, 32.0, 1.0) var wraith_sway_distance := 7.0
+@export_range(1.0, 8.0, 0.1) var wraith_idle_cycle_duration := 3.6
+@export_range(0.0, 24.0, 0.5) var wraith_idle_float_height := 9.0
+@export_range(0.0, 16.0, 0.5) var wraith_idle_sway_distance := 2.5
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -284,8 +287,29 @@ func _create_autonomous_entity_view(entity: ChessAutonomousEntityState) -> Node2
 	sprite.modulate.a = 0.5
 	sprite.position = view.grid_to_screen(entity.coordinate.x, entity.coordinate.y)
 	sprite.z_index = view.get_piece_depth(entity.coordinate) + 1
-	view.add_child(sprite); autonomous_entity_views[entity.entity_id] = sprite
+	view.add_child(sprite)
+	_start_wraith_idle_float(sprite)
+	autonomous_entity_views[entity.entity_id] = sprite
 	return sprite
+
+func _start_wraith_idle_float(sprite: Sprite2D) -> void:
+	if sprite == null or sprite.has_meta(&"wraith_idle_float"):
+		return
+	sprite.set_meta(&"wraith_idle_float", true)
+	var idle_tween := sprite.create_tween().set_loops()
+	idle_tween.tween_method(
+		func(progress: float):
+			if not is_instance_valid(sprite):
+				return
+			var angle := TAU * progress
+			sprite.offset = Vector2(
+				sin(angle) * wraith_idle_sway_distance,
+				-(0.5 - 0.5 * cos(angle)) * wraith_idle_float_height
+			),
+		0.0,
+		1.0,
+		wraith_idle_cycle_duration
+	).set_trans(Tween.TRANS_LINEAR)
 
 func _on_autonomous_entity_added(entity: ChessAutonomousEntityState, completion: CompletionGate) -> void:
 	_create_autonomous_entity_view(entity)

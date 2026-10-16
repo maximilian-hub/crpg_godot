@@ -34,6 +34,8 @@ func _ready() -> void:
 	_check(mark_view.get_node_or_null("Stain") is Polygon2D and mark_view.get_node_or_null("Outline") is Line2D and mark_view.get_node_or_null("Rune") is Line2D, "Cursed Mark visibly fills and outlines its square with a placeholder rune")
 	_check(is_instance_valid(sprite) and is_equal_approx(sprite.modulate.a, 0.5), "summoned Wraith reuses team art at half opacity")
 	_check(is_instance_valid(sprite) and sprite.texture == load("res://assets/pieces/kings/white_wraith.png"), "White Wraith uses White Wraith King artwork")
+	await get_tree().create_timer(0.15).timeout
+	_check(not sprite.offset.is_zero_approx(), "summoned Wraith continuously floats while idle")
 	model.global_turn_number = 4
 	await model.run_autonomous_phase("white")
 	var view := game.get_node("CanvasLayer/ChessBoard") as ChessBoardView
