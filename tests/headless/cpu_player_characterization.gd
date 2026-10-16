@@ -14,6 +14,7 @@ func _ready() -> void:
 	await _test_damaged_king_prioritizes_safety()
 	await _test_rhetorician_ai_layer()
 	await _test_quarterly_initiative_ai_layer()
+	await _test_cpu_avoids_arc_mortar_impacts()
 	await _test_forced_pass_with_no_legal_action()
 	await _test_forced_pass_deadlock_draw()
 	await _test_cpu_owned_reaction()
@@ -333,6 +334,44 @@ func _test_quarterly_initiative_ai_layer() -> void:
 	_expect(priority_cpu._quarterly_grant_is_redundant(redundant_queen, &"bishop") and priority_cpu._quarterly_grant_is_redundant(redundant_queen, &"rook"), "Quarterly AI rejects redundant Bishop and Rook grants for Queens")
 	priority_cpu.queue_free()
 	priority_model.free()
+
+
+func _test_cpu_avoids_arc_mortar_impacts() -> void:
+	var model := _new_empty_model()
+	model.global_turn_number = 3
+	var white_king := ClassicKing.new("white", Vector2i(7, 7))
+	var endangered_rook := Rook.new("white", Vector2i(4, 4))
+	var safe_knight := Knight.new("white", Vector2i(6, 3))
+	model.add_piece(white_king, white_king.coordinate)
+	model.add_piece(endangered_rook, endangered_rook.coordinate)
+	model.add_piece(safe_knight, safe_knight.coordinate)
+	model.add_piece(ClassicKing.new("black", Vector2i(0, 7)), Vector2i(0, 7))
+	var mortar := ChessAutonomousEntityState.new()
+	mortar.type_id = &"arc_mortar"
+	mortar.owner_color = "black"
+	mortar.coordinate = Vector2i(4, 4)
+	mortar.custom_state["landing_turn"] = 4
+	model.autonomous_entities.append(mortar)
+	var cpu := _add_cpu(model, "white", false)
+	var actions := model.get_legal_primary_actions("white")
+	var selected := cpu.choose_primary_action(actions)
+	_expect(selected.kind == ChessPrimaryAction.Kind.MOVE and selected.piece == endangered_rook and selected.target not in model.get_mortar_area(mortar.coordinate), "CPU evacuates a valuable piece before an imminent Arc Mortar impact")
+
+	var safe_move: ChessPrimaryAction
+	var unsafe_move: ChessPrimaryAction
+	for action in actions:
+		if action.piece != safe_knight:
+			continue
+		if action.target == Vector2i(4, 2):
+			safe_move = action
+		elif action.target == Vector2i(5, 5):
+			unsafe_move = action
+	_expect(safe_move != null and unsafe_move != null and cpu._score_primary_action(safe_move) > cpu._score_primary_action(unsafe_move), "CPU penalizes moving a safe piece into a pending mortar footprint")
+
+	mortar.owner_color = "white"
+	_expect(cpu._score_arc_mortar_safety(selected) > 0.0, "CPU avoids friendly Arc Mortar impacts as well as enemy shots")
+	cpu.queue_free()
+	model.free()
 
 
 func _test_cpu_preserves_skitter_path_identity() -> void:

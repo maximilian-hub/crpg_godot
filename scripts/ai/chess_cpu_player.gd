@@ -14,6 +14,10 @@ const QUARTERLY_PAWN_UPGRADE_REWARD := 8.0
 const QUARTERLY_QUEEN_HYBRID_REWARD := 11.0
 const QUARTERLY_UNPROTECTED_TARGET_REWARD := 12.0
 const QUARTERLY_KING_TARGET_REWARD := 40.0
+const MORTAR_DISTANT_URGENCY := 2.0
+const MORTAR_NEAR_URGENCY := 8.0
+const MORTAR_IMMINENT_URGENCY := 40.0
+const MORTAR_LETHAL_MULTIPLIER := 2.5
 
 signal thought_changed(thought)
 
@@ -222,12 +226,45 @@ func _score_primary_action(action: ChessPrimaryAction) -> float:
 		score += 0.25
 	elif action.kind == ChessPrimaryAction.Kind.MOVE:
 		score += _score_movement_path(action.piece, action.path)
+	score += _score_arc_mortar_safety(action)
 	var friendly_king := model.get_king(controlled_color)
 	if friendly_king is RhetoricianKing:
 		score += _score_rhetorician_action(action, friendly_king as RhetoricianKing, target_piece)
 	elif friendly_king is QuarterlyInitiativeKing and action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.piece == friendly_king and target_piece != null:
 		score += _score_quarterly_action(target_piece)
 	return score
+
+
+func _score_arc_mortar_safety(action: ChessPrimaryAction) -> float:
+	if model.autonomous_entities.is_empty():
+		return 0.0
+	var current_exposure := _arc_mortar_exposure(_current_board_state())
+	var projected_exposure := _arc_mortar_exposure(_project_board_after(action))
+	return current_exposure - projected_exposure
+
+
+func _arc_mortar_exposure(board: Dictionary) -> float:
+	var exposure := 0.0
+	for entity in model.autonomous_entities:
+		if entity.type_id != &"arc_mortar":
+			continue
+		var landing_turn := int(entity.custom_state.get("landing_turn", model.global_turn_number + CannonKing.ARC_MORTAR_DELAY_ROUNDS))
+		var rounds_remaining := maxi(1, landing_turn - model.global_turn_number)
+		var urgency := MORTAR_DISTANT_URGENCY
+		if rounds_remaining == 1:
+			urgency = MORTAR_IMMINENT_URGENCY
+		elif rounds_remaining == 2:
+			urgency = MORTAR_NEAR_URGENCY
+		for coordinate in model.get_mortar_area(entity.coordinate):
+			var occupant = board.get(coordinate)
+			if not occupant is ModelPiece or occupant.color != controlled_color:
+				continue
+			var piece := occupant as ModelPiece
+			var piece_exposure := _get_piece_value(piece) * urgency
+			if piece.current_hp <= CannonKing.ARC_MORTAR_DAMAGE:
+				piece_exposure *= MORTAR_LETHAL_MULTIPLIER
+			exposure += piece_exposure
+	return exposure
 
 
 func _score_quarterly_action(recipient: ModelPiece) -> float:
