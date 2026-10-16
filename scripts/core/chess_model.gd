@@ -588,6 +588,12 @@ func resolve_unplayable_turns() -> bool:
 			complete_draw()
 			forced_pass_sequence_finished.emit()
 			return true
+		await run_autonomous_phase(skipped_color)
+		if has_defeated_king():
+			forced_pass_in_progress = false
+			complete_battle()
+			forced_pass_sequence_finished.emit()
+			return true
 		switch_turn()
 		await resolve_arc_mortars_at_turn_start(current_turn)
 		if has_defeated_king():
@@ -1512,6 +1518,7 @@ func summon_wraith(source: WraithKing, target: ModelPiece) -> void:
 	var entity := ChessAutonomousEntityState.new()
 	entity.entity_id = _allocate_state_id("entity"); entity.type_id = &"wraith"; entity.coordinate = source.coordinate
 	entity.owner_color = source.color; entity.source_piece_id = source.piece_id; entity.target_piece_id = target.piece_id
+	entity.custom_state["next_move_turn"] = global_turn_number + WraithKing.WRAITH_MOVE_INTERVAL_ROUNDS
 	autonomous_entities.append(entity)
 	source.active_availability_changed.emit(source, false, "Wraith Active")
 	var completion := CompletionGate.new(); autonomous_entity_added.emit(entity, completion); completion.close(); await completion.wait_until_released()
@@ -1522,9 +1529,20 @@ func run_autonomous_phase(owner_color: String = "") -> void:
 	for entity in autonomous_entities.duplicate():
 		if entity not in autonomous_entities: continue
 		if not owner_color.is_empty() and entity.owner_color != owner_color: continue
-		if entity.type_id == &"wraith": await _advance_wraith(entity)
+		if entity.type_id == &"wraith" and _wraith_move_is_due(entity):
+			entity.custom_state["next_move_turn"] = global_turn_number + WraithKing.WRAITH_MOVE_INTERVAL_ROUNDS
+			await _advance_wraith(entity)
 		if has_defeated_king(): break
 	autonomous_phase_in_progress = false
+
+func _wraith_move_is_due(entity: ChessAutonomousEntityState) -> bool:
+	var next_move_turn := int(entity.custom_state.get("next_move_turn", 0))
+	if next_move_turn <= 0:
+		# Legacy saved Wraiths did not carry timing state. Give them a complete
+		# interval from the moment their old position is restored.
+		entity.custom_state["next_move_turn"] = global_turn_number + WraithKing.WRAITH_MOVE_INTERVAL_ROUNDS
+		return false
+	return global_turn_number >= next_move_turn
 
 func _advance_wraith(entity: ChessAutonomousEntityState) -> void:
 	var source := find_piece_by_id(entity.source_piece_id)

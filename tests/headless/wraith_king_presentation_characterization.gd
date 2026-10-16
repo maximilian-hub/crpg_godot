@@ -3,6 +3,12 @@ extends Node
 var failures: Array[String] = []
 
 func _ready() -> void:
+	var float_from := Vector2(100.0, 200.0)
+	var float_to := Vector2(180.0, 240.0)
+	var float_midpoint := ChessPresentationAdapter.wraith_float_position(float_from, float_to, 0.5, 12.0, 7.0)
+	_check(ChessPresentationAdapter.wraith_float_position(float_from, float_to, 0.0, 12.0, 7.0).is_equal_approx(float_from), "Wraith drift begins exactly on its source square")
+	_check(ChessPresentationAdapter.wraith_float_position(float_from, float_to, 1.0, 12.0, 7.0).is_equal_approx(float_to), "Wraith drift settles exactly on its destination square")
+	_check(not float_midpoint.is_equal_approx(float_from.lerp(float_to, 0.5)), "Wraith drift bows and floats instead of following a straight linear path")
 	var game: ChessGame = preload("res://scenes/chess_game.tscn").instantiate()
 	game.play_opening_presentation = false
 	game.apply_initial_piece_placement_variation = false
@@ -28,6 +34,11 @@ func _ready() -> void:
 	_check(mark_view.get_node_or_null("Stain") is Polygon2D and mark_view.get_node_or_null("Outline") is Line2D and mark_view.get_node_or_null("Rune") is Line2D, "Cursed Mark visibly fills and outlines its square with a placeholder rune")
 	_check(is_instance_valid(sprite) and is_equal_approx(sprite.modulate.a, 0.5), "summoned Wraith reuses team art at half opacity")
 	_check(is_instance_valid(sprite) and sprite.texture == load("res://assets/pieces/kings/white_wraith.png"), "White Wraith uses White Wraith King artwork")
+	model.global_turn_number = 4
+	await model.run_autonomous_phase("white")
+	var view := game.get_node("CanvasLayer/ChessBoard") as ChessBoardView
+	_check(sprite.position.is_equal_approx(view.grid_to_screen(3, 3)), "floating Wraith movement settles on the projected destination square")
+	_check(is_equal_approx(sprite.modulate.a, 0.5) and is_zero_approx(sprite.rotation), "floating Wraith movement restores its resting opacity and rotation")
 	model.remove_tile_effect(&"cursed_mark", Vector2i(2, 2), king.piece_id)
 	await get_tree().process_frame
 	_check(adapter.tile_effect_views.is_empty() and not is_instance_valid(mark_view), "Cursed Mark placeholder disappears when the mark is consumed")

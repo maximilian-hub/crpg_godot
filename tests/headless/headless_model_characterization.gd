@@ -231,22 +231,47 @@ func _test_wraith_summon_autonomous_lifecycle() -> void:
 	model.add_piece(wraith_king, wraith_king.coordinate); model.add_piece(overlap_piece, overlap_piece.coordinate)
 	model.add_piece(target, target.coordinate); model.add_piece(black_king, black_king.coordinate)
 	_expect(await model.submit_active_ability(wraith_king, target.coordinate), "Summon Wraith accepts any enemy physical piece")
-	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(3, 3), "summoned Wraith advances after the summoning action and may overlap a physical piece")
+	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(4, 4), "summoned Wraith remains at its source during the summoning round")
+	_expect(int(model.autonomous_entities[0].custom_state.get("next_move_turn", 0)) == 4, "summoned Wraith schedules its first step three shared rounds later")
 	_expect(not wraith_king.is_active_ability_ready(), "an active Wraith gates another zero-cooldown summon")
 	_expect(model.begin_action("black"), "opponent action can begin while the Wraith exists")
 	await model.continue_action_resolution()
-	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(3, 3), "Wraith remains stationary after the opposing army's action")
-	_expect(model.begin_action("white"), "the following player action can begin while the Wraith remains in flight")
+	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(4, 4) and model.global_turn_number == 2, "Wraith remains stationary when the summoning round completes")
+	_expect(model.begin_action("white"), "the owning army can act during a waiting round")
 	await model.continue_action_resolution()
-	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(2, 2), "Wraith advances exactly one square after its owning army's action")
-	_expect(model.begin_action("black"), "another opposing action can resolve while the Wraith remains in flight")
+	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(4, 4), "Wraith does not advance before three rounds elapse")
+	model.global_turn_number = 4
+	model.current_turn = "white"
+	_expect(model.begin_action("white"), "the owning army can act when the Wraith's scheduled round arrives")
 	await model.continue_action_resolution()
-	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(2, 2), "repeated opposing actions do not advance the Wraith")
-	_expect(model.begin_action("white"), "the owning army can take the action that brings its Wraith to the target")
-	await model.continue_action_resolution()
+	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(3, 3), "Wraith advances one square on its scheduled third round")
+	_expect(int(model.autonomous_entities[0].custom_state.get("next_move_turn", 0)) == 7, "a Wraith step schedules the next step three rounds later")
+	await model.run_autonomous_phase("white")
+	_expect(model.autonomous_entities[0].coordinate == Vector2i(3, 3), "Wraith cannot advance twice during the same round")
+	model.global_turn_number = 7
+	await model.run_autonomous_phase("white")
+	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(2, 2), "Wraith advances again after another three rounds")
+	model.global_turn_number = 10
+	await model.run_autonomous_phase("white")
 	_expect(model.board[1][1] == target and target.current_hp == 1 and model.autonomous_entities.is_empty(), "Wraith deals one damage to a durable ordinary target and then disappears")
 	_expect(wraith_king.is_active_ability_ready(), "Summon Wraith becomes available after its Wraith resolves")
 	model.free()
+
+	var pass_model := _new_empty_model()
+	var stalled_king := WraithKing.new("white", Vector2i(4, 4))
+	var pass_target := Rook.new("black", Vector2i(1, 1))
+	var pass_enemy_king := ClassicKing.new("black", Vector2i(0, 7))
+	pass_model.add_piece(stalled_king, stalled_king.coordinate)
+	pass_model.add_piece(pass_target, pass_target.coordinate)
+	pass_model.add_piece(pass_enemy_king, pass_enemy_king.coordinate)
+	await pass_model.summon_wraith(stalled_king, pass_target)
+	pass_model.global_turn_number = 4
+	stalled_king.stunned = true
+	stalled_king.stun_timer = 99
+	pass_model.forced_pass_delay_seconds = 0.0
+	await pass_model.resolve_unplayable_turns()
+	_expect(pass_model.autonomous_entities[0].coordinate == Vector2i(3, 3), "a scheduled Wraith advances when its owner's turn is forced to pass")
+	pass_model.free()
 
 	var king_model := _new_empty_model()
 	var king_hunter := WraithKing.new("white", Vector2i(4, 4))
@@ -255,6 +280,7 @@ func _test_wraith_summon_autonomous_lifecycle() -> void:
 	king_model.add_piece(king_target, king_target.coordinate)
 	var king_hp_before := king_target.current_hp
 	await king_model.summon_wraith(king_hunter, king_target)
+	king_model.global_turn_number = 4
 	await king_model.run_autonomous_phase("white")
 	_expect(king_model.board[3][3] == king_target and king_target.current_hp == king_hp_before - WraithKing.SUMMON_WRAITH_DAMAGE, "Wraith deals one damage instead of outright destroying a King on arrival")
 	_expect(king_model.autonomous_entities.is_empty() and king_hunter.is_active_ability_ready(), "Wraith disappears and re-enables Summon Wraith after damaging a King")
@@ -265,13 +291,14 @@ func _test_wraith_state_round_trip() -> void:
 	var wraith_king := WraithKing.new("white", Vector2i(4, 4)); var target := Rook.new("black", Vector2i(0, 0))
 	model.add_piece(wraith_king, wraith_king.coordinate); model.add_piece(target, target.coordinate)
 	model.add_tile_effect(&"cursed_mark", Vector2i(2, 2), "white", wraith_king.piece_id)
-	var entity := ChessAutonomousEntityState.new(); entity.entity_id = model._allocate_state_id("entity"); entity.type_id = &"wraith"; entity.coordinate = Vector2i(3, 3); entity.owner_color = "white"; entity.source_piece_id = wraith_king.piece_id; entity.target_piece_id = target.piece_id
+	var entity := ChessAutonomousEntityState.new(); entity.entity_id = model._allocate_state_id("entity"); entity.type_id = &"wraith"; entity.coordinate = Vector2i(3, 3); entity.owner_color = "white"; entity.source_piece_id = wraith_king.piece_id; entity.target_piece_id = target.piece_id; entity.custom_state = {"next_move_turn": 4}
 	model.autonomous_entities.append(entity)
 	var decoded := ChessPositionCodec.from_json(ChessPositionCodec.to_json(model.capture_position()))
 	_expect(decoded.errors.is_empty(), "Wraith board state passes position JSON validation")
 	var restored := ChessBoardModel.new(); restored.initialize_battle()
 	_expect(restored.load_position(decoded.position), "Wraith board state reloads")
 	_expect(restored.tile_effects.size() == 1 and restored.autonomous_entities.size() == 1 and restored.find_piece_by_id(restored.autonomous_entities[0].target_piece_id) != null, "reload preserves marks, autonomous entities, and target identity")
+	_expect(int(restored.autonomous_entities[0].custom_state.get("next_move_turn", 0)) == 4, "reload preserves the Wraith's scheduled movement round")
 	restored.free(); model.free()
 
 func _test_wraith_cpu_active_integration() -> void:

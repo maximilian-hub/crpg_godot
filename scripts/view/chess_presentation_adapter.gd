@@ -45,6 +45,9 @@ const SKULL_BURST_SCENE := preload("res://effects/skull_burst.tscn")
 @export var reaction_trigger_sound: AudioStream
 @export_range(-80.0, 24.0, 0.1) var reaction_trigger_volume_db := 0.0
 @export_range(0.0, 2.0, 0.05) var nonlocal_ability_reveal_duration := 0.6
+@export_range(0.1, 4.0, 0.05) var wraith_move_duration := 1.35
+@export_range(0.0, 48.0, 1.0) var wraith_float_height := 12.0
+@export_range(0.0, 32.0, 1.0) var wraith_sway_distance := 7.0
 
 var piece_views: Dictionary = {}
 var necromancer_auras: Dictionary = {}
@@ -292,14 +295,55 @@ func _on_autonomous_entity_moved(entity: ChessAutonomousEntityState, _from: Vect
 	var sprite := _create_autonomous_entity_view(entity) as Sprite2D
 	if sprite == null:
 		return
+	var destination := view.grid_to_screen(to.x, to.y)
 	if not presentation_policy.should_hold_completion_gate():
-		sprite.position = view.grid_to_screen(to.x, to.y); return
+		sprite.position = destination
+		sprite.z_index = view.get_piece_depth(to) + 1
+		return
 	completion.hold()
+	var origin := sprite.position
+	var original_scale := sprite.scale
+	var original_alpha := sprite.modulate.a
+	var original_rotation := sprite.rotation
+	var motion_scale := view.get_world_scale()
 	var tween := create_tween()
-	tween.tween_property(sprite, "position", view.grid_to_screen(to.x, to.y), 0.25)
+	tween.tween_method(
+		func(progress: float):
+			if not is_instance_valid(sprite):
+				return
+			sprite.position = wraith_float_position(
+				origin,
+				destination,
+				progress,
+				wraith_float_height * motion_scale,
+				wraith_sway_distance * motion_scale
+			)
+			var spectral_pulse := sin(PI * progress)
+			sprite.scale = original_scale * (1.0 + spectral_pulse * 0.06)
+			sprite.modulate.a = original_alpha * (1.0 - spectral_pulse * 0.18)
+			sprite.rotation = original_rotation + sin(TAU * progress) * 0.035,
+		0.0,
+		1.0,
+		wraith_move_duration * presentation_policy.duration_scale()
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
+	if not is_instance_valid(sprite):
+		completion.release()
+		return
+	sprite.position = destination
+	sprite.scale = original_scale
+	sprite.modulate.a = original_alpha
+	sprite.rotation = original_rotation
 	sprite.z_index = view.get_piece_depth(to) + 1
 	completion.release()
+
+static func wraith_float_position(from: Vector2, to: Vector2, progress: float, float_height: float, sway_distance: float) -> Vector2:
+	var t := clampf(progress, 0.0, 1.0)
+	var travel := to - from
+	var perpendicular := Vector2(-travel.y, travel.x).normalized() if not travel.is_zero_approx() else Vector2.RIGHT
+	var envelope := sin(PI * t)
+	var vertical_bob := sin(TAU * 2.0 * t) * float_height * 0.20
+	return from.lerp(to, t) + perpendicular * envelope * sway_distance + Vector2.UP * (envelope * float_height + vertical_bob)
 
 func _on_autonomous_entity_removed(entity: ChessAutonomousEntityState, _reason: StringName, completion: CompletionGate) -> void:
 	var sprite: Node = autonomous_entity_views.get(entity.entity_id)
