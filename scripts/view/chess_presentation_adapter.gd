@@ -79,6 +79,8 @@ var raise_dead_skull_anchors: Dictionary = {}
 var playable_turn_colors: Dictionary = {}
 var tile_effect_views: Dictionary = {}
 var autonomous_entity_views: Dictionary = {}
+var wraith_replacement_preview_sprite: Sprite2D
+var wraith_replacement_preview_tween: Tween
 
 
 func _ready() -> void:
@@ -283,7 +285,11 @@ func _create_autonomous_entity_view(entity: ChessAutonomousEntityState) -> Node2
 	var sprite := Sprite2D.new()
 	sprite.name = "Wraith_%s" % entity.entity_id
 	sprite.texture = load("res://assets/pieces/kings/%s_wraith.png" % entity.owner_color)
-	if sprite.texture != null: sprite.scale = Vector2.ONE * (64.0 / float(sprite.texture.get_height())) * view.get_world_scale()
+	if sprite.texture != null:
+		sprite.scale = Vector2.ONE * (64.0 / float(sprite.texture.get_height())) * view.get_world_scale()
+		# The autonomous entity's position is a ground contact point, just like a
+		# PieceView origin. Offset centered artwork upward so its base rests there.
+		sprite.offset = Vector2(0.0, -float(sprite.texture.get_height()) * 0.5)
 	sprite.modulate.a = 0.5
 	sprite.position = view.grid_to_screen(entity.coordinate.x, entity.coordinate.y)
 	sprite.z_index = view.get_piece_depth(entity.coordinate) + 1
@@ -296,13 +302,15 @@ func _start_wraith_idle_float(sprite: Sprite2D) -> void:
 	if sprite == null or sprite.has_meta(&"wraith_idle_float"):
 		return
 	sprite.set_meta(&"wraith_idle_float", true)
+	var resting_offset := sprite.offset
+	sprite.set_meta(&"wraith_resting_offset", resting_offset)
 	var idle_tween := sprite.create_tween().set_loops()
 	idle_tween.tween_method(
 		func(progress: float):
 			if not is_instance_valid(sprite):
 				return
 			var angle := TAU * progress
-			sprite.offset = Vector2(
+			sprite.offset = resting_offset + Vector2(
 				sin(angle) * wraith_idle_sway_distance,
 				-(0.5 - 0.5 * cos(angle)) * wraith_idle_float_height
 			),
@@ -372,6 +380,8 @@ static func wraith_float_position(from: Vector2, to: Vector2, progress: float, f
 func _on_autonomous_entity_removed(entity: ChessAutonomousEntityState, _reason: StringName, completion: CompletionGate) -> void:
 	var sprite: Node = autonomous_entity_views.get(entity.entity_id)
 	autonomous_entity_views.erase(entity.entity_id)
+	if sprite == wraith_replacement_preview_sprite:
+		_clear_wraith_replacement_preview()
 	if is_instance_valid(sprite): sprite.queue_free()
 
 func _on_arc_mortar_impact(_entity: ChessAutonomousEntityState, affected_coords: Array, completion: CompletionGate) -> void:
@@ -878,6 +888,30 @@ func _on_ability_targeting_started(king: KingPiece, _ability_name: String, _targ
 	view.clear_highlights()
 	view.show_legal_moves(_targets)
 	view.clear_area_preview()
+	if king is WraithKing:
+		_show_wraith_replacement_preview(king as WraithKing)
+
+func _show_wraith_replacement_preview(king: WraithKing) -> void:
+	_clear_wraith_replacement_preview()
+	var replacement := model.get_wraith_replacement_candidate(king.piece_id)
+	if replacement == null:
+		return
+	wraith_replacement_preview_sprite = autonomous_entity_views.get(replacement.entity_id) as Sprite2D
+	if not is_instance_valid(wraith_replacement_preview_sprite):
+		wraith_replacement_preview_sprite = null
+		return
+	wraith_replacement_preview_tween = wraith_replacement_preview_sprite.create_tween().set_loops()
+	wraith_replacement_preview_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	wraith_replacement_preview_tween.tween_property(wraith_replacement_preview_sprite, "self_modulate", Color(1.0, 0.12, 0.12, 1.0), 0.42)
+	wraith_replacement_preview_tween.tween_property(wraith_replacement_preview_sprite, "self_modulate", Color.WHITE, 0.42)
+
+func _clear_wraith_replacement_preview() -> void:
+	if wraith_replacement_preview_tween != null and wraith_replacement_preview_tween.is_valid():
+		wraith_replacement_preview_tween.kill()
+	wraith_replacement_preview_tween = null
+	if is_instance_valid(wraith_replacement_preview_sprite):
+		wraith_replacement_preview_sprite.self_modulate = Color.WHITE
+	wraith_replacement_preview_sprite = null
 
 func _on_board_square_entered(coord: Vector2i) -> void:
 	if not controller.active_ability_selected or not controller.active_king is CannonKing:
@@ -929,6 +963,8 @@ func _reveal_ability_windup(king: KingPiece) -> void:
 
 func _on_ability_targeting_ended(king: KingPiece, _ability_name: String, reason: String) -> void:
 	view.clear_area_preview()
+	if king is WraithKing:
+		_clear_wraith_replacement_preview()
 	if reason == "confirmed":
 		_confirm_ability_windup(king, true)
 		return
@@ -1154,8 +1190,6 @@ func _register_piece(piece: ModelPiece, piece_node: Node) -> void:
 			_on_cooldown_changed(king, king.current_cooldown)
 		else:
 			_on_cooldown_ready(king)
-		if king is WraithKing and model.has_autonomous_entity_from_source(king.piece_id, &"wraith"):
-			_on_active_availability_changed(king, false, "Wraith Active")
 		_register_king_magic(piece, piece_node)
 
 

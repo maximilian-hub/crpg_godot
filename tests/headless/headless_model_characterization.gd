@@ -233,7 +233,7 @@ func _test_wraith_summon_autonomous_lifecycle() -> void:
 	_expect(await model.submit_active_ability(wraith_king, target.coordinate), "Summon Wraith accepts any enemy physical piece")
 	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(4, 4), "summoned Wraith remains at its source during the summoning round")
 	_expect(int(model.autonomous_entities[0].custom_state.get("next_move_turn", 0)) == 4, "summoned Wraith schedules its first step three shared rounds later")
-	_expect(not wraith_king.is_active_ability_ready(), "an active Wraith gates another zero-cooldown summon")
+	_expect(wraith_king.is_active_ability_ready(), "one active Wraith leaves Summon Wraith available for a second projectile")
 	_expect(model.begin_action("black"), "opponent action can begin while the Wraith exists")
 	await model.continue_action_resolution()
 	_expect(model.autonomous_entities.size() == 1 and model.autonomous_entities[0].coordinate == Vector2i(4, 4) and model.global_turn_number == 2, "Wraith remains stationary when the summoning round completes")
@@ -256,6 +256,34 @@ func _test_wraith_summon_autonomous_lifecycle() -> void:
 	_expect(model.board[1][1] == target and target.current_hp == 1 and model.autonomous_entities.is_empty(), "Wraith deals one damage to a durable ordinary target and then disappears")
 	_expect(wraith_king.is_active_ability_ready(), "Summon Wraith becomes available after its Wraith resolves")
 	model.free()
+
+	var replacement_model := _new_empty_model()
+	var replacement_king := WraithKing.new("white", Vector2i(4, 4))
+	var first_target := Rook.new("black", Vector2i(1, 1))
+	var second_target := Bishop.new("black", Vector2i(1, 3))
+	var third_target := Knight.new("black", Vector2i(1, 5))
+	replacement_model.add_piece(replacement_king, replacement_king.coordinate)
+	for replacement_target in [first_target, second_target, third_target]:
+		replacement_model.add_piece(replacement_target, replacement_target.coordinate)
+	await replacement_model.summon_wraith(replacement_king, first_target)
+	_expect(first_target.coordinate not in replacement_king.get_active_ability_targets() and second_target.coordinate in replacement_king.get_active_ability_targets(), "a lone Wraith's target is unavailable to a second Wraith")
+	await replacement_model.summon_wraith(replacement_king, second_target)
+	var oldest_wraith := replacement_model.get_wraith_replacement_candidate(replacement_king.piece_id)
+	var replacement_targets := replacement_king.get_active_ability_targets()
+	_expect(oldest_wraith != null and oldest_wraith.target_piece_id == first_target.piece_id, "the first summoned Wraith becomes the two-slot queue's replacement candidate")
+	_expect(first_target.coordinate in replacement_targets and second_target.coordinate not in replacement_targets, "targeting a replacement permits the cancellable Wraith's target but excludes the surviving Wraith's target")
+	var surviving_wraith_id: String = replacement_model.get_wraith_entities_from_source(replacement_king.piece_id)[1].entity_id
+	await replacement_model.summon_wraith(replacement_king, first_target)
+	var replaced_entities := replacement_model.get_wraith_entities_from_source(replacement_king.piece_id)
+	_expect(replaced_entities.size() == 2 and replaced_entities[0].entity_id == surviving_wraith_id, "a third summon removes the oldest Wraith and preserves the newer one")
+	var chased_target_ids: Array[String] = []
+	for active_wraith in replaced_entities:
+		chased_target_ids.append(active_wraith.target_piece_id)
+	_expect(chased_target_ids == [second_target.piece_id, first_target.piece_id], "replacement can retarget the cancelled Wraith's piece without creating duplicate chasers")
+	var entity_count_before_duplicate := replaced_entities.size()
+	await replacement_model.summon_wraith(replacement_king, first_target)
+	_expect(replacement_model.get_wraith_entities_from_source(replacement_king.piece_id).size() == entity_count_before_duplicate, "model-level summoning rejects a target still chased by a non-cancellable Wraith")
+	replacement_model.free()
 
 	var pass_model := _new_empty_model()
 	var stalled_king := WraithKing.new("white", Vector2i(4, 4))

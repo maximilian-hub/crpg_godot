@@ -1474,6 +1474,19 @@ func remove_tile_effect(type_id: StringName, coord: Vector2i, source_piece_id :=
 func has_autonomous_entity_from_source(source_piece_id: String, type_id: StringName = &"") -> bool:
 	return autonomous_entities.any(func(entity): return entity.source_piece_id == source_piece_id and (type_id == &"" or entity.type_id == type_id))
 
+func get_wraith_entities_from_source(source_piece_id: String) -> Array[ChessAutonomousEntityState]:
+	var result: Array[ChessAutonomousEntityState] = []
+	for entity in autonomous_entities:
+		if entity.type_id == &"wraith" and entity.source_piece_id == source_piece_id:
+			result.append(entity)
+	return result
+
+func get_wraith_replacement_candidate(source_piece_id: String) -> ChessAutonomousEntityState:
+	var owned_wraiths := get_wraith_entities_from_source(source_piece_id)
+	if owned_wraiths.size() < WraithKing.MAX_ACTIVE_WRAITHS:
+		return null
+	return owned_wraiths[0]
+
 func get_mortar_area(anchor: Vector2i) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	for offset: Vector2i in [Vector2i.ZERO, Vector2i(0, 1), Vector2i(1, 0), Vector2i(1, 1)]:
@@ -1515,12 +1528,20 @@ func resolve_arc_mortars_at_turn_start(color: String) -> void:
 		await remove_autonomous_entity(entity, &"impact")
 
 func summon_wraith(source: WraithKing, target: ModelPiece) -> void:
+	if not is_piece_active(source) or not is_piece_active(target) or source.color == target.color:
+		return
+	var replacement := get_wraith_replacement_candidate(source.piece_id)
+	for existing in get_wraith_entities_from_source(source.piece_id):
+		if existing.target_piece_id == target.piece_id and existing != replacement:
+			return
+	if replacement != null:
+		await remove_autonomous_entity(replacement, &"replaced")
 	var entity := ChessAutonomousEntityState.new()
 	entity.entity_id = _allocate_state_id("entity"); entity.type_id = &"wraith"; entity.coordinate = source.coordinate
 	entity.owner_color = source.color; entity.source_piece_id = source.piece_id; entity.target_piece_id = target.piece_id
 	entity.custom_state["next_move_turn"] = global_turn_number + WraithKing.WRAITH_MOVE_INTERVAL_ROUNDS
 	autonomous_entities.append(entity)
-	source.active_availability_changed.emit(source, false, "Wraith Active")
+	source.active_availability_changed.emit(source, true, "")
 	var completion := CompletionGate.new(); autonomous_entity_added.emit(entity, completion); completion.close(); await completion.wait_until_released()
 
 func run_autonomous_phase(owner_color: String = "") -> void:

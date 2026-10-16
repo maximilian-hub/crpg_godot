@@ -34,8 +34,16 @@ func _ready() -> void:
 	_check(mark_view.get_node_or_null("Stain") is Polygon2D and mark_view.get_node_or_null("Outline") is Line2D and mark_view.get_node_or_null("Rune") is Line2D, "Cursed Mark visibly fills and outlines its square with a placeholder rune")
 	_check(is_instance_valid(sprite) and is_equal_approx(sprite.modulate.a, 0.5), "summoned Wraith reuses team art at half opacity")
 	_check(is_instance_valid(sprite) and sprite.texture == load("res://assets/pieces/kings/white_wraith.png"), "White Wraith uses White Wraith King artwork")
+	var resting_offset: Vector2 = sprite.get_meta(&"wraith_resting_offset", Vector2.ZERO)
+	_check(is_equal_approx(resting_offset.y, -float(sprite.texture.get_height()) * 0.5), "Wraith artwork rests its base on the entity's board coordinate")
 	await get_tree().create_timer(0.15).timeout
-	_check(not sprite.offset.is_zero_approx(), "summoned Wraith continuously floats while idle")
+	_check(not sprite.offset.is_equal_approx(resting_offset), "summoned Wraith continuously floats around its grounded resting offset")
+	await model.summon_wraith(king, model.get_king("black"))
+	adapter._on_ability_targeting_started(king, king.get_active_ability_name(), king.get_active_ability_targets())
+	await get_tree().create_timer(0.20).timeout
+	_check(sprite.self_modulate.g < 0.9 and sprite.self_modulate.b < 0.9, "the oldest Wraith pulses red while a replacement summon is being targeted")
+	adapter._on_ability_targeting_ended(king, king.get_active_ability_name(), "cancelled")
+	_check(sprite.self_modulate.is_equal_approx(Color.WHITE), "ending ability targeting clears the Wraith replacement warning")
 	model.global_turn_number = 4
 	await model.run_autonomous_phase("white")
 	var view := game.get_node("CanvasLayer/ChessBoard") as ChessBoardView

@@ -6,6 +6,7 @@ const ACTIVE_ABILITY_ID: StringName = &"summon_wraith"
 const PASSIVE_ABILITY_NAME := "Lingering Malice"
 const SUMMON_WRAITH_DAMAGE := 1
 const WRAITH_MOVE_INTERVAL_ROUNDS := 3
+const MAX_ACTIVE_WRAITHS := 2
 
 var bonus_step_used_in_action := false
 
@@ -24,15 +25,20 @@ func has_active_ability() -> bool:
 	return true
 
 func is_active_ability_ready() -> bool:
-	return super.is_active_ability_ready() and model != null and not model.has_autonomous_entity_from_source(piece_id, &"wraith")
+	return super.is_active_ability_ready() and model != null
 
 func get_active_ability_targets() -> Array:
 	var targets: Array = []
-	if model == null or model.has_autonomous_entity_from_source(piece_id, &"wraith"):
+	if model == null:
 		return targets
+	var replacement := model.get_wraith_replacement_candidate(piece_id)
+	var unavailable_target_ids: Dictionary = {}
+	for entity in model.get_wraith_entities_from_source(piece_id):
+		if entity != replacement:
+			unavailable_target_ids[entity.target_piece_id] = true
 	for row in model.board:
 		for piece in row:
-			if piece != null and piece.color != color:
+			if piece != null and piece.color != color and not unavailable_target_ids.has(piece.piece_id):
 				targets.append(piece.coordinate)
 	return targets
 
