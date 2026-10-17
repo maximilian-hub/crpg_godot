@@ -965,7 +965,11 @@ func _resolve_socratic_turn_if_needed() -> bool:
 	return true
 		
 func promotion_check(piece: ModelPiece) -> void:
-	if piece.type != "pawn": return
+	# A King capture ends the battle before any landing consequence can replace
+	# the winning piece. In particular, a Pawn on the terminal rank must remain
+	# the attacker shown in the final position rather than begin promotion after
+	# the King-death presentation.
+	if has_defeated_king() or piece.type != "pawn": return
 	
 	var board_height = board.size()
 	var white_back_rank = get_back_rank("white")

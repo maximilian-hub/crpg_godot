@@ -73,6 +73,27 @@ func _test_quarterly_initiative_king() -> void:
 	await get_tree().process_frame
 	grant_model.free()
 
+	var terminal_capture_cases := [
+		{"name": "ordinary", "origin": Vector2i(1, 0), "target": Vector2i(0, 1), "grant": &""},
+		{"name": "Rook-elevated", "origin": Vector2i(3, 0), "target": Vector2i(0, 0), "grant": &"rook"},
+	]
+	for capture_case in terminal_capture_cases:
+		var terminal_model := _new_empty_model()
+		var winning_pawn := Pawn.new("white", capture_case.origin)
+		if capture_case.grant != &"":
+			winning_pawn.grant_movement_type(capture_case.grant)
+		var friendly_king := ClassicKing.new("white", Vector2i(7, 7))
+		var defeated_king := ClassicKing.new("black", capture_case.target)
+		terminal_model.add_piece(winning_pawn, winning_pawn.coordinate)
+		terminal_model.add_piece(friendly_king, friendly_king.coordinate)
+		terminal_model.add_piece(defeated_king, defeated_king.coordinate)
+		var promotions := {"count": 0}
+		terminal_model.piece_promotion_committed.connect(func(_old_piece, _new_piece, _gate): promotions.count += 1)
+		_expect(await terminal_model.submit_move(winning_pawn, capture_case.target), capture_case.name + " Pawn can deliver a terminal-rank killing blow")
+		_expect(terminal_model.battle_over and terminal_model.board[capture_case.target.x][capture_case.target.y] == winning_pawn, capture_case.name + " Pawn remains on the defeated King's square when battle ends")
+		_expect(promotions.count == 0 and winning_pawn.type == "pawn", capture_case.name + " Pawn does not promote after defeating the King")
+		terminal_model.free()
+
 	var fourth_turn_model := _new_empty_model()
 	var exempt_quarterly := QuarterlyInitiativeKing.new("white", Vector2i(7, 7))
 	var exempt_recipient := Bishop.new("white", Vector2i(5, 5))
