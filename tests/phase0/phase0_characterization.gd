@@ -45,6 +45,7 @@ func _run_suite() -> void:
 	await _test_ai_configuration_and_turns()
 	await _test_black_view_hand_presentation()
 	await _test_nonlethal_attack_presentation()
+	await _test_regular_capture_lethal_king_hp_presentation()
 	await _test_arakne_spike_burst()
 	await _test_arakne_spike_burst_lethal_knockoff()
 	await _test_arakne_spike_burst_lethal_king()
@@ -799,6 +800,38 @@ func _test_nonlethal_attack_presentation() -> void:
 	_expect(rook_view.position.is_equal_approx(original_position), "attack animation returns the PieceView to its original position")
 	_expect(rig.position.is_equal_approx(rig._offscreen_rest_position(context.view.get_world_scale() * rig.art_scale_multiplier)), "ranged attack retreats to the shared lower-right hand rest position")
 	_expect(model.current_turn == "black" and not model.action_in_progress, "turn completes after the attack returns")
+	await _destroy_game(context.game)
+
+
+func _test_regular_capture_lethal_king_hp_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	minotaur.current_hp = rook.attack_power
+	_reset_battle(model, context.controller, [rook, minotaur])
+	var rook_view: Node2D = context.adapter.get_piece_view(rook)
+	var minotaur_view: Node2D = context.adapter.get_piece_view(minotaur)
+	var hp_bar = minotaur_view.get_node("HpBar")
+	var death_profile: Resource = context.adapter.king_death_profile.duplicate(true)
+	death_profile.death_sound = null
+	death_profile.red_blink_count = 1
+	death_profile.blink_on_duration = 0.01
+	death_profile.blink_off_duration = 0.01
+	death_profile.pre_death_hold_duration = 0.01
+	death_profile.stone_fade_duration = 0.02
+	death_profile.tremor_slowdown_duration = 0.01
+	death_profile.result_delay = 0.03
+	death_profile.rift_speed = 10000.0
+	context.adapter.king_death_profile = death_profile
+	var observation := {"hp_at_contact": -1}
+	context.view.player_hand_rig.attack_contact.connect(func(piece_node: Node2D):
+		if piece_node == rook_view:
+			observation.hp_at_contact = hp_bar.current_hp
+	)
+	context.controller.select_piece(rook)
+	await context.controller._on_square_clicked(minotaur.coordinate)
+	_expect(observation.hp_at_contact == 0, "a regular piece's lethal King capture reduces the visible HP bar to zero at contact")
 	await _destroy_game(context.game)
 
 

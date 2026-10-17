@@ -536,10 +536,10 @@ func _on_piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, fro
 			death_effect.death_beat_reached.connect(defender_magic.disable_effects, CONNECT_ONE_SHOT)
 		var death_contact := func():
 			# Lethal captures bypass ModelPiece.take_damage(), so reproduce the
-			# ordinary hit feedback explicitly at physical contact. The splatter
-			# scene owns the universal hurt sound as well as the blood animation.
-			_present_damage_splatter(defender, defender_node)
-			king_fatal_impact_presented.emit()
+			# ordinary hit feedback explicitly at physical contact, including an
+			# HP display of zero. The splatter scene owns the universal hurt sound
+			# as well as the blood animation.
+			_present_piece_damage(defender, 0)
 			presentation.mark_impact()
 			if is_charge_impact:
 				_disperse_pending_charge_aura(attacker, attacker_node)
