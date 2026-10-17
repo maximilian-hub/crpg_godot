@@ -20,6 +20,9 @@ func configure(value: Resource, scale_factor: float) -> void:
 	z_as_relative = false
 
 func fly(start: Vector2, finish: Vector2, duration_scale := 1.0) -> void:
+	await fly_arc(start, finish, Vector2.ZERO, duration_scale)
+
+func fly_arc(start: Vector2, finish: Vector2, arc_offset: Vector2, duration_scale := 1.0) -> void:
 	position = start.round()
 	rotation = (finish - start).angle() + deg_to_rad(profile.rotation_offset_degrees)
 	projectile = AnimatedSprite2D.new()
@@ -35,7 +38,13 @@ func fly(start: Vector2, finish: Vector2, duration_scale := 1.0) -> void:
 	_play_sound(profile.projectile_sound, profile.projectile_volume_db)
 	var duration := start.distance_to(finish) / maxf(profile.travel_speed * world_scale, 1.0)
 	travel_tween = create_tween()
-	travel_tween.tween_method(func(p: float): position = start.lerp(finish, p).round(), 0.0, 1.0, duration * duration_scale)
+	var control := (start + finish) * 0.5 + arc_offset * world_scale
+	travel_tween.tween_method(func(p: float):
+		var inverse := 1.0 - p
+		position = (inverse * inverse * start + 2.0 * inverse * p * control + p * p * finish).round()
+		var tangent := 2.0 * inverse * (control - start) + 2.0 * p * (finish - control)
+		rotation = tangent.angle() + deg_to_rad(profile.rotation_offset_degrees)
+	, 0.0, 1.0, duration * duration_scale)
 	await travel_tween.finished
 	travel_tween = null
 	position = finish.round()

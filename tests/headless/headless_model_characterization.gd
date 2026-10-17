@@ -1,5 +1,7 @@
 extends Node
 
+const ArcherKing := preload("res://scripts/pieces/archer_king.gd")
+
 var failures: Array[String] = []
 var checks: int = 0
 
@@ -42,6 +44,47 @@ func _run() -> void:
 	await _test_rhetorician_rules_and_lunacy()
 	await _test_cannon_king_arc_mortar()
 	await _test_quarterly_initiative_king()
+	await _test_archer_king()
+
+func _test_archer_king() -> void:
+	_expect(ChessPieceCatalog.create_piece(&"archer_king", "white", Vector2i.ZERO) is ArcherKing, "the piece catalog constructs Archer King positions and palette selections")
+	var attack_model := _new_empty_model()
+	var archer := ArcherKing.new("white", Vector2i(4, 4))
+	var adjacent_enemy := Pawn.new("black", Vector2i(3, 4))
+	var ranged_enemy := Pawn.new("black", Vector2i(1, 4))
+	ranged_enemy.max_hp = 2
+	ranged_enemy.current_hp = 2
+	attack_model.add_piece(archer, archer.coordinate)
+	attack_model.add_piece(adjacent_enemy, adjacent_enemy.coordinate)
+	attack_model.add_piece(ranged_enemy, ranged_enemy.coordinate)
+	_expect(archer.max_hp == 2 and archer.current_cooldown == 4, "Archer King starts with two HP and Volley on a four-turn cooldown")
+	_expect(adjacent_enemy.coordinate not in attack_model.get_legal_moves(archer), "Sharpshooter has no traditional adjacent attack")
+	_expect(ranged_enemy.coordinate in attack_model.get_legal_moves(archer), "Sharpshooter attacks targets two to four squares away")
+	_expect(await attack_model.submit_move(archer, ranged_enemy.coordinate), "Sharpshooter accepts its ranged attack")
+	_expect(archer.coordinate == Vector2i(4, 4) and attack_model.board[4][4] == archer and attack_model.board[1][4] == ranged_enemy and ranged_enemy.current_hp == 1, "Sharpshooter deals one damage without moving the Archer King")
+	attack_model.free()
+
+	var volley_model := _new_empty_model()
+	var volley_archer := ArcherKing.new("white", Vector2i(7, 7))
+	volley_model.add_piece(volley_archer, volley_archer.coordinate)
+	for row in range(0, 3):
+		for column in range(8):
+			var durable_target := ClassicKing.new("black", Vector2i(row, column))
+			durable_target.max_hp = 2
+			durable_target.current_hp = 2
+			volley_model.add_piece(durable_target, durable_target.coordinate)
+	volley_archer.set_cooldown(0)
+	volley_model.set_archer_volley_random_seed(4404)
+	var selected: Array[Vector2i] = []
+	var destroyed := {"count": 0}
+	volley_model.archer_volley_committed.connect(func(_king, targets, _gate): selected.assign(targets))
+	volley_model.piece_destroyed.connect(func(piece):
+		if piece.color == "black": destroyed.count += 1)
+	_expect(await volley_model.submit_active_ability(volley_archer, volley_archer.coordinate), "Volley of Arrows is cast by selecting the Archer King")
+	_expect(selected.size() == 6 and selected.all(func(coord): return coord.x >= 0 and coord.x <= 2), "Volley selects six unique squares between the enemy front and rear rows")
+	_expect(destroyed.count == 0 and selected.all(func(coord): return volley_model.board[coord.x][coord.y].current_hp == 1), "Volley deals exactly one damage to every occupied selected square, including Kings")
+	_expect(volley_archer.cooldown_reset_pending, "Volley schedules its four-turn cooldown")
+	volley_model.free()
 
 func _test_quarterly_initiative_king() -> void:
 	var efficiency_model := _new_empty_model()

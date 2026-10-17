@@ -1,7 +1,13 @@
 extends Node
 class_name ChessPresentationAdapter
 
+const ArcherKing := preload("res://scripts/pieces/archer_king.gd")
+
 signal king_fatal_impact_presented()
+signal archer_volley_projectile_presented(phase: StringName, index: int)
+signal archer_volley_knockoff_state_changed(piece: ModelPiece, active: bool)
+signal archer_volley_target_presented(target: Vector2i, index: int)
+signal archer_volley_fall_state_changed(active: bool)
 
 const KingDeathProfile := preload("res://scripts/view/chess_king_death_profile.gd")
 const DEFAULT_KING_DEATH_PROFILE := preload("res://assets/chess_king_death.tres")
@@ -102,6 +108,7 @@ func _ready() -> void:
 	model.piece_castling_committed.connect(_on_piece_castling_committed)
 	model.piece_capture_committed.connect(_on_piece_capture_committed)
 	model.piece_attack_committed.connect(_on_piece_attack_committed)
+	model.archer_attack_committed.connect(_on_archer_attack_committed)
 	model.piece_promotion_committed.connect(_on_piece_promotion_committed)
 	model.piece_destroyed.connect(_on_piece_destroyed)
 	model.piece_transformed.connect(_on_piece_transformed)
@@ -110,6 +117,7 @@ func _ready() -> void:
 	model.piece_recovered.connect(_on_piece_recovered)
 	model.ability_started.connect(_on_ability_started)
 	model.targeted_ability_committed.connect(_on_targeted_ability_committed)
+	model.archer_volley_committed.connect(_on_archer_volley_committed)
 	model.reaction_selection_preparing.connect(_on_reaction_selection_preparing)
 	model.reaction_selection_committed.connect(_on_reaction_selection_committed)
 	model.reaction_queued.connect(_on_reaction_queued)
@@ -631,6 +639,46 @@ func _on_piece_attack_committed(piece: ModelPiece, defender: ModelPiece, from: V
 	gate.release()
 
 
+func _on_archer_attack_committed(attacker: ArcherKing, defender: ModelPiece, _from: Vector2i, _to: Vector2i, presentation) -> void:
+	var attacker_view := get_piece_view(attacker) as PieceView
+	var defender_view := get_piece_view(defender) as PieceView
+	var spike_profile := ability_presentations.find_profile(&"arakne_king", &"spike_burst") as ChessSpecialMovePresentationProfile
+	if not presentation_policy.should_hold_completion_gate() or not is_instance_valid(attacker_view) or not is_instance_valid(defender_view) or spike_profile == null:
+		return
+	presentation.claim()
+	var lethal := defender.current_hp <= 1
+	if lethal and not defender is KingPiece:
+		pending_projectile_defeats[defender] = defender_view
+	pending_attack_damage_visuals[defender] = []
+	var projectile_profile := spike_profile.resolved_projectile_profile().duplicate(true) as ChessProjectilePresentationProfile
+	var projectile := ChessProjectileEffect.new()
+	projectile.name = "ArcherSharpshooterArrow"
+	view.add_child(projectile)
+	projectile.configure(projectile_profile, view.get_world_scale())
+	var start := attacker_view.get_anchor_position_in(view, attacker_view.get_body_anchor())
+	var finish := defender_view.get_anchor_position_in(view, defender_view.get_body_anchor())
+	var lift := Vector2(0.0, -maxf(48.0, start.distance_to(finish) * 0.3))
+	await projectile.fly_arc(start, finish, lift, presentation_policy.duration_scale())
+	projectile.play_impact(view, finish, presentation_policy.duration_scale(), true)
+	presentation.mark_impact()
+	await get_tree().process_frame
+	_flush_pending_attack_damage(defender)
+	pending_attack_damage_visuals.erase(defender)
+	var knockoff_completion: CompletionGate = null
+	if lethal and not defender is KingPiece and is_instance_valid(defender_view):
+		knockoff_completion = CompletionGate.new()
+		knockoff_completion.hold()
+		knockoff_completion.close()
+		_play_archer_volley_knockoff(defender, defender_view, attacker_view, projectile_profile, 0, knockoff_completion)
+	await projectile.wait_for_impact()
+	projectile.queue_free()
+	if knockoff_completion != null:
+		await knockoff_completion.wait_until_released()
+		pending_projectile_defeats.erase(defender)
+		if is_instance_valid(defender_view): view.remove_piece(defender_view)
+	presentation.finish_aftermath()
+
+
 func _on_piece_destroyed(piece: ModelPiece) -> void:
 	pending_attack_damage_visuals.erase(piece)
 	pending_charge_aura_impacts.erase(piece)
@@ -870,6 +918,108 @@ func _play_targeted_projectile(context, source_view: PieceView, target_view: Pie
 	if is_instance_valid(magic):
 		await magic.finish_commanded_ability_hand()
 	context.finish_aftermath()
+
+
+func _on_archer_volley_committed(king: ArcherKing, targets: Array[Vector2i], completion: CompletionGate) -> void:
+	if not presentation_policy.should_hold_completion_gate():
+		return
+	var source_view := get_piece_view(king) as PieceView
+	var spike_profile := ability_presentations.find_profile(&"arakne_king", &"spike_burst") as ChessSpecialMovePresentationProfile
+	if not is_instance_valid(source_view) or spike_profile == null:
+		return
+	completion.hold()
+	var projectile_profile := spike_profile.resolved_projectile_profile().duplicate(true) as ChessProjectilePresentationProfile
+	projectile_profile.travel_speed = maxf(projectile_profile.travel_speed, 1400.0)
+	var world_scale := view.get_world_scale()
+	var launch_origin := source_view.get_anchor_position_in(view, source_view.get_body_anchor())
+	var presented_targets: Array[Vector2i] = targets.duplicate()
+	presented_targets.sort_custom(func(a: Vector2i, b: Vector2i):
+		var a_position := view.grid_to_screen(a.x, a.y)
+		var b_position := view.grid_to_screen(b.x, b.y)
+		return a_position.x < b_position.x if not is_equal_approx(a_position.x, b_position.x) else a_position.y < b_position.y
+	)
+	var launch_projectiles: Array[ChessProjectileEffect] = []
+	for index in range(presented_targets.size()):
+		var projectile := ChessProjectileEffect.new()
+		projectile.name = "ArcherVolleyLaunch"
+		view.add_child(projectile)
+		archer_volley_projectile_presented.emit(&"launch", index)
+		projectile.configure(projectile_profile, world_scale)
+		launch_projectiles.append(projectile)
+		var spread := (float(index) - float(presented_targets.size() - 1) * 0.5) * 18.0 * world_scale
+		projectile.fly(launch_origin, Vector2(launch_origin.x + spread, -80.0), presentation_policy.duration_scale())
+	await get_tree().create_timer(0.28 * presentation_policy.duration_scale()).timeout
+	for projectile in launch_projectiles:
+		if is_instance_valid(projectile): projectile.queue_free()
+	await get_tree().create_timer(0.18 * presentation_policy.duration_scale()).timeout
+	var fall_completions: Array[CompletionGate] = []
+	for index in range(presented_targets.size()):
+		var target := presented_targets[index]
+		archer_volley_target_presented.emit(target, index)
+		var fall_completion := CompletionGate.new()
+		fall_completion.hold()
+		fall_completion.close()
+		fall_completions.append(fall_completion)
+		_play_archer_volley_fall(target, index, source_view, projectile_profile, fall_completion)
+		if index < presented_targets.size() - 1:
+			await get_tree().create_timer(0.055 * presentation_policy.duration_scale()).timeout
+	for fall_completion in fall_completions:
+		await fall_completion.wait_until_released()
+	completion.release()
+
+
+func _play_archer_volley_fall(target: Vector2i, index: int, source_view: PieceView, projectile_profile: ChessProjectilePresentationProfile, completion: CompletionGate) -> void:
+	var finish := view.grid_to_screen(target.x, target.y)
+	var falling := ChessProjectileEffect.new()
+	falling.name = "ArcherVolleyArrow"
+	view.add_child(falling)
+	archer_volley_projectile_presented.emit(&"fall", index)
+	archer_volley_fall_state_changed.emit(true)
+	falling.configure(projectile_profile, view.get_world_scale())
+	await falling.fly(Vector2(finish.x, -70.0), finish, presentation_policy.duration_scale())
+	falling.play_impact(view, finish, presentation_policy.duration_scale(), true)
+	var occupant: ModelPiece = model.board[target.x][target.y]
+	var occupant_view := get_piece_view(occupant) as PieceView
+	var knockoff_completion: CompletionGate = null
+	if occupant != null and occupant.current_hp <= 1 and not occupant is KingPiece and is_instance_valid(occupant_view):
+		silently_removed_piece_views[occupant] = true
+		knockoff_completion = CompletionGate.new()
+		knockoff_completion.hold()
+		knockoff_completion.close()
+		_play_archer_volley_knockoff(occupant, occupant_view, source_view, projectile_profile, index, knockoff_completion)
+	await falling.wait_for_impact()
+	falling.queue_free()
+	archer_volley_fall_state_changed.emit(false)
+	if knockoff_completion != null:
+		await knockoff_completion.wait_until_released()
+	completion.release()
+
+
+func _play_archer_volley_knockoff(piece: ModelPiece, piece_view: PieceView, source_view: PieceView, projectile_profile: ChessProjectilePresentationProfile, index: int, completion: CompletionGate) -> void:
+	if not is_instance_valid(piece_view):
+		completion.release()
+		return
+	archer_volley_knockoff_state_changed.emit(piece, true)
+	var world_scale := view.get_world_scale()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(model.position_revision) * 7919 + index * 104729 + 17
+	var trajectory := ChessKingMagicController.build_ballistic_knockoff(
+		source_view.position, piece_view.position, piece_view.position, view.get_viewport_rect().size,
+		ChessKingMagicController.piece_visual_radius(piece_view), projectile_profile.knockoff_horizontal_speed * world_scale,
+		projectile_profile.knockoff_upward_speed * world_scale, projectile_profile.knockoff_gravity * world_scale, rng)
+	var origin := piece_view.position
+	var rotation_start := piece_view.rotation
+	var side: int = trajectory.side
+	piece_view.z_index = ChessBoardView.BOARD_EFFECT_Z + 1
+	var knockoff := create_tween()
+	knockoff.tween_method(func(time: float):
+		if not is_instance_valid(piece_view): return
+		piece_view.position = ChessKingMagicController.ballistic_position(origin, trajectory.initial_velocity, trajectory.gravity, time).round()
+		piece_view.rotation = rotation_start + deg_to_rad(projectile_profile.knockoff_angular_speed * side) * time
+	, 0.0, trajectory.duration, trajectory.duration * presentation_policy.duration_scale())
+	await knockoff.finished
+	archer_volley_knockoff_state_changed.emit(piece, false)
+	completion.release()
 
 
 func context_seed(source: Vector2, target: Vector2) -> int:

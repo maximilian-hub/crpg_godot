@@ -13,6 +13,7 @@ const PIECE_PLACEMENT_PROFILE := preload("res://scripts/view/chess_piece_placeme
 const SETUP_LAB_SCRIPT := preload("res://tools/dev_chess_setup/chess_setup_lab.gd")
 const PROJECTILE_LAB_SCRIPT := preload("res://tools/dev_chess_projectile/chess_projectile_lab.gd")
 const SPECIAL_MOVE_DIRECTOR := preload("res://scripts/view/chess_special_move_director.gd")
+const ArcherKing := preload("res://scripts/pieces/archer_king.gd")
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -46,6 +47,8 @@ func _run_suite() -> void:
 	await _test_black_view_hand_presentation()
 	await _test_nonlethal_attack_presentation()
 	await _test_regular_capture_lethal_king_hp_presentation()
+	await _test_archer_sharpshooter_presentation()
+	await _test_archer_volley_presentation()
 	await _test_arakne_spike_burst()
 	await _test_arakne_spike_burst_lethal_knockoff()
 	await _test_arakne_spike_burst_lethal_king()
@@ -832,6 +835,74 @@ func _test_regular_capture_lethal_king_hp_presentation() -> void:
 	context.controller.select_piece(rook)
 	await context.controller._on_square_clicked(minotaur.coordinate)
 	_expect(observation.hp_at_contact == 0, "a regular piece's lethal King capture reduces the visible HP bar to zero at contact")
+	await _destroy_game(context.game)
+
+
+func _test_archer_volley_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var archer := ArcherKing.new("white", Vector2i(7, 7))
+	var pieces: Array[ModelPiece] = [archer]
+	for row in range(0, 3):
+		for column in range(8):
+			pieces.append(Pawn.new("black", Vector2i(row, column)))
+	_reset_battle(model, context.controller, pieces)
+	var archer_view := context.adapter.get_piece_view(archer) as PieceView
+	_expect(archer_view.sprite.texture.resource_path == "res://assets/pieces/kings/white_archer.png", "Archer King uses its authored army-color artwork")
+	archer.set_cooldown(0)
+	model.set_archer_volley_random_seed(4404)
+	var observation := {"launches": 0, "falls": 0, "markers": 0, "active_falls": 0, "max_falls": 0, "active_knockoffs": 0, "max_knockoffs": 0, "unfinished_at_destruction": 0, "presented_targets": []}
+	context.adapter.archer_volley_projectile_presented.connect(func(phase: StringName, _index: int):
+		if phase == &"launch": observation.launches += 1
+		elif phase == &"fall": observation.falls += 1
+	)
+	context.view.child_entered_tree.connect(func(child: Node):
+		if child is ChessCaptureClackEffect: observation.markers += 1
+	)
+	context.adapter.archer_volley_knockoff_state_changed.connect(func(_piece: ModelPiece, active: bool):
+		observation.active_knockoffs += 1 if active else -1
+		observation.max_knockoffs = maxi(observation.max_knockoffs, observation.active_knockoffs)
+	)
+	context.adapter.archer_volley_fall_state_changed.connect(func(active: bool):
+		observation.active_falls += 1 if active else -1
+		observation.max_falls = maxi(observation.max_falls, observation.active_falls)
+	)
+	context.adapter.archer_volley_target_presented.connect(func(target: Vector2i, _index: int): observation.presented_targets.append(target))
+	model.piece_destroyed.connect(func(piece: ModelPiece):
+		if piece.color == "black" and observation.active_knockoffs > 0:
+			observation.unfinished_at_destruction += 1
+	)
+	await model.submit_active_ability(archer, archer.coordinate)
+	_expect(observation.launches == 6, "Volley fires six arrows upward together in its launch phase")
+	_expect(observation.falls == 6 and observation.markers == 6, "Volley drops six vertical arrows with Spike Burst hit markers")
+	_expect(observation.max_falls >= 2 and observation.active_falls == 0, "Volley summons falling arrows in quick succession while earlier arrows remain onscreen")
+	var presented_x_positions: Array = observation.presented_targets.map(func(target: Vector2i): return context.view.grid_to_screen(target.x, target.y).x)
+	var presented_left_to_right := true
+	for index in range(1, presented_x_positions.size()):
+		presented_left_to_right = presented_left_to_right and presented_x_positions[index - 1] <= presented_x_positions[index]
+	_expect(presented_left_to_right, "Volley presents its selected target squares from displayed left to right")
+	_expect(observation.max_knockoffs >= 2 and observation.active_knockoffs == 0 and observation.unfinished_at_destruction == 0, "Volley knockoffs overlap independently and all clear the viewport before struck pieces are removed")
+	await _destroy_game(context.game)
+
+
+func _test_archer_sharpshooter_presentation() -> void:
+	var context := await _create_game()
+	var model: ChessBoardModel = context.model
+	var archer := ArcherKing.new("white", Vector2i(6, 1))
+	var target := Pawn.new("black", Vector2i(3, 4))
+	_reset_battle(model, context.controller, [archer, target])
+	var observation := {"projectiles": 0, "markers": 0, "hand_grabs": 0, "knockoffs": 0}
+	context.view.child_entered_tree.connect(func(child: Node):
+		if String(child.name).begins_with("ArcherSharpshooterArrow"): observation.projectiles += 1
+		if child is ChessCaptureClackEffect: observation.markers += 1
+	)
+	context.view.player_hand_rig.piece_grabbed.connect(func(_piece: Node2D): observation.hand_grabs += 1)
+	context.adapter.archer_volley_knockoff_state_changed.connect(func(piece: ModelPiece, active: bool):
+		if piece == target and active: observation.knockoffs += 1
+	)
+	await model.submit_move(archer, target.coordinate)
+	_expect(observation.projectiles == 1 and observation.markers == 1, "Sharpshooter reuses one Spike Burst projectile and hit marker")
+	_expect(observation.hand_grabs == 0 and observation.knockoffs == 1, "Sharpshooter attacks without a hand and knocks a lethally struck piece off the board")
 	await _destroy_game(context.game)
 
 

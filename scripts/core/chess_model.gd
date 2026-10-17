@@ -4,6 +4,7 @@ class_name ChessBoardModel
 
 const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_ability_presentation_context.gd")
 const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
+const ArcherKing := preload("res://scripts/pieces/archer_king.gd")
 
 ## Serves as the Model layer of our chess games.
 # You may notice a lack of Checking; this is intentional.
@@ -35,6 +36,7 @@ signal skitter_step_started(piece: ArakneKing, from: Vector2i, to: Vector2i)
 signal piece_castling_committed(king: KingPiece, rook: ModelPiece, king_from: Vector2i, king_to: Vector2i, rook_from: Vector2i, rook_to: Vector2i, presentation)
 signal piece_capture_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, captured_at: Vector2i, presentation)
 signal piece_attack_committed(attacker: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, completion: CompletionGate)
+signal archer_attack_committed(attacker: ArcherKing, defender: ModelPiece, from: Vector2i, to: Vector2i, presentation)
 signal piece_promotion_committed(old_piece: ModelPiece, new_piece: ModelPiece, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
 signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: int)
@@ -42,6 +44,7 @@ signal piece_stunned(piece: ModelPiece, duration: int)
 signal piece_recovered(piece: ModelPiece)
 signal ability_started(piece: KingPiece, ability_name: String, completion: CompletionGate)
 signal targeted_ability_committed(context)
+signal archer_volley_committed(king: ArcherKing, targets: Array[Vector2i], completion: CompletionGate)
 signal ability_effect_resolved(piece: KingPiece, ability_name: String, affected_coords: Array)
 signal reaction_selection_requested(calling_piece: ModelPiece, action_type: String, targets: Array)
 signal reaction_selection_preparing(calling_piece: ModelPiece, action_type: String, targets: Array, completion: CompletionGate)
@@ -75,6 +78,7 @@ var lunacy_by_color := {"white": 0, "black": 0}
 var socratic_turns_by_color := {"white": 0, "black": 0}
 var _resolving_socratic_turn := false
 var _lunacy_rng := RandomNumberGenerator.new()
+var _archer_volley_rng := RandomNumberGenerator.new()
 var global_turn_number := 1
 var pending_movement_type_grant: Dictionary = {}
 signal movement_type_selection_resolved(movement_type: StringName)
@@ -110,6 +114,7 @@ var custom_size = 16
 
 func _ready():
 	_lunacy_rng.randomize()
+	_archer_volley_rng.randomize()
 	initialize_battle()
 
 func initialize_battle() -> bool:
@@ -363,6 +368,14 @@ func announce_piece_attack(piece: ModelPiece, defender: ModelPiece, from: Vector
 	# may hold the action open and reveal its visual feedback at contact.
 	await defender.take_damage(damage)
 	await completion.wait_until_released()
+
+func announce_archer_attack(attacker: ArcherKing, defender: ModelPiece, from: Vector2i, to: Vector2i) -> void:
+	var presentation := PieceArrivalContext.new([attacker], true, true)
+	archer_attack_committed.emit(attacker, defender, from, to, presentation)
+	presentation.close_claims()
+	await presentation.wait_for_impact()
+	await defender.take_damage(1)
+	await presentation.wait_for_aftermath()
 
 func announce_piece_summoned(piece: ModelPiece) -> void:
 	var completion := CompletionGate.new()
@@ -1077,7 +1090,9 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 
 		var damage = attacker.attack_power
 
-		if defender.current_hp <= damage: # predict defender's death
+		if attacker is ArcherKing:
+			await announce_archer_attack(attacker, defender, attacker.coordinate, to)
+		elif defender.current_hp <= damage: # predict defender's death
 			var defender_instance = defender # Keep a reference before the board changes
 			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
 
@@ -1085,6 +1100,39 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 
 		else: # Defender survives, takes damage, attacker stays put
 			await announce_piece_attack(attacker, defender, attacker.coordinate, to, damage)
+
+func set_archer_volley_random_seed(seed: int) -> void:
+	_archer_volley_rng.seed = seed
+
+func get_archer_volley_candidates(enemy_color: String) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var rear_rank := get_back_rank(enemy_color)
+	var furthest_rank := rear_rank
+	for row in board:
+		for piece in row:
+			if piece == null or piece.color != enemy_color:
+				continue
+			furthest_rank = mini(furthest_rank, piece.coordinate.x) if enemy_color == "white" else maxi(furthest_rank, piece.coordinate.x)
+	var first := mini(rear_rank, furthest_rank)
+	var last := maxi(rear_rank, furthest_rank)
+	for row in range(first, last + 1):
+		for column in range(board[row].size()):
+			result.append(Vector2i(row, column))
+	return result
+
+func resolve_archer_volley(archer: ArcherKing) -> void:
+	var candidates := get_archer_volley_candidates("black" if archer.color == "white" else "white")
+	var targets: Array[Vector2i] = []
+	while not candidates.is_empty() and targets.size() < ArcherKing.VOLLEY_SQUARE_COUNT:
+		targets.append(candidates.pop_at(_archer_volley_rng.randi_range(0, candidates.size() - 1)))
+	var completion := CompletionGate.new()
+	archer_volley_committed.emit(archer, targets, completion)
+	completion.close()
+	await completion.wait_until_released()
+	for target in targets:
+		var occupant: ModelPiece = board[target.x][target.y]
+		if occupant != null:
+			await occupant.take_damage(1)
 		
 		
 		

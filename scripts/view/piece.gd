@@ -22,6 +22,7 @@ const PIECE_ART_PROFILES := {
 	&"rhetorician_king": preload("res://assets/pieces/profiles/rhetorician_king.tres"),
 	&"cannon_king": preload("res://assets/pieces/profiles/cannon_king.tres"),
 	&"quarterly_initiative_king": preload("res://assets/pieces/profiles/quarterly_initiative_king.tres"),
+	&"archer_king": preload("res://assets/pieces/profiles/archer_king.tres"),
 }
 
 var coordinate: Vector2i
