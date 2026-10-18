@@ -3,6 +3,7 @@ class_name SquareView
 
 const DEFAULT_HIGHLIGHT_COLOR := Color(0.905882, 0.745098, 0.0470588, 0.392157)
 const AREA_PREVIEW_COLOR := Color(1.0, 0.20, 0.04, 0.72)
+const OBSCURED_HIGHLIGHT_COLOR := Color(0.92, 0.08, 0.08, 0.62)
 
 var coordinate: Vector2i
 signal square_clicked(coordinate: Vector2i)
@@ -42,6 +43,10 @@ func highlight() -> void:
 
 func highlight_area_preview() -> void:
 	$Highlight.color = AREA_PREVIEW_COLOR
+	$Highlight.visible = true
+
+func highlight_obscured() -> void:
+	$Highlight.color = OBSCURED_HIGHLIGHT_COLOR
 	$Highlight.visible = true
 
 func clear_highlight() -> void:

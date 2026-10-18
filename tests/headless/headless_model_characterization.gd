@@ -22,6 +22,8 @@ func _run() -> void:
 	await _test_initialization_and_move()
 	await _test_active_ability_cooldown_counts_full_turns()
 	_test_active_ability_cooldown_override()
+	_test_line_of_sight_map()
+	_test_catalog_direct_attack_parity()
 	await _test_forced_pass_after_action()
 	await _test_turn_entry_recovery_prevents_pass()
 	await _test_nonlethal_combat()
@@ -46,11 +48,85 @@ func _run() -> void:
 	await _test_quarterly_initiative_king()
 	await _test_archer_king()
 
+func _test_line_of_sight_map() -> void:
+	var model := _new_empty_model()
+	var origin := Vector2i(4, 1)
+	var open_map := model.get_visibility_map(origin)
+	_expect(open_map.size() == 64 and is_equal_approx(float(open_map[origin]), 1.0), "unlimited line of sight includes every square on an unobstructed board")
+	_expect(model.get_visibility_map(origin, 1.01).is_empty(), "visibility queries honor an explicit cutoff without changing the default")
+
+	var blocker := Pawn.new("white", Vector2i(4, 3))
+	model.add_piece(blocker, blocker.coordinate)
+	var blocked_map := model.get_visibility_map(origin)
+	_expect(blocker.coordinate in blocked_map, "an occupied destination remains visible")
+	_expect(Vector2i(4, 7) not in blocked_map, "a piece obscures squares directly behind it")
+	_expect(Vector2i(0, 7) in blocked_map, "piece occlusion does not hide unrelated far-side squares")
+
+	blocker.color = "black"
+	_expect(Vector2i(4, 7) not in model.get_visibility_map(origin), "friendly and enemy pieces block line of sight identically")
+	_expect(model.get_visibility_map(Vector2i(-1, 0)).is_empty(), "an invalid line-of-sight origin returns an empty map")
+
+	var corner_model := _new_empty_model()
+	var corner_origin := Vector2i(4, 4)
+	var adjacent_blocker := Pawn.new("white", Vector2i(3, 4))
+	corner_model.add_piece(adjacent_blocker, adjacent_blocker.coordinate)
+	var corner_map := corner_model.get_visibility_map(corner_origin, 0.5)
+	_expect(Vector2i(3, 3) in corner_map and Vector2i(3, 5) in corner_map, "a cardinally adjacent blocker permits corner peeking into both adjacent diagonals")
+	_expect(Vector2i(0, 0) in corner_map and Vector2i(1, 7) in corner_map, "corner peeking continues along both complete diagonals beside an adjacent blocker")
+	_expect(Vector2i(2, 4) not in corner_map, "the same adjacent blocker still obscures squares directly behind it")
+	var corridor_blocker := Pawn.new("black", Vector2i(2, 2))
+	corner_model.add_piece(corridor_blocker, corridor_blocker.coordinate)
+	corner_map = corner_model.get_visibility_map(corner_origin, 0.5)
+	_expect(corridor_blocker.coordinate in corner_map and Vector2i(1, 1) not in corner_map, "a farther piece on the diagonal remains visible and closes the corner-peek corridor behind itself")
+
+	var mirrored_model := _new_empty_model()
+	var reflected_model := _new_empty_model()
+	mirrored_model.add_piece(Pawn.new("white", Vector2i(3, 3)), Vector2i(3, 3))
+	reflected_model.add_piece(Pawn.new("black", Vector2i(3, 4)), Vector2i(3, 4))
+	var from_left := mirrored_model.get_visibility_map(Vector2i(3, 0))
+	var from_right := reflected_model.get_visibility_map(Vector2i(3, 7))
+	var symmetric := true
+	for coordinate in from_left:
+		var mirror := Vector2i(coordinate.x, 7 - coordinate.y)
+		if not from_right.has(mirror) or not is_equal_approx(float(from_left[coordinate]), float(from_right[mirror])):
+			symmetric = false
+			break
+	_expect(symmetric and from_left.size() == from_right.size(), "line-of-sight scores are symmetric across mirrored board positions")
+	model.free()
+	corner_model.free()
+	mirrored_model.free()
+	reflected_model.free()
+
+func _test_catalog_direct_attack_parity() -> void:
+	for type_id in ChessPieceCatalog.get_type_ids(true):
+		var model := _new_empty_model()
+		var origin := Vector2i(4, 4)
+		var piece := ChessPieceCatalog.create_piece(type_id, "white", origin)
+		model.add_piece(piece, origin)
+		var matches := true
+		for row_index in range(8):
+			for column_index in range(8):
+				var target := Vector2i(row_index, column_index)
+				if target == origin:
+					continue
+				var enemy := Pawn.new("black", target)
+				model.add_piece(enemy, target)
+				var legal_capture := target in model.get_legal_moves(piece)
+				var position := ChessAttackPosition.from_board(model.board)
+				var shared_attack := piece.can_directly_attack_square(origin, target, position)
+				if legal_capture != shared_attack:
+					matches = false
+				model.board[target.x][target.y] = null
+				model.unregister_piece(enemy)
+				enemy.free()
+		_expect(matches, "%s live captures match its shared projected direct-attack contract" % type_id)
+		model.free()
+
 func _test_archer_king() -> void:
 	_expect(ChessPieceCatalog.create_piece(&"archer_king", "white", Vector2i.ZERO) is ArcherKing, "the piece catalog constructs Archer King positions and palette selections")
 	var attack_model := _new_empty_model()
 	var archer := ArcherKing.new("white", Vector2i(4, 4))
-	var adjacent_enemy := Pawn.new("black", Vector2i(3, 4))
+	var adjacent_enemy := Pawn.new("black", Vector2i(5, 5))
 	var ranged_enemy := Pawn.new("black", Vector2i(1, 4))
 	ranged_enemy.max_hp = 2
 	ranged_enemy.current_hp = 2
@@ -63,6 +139,22 @@ func _test_archer_king() -> void:
 	_expect(await attack_model.submit_move(archer, ranged_enemy.coordinate), "Sharpshooter accepts its ranged attack")
 	_expect(archer.coordinate == Vector2i(4, 4) and attack_model.board[4][4] == archer and attack_model.board[1][4] == ranged_enemy and ranged_enemy.current_hp == 1, "Sharpshooter deals one damage without moving the Archer King")
 	attack_model.free()
+
+	var los_model := _new_empty_model()
+	var los_archer := ArcherKing.new("white", Vector2i(4, 4))
+	var adjacent_blocker := Pawn.new("white", Vector2i(3, 4))
+	var obscured_enemy := Pawn.new("black", Vector2i(1, 4))
+	var diagonal_enemy := Pawn.new("black", Vector2i(1, 1))
+	los_model.add_piece(los_archer, los_archer.coordinate)
+	los_model.add_piece(adjacent_blocker, adjacent_blocker.coordinate)
+	los_model.add_piece(obscured_enemy, obscured_enemy.coordinate)
+	los_model.add_piece(diagonal_enemy, diagonal_enemy.coordinate)
+	var los_attacks := los_model.get_legal_moves(los_archer)
+	_expect(obscured_enemy.coordinate not in los_attacks, "Sharpshooter cannot attack an enemy obscured inside its two-to-four-square range")
+	_expect(diagonal_enemy.coordinate in los_attacks, "Sharpshooter can attack along an open corner-peek diagonal inside its range")
+	var los_position := ChessAttackPosition.from_board(los_model.board)
+	_expect(not los_archer.can_directly_attack_square(Vector2i(7, 7), Vector2i(2, 7), los_position), "Sharpshooter projected threats stop beyond four squares")
+	los_model.free()
 
 	var volley_model := _new_empty_model()
 	var volley_archer := ArcherKing.new("white", Vector2i(7, 7))

@@ -5,6 +5,7 @@ class_name ChessBoardModel
 const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_ability_presentation_context.gd")
 const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
 const ArcherKing := preload("res://scripts/pieces/archer_king.gd")
+const LineOfSight := preload("res://scripts/core/chess_line_of_sight.gd")
 
 ## Serves as the Model layer of our chess games.
 # You may notice a lack of Checking; this is intentional.
@@ -127,6 +128,12 @@ func initialize_battle() -> bool:
 
 func is_settled() -> bool:
 	return not action_in_progress and not autonomous_phase_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and selection_queue.is_empty()
+
+
+## Unlimited-range piece-occlusion map. Consumers may apply their own range or
+## targeting rules to the retained coordinates.
+func get_visibility_map(origin: Vector2i, minimum_visibility := LineOfSight.DEFAULT_VISIBILITY_THRESHOLD) -> Dictionary:
+	return LineOfSight.build_visibility_map(board, origin, minimum_visibility)
 
 func capture_position() -> ChessPosition:
 	var position := ChessPosition.new()

@@ -41,20 +41,7 @@ func _init(_color: String, _coordinate: Vector2i):
 	
 func get_legal_moves() -> Array:
 	var row = coordinate.x
-	var col = coordinate.y
-
-	var moves := []
-
-	for dr in range(-1, 2):
-		for dc in range(-1, 2):
-			if dr == 0 and dc == 0:
-				continue
-			var r = row + dr
-			var c = col + dc
-			if model.is_in_bounds(r, c):
-				var target = model.board[r][c]
-				if target == null or target.color != color:
-					moves.append(Vector2i(r, c))
+	var moves := get_native_direct_move_destinations()
 
 	if not has_moved:
 		for castle_target in [Vector2i(row, 2), Vector2i(row, 6)]:
@@ -62,6 +49,13 @@ func get_legal_moves() -> Array:
 				moves.append(castle_target)
 
 	return moves
+
+
+func can_natively_attack_square(origin: Vector2i, target: Vector2i, position: ChessAttackPosition) -> bool:
+	if not position.is_in_bounds(target):
+		return false
+	var delta := target - origin
+	return delta != Vector2i.ZERO and absi(delta.x) <= 1 and absi(delta.y) <= 1
 
 
 ## Sets the current cooldown and emits the appropriate signal.

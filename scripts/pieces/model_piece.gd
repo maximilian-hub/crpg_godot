@@ -2,6 +2,8 @@
 extends Node
 class_name ModelPiece
 
+const DirectAttackRules := preload("res://scripts/core/chess_direct_attack_rules.gd")
+
 signal movement_type_granted(movement_type: StringName)
 
 # Base class for all pieces.
@@ -79,6 +81,49 @@ func restore_custom_state(_state: Dictionary) -> void:
 	
 func get_legal_moves() -> Array:
 	return []
+
+## Side-effect-free direct-attack contract used by both live rules and AI
+## projections. Active abilities are deliberately outside this interface.
+func can_directly_attack_square(origin: Vector2i, target: Vector2i, position: ChessAttackPosition) -> bool:
+	if can_natively_attack_square(origin, target, position):
+		return true
+	for movement_type in granted_movement_types:
+		if DirectAttackRules.movement_type_attacks_square(movement_type, color, origin, target, position):
+			return true
+	return false
+
+
+func can_natively_attack_square(origin: Vector2i, target: Vector2i, position: ChessAttackPosition) -> bool:
+	match get_position_type_id():
+		&"pawn", &"bone_pawn":
+			return DirectAttackRules.movement_type_attacks_square(&"pawn", color, origin, target, position)
+		&"knight":
+			return DirectAttackRules.movement_type_attacks_square(&"knight", color, origin, target, position)
+		&"bishop":
+			return DirectAttackRules.movement_type_attacks_square(&"bishop", color, origin, target, position)
+		&"rook":
+			return DirectAttackRules.movement_type_attacks_square(&"rook", color, origin, target, position)
+		&"queen":
+			return DirectAttackRules.queen_attacks_square(origin, target, position)
+	return false
+
+
+func get_live_attack_position() -> ChessAttackPosition:
+	return ChessAttackPosition.from_board(model.board)
+
+
+func get_native_direct_move_destinations() -> Array:
+	var destinations: Array = []
+	var position := get_live_attack_position()
+	for row_index in range(position.board_size.x):
+		for column_index in range(position.board_size.y):
+			var target := Vector2i(row_index, column_index)
+			if not can_natively_attack_square(coordinate, target, position):
+				continue
+			var occupant = position.get_occupant(target)
+			if occupant == null or position.get_color(target) != color:
+				destinations.append(target)
+	return destinations
 
 ## Ordered landing paths for legal movement actions. Most pieces have one
 ## landing; multi-step pieces override this without flattening route identity.

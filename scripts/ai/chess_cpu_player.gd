@@ -526,34 +526,9 @@ func _current_board_state() -> Dictionary:
 
 
 func _piece_attacks_square(piece: ModelPiece, origin: Vector2i, target: Vector2i, board: Dictionary) -> bool:
-	var delta := target - origin
-	match piece.type:
-		"pawn", "bone_pawn":
-			var direction := -1 if piece.color == "white" else 1
-			return delta.x == direction and absi(delta.y) == 1
-		"knight":
-			return Vector2i(absi(delta.x), absi(delta.y)) in [Vector2i(1, 2), Vector2i(2, 1)]
-		"rook":
-			return (delta.x == 0 or delta.y == 0) and _ray_is_clear(origin, target, board)
-		"bishop":
-			return absi(delta.x) == absi(delta.y) and _ray_is_clear(origin, target, board)
-		"queen":
-			return (delta.x == 0 or delta.y == 0 or absi(delta.x) == absi(delta.y)) and _ray_is_clear(origin, target, board)
-		_:
-			return piece is KingPiece and _is_adjacent(origin, target)
-
-
-func _ray_is_clear(origin: Vector2i, target: Vector2i, board: Dictionary) -> bool:
-	var delta := target - origin
-	if delta == Vector2i.ZERO:
-		return false
-	var step := Vector2i(signi(delta.x), signi(delta.y))
-	var coordinate := origin + step
-	while coordinate != target:
-		if board.has(coordinate):
-			return false
-		coordinate += step
-	return true
+	var board_size := Vector2i(model.board.size(), model.board[0].size() if not model.board.is_empty() else 0)
+	var position := ChessAttackPosition.from_occupancy(board_size, board)
+	return piece.can_directly_attack_square(origin, target, position)
 
 
 func _charge_attacks_square(origin: Vector2i, target: Vector2i, board: Dictionary) -> bool:

@@ -7,30 +7,26 @@ func _init(p_color: String, p_coordinate: Vector2i):
 	
 
 func get_legal_moves() -> Array:
-	var row = coordinate.x
-	var col = coordinate.y
+	return _ordered_sliding_moves([
+		Vector2i(-1, -1), Vector2i(-1, 1),
+		Vector2i(1, 1), Vector2i(1, -1),
+	])
 
+func _ordered_sliding_moves(directions: Array) -> Array:
 	var moves := []
-	var directions = [
-		Vector2i(-1, -1),
-		Vector2i(-1, 1),
-		Vector2i(1, 1),
-		Vector2i(1, -1),
-	]
-
-	for dir in directions:
-		var r = row + dir.x
-		var c = col + dir.y
-		while model.is_in_bounds(r, c):
-			var target = model.board[r][c]
-			if target == null:
-				moves.append(Vector2i(r, c))
-			elif target.color == color:
+	var position := get_live_attack_position()
+	for direction in directions:
+		var target: Vector2i = coordinate + direction
+		while position.is_in_bounds(target):
+			if not can_natively_attack_square(coordinate, target, position):
+				break
+			var occupant = position.get_occupant(target)
+			if occupant == null:
+				moves.append(target)
+			elif position.get_color(target) != color:
+				moves.append(target)
 				break
 			else:
-				moves.append(Vector2i(r, c))
 				break
-			r += dir.x
-			c += dir.y
-
+			target += direction
 	return moves

@@ -11,6 +11,7 @@ func get_legal_moves() -> Array:
 	var col = coordinate.y
 	var direction = -1 if color == "white" else 1
 	var moves := []
+	var attack_position := get_live_attack_position()
 
 	var forward_one = row + direction
 	
@@ -19,10 +20,11 @@ func get_legal_moves() -> Array:
 
 	for dc in [-1, 1]:
 		var diag_col = col + dc
-		if model.is_in_bounds(forward_one, diag_col):
+		var attack_target := Vector2i(forward_one, diag_col)
+		if can_natively_attack_square(coordinate, attack_target, attack_position):
 			var target = model.board[forward_one][diag_col]
 			if target != null and target.color != color:
-				moves.append(Vector2i(forward_one, diag_col))
+				moves.append(attack_target)
 	
 
 

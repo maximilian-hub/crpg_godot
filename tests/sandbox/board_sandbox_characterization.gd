@@ -31,7 +31,43 @@ func _ready() -> void:
 	_check(not sandbox.ai_side_buttons["white"].button_pressed and sandbox.ai_side_buttons["black"].button_pressed, "AI side toggles show the default Black selection", failures)
 	_check(sandbox.speed_value_label.text == "Normal", "animation slider labels its startup state", failures)
 	_check(not sandbox.cooldowns_check.button_pressed and not model.active_ability_cooldowns_disabled, "active cooldown override starts disabled", failures)
+	_check(sandbox.visibility_check != null and not sandbox.visibility_check.button_pressed, "visibility viewer starts disabled", failures)
+	_check(is_equal_approx(sandbox.visibility_threshold_spin.value, 0.6), "visibility viewer exposes the default 0.6 cutoff", failures)
 	_check(not sandbox.grip_check.button_pressed, "Grip Anchors starts visibly unchecked", failures)
+	var visibility_origin := Vector2i(4, 4)
+	var visible_map := model.get_visibility_map(visibility_origin)
+	var obscured_coordinate := Vector2i(-1, -1)
+	for row_index in range(model.board.size()):
+		for column_index in range(model.board[row_index].size()):
+			var candidate := Vector2i(row_index, column_index)
+			if not visible_map.has(candidate):
+				obscured_coordinate = candidate
+				break
+		if obscured_coordinate.x >= 0:
+			break
+	sandbox.visibility_check.set_pressed(true)
+	sandbox.interaction._on_square_entered(visibility_origin)
+	sandbox._on_visibility_square_entered(visibility_origin)
+	var origin_square := _find_square(view, visibility_origin)
+	var obscured_square := _find_square(view, obscured_coordinate)
+	var origin_highlight := origin_square.get_node("Highlight") as Polygon2D
+	var obscured_highlight := obscured_square.get_node("Highlight") as Polygon2D
+	_check(origin_highlight.visible and origin_highlight.color.is_equal_approx(SquareView.DEFAULT_HIGHLIGHT_COLOR), "visibility viewer colors visible squares with the usual yellow", failures)
+	_check(obscured_coordinate.x >= 0 and obscured_highlight.visible and obscured_highlight.color.is_equal_approx(SquareView.OBSCURED_HIGHLIGHT_COLOR), "visibility viewer colors obscured squares red", failures)
+	sandbox.visibility_threshold_spin.value = 0.0
+	_check(obscured_highlight.color.is_equal_approx(SquareView.DEFAULT_HIGHLIGHT_COLOR), "changing the LOS cutoff immediately refreshes the hovered visibility map", failures)
+	sandbox.visibility_threshold_spin.value = 0.6
+	sandbox.interaction._on_square_exited(visibility_origin)
+	sandbox._on_visibility_square_exited(visibility_origin)
+	await get_tree().process_frame
+	_check(not origin_highlight.visible and not obscured_highlight.visible, "leaving the board clears the visibility overlay", failures)
+	sandbox.visibility_check.set_pressed(true)
+	sandbox.interaction._on_square_entered(visibility_origin)
+	sandbox._on_visibility_square_entered(visibility_origin)
+	sandbox._set_mode(sandbox.Mode.PLAY)
+	_check(not sandbox.visibility_check.button_pressed and sandbox.visibility_check.disabled and not origin_highlight.visible, "entering Play Mode turns off and clears the edit-only visibility viewer", failures)
+	_check(not sandbox.visibility_threshold_spin.editable, "LOS cutoff control is edit-only", failures)
+	sandbox._set_mode(sandbox.Mode.EDIT)
 	_check(sandbox.editor.selected_tool == BoardEditorController.Tool.CURSOR and sandbox.piece_palette.cursor_item.selected_state, "Cursor starts visibly selected in the palette", failures)
 	_check(sandbox.piece_palette.cursor_item.shortcut_label.text == "Esc", "Cursor tool displays its Escape shortcut", failures)
 	_check(sandbox.piece_palette.delete_item != null and not sandbox.piece_palette.delete_item.selected_state, "Delete tool appears beside Cursor", failures)
@@ -287,6 +323,12 @@ func _count(model: ChessBoardModel) -> int:
 		for piece in row:
 			if piece != null: count += 1
 	return count
+
+func _find_square(view: ChessBoardView, coordinate: Vector2i) -> SquareView:
+	for square in view.get_node("Squares").get_children():
+		if square.coordinate == coordinate:
+			return square as SquareView
+	return null
 
 func _timers_nonnegative(model: ChessBoardModel) -> bool:
 	for row in model.board:

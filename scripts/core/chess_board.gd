@@ -574,6 +574,16 @@ func clear_area_preview() -> void:
 		else:
 			square.clear_highlight()
 
+func show_visibility_overlay(visible_coordinates: Array) -> void:
+	for square in $Squares.get_children():
+		if square.coordinate in visible_coordinates:
+			square.highlight()
+		else:
+			square.highlight_obscured()
+
+func clear_visibility_overlay() -> void:
+	clear_area_preview()
+
 func move_piece_node(piece_node: Node, to: Vector2i) -> void:
 	if not is_instance_valid(piece_node):
 		printerr("move_piece_node: Invalid piece node.")

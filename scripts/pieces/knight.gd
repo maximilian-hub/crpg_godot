@@ -6,21 +6,19 @@ func _init(p_color: String, p_coordinate: Vector2i):
 	type = "knight"
 
 func get_legal_moves() -> Array:
-	var row = coordinate.x
-	var col = coordinate.y
 	var moves := []
+	var position := get_live_attack_position()
 	var offsets = [
 		Vector2i(2, 1), Vector2i(2, -1),
 		Vector2i(-2, 1), Vector2i(-2, -1),
 		Vector2i(1, 2), Vector2i(-1, 2),
 		Vector2i(1, -2), Vector2i(-1, -2),
 	]
-
 	for offset in offsets:
-		var target_pos = Vector2i(row, col) + offset
-		if model.is_in_bounds(target_pos.x, target_pos.y):
-			var target = model.board[target_pos.x][target_pos.y]
-			if target == null or target.color != color:
-				moves.append(target_pos)
-
+		var target: Vector2i = coordinate + Vector2i(offset)
+		if not can_natively_attack_square(coordinate, target, position):
+			continue
+		var occupant = position.get_occupant(target)
+		if occupant == null or position.get_color(target) != color:
+			moves.append(target)
 	return moves

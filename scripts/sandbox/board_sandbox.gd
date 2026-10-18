@@ -51,6 +51,8 @@ var step_button: Button
 var speed_slider: HSlider
 var speed_value_label: Label
 var cooldowns_check: CheckButton
+var visibility_check: CheckButton
+var visibility_threshold_spin: SpinBox
 var grip_check: CheckButton
 var grip_profile_option: OptionButton
 var grip_x_spin: SpinBox
@@ -82,6 +84,8 @@ func _ready() -> void:
 	editor.model = model
 	var board_view: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
 	interaction.configure(model, editor, board_view)
+	board_view.editor_square_entered.connect(_on_visibility_square_entered)
+	board_view.editor_square_exited.connect(_on_visibility_square_exited)
 	board_view.square_selected.connect(_release_gui_focus)
 	editor.edit_committed.connect(_on_edit_committed)
 	editor.tool_selection_changed.connect(func(_tool: BoardEditorController.Tool, _type_id: StringName, _color: String): _refresh_control_states())
@@ -159,6 +163,20 @@ func _build_desktop_panel() -> void:
 	cooldowns_check.tooltip_text = "Keep King active abilities ready for sandbox testing"
 	cooldowns_check.toggled.connect(_on_cooldowns_toggled)
 	panel.add_child(cooldowns_check)
+
+	visibility_check = CheckButton.new()
+	visibility_check.text = "Visibility Viewer"
+	visibility_check.tooltip_text = "Show visible squares in yellow and obscured squares in red"
+	visibility_check.toggled.connect(_on_visibility_toggled)
+	panel.add_child(visibility_check)
+	visibility_threshold_spin = SpinBox.new()
+	visibility_threshold_spin.min_value = 0.0
+	visibility_threshold_spin.max_value = 1.0
+	visibility_threshold_spin.step = 0.01
+	visibility_threshold_spin.value = ChessLineOfSight.DEFAULT_VISIBILITY_THRESHOLD
+	visibility_threshold_spin.tooltip_text = "Minimum LOS score required for a square to appear visible"
+	visibility_threshold_spin.value_changed.connect(_on_visibility_threshold_changed)
+	_add_labeled_control("LOS Cutoff", visibility_threshold_spin)
 
 	grip_check = CheckButton.new()
 	grip_check.text = "Grip Anchors"
@@ -618,6 +636,9 @@ func _set_mode(next: Mode) -> void:
 	if not model.is_settled():
 		return
 	mode = next
+	if mode != Mode.EDIT and visibility_check != null:
+		visibility_check.set_pressed_no_signal(false)
+		_clear_visibility_overlay()
 	editor.set_enabled(mode == Mode.EDIT)
 	if piece_palette != null:
 		piece_palette.set_palette_enabled(mode == Mode.EDIT)
@@ -640,6 +661,7 @@ func _on_settled_action_completed() -> void:
 
 func _on_board_rebuilt(_board: Array) -> void:
 	_clear_ai_thoughts()
+	call_deferred("_refresh_visibility_overlay")
 	_refresh_control_states()
 
 func undo() -> void:
@@ -771,6 +793,45 @@ func _on_cooldowns_toggled(disabled: bool) -> void:
 	_clear_ai_thoughts()
 	_refresh_control_states()
 
+func _on_visibility_toggled(enabled: bool) -> void:
+	if not enabled or mode != Mode.EDIT:
+		_clear_visibility_overlay()
+		_refresh_control_states()
+		return
+	_refresh_visibility_overlay()
+	_refresh_control_states()
+
+func _on_visibility_threshold_changed(_value: float) -> void:
+	_refresh_visibility_overlay()
+
+func _on_visibility_square_entered(coordinate: Vector2i) -> void:
+	if visibility_check == null or not visibility_check.button_pressed or mode != Mode.EDIT:
+		return
+	_show_visibility_overlay(coordinate)
+
+func _on_visibility_square_exited(coordinate: Vector2i) -> void:
+	if visibility_check != null and visibility_check.button_pressed and mode == Mode.EDIT:
+		call_deferred("_refresh_visibility_overlay")
+
+func _refresh_visibility_overlay() -> void:
+	if visibility_check == null or not visibility_check.button_pressed or mode != Mode.EDIT:
+		return
+	if model.is_in_bounds(interaction.hovered.x, interaction.hovered.y):
+		_show_visibility_overlay(interaction.hovered)
+	else:
+		_clear_visibility_overlay()
+
+func _show_visibility_overlay(origin: Vector2i) -> void:
+	var cutoff := visibility_threshold_spin.value if visibility_threshold_spin != null else ChessLineOfSight.DEFAULT_VISIBILITY_THRESHOLD
+	var visibility := model.get_visibility_map(origin, cutoff)
+	var visible_coordinates: Array = visibility.keys()
+	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
+	board.show_visibility_overlay(visible_coordinates)
+
+func _clear_visibility_overlay() -> void:
+	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
+	board.clear_visibility_overlay()
+
 func _selected_grip_profile() -> PieceArtProfile:
 	if grip_profile_option == null or grip_profile_option.selected < 0 or grip_profile_option.selected >= grip_profile_ids.size():
 		return null
@@ -872,6 +933,11 @@ func _refresh_control_states() -> void:
 	if grip_check != null:
 		grip_check.set_pressed_no_signal(board.show_piece_grip_anchors)
 		grip_check.add_theme_color_override("font_color", COLOR_CYAN if board.show_piece_grip_anchors else Color.WHITE)
+	if visibility_check != null:
+		visibility_check.disabled = not editing
+		visibility_check.add_theme_color_override("font_color", COLOR_CYAN if visibility_check.button_pressed else Color.WHITE)
+	if visibility_threshold_spin != null:
+		visibility_threshold_spin.editable = editing
 	if turn_option != null:
 		turn_option.select(0 if model.current_turn == "white" else 1)
 	piece_palette.set_palette_enabled(editing)

@@ -12,6 +12,7 @@ func _ready() -> void:
 	await _test_cpu_rejects_friendly_charge()
 	await _test_cpu_avoids_doomed_bone_pawn_targets()
 	await _test_damaged_king_prioritizes_safety()
+	await _test_damaged_king_recognizes_archer_threats()
 	await _test_rhetorician_ai_layer()
 	await _test_quarterly_initiative_ai_layer()
 	await _test_cpu_avoids_arc_mortar_impacts()
@@ -189,6 +190,40 @@ func _test_damaged_king_prioritizes_safety() -> void:
 	thought.path.assign(defensive.path)
 	cpu.last_thought = thought
 	_expect(await cpu.execute_thought() and cpu.king_safety_turns_remaining == 2, "a successful defensive primary action consumes one safety turn")
+	cpu.queue_free()
+	model.free()
+
+
+func _test_damaged_king_recognizes_archer_threats() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var king := ClassicKing.new("black", Vector2i(4, 4))
+	var archer := ArcherKing.new("white", Vector2i(4, 0))
+	var blocking_rook := Rook.new("black", Vector2i(6, 2))
+	var greedy_rook := Rook.new("black", Vector2i(7, 7))
+	var queen := Queen.new("white", Vector2i(7, 6))
+	for piece in [king, archer, blocking_rook, greedy_rook, queen]:
+		model.add_piece(piece, piece.coordinate)
+	var cpu := _add_cpu(model, "black", false)
+	var actions := model.get_legal_primary_actions("black")
+	var blocking_action: ChessPrimaryAction
+	var greedy_action: ChessPrimaryAction
+	for action in actions:
+		if action.piece == blocking_rook and action.target == Vector2i(4, 2):
+			blocking_action = action
+		elif action.piece == greedy_rook and action.target == queen.coordinate:
+			greedy_action = action
+	_expect(blocking_action != null and cpu._projected_king_threat_count(blocking_action) == 0, "projected occupancy recognizes a block against Sharpshooter")
+	_expect(greedy_action != null and cpu._projected_king_threat_count(greedy_action) == 1, "projected safety recognizes an unobstructed Sharpshooter threat")
+	_expect(cpu.choose_primary_action(actions) == greedy_action, "Sharpshooter awareness does not change ordinary greedy policy before the King is damaged")
+	cpu.king_safety_turns_remaining = 3
+	var defensive := cpu.choose_primary_action(actions)
+	_expect(defensive != null and defensive != greedy_action and cpu._projected_king_threat_count(defensive) == 0, "a damaged CPU King responds to Sharpshooter through the shared attack rule")
+
+	var elevated_pawn := Pawn.new("white", Vector2i(2, 4))
+	elevated_pawn.grant_movement_type(&"rook")
+	var projected := {elevated_pawn.coordinate: elevated_pawn, king.coordinate: king}
+	_expect(cpu._piece_attacks_square(elevated_pawn, elevated_pawn.coordinate, king.coordinate, projected), "projected threat evaluation includes granted movement types")
 	cpu.queue_free()
 	model.free()
 

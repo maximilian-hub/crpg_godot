@@ -20,6 +20,7 @@ func _init(color: String, coord: Vector2i):
 
 func get_legal_moves() -> Array:
 	var moves: Array = []
+	var attack_position := get_live_attack_position()
 	for row in range(model.board.size()):
 		for column in range(model.board[row].size()):
 			var target := Vector2i(row, column)
@@ -27,9 +28,18 @@ func get_legal_moves() -> Array:
 			var occupant: ModelPiece = model.board[row][column]
 			if distance == 1 and occupant == null:
 				moves.append(target)
-			elif distance >= 2 and distance <= 4 and occupant != null and occupant.color != color:
+			elif can_natively_attack_square(coordinate, target, attack_position) and occupant != null and occupant.color != color:
 				moves.append(target)
 	return moves
+
+func can_natively_attack_square(origin: Vector2i, target: Vector2i, position: ChessAttackPosition) -> bool:
+	if not position.is_in_bounds(target):
+		return false
+	var delta := target - origin
+	var distance := maxi(absi(delta.x), absi(delta.y))
+	if distance < 2 or distance > 4:
+		return false
+	return position.get_visibility_map(origin).has(target)
 
 func has_active_ability() -> bool:
 	return true
