@@ -190,6 +190,8 @@ func choose_primary_action(actions: Array[ChessPrimaryAction]) -> ChessPrimaryAc
 func _is_acceptable_primary_action(action: ChessPrimaryAction) -> bool:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		return true
+	if action.piece is WraithKing:
+		return _wraith_summon_is_tactically_available(action.piece as WraithKing)
 	if action.piece is MinotaurKing:
 		var occupant: ModelPiece = model.board[action.target.x][action.target.y]
 		return occupant == null or occupant.color != action.piece.color
@@ -433,21 +435,25 @@ func _get_piece_value(piece: ModelPiece) -> float:
 func _projected_king_threat_count(action: ChessPrimaryAction) -> int:
 	var board := _project_board_after(action)
 	var king_coordinate := Vector2i(-1, -1)
+	var king: ModelPiece
 	for coordinate in board:
 		var occupant = board[coordinate]
 		if occupant is ModelPiece and occupant.is_king and occupant.color == controlled_color:
 			king_coordinate = coordinate
+			king = occupant
 			break
 	if king_coordinate.x < 0:
 		return 999
+	return _king_threat_count(king, king_coordinate, board)
 
+
+func _king_threat_count(king: ModelPiece, king_coordinate: Vector2i, board: Dictionary) -> int:
 	var threats := 0
 	for coordinate in board:
 		var piece = board[coordinate]
-		if not piece is ModelPiece or piece.color == controlled_color:
+		if not piece is ModelPiece or piece.color == king.color:
 			continue
-		var projected_king = board.get(king_coordinate)
-		if projected_king is RhetoricianKing and _is_adjacent(coordinate, king_coordinate):
+		if king is RhetoricianKing and _is_adjacent(coordinate, king_coordinate):
 			continue
 		if _piece_attacks_square(piece, coordinate, king_coordinate, board):
 			threats += 1
@@ -457,6 +463,18 @@ func _projected_king_threat_count(action: ChessPrimaryAction) -> int:
 		elif piece is MinotaurKing and piece.is_active_ability_ready() and _charge_attacks_square(coordinate, king_coordinate, board):
 			threats += 1
 	return threats
+
+
+func _wraith_summon_is_tactically_available(king: WraithKing) -> bool:
+	if model.get_wraith_entities_from_source(king.piece_id).size() >= WraithKing.MAX_ACTIVE_WRAITHS:
+		return false
+	var board := _current_board_state()
+	if _king_threat_count(king, king.coordinate, board) > 0:
+		return false
+	var opposing_king := model.get_king(model.get_other_color(king.color))
+	if opposing_king != null and _king_threat_count(opposing_king, opposing_king.coordinate, board) > 0:
+		return false
+	return true
 
 
 func _project_board_after(action: ChessPrimaryAction) -> Dictionary:

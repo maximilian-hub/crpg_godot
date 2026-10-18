@@ -15,6 +15,7 @@ func _ready() -> void:
 	await _test_damaged_king_recognizes_archer_threats()
 	await _test_rhetorician_ai_layer()
 	await _test_quarterly_initiative_ai_layer()
+	await _test_wraith_king_ai_layer()
 	await _test_cpu_avoids_arc_mortar_impacts()
 	await _test_forced_pass_with_no_legal_action()
 	await _test_forced_pass_deadlock_draw()
@@ -371,6 +372,54 @@ func _test_quarterly_initiative_ai_layer() -> void:
 	priority_model.free()
 
 
+func _test_wraith_king_ai_layer() -> void:
+	var slot_model := _new_empty_model()
+	var wraith_king := WraithKing.new("white", Vector2i(4, 4))
+	var enemy_king := ClassicKing.new("black", Vector2i(0, 0))
+	slot_model.add_piece(wraith_king, wraith_king.coordinate)
+	slot_model.add_piece(enemy_king, enemy_king.coordinate)
+	var slot_cpu := _add_cpu(slot_model, "white", false)
+	var summon_action := _first_active_action(slot_model.get_legal_primary_actions("white"), wraith_king)
+	_expect(summon_action != null and slot_cpu._is_acceptable_primary_action(summon_action), "Wraith AI may summon while a ghost slot is open and neither King is threatened")
+	var first_wraith := ChessAutonomousEntityState.new()
+	first_wraith.type_id = &"wraith"
+	first_wraith.source_piece_id = wraith_king.piece_id
+	slot_model.autonomous_entities.append(first_wraith)
+	_expect(slot_cpu._is_acceptable_primary_action(summon_action), "Wraith AI may fill its second open ghost slot")
+	var second_wraith := ChessAutonomousEntityState.new()
+	second_wraith.type_id = &"wraith"
+	second_wraith.source_piece_id = wraith_king.piece_id
+	slot_model.autonomous_entities.append(second_wraith)
+	_expect(not slot_cpu._is_acceptable_primary_action(summon_action), "Wraith AI does not replace a ghost when both slots are occupied")
+	var slot_choice := slot_cpu.choose_primary_action(slot_model.get_legal_primary_actions("white"))
+	_expect(slot_choice != null and slot_choice.kind == ChessPrimaryAction.Kind.MOVE, "a full Wraith roster makes the AI choose an ordinary move")
+	slot_cpu.queue_free()
+	slot_model.free()
+
+	var threatened_model := _new_empty_model()
+	var threatened_wraith := WraithKing.new("white", Vector2i(4, 4))
+	threatened_model.add_piece(threatened_wraith, threatened_wraith.coordinate)
+	threatened_model.add_piece(ClassicKing.new("black", Vector2i(0, 0)), Vector2i(0, 0))
+	threatened_model.add_piece(Rook.new("black", Vector2i(4, 0)), Vector2i(4, 0))
+	var threatened_cpu := _add_cpu(threatened_model, "white", false)
+	var threatened_summon := _first_active_action(threatened_model.get_legal_primary_actions("white"), threatened_wraith)
+	_expect(threatened_summon != null and not threatened_cpu._is_acceptable_primary_action(threatened_summon), "Wraith AI does not summon while its own King is threatened")
+	threatened_cpu.queue_free()
+	threatened_model.free()
+
+	var attack_model := _new_empty_model()
+	var attacking_wraith := WraithKing.new("white", Vector2i(4, 4))
+	var attacked_king := ClassicKing.new("black", Vector2i(0, 7))
+	attack_model.add_piece(attacking_wraith, attacking_wraith.coordinate)
+	attack_model.add_piece(attacked_king, attacked_king.coordinate)
+	attack_model.add_piece(Rook.new("white", Vector2i(0, 0)), Vector2i(0, 0))
+	var attack_cpu := _add_cpu(attack_model, "white", false)
+	var attack_summon := _first_active_action(attack_model.get_legal_primary_actions("white"), attacking_wraith)
+	_expect(attack_summon != null and not attack_cpu._is_acceptable_primary_action(attack_summon), "Wraith AI does not summon while the opposing King is threatened")
+	attack_cpu.queue_free()
+	attack_model.free()
+
+
 func _test_cpu_avoids_arc_mortar_impacts() -> void:
 	var model := _new_empty_model()
 	model.global_turn_number = 3
@@ -633,6 +682,13 @@ func _has_action(actions: Array[ChessPrimaryAction], kind: ChessPrimaryAction.Ki
 		if action.kind == kind and action.piece == piece and (target == Vector2i(-1, -1) or action.target == target):
 			return true
 	return false
+
+
+func _first_active_action(actions: Array[ChessPrimaryAction], piece: ModelPiece) -> ChessPrimaryAction:
+	for action in actions:
+		if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.piece == piece:
+			return action
+	return null
 
 
 func _count_type(model: ChessBoardModel, type: String) -> int:
