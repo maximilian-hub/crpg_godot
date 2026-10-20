@@ -10,6 +10,7 @@ const RHETORICIAN_PULL_ALLY_ATTACK_BONUS := 8.0
 const RHETORICIAN_KNIGHT_CAPTURE_BONUS := 5.0
 const QUARTERLY_FREE_CYCLE_REWARD := 24.0
 const QUARTERLY_OFF_CYCLE_COST := 12.0
+const QUARTERLY_MIN_HP_SACRIFICE_ROUND := 15
 const QUARTERLY_PAWN_UPGRADE_REWARD := 8.0
 const QUARTERLY_QUEEN_HYBRID_REWARD := 11.0
 const QUARTERLY_UNPROTECTED_TARGET_REWARD := 12.0
@@ -199,8 +200,9 @@ func _is_acceptable_primary_action(action: ChessPrimaryAction) -> bool:
 		return not _is_doomed_bone_pawn_square(action.piece.color, action.target)
 	if action.piece is QuarterlyInitiativeKing:
 		var quarterly := action.piece as QuarterlyInitiativeKing
-		if model.global_turn_number % 4 != 0 and quarterly.current_hp <= 2:
-			return false
+		if model.global_turn_number % 4 != 0:
+			if model.global_turn_number < QUARTERLY_MIN_HP_SACRIFICE_ROUND or quarterly.current_hp <= 2:
+				return false
 		var recipient: ModelPiece = model.board[action.target.x][action.target.y]
 		return recipient != null and _best_quarterly_grant(recipient, [&"pawn", &"knight", &"bishop", &"rook"]).score > -INF
 	return true

@@ -343,8 +343,12 @@ func _test_quarterly_initiative_ai_layer() -> void:
 	tactical_model.add_piece(exposed_king, exposed_king.coordinate)
 	var tactical_cpu := _add_cpu(tactical_model, "white", false)
 	var off_cycle_actions := tactical_model.get_legal_primary_actions("white")
+	tactical_model.global_turn_number = 14
+	var early_choice := tactical_cpu.choose_primary_action(off_cycle_actions)
+	_expect(early_choice.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY, "Quarterly AI never sacrifices HP before round fifteen, even for a King-targeting grant")
+	tactical_model.global_turn_number = 15
 	var tactical_choice := tactical_cpu.choose_primary_action(off_cycle_actions)
-	_expect(tactical_choice.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and tactical_choice.target == tactical_pawn.coordinate, "Quarterly AI accepts off-cycle HP cost when a new moveset attacks the enemy King")
+	_expect(tactical_choice.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and tactical_choice.target == tactical_pawn.coordinate, "Quarterly AI may accept an off-cycle HP cost from round fifteen when a new moveset attacks the enemy King")
 	tactical_quarterly.current_hp = 2
 	var gated_choice := tactical_cpu.choose_primary_action(off_cycle_actions)
 	_expect(gated_choice.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY, "Quarterly AI never casts off-cycle at two or fewer HP, even for a King-targeting grant")
