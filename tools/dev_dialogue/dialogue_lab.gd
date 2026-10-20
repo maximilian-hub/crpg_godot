@@ -11,6 +11,8 @@ const PIXEL_OPERATOR_MONO_8_BOLD := preload("res://assets/ui/fonts/pixel_operato
 const PIXEL_OPERATOR := preload("res://assets/ui/fonts/pixel_operator/PixelOperator.ttf")
 const PIXEL_OPERATOR_BOLD := preload("res://assets/ui/fonts/pixel_operator/PixelOperator-Bold.ttf")
 const DIALOGUE_PATH := "res://content/dialogue/hood_greeting.dialog"
+const PORTRAIT_ROOT := "res://assets/ui/portraits"
+const PORTRAIT_EXTENSIONS := ["png", "jpg", "jpeg", "webp", "svg"]
 
 var dialogue_view
 var dialogue_presenter: DialoguePresenter
@@ -22,6 +24,8 @@ var voice_player
 var choice_sound_player
 var page_selector: OptionButton
 var event_selector: OptionButton
+var portrait_character_selector: OptionButton
+var portrait_expression_selector: OptionButton
 var placement_selector: OptionButton
 var speed_selector: OptionButton
 var font_selector: OptionButton
@@ -47,6 +51,7 @@ var lab_ui_visible := true
 var playing := true
 var current_portrait_id := ""
 var current_portrait_event_index := -1
+var preview_portrait_path := ""
 var current_font_label := "Pixel Operator 8 + Bold plaque"
 var logical_font_size := 8
 var last_voice_description := "none"
@@ -123,6 +128,12 @@ func _build_controls() -> void:
 	controls.add_child(source)
 	page_selector = _add_option(controls, "Page", [])
 	event_selector = _add_option(controls, "Portrait state", [])
+	var preview_heading := Label.new()
+	preview_heading.text = "Portrait asset preview"
+	preview_heading.add_theme_font_size_override("font_size", 14)
+	controls.add_child(preview_heading)
+	portrait_character_selector = _add_option(controls, "Character folder", [])
+	portrait_expression_selector = _add_option(controls, "Expression asset", [])
 	placement_selector = _add_option(controls, "Placement", ["Bottom", "Top", "Center", "Battle near", "Battle far"])
 	font_selector = _add_option(controls, "Dialogue font", ["Engine default", "Pixel Operator 8", "Pixel Operator 8 + Bold plaque", "Pixel Operator Mono 8 + Bold", "Pixel Operator + Bold"])
 	font_selector.select(2)
@@ -131,6 +142,8 @@ func _build_controls() -> void:
 	speed_selector.select(1)
 	page_selector.item_selected.connect(func(_index: int): _refresh_page())
 	event_selector.item_selected.connect(func(_index: int): _refresh_portrait_state())
+	portrait_character_selector.item_selected.connect(func(_index: int): _populate_portrait_expressions())
+	portrait_expression_selector.item_selected.connect(func(_index: int): _preview_selected_portrait())
 	placement_selector.item_selected.connect(func(index: int): dialogue_view.set_placement(index))
 	font_selector.item_selected.connect(_apply_font_candidate)
 	font_size_selector.item_selected.connect(_on_font_size_selected)
@@ -178,6 +191,7 @@ func _build_controls() -> void:
 	status_label.custom_minimum_size.x = 280
 	status_label.modulate = Color("b8bec5")
 	controls.add_child(status_label)
+	_populate_portrait_characters()
 
 
 func _add_option(parent: Control, label_text: String, values: Array[String]) -> OptionButton:
@@ -198,6 +212,65 @@ func _add_button(parent: Control, text: String, callback: Callable) -> Button:
 	button.pressed.connect(callback)
 	parent.add_child(button)
 	return button
+
+
+func _populate_portrait_characters() -> void:
+	portrait_character_selector.clear()
+	var directories := DirAccess.get_directories_at(PORTRAIT_ROOT)
+	directories.sort()
+	for directory in directories:
+		if not _portrait_files_in("%s/%s" % [PORTRAIT_ROOT, directory]).is_empty():
+			portrait_character_selector.add_item(directory.capitalize())
+			portrait_character_selector.set_item_metadata(portrait_character_selector.item_count - 1, directory)
+	if portrait_character_selector.item_count > 0:
+		portrait_character_selector.select(0)
+		_populate_portrait_expressions(false)
+
+
+func _populate_portrait_expressions(preview_first: bool = true) -> void:
+	portrait_expression_selector.clear()
+	if portrait_character_selector.item_count == 0:
+		return
+	var character_id: String = portrait_character_selector.get_item_metadata(portrait_character_selector.selected)
+	var directory := "%s/%s" % [PORTRAIT_ROOT, character_id]
+	for file_name in _portrait_files_in(directory):
+		var expression := file_name.get_basename()
+		var prefix := "%s_" % character_id
+		if expression.begins_with(prefix):
+			expression = expression.trim_prefix(prefix)
+		portrait_expression_selector.add_item(expression.replace("_", " ").capitalize())
+		portrait_expression_selector.set_item_metadata(portrait_expression_selector.item_count - 1, "%s/%s" % [directory, file_name])
+	if portrait_expression_selector.item_count > 0:
+		portrait_expression_selector.select(0)
+		if preview_first:
+			_preview_selected_portrait()
+
+
+func _portrait_files_in(directory: String) -> PackedStringArray:
+	var portrait_files := PackedStringArray()
+	for file_name in DirAccess.get_files_at(directory):
+		if PORTRAIT_EXTENSIONS.has(file_name.get_extension().to_lower()):
+			portrait_files.append(file_name)
+	portrait_files.sort()
+	return portrait_files
+
+
+func _preview_selected_portrait() -> void:
+	if portrait_expression_selector.item_count == 0:
+		return
+	preview_portrait_path = portrait_expression_selector.get_item_metadata(portrait_expression_selector.selected)
+	var texture := load(preview_portrait_path) as Texture2D
+	if texture == null:
+		status_label.text = "Could not load portrait asset: %s" % preview_portrait_path
+		return
+	current_portrait_id = portrait_expression_selector.get_item_text(portrait_expression_selector.selected)
+	current_portrait_event_index = -1
+	playing = false
+	session_runner.set_paused(true)
+	play_button.text = "Play"
+	dialogue_view.set_portrait(texture)
+	if conversation != null and not conversation.pages.is_empty():
+		_refresh_status(conversation.pages[page_selector.selected], current_portrait_id, -1)
 
 
 func _build_shadow_controls() -> void:
@@ -374,6 +447,12 @@ func _refresh_portrait_state() -> void:
 
 func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var event_description := "initial portrait" if visible_index < 0 else "event at visible character %d" % visible_index
+	var asset_description := "speaker catalog"
+	if not preview_portrait_path.is_empty():
+		var preview_texture := load(preview_portrait_path) as Texture2D
+		if preview_texture != null:
+			var preview_size := preview_texture.get_size()
+			asset_description = "%s (%dx%d, %.3f aspect)" % [preview_portrait_path, preview_size.x, preview_size.y, preview_size.x / preview_size.y]
 	var targets := PackedStringArray()
 	for choice in page.choices:
 		targets.append("%s → %s" % [choice.text, choice.target])
@@ -386,7 +465,7 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 	var overflow_state := "OVERFLOW" if dialogue_view.text_overflows() else "fits"
 	var motion_state := "reduced" if reduced_motion_toggle.button_pressed else ("animated" if animated_text_toggle.button_pressed else "disabled")
 	var choice_state := "inactive" if not session_runner.choices_are_active() else "selected %d/%d" % [session_runner.selected_choice_index() + 1, page.choices.size()]
-	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nMotion: %s\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s\nChoice state: %s\nLast choice: %s" % [
+	status_label.text = "Font: %s @ %d logical px\nConversation:\n  %s\nSpeaker ID: %s (%s)\nPortrait: %s\n  %s\nAsset: %s\nReveal: %d / %d (%s)\nNext delay: %.3fs\nLayout: %dx%d (%s)\nMotion: %s\nVoice requests: %d (%s)\nLast voice: %s\nPresentation: %s\nEvents: %d\nChoices: %s\nChoice state: %s\nLast choice: %s" % [
 		current_font_label,
 		logical_font_size,
 		conversation.id,
@@ -394,6 +473,7 @@ func _refresh_status(page, portrait_id: String, visible_index: int) -> void:
 		voice_asset_state,
 		_portrait_label(portrait_id),
 		event_description,
+		asset_description,
 		revealed,
 		page.text.length(),
 		reveal_state,
@@ -479,6 +559,7 @@ func _on_portrait_changed(portrait_id: String, visible_index: int) -> void:
 
 
 func _apply_portrait(portrait_id: String, visible_index: int) -> void:
+	preview_portrait_path = ""
 	current_portrait_id = portrait_id
 	current_portrait_event_index = visible_index
 	dialogue_view.set_portrait(_resolve_portrait(portrait_id))
