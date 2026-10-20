@@ -204,7 +204,10 @@ func _is_acceptable_primary_action(action: ChessPrimaryAction) -> bool:
 			if model.global_turn_number < QUARTERLY_MIN_HP_SACRIFICE_ROUND or quarterly.current_hp <= 2:
 				return false
 		var recipient: ModelPiece = model.board[action.target.x][action.target.y]
-		return recipient != null and _best_quarterly_grant(recipient, [&"pawn", &"knight", &"bishop", &"rook"]).score > -INF
+		if recipient == null:
+			return false
+		var options := _quarterly_options_for_current_cycle(recipient, [&"pawn", &"knight", &"bishop", &"rook"])
+		return _best_quarterly_grant(recipient, options).score > -INF
 	return true
 
 
@@ -272,11 +275,48 @@ func _arc_mortar_exposure(board: Dictionary) -> float:
 
 
 func _score_quarterly_action(recipient: ModelPiece) -> float:
-	var best := _best_quarterly_grant(recipient, [&"pawn", &"knight", &"bishop", &"rook"])
+	var options := _quarterly_options_for_current_cycle(recipient, [&"pawn", &"knight", &"bishop", &"rook"])
+	var best := _best_quarterly_grant(recipient, options)
 	if float(best.score) == -INF:
 		return -INF
 	var cycle_score := QUARTERLY_FREE_CYCLE_REWARD if model.global_turn_number % 4 == 0 else -QUARTERLY_OFF_CYCLE_COST
 	return cycle_score + float(best.score)
+
+
+func _quarterly_options_for_current_cycle(recipient: ModelPiece, options: Array) -> Array:
+	if model.global_turn_number % 4 == 0:
+		return options
+	return _quarterly_sacrifice_worthy_options(recipient, options)
+
+
+func _quarterly_sacrifice_worthy_options(recipient: ModelPiece, options: Array) -> Array[StringName]:
+	var worthy: Array[StringName] = []
+	for raw_option in options:
+		var option := StringName(raw_option)
+		if _quarterly_grant_is_sacrifice_worthy(recipient, option):
+			worthy.append(option)
+	return worthy
+
+
+func _quarterly_grant_is_sacrifice_worthy(recipient: ModelPiece, movement_type: StringName) -> bool:
+	if _quarterly_grant_is_redundant(recipient, movement_type):
+		return false
+	var native_moves: Array = recipient.get_legal_moves()
+	var board := _current_board_state()
+	var qualifying_fork_targets := 0
+	for destination in model._get_moves_as(recipient, movement_type):
+		if destination in native_moves:
+			continue
+		var target: ModelPiece = model.board[destination.x][destination.y]
+		if target == null or target.color == recipient.color:
+			continue
+		if target.is_king:
+			return true
+		if target.type in ["queen", "rook"] or (target.type in ["bishop", "knight"] and not _piece_is_protected(target, board)):
+			qualifying_fork_targets += 1
+			if qualifying_fork_targets >= 2:
+				return true
+	return false
 
 
 func _best_quarterly_grant(recipient: ModelPiece, options: Array) -> Dictionary:
@@ -654,7 +694,8 @@ func _on_reaction_selection_requested(calling_piece: ModelPiece, _action_type: S
 func _on_movement_type_selection_requested(king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName]) -> void:
 	if execution_mode == ExecutionMode.DISABLED or king.color != controlled_color or options.is_empty():
 		return
-	var best := _best_quarterly_grant(target, options)
+	var eligible_options := _quarterly_options_for_current_cycle(target, options)
+	var best := _best_quarterly_grant(target, eligible_options)
 	var best_options: Array = best.options
 	if best_options.is_empty():
 		return
