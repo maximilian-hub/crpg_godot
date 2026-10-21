@@ -32,6 +32,7 @@ var mobile_picker_pointer := -1
 var mobile_pressed_king_button: Button
 var mobile_picker_last_position := Vector2.ZERO
 var mobile_picker_scrolling := false
+var mobile_overlay_host: Control
 
 func configure_mobile_layout() -> void:
 	mobile_layout = true
@@ -130,10 +131,28 @@ func _layout_king_picker() -> void:
 	if king_picker == null:
 		return
 	var total_height := maxf(160.0, king_type_ids.size() * 58.0 + 12.0)
-	var available_height := maxf(180.0, global_position.y - 78.0)
+	var palette_rect := get_global_rect()
+	var available_height := maxf(180.0, palette_rect.position.y - 24.0)
 	var picker_height := minf(total_height, available_height)
-	king_picker.offset_top = -picker_height - 8.0
-	king_picker.offset_bottom = -8.0
+	if mobile_overlay_host != null and king_picker.get_parent() == mobile_overlay_host:
+		var host_origin := mobile_overlay_host.global_position
+		var picker_right := palette_rect.end.x - host_origin.x
+		var picker_bottom := palette_rect.position.y - host_origin.y - 8.0
+		king_picker.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		king_picker.offset_left = picker_right - 340.0
+		king_picker.offset_top = picker_bottom - picker_height
+		king_picker.offset_right = picker_right
+		king_picker.offset_bottom = picker_bottom
+	else:
+		king_picker.offset_top = -picker_height - 8.0
+		king_picker.offset_bottom = -8.0
+
+func set_mobile_overlay_host(host: Control) -> void:
+	if not mobile_layout or king_picker == null or host == null:
+		return
+	mobile_overlay_host = host
+	king_picker.reparent(host, false)
+	_layout_king_picker()
 
 func _show_king_picker() -> void:
 	king_picker.visible = not king_picker.visible

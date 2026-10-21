@@ -28,11 +28,15 @@ func _ready() -> void:
 	_route_touch_button(sandbox, sandbox.mode_button, 11)
 	await get_tree().process_frame
 	_check(sandbox.mode == sandbox.Mode.PLAY, "native touch activates top toolbar buttons", failures)
+	var mobile_toolbar := sandbox.mobile_toolbar_panel.get_child(0) as HBoxContainer
+	_check(not sandbox.piece_palette.visible and not sandbox.mobile_ai_panel.visible and mobile_toolbar.get_children().all(func(child): return child == sandbox.mode_button or not child.visible), "Play Mode hides all mobile editor chrome except the Edit toggle", failures)
 	_route_touch_button(sandbox, sandbox.mode_button, 11)
 	await get_tree().process_frame
+	_check(sandbox.piece_palette.visible and mobile_toolbar.get_children().all(func(child): return child.visible), "returning to Edit Mode restores the mobile editor controls", failures)
 	_route_touch_button(sandbox, sandbox.piece_palette.king_select_button, 12)
 	await get_tree().process_frame
 	_check(sandbox.piece_palette.king_picker.visible, "Select King opens the in-scene mobile picker", failures)
+	_check(sandbox.piece_palette.king_picker.get_global_rect().end.y <= sandbox.piece_palette.get_global_rect().position.y and sandbox.piece_palette.king_picker.size.y > sandbox.piece_palette.size.y, "mobile king picker expands upward above the bottom tray", failures)
 	_check(sandbox.piece_palette.king_picker_scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_AUTO, "king picker is vertically scrollable", failures)
 	_drag_king_picker(sandbox, 15)
 	_check(sandbox.piece_palette.king_picker_scroll.scroll_vertical > 0, "king picker responds to a vertical touch drag", failures)

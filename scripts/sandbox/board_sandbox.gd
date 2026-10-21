@@ -81,6 +81,7 @@ var mobile_ui_pointer := -1
 var mobile_ui_touch_target: Variant = null
 var mobile_button_callbacks: Dictionary = {}
 var mobile_board_pointer := -1
+var mobile_ai_visible_before_play := false
 
 func _ready() -> void:
 	mobile_layout = force_mobile_layout_for_testing or OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
@@ -315,6 +316,7 @@ func _build_mobile_panel() -> void:
 	piece_palette.piece_selected.connect(editor.select_palette_piece)
 	piece_palette.piece_drag_requested.connect(_on_palette_piece_drag_requested)
 	mobile_root.add_child(piece_palette)
+	piece_palette.set_mobile_overlay_host(mobile_root)
 	piece_palette.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	piece_palette.offset_left = 16.0
 	piece_palette.offset_top = -108.0
@@ -342,10 +344,18 @@ func _layout_mobile_controls() -> void:
 		right = maxf(right, (screen_size.x - safe.end.x) * scale.x)
 		top = maxf(top, safe.position.y * scale.y)
 		bottom = maxf(bottom, (screen_size.y - safe.end.y) * scale.y)
-	mobile_toolbar_panel.offset_left = left
-	mobile_toolbar_panel.offset_top = top
-	mobile_toolbar_panel.offset_right = -right
-	mobile_toolbar_panel.offset_bottom = top + 54.0
+	if mode == Mode.PLAY:
+		mobile_toolbar_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		mobile_toolbar_panel.offset_left = left
+		mobile_toolbar_panel.offset_top = top
+		mobile_toolbar_panel.offset_right = left + 112.0
+		mobile_toolbar_panel.offset_bottom = top + 54.0
+	else:
+		mobile_toolbar_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
+		mobile_toolbar_panel.offset_left = left
+		mobile_toolbar_panel.offset_top = top
+		mobile_toolbar_panel.offset_right = -right
+		mobile_toolbar_panel.offset_bottom = top + 54.0
 	mobile_ai_panel.offset_left = -(right + 270.0)
 	mobile_ai_panel.offset_top = top + 62.0
 	mobile_ai_panel.offset_right = -right
@@ -354,6 +364,7 @@ func _layout_mobile_controls() -> void:
 	piece_palette.offset_top = -(bottom + 96.0)
 	piece_palette.offset_right = -right
 	piece_palette.offset_bottom = -bottom
+	piece_palette._layout_king_picker()
 
 func _make_confirmation(title: String, message: String, callback: Callable) -> ConfirmationDialog:
 	var dialog := ConfirmationDialog.new()
@@ -652,7 +663,11 @@ func _set_mode(next: Mode) -> void:
 	if next == Mode.PLAY and not _brain_configuration_error().is_empty():
 		_refresh_control_states()
 		return
+	if mobile_layout and mode == Mode.EDIT and next == Mode.PLAY:
+		mobile_ai_visible_before_play = mobile_ai_panel.visible
 	mode = next
+	if mobile_layout:
+		_apply_mobile_mode_visibility()
 	if mode != Mode.EDIT and visibility_check != null:
 		visibility_check.set_pressed_no_signal(false)
 		_clear_visibility_overlay()
@@ -664,6 +679,21 @@ func _set_mode(next: Mode) -> void:
 	_refresh_control_states()
 	if mode == Mode.PLAY:
 		model.resolve_unplayable_turns()
+
+func _apply_mobile_mode_visibility() -> void:
+	if not mobile_layout or mobile_toolbar_panel == null:
+		return
+	var toolbar := mobile_toolbar_panel.get_child(0) as HBoxContainer
+	for child in toolbar.get_children():
+		if child is Control:
+			(child as Control).visible = child == mode_button or mode == Mode.EDIT
+	if piece_palette != null:
+		piece_palette.visible = mode == Mode.EDIT
+		if piece_palette.king_picker != null and mode == Mode.PLAY:
+			piece_palette.king_picker.visible = false
+	if mobile_ai_panel != null:
+		mobile_ai_panel.visible = mobile_ai_visible_before_play if mode == Mode.EDIT else false
+	_layout_mobile_controls()
 
 func _on_edit_committed(_before: ChessPosition, after: ChessPosition, label: String) -> void:
 	if not restoring_history:
