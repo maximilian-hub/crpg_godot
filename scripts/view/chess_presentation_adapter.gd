@@ -16,6 +16,7 @@ const DEFAULT_COOLDOWN_PRESENTATION := preload("res://assets/chess_king_cooldown
 const SpecialMoveDirector := preload("res://scripts/view/chess_special_move_director.gd")
 const SpecialMoveProfile := preload("res://scripts/view/chess_special_move_presentation_profile.gd")
 const AbilityHandProfile := preload("res://scripts/view/chess_ability_hand_profile.gd")
+const VOLLEY_MAGIC_SHADER_CODE := "shader_type canvas_item; uniform vec4 magic_tint : source_color = vec4(0.45, 0.85, 1.0, 1.0); void fragment(){ vec4 source = texture(TEXTURE, UV); COLOR = vec4(source.rgb * magic_tint.rgb * 1.35, source.a * magic_tint.a) * COLOR; }"
 
 const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
 const KingMagicController = preload("res://scripts/view/chess_king_magic_controller.gd")
@@ -87,6 +88,9 @@ var tile_effect_views: Dictionary = {}
 var autonomous_entity_views: Dictionary = {}
 var wraith_replacement_preview_sprite: Sprite2D
 var wraith_replacement_preview_tween: Tween
+var archer_targeting_visuals: Dictionary = {}
+var archer_draw_button: Button
+var _volley_magic_material: ShaderMaterial
 
 
 func _ready() -> void:
@@ -118,6 +122,8 @@ func _ready() -> void:
 	model.ability_started.connect(_on_ability_started)
 	model.targeted_ability_committed.connect(_on_targeted_ability_committed)
 	model.archer_volley_committed.connect(_on_archer_volley_committed)
+	model.archer_state_changed.connect(_on_archer_state_changed)
+	model.archer_arrow_collected.connect(_on_archer_arrow_collected)
 	model.reaction_selection_preparing.connect(_on_reaction_selection_preparing)
 	model.reaction_selection_committed.connect(_on_reaction_selection_committed)
 	model.reaction_queued.connect(_on_reaction_queued)
@@ -130,6 +136,7 @@ func _ready() -> void:
 	model.autonomous_entity_moved.connect(_on_autonomous_entity_moved)
 	model.autonomous_entity_removed.connect(_on_autonomous_entity_removed)
 	model.arc_mortar_impact.connect(_on_arc_mortar_impact)
+	model.settled_action_completed.connect(_on_archer_board_state_settled)
 	controller.ability_targeting_started.connect(_on_ability_targeting_started)
 	controller.ability_targeting_preparing.connect(_on_ability_targeting_preparing)
 	controller.ability_targeting_ended.connect(_on_ability_targeting_ended)
@@ -141,12 +148,14 @@ func _ready() -> void:
 	controller.piece_selected.connect(_on_piece_selected)
 	controller.ordinary_move_submission_started.connect(_on_ordinary_move_submission_started)
 	controller.ordinary_move_submission_finished.connect(_on_ordinary_move_submission_finished)
+	controller.contextual_archer_draw_changed.connect(_on_contextual_archer_draw_changed)
 	view.square_selected.connect(controller._on_square_clicked)
 	view.square_touch_selected.connect(controller._on_touch_square_clicked)
 	view.editor_square_entered.connect(_on_board_square_entered)
 
 	if not model.board.is_empty():
 		_on_board_initialized(model.board)
+	_create_archer_draw_button()
 
 
 func get_piece_view(piece: ModelPiece) -> Node:
@@ -187,6 +196,8 @@ func _on_board_initialized(board: Array) -> void:
 		for piece in row:
 			if piece != null:
 					_register_piece(piece, view.get_piece_node(piece.coordinate))
+					if piece is ArcherKing:
+						(piece_views[piece] as PieceView).refresh_status_icons()
 	_rebuild_nonphysical_views()
 
 func _on_board_rebuilt(board: Array) -> void:
@@ -228,7 +239,29 @@ func _rebuild_nonphysical_views() -> void:
 	for entity in model.autonomous_entities: _create_autonomous_entity_view(entity)
 
 func _on_tile_effect_added(effect: ChessTileEffectState) -> void:
-	if effect.type_id != &"cursed_mark" or tile_effect_views.has(effect.effect_id): return
+	if tile_effect_views.has(effect.effect_id): return
+	if effect.type_id == &"archer_arrow":
+		var arrow := AnimatedSprite2D.new()
+		arrow.name = "ArcherArrow_%s" % effect.effect_id
+		var spike_profile := ability_presentations.find_profile(&"arakne_king", &"spike_burst") as ChessSpecialMovePresentationProfile
+		var projectile_profile := spike_profile.resolved_projectile_profile() if spike_profile != null else null
+		if projectile_profile != null:
+			arrow.sprite_frames = projectile_profile.projectile_frames
+			arrow.animation = projectile_profile.projectile_animation
+			arrow.scale = Vector2.ONE * projectile_profile.projectile_scale * view.get_world_scale()
+			arrow.rotation = deg_to_rad(projectile_profile.rotation_offset_degrees) - 0.55
+			arrow.pause()
+		var polygon := view.projection.get_cell_polygon(effect.coordinate)
+		var bottom_right := polygon[0]
+		for point in polygon:
+			if point.x + point.y > bottom_right.x + bottom_right.y: bottom_right = point
+		var center := view.cell_to_screen_center(effect.coordinate.x, effect.coordinate.y)
+		arrow.position = center.lerp(bottom_right, 0.62)
+		arrow.z_index = view.get_piece_depth(effect.coordinate) - 1
+		view.add_child(arrow)
+		tile_effect_views[effect.effect_id] = arrow
+		return
+	if effect.type_id != &"cursed_mark": return
 	var mark := Node2D.new()
 	mark.name = "CursedMark_%s" % effect.effect_id
 	var center := view.cell_to_screen_center(effect.coordinate.x, effect.coordinate.y)
@@ -437,6 +470,7 @@ func _on_piece_summoned(piece: ModelPiece, completion: CompletionGate) -> void:
 
 func _on_piece_move_committed(piece: ModelPiece, from: Vector2i, to: Vector2i, presentation) -> void:
 	committed_charge_actions.erase(piece)
+	_refresh_all_archer_statuses()
 	var piece_node: Node = get_piece_view(piece)
 	if not is_instance_valid(piece_node):
 		pending_charge_aura_impacts.erase(piece)
@@ -945,6 +979,7 @@ func _on_archer_volley_committed(king: ArcherKing, targets: Array[Vector2i], com
 		view.add_child(projectile)
 		archer_volley_projectile_presented.emit(&"launch", index)
 		projectile.configure(projectile_profile, world_scale)
+		projectile.projectile_material_override = _make_volley_magic_material()
 		launch_projectiles.append(projectile)
 		var spread := (float(index) - float(presented_targets.size() - 1) * 0.5) * 18.0 * world_scale
 		projectile.fly(launch_origin, Vector2(launch_origin.x + spread, -80.0), presentation_policy.duration_scale())
@@ -976,6 +1011,7 @@ func _play_archer_volley_fall(target: Vector2i, index: int, source_view: PieceVi
 	archer_volley_projectile_presented.emit(&"fall", index)
 	archer_volley_fall_state_changed.emit(true)
 	falling.configure(projectile_profile, view.get_world_scale())
+	falling.projectile_material_override = _make_volley_magic_material()
 	await falling.fly(Vector2(finish.x, -70.0), finish, presentation_policy.duration_scale())
 	falling.play_impact(view, finish, presentation_policy.duration_scale(), true)
 	var occupant: ModelPiece = model.board[target.x][target.y]
@@ -993,6 +1029,15 @@ func _play_archer_volley_fall(target: Vector2i, index: int, source_view: PieceVi
 	if knockoff_completion != null:
 		await knockoff_completion.wait_until_released()
 	completion.release()
+
+func _make_volley_magic_material() -> ShaderMaterial:
+	if _volley_magic_material != null:
+		return _volley_magic_material
+	var shader := Shader.new()
+	shader.code = VOLLEY_MAGIC_SHADER_CODE
+	_volley_magic_material = ShaderMaterial.new()
+	_volley_magic_material.shader = shader
+	return _volley_magic_material
 
 
 func _play_archer_volley_knockoff(piece: ModelPiece, piece_view: PieceView, source_view: PieceView, projectile_profile: ChessProjectilePresentationProfile, index: int, completion: CompletionGate) -> void:
@@ -1296,6 +1341,108 @@ func _on_piece_selected(piece: ModelPiece) -> void:
 	for registered_piece in king_magic_controllers:
 		var magic: Node = king_magic_controllers[registered_piece]
 		if is_instance_valid(magic): magic.set_selected(registered_piece == piece)
+
+func _create_archer_draw_button() -> void:
+	archer_draw_button = Button.new()
+	archer_draw_button.name = "ArcherDrawButton"
+	archer_draw_button.text = "Draw"
+	archer_draw_button.visible = false
+	archer_draw_button.z_index = 200
+	archer_draw_button.pressed.connect(controller.submit_selected_archer_charge)
+	view.add_child(archer_draw_button)
+
+func _on_contextual_archer_draw_changed(archer: ArcherKing, visible: bool) -> void:
+	if archer_draw_button == null:
+		return
+	archer_draw_button.visible = visible
+	if visible:
+		var piece_view := get_piece_view(archer) as PieceView
+		if is_instance_valid(piece_view):
+			archer_draw_button.position = piece_view.position + piece_view.get_head_anchor().position - Vector2(34, 38)
+
+func _on_archer_state_changed(king: ArcherKing, _state: StringName, message: String) -> void:
+	var piece_view := get_piece_view(king) as PieceView
+	if is_instance_valid(piece_view):
+		piece_view.refresh_status_icons()
+	_clear_archer_targeting(king)
+	if king.draw_target != Vector2i(-1, -1) and is_instance_valid(piece_view):
+		_show_archer_targeting(king, piece_view)
+	if not message.is_empty() and is_instance_valid(piece_view):
+		_show_archer_float_text(piece_view, message)
+	_refresh_all_archer_statuses()
+
+func _on_archer_board_state_settled() -> void:
+	_refresh_all_archer_statuses()
+	for piece in piece_views:
+		if piece is ArcherKing:
+			var archer := piece as ArcherKing
+			if archer.draw_target != Vector2i(-1, -1) and not archer_targeting_visuals.has(archer):
+				var piece_view := get_piece_view(archer) as PieceView
+				if is_instance_valid(piece_view): _show_archer_targeting(archer, piece_view)
+
+func _on_archer_arrow_collected(piece: ModelPiece, _king: ArcherKing) -> void:
+	var piece_view := get_piece_view(piece) as PieceView
+	if is_instance_valid(piece_view):
+		_show_archer_float_text(piece_view, "Arrow Picked Up")
+
+func _show_archer_float_text(piece_view: PieceView, message: String) -> void:
+	var label := Label.new()
+	label.text = message
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
+	label.position = piece_view.position + piece_view.get_head_anchor().position - Vector2(90, 20)
+	label.size = Vector2(180, 30)
+	label.z_index = 250
+	view.add_child(label)
+	var tween := label.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(label, "position:y", label.position.y - 42.0, 0.9)
+	tween.tween_property(label, "modulate:a", 0.0, 0.9).set_delay(0.2)
+	tween.chain().tween_callback(label.queue_free)
+
+func _show_archer_targeting(king: ArcherKing, piece_view: PieceView) -> void:
+	var root := Node2D.new()
+	root.name = "ArcherTargeting"
+	root.z_index = 90
+	var start := piece_view.position + piece_view.get_body_anchor().position
+	var finish := view.cell_to_screen_center(king.draw_target.x, king.draw_target.y)
+	var arc_height := maxf(45.0, start.distance_to(finish) * 0.3)
+	for index in range(0, 16, 2):
+		var dash := Line2D.new()
+		dash.width = 2.0
+		dash.default_color = Color(1.0, 0.12, 0.12, 0.9)
+		var first_t := float(index) / 16.0
+		var second_t := float(index + 1) / 16.0
+		dash.points = PackedVector2Array([
+			start.lerp(finish, first_t) + Vector2(0, -sin(first_t * PI) * arc_height),
+			start.lerp(finish, second_t) + Vector2(0, -sin(second_t * PI) * arc_height),
+		])
+		root.add_child(dash)
+	var reticle := Line2D.new()
+	var radius := 18.0
+	var ring := PackedVector2Array()
+	for index in 17: ring.append(finish + Vector2.RIGHT.rotated(TAU * index / 16.0) * radius)
+	reticle.points = ring
+	reticle.width = 2.0
+	reticle.default_color = Color(1.0, 0.15, 0.15, 0.95)
+	root.add_child(reticle)
+	view.add_child(root)
+	archer_targeting_visuals[king] = root
+
+func _clear_archer_targeting(king: ArcherKing) -> void:
+	var node: Node = archer_targeting_visuals.get(king)
+	archer_targeting_visuals.erase(king)
+	if is_instance_valid(node): node.queue_free()
+
+func _refresh_all_archer_statuses() -> void:
+	for piece in piece_views:
+		if piece is ArcherKing:
+			var piece_view := piece_views[piece] as PieceView
+			if is_instance_valid(piece_view): piece_view.refresh_status_icons()
 
 
 func _show_necromancer_aura(piece: NecromancerKing) -> void:

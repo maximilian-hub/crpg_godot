@@ -16,6 +16,10 @@ const DEFINITIONS := {
 	&"cannon_king": {"name": "Cannon King", "script": preload("res://scripts/pieces/cannon_king.gd"), "art": &"cannon_king", "palette": true, "palette_group": &"king", "palette_order": 6},
 	&"quarterly_initiative_king": {"name": "Quarterly Initiative King", "script": preload("res://scripts/pieces/quarterly_initiative_king.gd"), "art": &"quarterly_initiative_king", "palette": true, "palette_group": &"king", "palette_order": 7},
 	&"archer_king": {"name": "Archer King", "script": preload("res://scripts/pieces/archer_king.gd"), "art": &"archer_king", "palette": true, "palette_group": &"king", "palette_order": 8},
+	&"archer_king_draw": {"name": "Archer King — Draw", "script": preload("res://scripts/pieces/archer_king_draw.gd"), "art": &"archer_king", "palette": true, "palette_group": &"king", "palette_order": 9},
+	&"archer_king_quiver": {"name": "Archer King — Quiver", "script": preload("res://scripts/pieces/archer_king_quiver.gd"), "art": &"archer_king", "palette": true, "palette_group": &"king", "palette_order": 10},
+	&"archer_king_combination": {"name": "Archer King — Combination", "script": preload("res://scripts/pieces/archer_king_combination.gd"), "art": &"archer_king", "palette": true, "palette_group": &"king", "palette_order": 11},
+	&"archer_king_charge": {"name": "Archer King — Charge", "script": preload("res://scripts/pieces/archer_king_charge.gd"), "art": &"archer_king", "palette": true, "palette_group": &"king", "palette_order": 12},
 	&"bone_pawn": {"name": "Bone Pawn", "script": preload("res://scripts/pieces/bone_pawn.gd"), "art": &"bone_pawn", "palette": false, "palette_group": &"hidden", "palette_order": 0},
 }
 

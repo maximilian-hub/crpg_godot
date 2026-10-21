@@ -12,6 +12,7 @@ var elapsed := 0.0
 var placeholder_mode := false
 var travel_tween: Tween
 var impact_complete := false
+var projectile_material_override: Material
 
 func configure(value: Resource, scale_factor: float) -> void:
 	profile = value
@@ -26,6 +27,8 @@ func fly_arc(start: Vector2, finish: Vector2, arc_offset: Vector2, duration_scal
 	position = start.round()
 	rotation = (finish - start).angle() + deg_to_rad(profile.rotation_offset_degrees)
 	projectile = AnimatedSprite2D.new()
+	if projectile_material_override != null:
+		projectile.material = projectile_material_override
 	projectile.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	projectile.scale = Vector2.ONE * profile.projectile_scale * world_scale
 	if profile.projectile_frames != null:

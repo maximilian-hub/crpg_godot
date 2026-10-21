@@ -160,8 +160,10 @@ func execute_thought() -> bool:
 			accepted = await model.submit_move_path(matching.piece, matching.path)
 		else:
 			accepted = await model.submit_move(matching.piece, matching.target)
-	else:
+	elif matching.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		accepted = await model.submit_active_ability(matching.piece as KingPiece, matching.target)
+	else:
+		accepted = await model.submit_archer_charge(matching.piece as ArcherKing)
 	if accepted and consumes_safety_turn and safety_revision_before_action == _king_safety_revision:
 		king_safety_turns_remaining -= 1
 	if accepted and execution_mode == ExecutionMode.MANUAL:
@@ -268,6 +270,8 @@ func _score_primary_action(action: ChessPrimaryAction) -> float:
 		score += _get_piece_value(target_piece)
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		score += 0.25
+	elif action.kind == ChessPrimaryAction.Kind.ARCHER_CHARGE:
+		score += 2.0
 	elif action.kind == ChessPrimaryAction.Kind.MOVE:
 		score += _score_movement_path(action.piece, action.path)
 	score += _score_arc_mortar_safety(action)

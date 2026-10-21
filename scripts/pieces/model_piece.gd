@@ -139,6 +139,8 @@ func grant_movement_type(movement_type: StringName) -> void:
 		movement_type_granted.emit(movement_type)
 
 func take_damage(damage: int = 1):
+	if has_method("incoming_damage_multiplier"):
+		damage *= int(call("incoming_damage_multiplier"))
 	current_hp -= damage
 	# Damage presentation belongs to the hit regardless of whether the piece
 	# survives it. Emit while the model and its PieceView are still registered so

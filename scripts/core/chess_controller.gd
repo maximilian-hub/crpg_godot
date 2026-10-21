@@ -30,6 +30,7 @@ signal selection_cleared()
 signal piece_selected(piece: ModelPiece)
 signal ordinary_move_submission_started(piece: ModelPiece, target: Vector2i)
 signal ordinary_move_submission_finished(piece: ModelPiece, target: Vector2i, accepted: bool)
+signal contextual_archer_draw_changed(archer: ArcherKing, visible: bool)
 
 func _ready():
 	model.action_started.connect(_on_action_started)
@@ -138,12 +139,23 @@ func select_piece(piece: ModelPiece):
 		legal_moves = _get_primary_targets(ChessPrimaryAction.Kind.MOVE, selected_piece)
 		selection_targets_changed.emit(legal_moves)
 		piece_selected.emit(piece)
+		if piece is ArcherKing:
+			contextual_archer_draw_changed.emit(piece, (piece as ArcherKing).can_begin_charge())
 
 func deselect_piece():
+	if selected_piece is ArcherKing:
+		contextual_archer_draw_changed.emit(selected_piece, false)
 	selection_cleared.emit()
 	selected_piece = null
 	legal_moves.clear()
 	_clear_skitter_selection()
+
+func submit_selected_archer_charge() -> void:
+	var archer := selected_piece as ArcherKing
+	if not is_instance_valid(archer) or not archer.can_begin_charge():
+		return
+	deselect_piece()
+	await model.submit_archer_charge(archer)
 
 
 func _handle_skitter_destination_click(coord: Vector2i) -> void:

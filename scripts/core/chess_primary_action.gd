@@ -6,6 +6,7 @@ class_name ChessPrimaryAction
 enum Kind {
 	MOVE,
 	ACTIVE_ABILITY,
+	ARCHER_CHARGE,
 }
 
 var kind: Kind

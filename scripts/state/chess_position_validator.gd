@@ -39,7 +39,8 @@ static func validate(position: ChessPosition) -> ChessPositionValidation:
 			report.structural_errors.append("Negative timer at %s" % piece.coordinate)
 		if piece.cooldown_reset_pending and piece.current_cooldown > 0:
 			report.structural_errors.append("Active and pending cooldown overlap at %s" % piece.coordinate)
-		if String(piece.type_id).ends_with("king") or piece.type_id == &"king":
+		var definition := ChessPieceCatalog.get_definition(piece.type_id)
+		if definition.get("palette_group", &"") == &"king":
 			if kings.has(piece.color):
 				kings[piece.color] += 1
 	for effect in position.tile_effects:

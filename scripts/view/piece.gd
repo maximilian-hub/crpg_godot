@@ -7,6 +7,7 @@ class_name PieceView
 
 const WHITE_PALETTE_SHADER := preload("res://assets/pieces/profiles/white_piece_palette.gdshader")
 const MOVEMENT_GRANT_BADGES_SCRIPT := preload("res://scripts/view/movement_grant_badges.gd")
+const STATUS_ICONS_SCRIPT := preload("res://scripts/view/piece_status_icons.gd")
 const PIECE_ART_PROFILES := {
 	&"pawn": preload("res://assets/pieces/profiles/pawn.tres"),
 	&"bone_pawn": preload("res://assets/pieces/profiles/bone_pawn.tres"),
@@ -31,6 +32,7 @@ var art_profile: Resource
 var show_grip_anchor_debug := false
 var grip_anchor_debug_overlay: Node2D = null
 var movement_grant_badges: Node2D = null
+var status_icons: Node2D = null
 
 var sprite: Sprite2D:
 	get:
@@ -44,6 +46,7 @@ func set_model(model_data: ModelPiece) -> void:
 		model.movement_type_granted.connect(_on_movement_type_granted)
 	update_sprite()
 	_sync_movement_grant_badges()
+	refresh_status_icons()
 
 func set_sprite(sprite_name: String) -> void: # "white_queen"
 	var color := model.color if model != null else "white"
@@ -93,6 +96,7 @@ func _update_effect_anchors() -> void:
 	get_grip_anchor().position = art_profile.grip_anchor if art_profile != null else get_head_anchor().position
 	_sync_grip_anchor_debug_overlay()
 	_position_movement_grant_badges()
+	_position_status_icons()
 
 func _sync_movement_grant_badges(animate := false) -> void:
 	if movement_grant_badges == null:
@@ -110,6 +114,24 @@ func _position_movement_grant_badges() -> void:
 	if movement_grant_badges == null:
 		return
 	movement_grant_badges.position = get_head_anchor().position + Vector2(12.0, 7.0)
+
+func refresh_status_icons() -> void:
+	if status_icons == null:
+		status_icons = STATUS_ICONS_SCRIPT.new()
+		status_icons.name = "StatusIcons"
+		status_icons.z_index = 51
+		add_child(status_icons)
+	var values: Array[StringName] = []
+	if model is ArcherKing:
+		var archer := model as ArcherKing
+		if archer.is_suppressed(): values.append(&"suppressed")
+		if archer.is_drawing(): values.append(&"drawing")
+	status_icons.set_statuses(values)
+	_position_status_icons()
+
+func _position_status_icons() -> void:
+	if status_icons != null:
+		status_icons.position = get_head_anchor().position + Vector2(-14.0, 7.0)
 
 func _on_movement_type_granted(_movement_type: StringName) -> void:
 	_sync_movement_grant_badges(true)

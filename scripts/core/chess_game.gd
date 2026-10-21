@@ -56,6 +56,7 @@ var _black_activation_barrier_started := false
 var presentation_seed := 0
 var _opening_start_released := false
 var _lunacy_displays: Dictionary = {}
+var _quiver_displays: Dictionary = {}
 var _movement_grant_panel: PanelContainer
 var _performance_cycle_panel: PanelContainer
 var _performance_cycle_label: Label
@@ -95,6 +96,7 @@ func _ready() -> void:
 		printerr("ChessGame has no ChessBoardModel assigned.")
 		return
 	_create_lunacy_displays()
+	_create_quiver_displays()
 	_create_performance_cycle_display()
 	_layout_side_ui(player_color)
 	if not get_viewport().size_changed.is_connected(_on_lunacy_viewport_resized):
@@ -102,11 +104,14 @@ func _ready() -> void:
 	call_deferred(&"_layout_lunacy_displays")
 	if not model.lunacy_changed.is_connected(_on_lunacy_changed):
 		model.lunacy_changed.connect(_on_lunacy_changed)
+	if not model.archer_state_changed.is_connected(_on_archer_ui_state_changed):
+		model.archer_state_changed.connect(_on_archer_ui_state_changed)
 	if not model.turn_changed.is_connected(_on_performance_turn_changed):
 		model.turn_changed.connect(_on_performance_turn_changed)
 	if not model.movement_type_selection_requested.is_connected(_on_movement_type_selection_requested):
 		model.movement_type_selection_requested.connect(_on_movement_type_selection_requested)
 	_refresh_lunacy_displays()
+	_refresh_quiver_displays()
 	_refresh_performance_cycle_display()
 
 	if not model.battle_finished.is_connected(_on_battle_finished):
@@ -195,6 +200,7 @@ func _on_result_confirmed() -> void:
 
 func _on_board_rebuilt(_board: Array) -> void:
 	_refresh_lunacy_displays()
+	_refresh_quiver_displays()
 	_refresh_performance_cycle_display()
 	if opening_pending:
 		opening_director.cancel()
@@ -290,6 +296,8 @@ func _layout_side_ui(viewing_color: String) -> void:
 	_place_side_ui(black_container, viewing_color == "black")
 	_layout_lunacy_display("white", viewing_color == "white")
 	_layout_lunacy_display("black", viewing_color == "black")
+	_layout_quiver_display("white", viewing_color == "white")
+	_layout_quiver_display("black", viewing_color == "black")
 
 func _create_lunacy_displays() -> void:
 	var ui := get_node_or_null("LunacyLayer/LunacyUI") as Control
@@ -309,6 +317,23 @@ func _create_lunacy_displays() -> void:
 			panel.add_child(label)
 			ui.add_child(panel)
 		_lunacy_displays[color] = panel
+
+func _create_quiver_displays() -> void:
+	var ui := get_node_or_null("LunacyLayer/LunacyUI") as Control
+	if ui == null:
+		return
+	for color in ["white", "black"]:
+		var panel := PanelContainer.new()
+		panel.name = "%sQuiverDisplay" % color.capitalize()
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.z_index = 50
+		var label := Label.new()
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.custom_minimum_size = Vector2(150.0, 54.0)
+		panel.add_child(label)
+		ui.add_child(panel)
+		_quiver_displays[color] = panel
 
 func _create_performance_cycle_display() -> void:
 	var ui := get_node_or_null("LunacyLayer/LunacyUI") as Control
@@ -364,17 +389,42 @@ func _layout_lunacy_display(color: String, near_player: bool) -> void:
 	else:
 		panel.position = Vector2(minimum.x - panel_size.x - gap, screen_edge_margin)
 
+func _layout_quiver_display(color: String, near_player: bool) -> void:
+	var panel := _quiver_displays.get(color) as PanelContainer
+	if panel == null:
+		return
+	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
+	if board_view == null or board_view.projection.corners.is_empty():
+		return
+	var outline := board_view.projection.get_board_outline()
+	var minimum := outline[0]
+	var maximum := outline[0]
+	for point in outline:
+		minimum = minimum.min(point)
+		maximum = maximum.max(point)
+	var panel_size := Vector2(150.0, 54.0)
+	var gap := 16.0
+	var screen_edge_margin := 26.0
+	var viewport_height := get_viewport().get_visible_rect().size.y
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.position = Vector2(maximum.x + gap, viewport_height - panel_size.y - screen_edge_margin) if near_player else Vector2(minimum.x - panel_size.x - gap, screen_edge_margin)
+
 func _layout_lunacy_displays() -> void:
 	var board_view := get_node_or_null("CanvasLayer/ChessBoard") as ChessBoardView
 	var viewing_color := board_view.viewing_color if board_view != null else player_color
 	_layout_lunacy_display("white", viewing_color == "white")
 	_layout_lunacy_display("black", viewing_color == "black")
+	_layout_quiver_display("white", viewing_color == "white")
+	_layout_quiver_display("black", viewing_color == "black")
 
 func _on_lunacy_viewport_resized() -> void:
 	call_deferred(&"_layout_lunacy_displays")
 
 func _on_lunacy_changed(_color: String, _value: int, _remaining: int) -> void:
 	_refresh_lunacy_displays()
+
+func _on_archer_ui_state_changed(_king: ArcherKing, _state: StringName, _message: String) -> void:
+	_refresh_quiver_displays()
 
 func _on_performance_turn_changed(_current_turn: String) -> void:
 	_refresh_performance_cycle_display()
@@ -425,6 +475,18 @@ func _refresh_lunacy_displays() -> void:
 		var remaining := int(model.socratic_turns_by_color.get(color, 0))
 		var label := panel.get_child(0) as Label
 		label.text = "Socratic Lunacy: %d turn%s" % [remaining, "" if remaining == 1 else "s"] if remaining > 0 else "Lunacy: %d / 5" % value
+
+func _refresh_quiver_displays() -> void:
+	if model == null:
+		return
+	for color in ["white", "black"]:
+		var panel := _quiver_displays.get(color) as PanelContainer
+		if panel == null:
+			continue
+		var king := model.get_king(color)
+		panel.visible = king is ArcherKing and (king as ArcherKing).uses_quiver()
+		if panel.visible:
+			(panel.get_child(0) as Label).text = "Quiver: %d / 2" % (king as ArcherKing).arrows
 
 func _refresh_performance_cycle_display() -> void:
 	if model == null or _performance_cycle_panel == null or _performance_cycle_label == null:

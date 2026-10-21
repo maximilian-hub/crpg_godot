@@ -135,6 +135,8 @@ func _test_archer_king() -> void:
 	attack_model.add_piece(ranged_enemy, ranged_enemy.coordinate)
 	_expect(archer.max_hp == 2 and archer.current_cooldown == 4, "Archer King starts with two HP and Volley on a four-turn cooldown")
 	_expect(adjacent_enemy.coordinate not in attack_model.get_legal_moves(archer), "Sharpshooter has no traditional adjacent attack")
+	_expect(archer.is_suppressed() and ranged_enemy.coordinate not in attack_model.get_legal_moves(archer), "an adjacent enemy suppresses Sharpshooter")
+	attack_model.destroy_piece(adjacent_enemy, true)
 	_expect(ranged_enemy.coordinate in attack_model.get_legal_moves(archer), "Sharpshooter attacks targets two to four squares away")
 	_expect(await attack_model.submit_move(archer, ranged_enemy.coordinate), "Sharpshooter accepts its ranged attack")
 	_expect(archer.coordinate == Vector2i(4, 4) and attack_model.board[4][4] == archer and attack_model.board[1][4] == ranged_enemy and ranged_enemy.current_hp == 1, "Sharpshooter deals one damage without moving the Archer King")
@@ -177,6 +179,87 @@ func _test_archer_king() -> void:
 	_expect(destroyed.count == 0 and selected.all(func(coord): return volley_model.board[coord.x][coord.y].current_hp == 1), "Volley deals exactly one damage to every occupied selected square, including Kings")
 	_expect(volley_archer.cooldown_reset_pending, "Volley schedules its four-turn cooldown")
 	volley_model.free()
+
+	for variant_id in [&"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge"]:
+		var variant := ChessPieceCatalog.create_piece(variant_id, "white", Vector2i(4, 4)) as ArcherKing
+		_expect(variant != null and variant.get_position_type_id() == variant_id, "%s is a selectable, persistent Archer King type" % variant_id)
+		variant.free()
+
+	var ability_model := _new_empty_model()
+	var ability_archer := ChessPieceCatalog.create_piece(&"archer_king_quiver", "white", Vector2i(4, 4)) as ArcherKing
+	ability_model.add_piece(ability_archer, ability_archer.coordinate)
+	ability_archer.set_cooldown(0)
+	var ability_controller := ChessBoardController.new()
+	ability_controller.model = ability_model
+	add_child(ability_controller)
+	ability_controller.select_piece(ability_archer)
+	await ability_controller._on_square_clicked(ability_archer.coordinate)
+	_expect(ability_controller.active_ability_selected and ability_controller.active_king == ability_archer and ability_controller.legal_moves == [ability_archer.coordinate], "Archer variants arm Volley by clicking the selected King again")
+	ability_controller.queue_free()
+	ability_model.free()
+
+	var draw_model := _new_empty_model()
+	var draw_archer := ChessPieceCatalog.create_piece(&"archer_king_draw", "white", Vector2i(4, 4)) as ArcherKing
+	var draw_target := Pawn.new("black", Vector2i(1, 4))
+	draw_model.add_piece(draw_archer, draw_archer.coordinate)
+	draw_model.add_piece(draw_target, draw_target.coordinate)
+	await draw_model.handle_combat(draw_archer, draw_target.coordinate)
+	_expect(draw_archer.draw_target == draw_target.coordinate and draw_target.current_hp == 1, "Draw commits a target without dealing first-turn damage")
+	draw_archer.max_hp = 4
+	draw_archer.current_hp = 4
+	await draw_archer.take_damage(1)
+	_expect(draw_archer.current_hp == 2, "a drawing Archer takes double damage")
+	draw_model.free()
+
+	var automatic_model := _new_empty_model()
+	var automatic_archer := ChessPieceCatalog.create_piece(&"archer_king_draw", "white", Vector2i(4, 4)) as ArcherKing
+	var automatic_target := Pawn.new("black", Vector2i(1, 4))
+	automatic_target.max_hp = 2
+	automatic_target.current_hp = 2
+	automatic_model.add_piece(automatic_archer, automatic_archer.coordinate)
+	automatic_model.add_piece(automatic_target, automatic_target.coordinate)
+	_expect(await automatic_model.submit_move(automatic_archer, automatic_target.coordinate), "Draw accepts the initial ranged target as its first-turn action")
+	_expect(automatic_model.current_turn == "black" and automatic_archer.draw_target == automatic_target.coordinate, "Draw remains telegraphed throughout the opponent's turn")
+	_expect(await automatic_model.submit_move(automatic_target, Vector2i(2, 4)), "the targeted piece can move while Draw is telegraphed")
+	_expect(automatic_target.current_hp == 1 and automatic_target.coordinate == Vector2i(2, 4) and automatic_archer.draw_target == Vector2i(-1, -1) and automatic_model.current_turn == "black", "Draw follows and automatically attacks a moved target that remains in range and line of sight")
+	automatic_model.free()
+
+	var quiver_model := _new_empty_model()
+	var quiver_archer := ChessPieceCatalog.create_piece(&"archer_king_quiver", "white", Vector2i(4, 4)) as ArcherKing
+	var quiver_target := Pawn.new("black", Vector2i(1, 4))
+	quiver_target.max_hp = 2
+	quiver_target.current_hp = 2
+	quiver_model.add_piece(quiver_archer, quiver_archer.coordinate)
+	quiver_model.add_piece(quiver_target, quiver_target.coordinate)
+	await quiver_model.handle_combat(quiver_archer, quiver_target.coordinate)
+	_expect(quiver_archer.arrows == 1 and quiver_model.has_tile_effect(&"archer_arrow", quiver_target.coordinate, quiver_archer.piece_id), "Quiver shots consume and leave a recoverable arrow")
+	quiver_model.free()
+
+	var charge_model := _new_empty_model()
+	var charge_archer := ChessPieceCatalog.create_piece(&"archer_king_charge", "white", Vector2i(4, 4)) as ArcherKing
+	var charge_target := Pawn.new("black", Vector2i(2, 4))
+	charge_model.add_piece(charge_archer, charge_archer.coordinate)
+	charge_model.add_piece(charge_target, charge_target.coordinate)
+	charge_archer.begin_charge()
+	_expect(charge_target.coordinate in charge_model.get_legal_moves(charge_archer), "Charge level 1 enables an attack exactly two squares away")
+	charge_archer.advance_charge()
+	charge_target.coordinate = Vector2i(1, 4)
+	charge_model.board[2][4] = null
+	charge_model.board[1][4] = charge_target
+	_expect(charge_target.coordinate in charge_model.get_legal_moves(charge_archer), "Charge level 2 extends Archer range to three squares")
+	charge_model.free()
+
+	var charge_turn_model := _new_empty_model()
+	var turn_charge_archer := ChessPieceCatalog.create_piece(&"archer_king_charge", "white", Vector2i(4, 4)) as ArcherKing
+	var charge_ally := Rook.new("white", Vector2i(7, 7))
+	var charge_waiting_pawn := Pawn.new("black", Vector2i(0, 0))
+	charge_turn_model.add_piece(turn_charge_archer, turn_charge_archer.coordinate)
+	charge_turn_model.add_piece(charge_ally, charge_ally.coordinate)
+	charge_turn_model.add_piece(charge_waiting_pawn, charge_waiting_pawn.coordinate)
+	_expect(await charge_turn_model.submit_archer_charge(turn_charge_archer), "Charge Draw is accepted as a primary action")
+	_expect(await charge_turn_model.submit_move(charge_waiting_pawn, Vector2i(1, 0)) and turn_charge_archer.charge_level == 1, "Charge remains at level 1 on the Archer's next turn")
+	_expect(await charge_turn_model.submit_move(charge_ally, Vector2i(6, 7)) and turn_charge_archer.charge_level == 2, "using another allied piece advances Charge at the end of the Archer's turn")
+	charge_turn_model.free()
 
 func _test_quarterly_initiative_king() -> void:
 	var efficiency_model := _new_empty_model()

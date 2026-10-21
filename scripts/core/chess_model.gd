@@ -46,6 +46,9 @@ signal piece_recovered(piece: ModelPiece)
 signal ability_started(piece: KingPiece, ability_name: String, completion: CompletionGate)
 signal targeted_ability_committed(context)
 signal archer_volley_committed(king: ArcherKing, targets: Array[Vector2i], completion: CompletionGate)
+signal archer_state_changed(king: ArcherKing, state: StringName, message: String)
+signal archer_arrow_dropped(effect: ChessTileEffectState)
+signal archer_arrow_collected(piece: ModelPiece, king: ArcherKing)
 signal ability_effect_resolved(piece: KingPiece, ability_name: String, affected_coords: Array)
 signal reaction_selection_requested(calling_piece: ModelPiece, action_type: String, targets: Array)
 signal reaction_selection_preparing(calling_piece: ModelPiece, action_type: String, targets: Array, completion: CompletionGate)
@@ -90,6 +93,8 @@ signal movement_type_selection_resolved(movement_type: StringName)
 var active_ability_cooldowns_disabled := false
 ## Disabled on disposable AI search models to avoid thousands of log writes.
 var diagnostic_logging_enabled := true
+var _archer_charge_started_this_action := false
+var _archer_acted_this_action := false
 
 
 func _diagnostic(message: String) -> void:
@@ -503,6 +508,8 @@ func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 							king,
 							target
 						))
+			if piece is ArcherKing and (piece as ArcherKing).can_begin_charge():
+				actions.append(ChessPrimaryAction.new(ChessPrimaryAction.Kind.ARCHER_CHARGE, piece, piece.coordinate))
 
 	return actions
 
@@ -526,6 +533,7 @@ func begin_action(owner_color: String) -> bool:
 		return false
 
 	action_in_progress = true
+	_archer_acted_this_action = false
 	action_owner_color = owner_color
 	consecutive_forced_passes = 0
 	_diagnostic("ACTION START — " + action_owner_color)
@@ -558,6 +566,12 @@ func finish_action() -> void:
 		return
 	_diagnostic("ACTION END — " + action_owner_color)
 	var completed_action_owner := action_owner_color
+	var completed_king := get_king(completed_action_owner)
+	if completed_king is ArcherKing:
+		var charge_archer := completed_king as ArcherKing
+		if charge_archer.uses_charge() and charge_archer.charge_level > 0 and not _archer_charge_started_this_action and not _archer_acted_this_action:
+			charge_archer.advance_charge()
+	_archer_charge_started_this_action = false
 	action_in_progress = false
 	action_owner_color = ""
 	switch_turn()
@@ -567,6 +581,9 @@ func finish_action() -> void:
 	turn_entry_consequence_in_progress = true
 	action_in_progress = true
 	action_owner_color = completed_action_owner
+	if await resolve_archer_turn_entry(current_turn):
+		switch_turn()
+		position_revision += 1
 	await resolve_arc_mortars_at_turn_start(current_turn)
 	if not selection_queue.is_empty():
 		await continue_action_resolution()
@@ -694,6 +711,8 @@ func move_piece(piece: ModelPiece, to: Vector2i):
 		return
 	if not begin_action(piece.color):
 		return
+	if piece is ArcherKing:
+		_archer_acted_this_action = true
 
 	var from := piece.coordinate
 	if not is_in_bounds(from.x, from.y):
@@ -798,6 +817,16 @@ func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
 	await perform_active_ability(king, target)
 	return true
 
+func submit_archer_charge(archer: ArcherKing) -> bool:
+	if not is_piece_active(archer) or archer.color != current_turn or archer.stunned or not archer.can_begin_charge():
+		return false
+	if action_in_progress or battle_over or not begin_action(archer.color):
+		return false
+	_archer_charge_started_this_action = true
+	archer.begin_charge()
+	await continue_action_resolution()
+	return true
+
 
 
 ## Moves a piece from one square to another.
@@ -810,6 +839,8 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callab
 			return
 
 		var from = piece.coordinate
+		if piece is ArcherKing and (piece as ArcherKing).uses_charge() and (piece as ArcherKing).charge_level > 0:
+			(piece as ArcherKing).cancel_draw("Draw Cancelled")
 		# ... (more checks: bounds, piece at 'from', 'to' empty etc.) ...
 
 		_diagnostic("actually moving piece, %s from %s to %s" % [piece.type, from, to])
@@ -825,6 +856,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callab
 		if arrival_effect.is_valid():
 			arrival_effect.call()
 		await _announce_piece_landed(piece, from, to)
+		_collect_archer_arrows(piece, to)
 		if piece is WraithKing: (piece as WraithKing).on_landed_on_mark(to)
 		await presentation.wait_for_aftermath()
 		_diagnostic("Animation finished for piece: " + piece.type)
@@ -861,6 +893,7 @@ func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: V
 	destroy_piece(captured_piece, false)
 	await presentation.wait_for_arrival(piece)
 	await _announce_piece_landed(piece, from, to)
+	_collect_archer_arrows(piece, to)
 	if piece is WraithKing and is_piece_active(piece): (piece as WraithKing).on_direct_capture(captured_at)
 	await presentation.wait_for_aftermath()
 
@@ -1105,7 +1138,20 @@ func handle_combat(attacker: ModelPiece, to: Vector2i):
 		var damage = attacker.attack_power
 
 		if attacker is ArcherKing:
-			await announce_archer_attack(attacker, defender, attacker.coordinate, to)
+			var archer := attacker as ArcherKing
+			if archer.is_suppressed():
+				return
+			if archer.uses_draw_mechanic() and archer.draw_target == Vector2i(-1, -1):
+				archer.begin_draw(to)
+				return
+			await announce_archer_attack(archer, defender, archer.coordinate, to)
+			if archer.uses_quiver():
+				archer.arrows = maxi(0, archer.arrows - 1)
+				var arrow := _drop_archer_arrow(archer, to)
+				archer_arrow_dropped.emit(arrow)
+				announce_archer_state(archer, &"quiver", "Arrow Fired — %d Remaining" % archer.arrows)
+			if archer.uses_charge():
+				archer.cancel_draw("")
 		elif defender.current_hp <= damage: # predict defender's death
 			var defender_instance = defender # Keep a reference before the board changes
 			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
@@ -1135,6 +1181,8 @@ func get_archer_volley_candidates(enemy_color: String) -> Array[Vector2i]:
 	return result
 
 func resolve_archer_volley(archer: ArcherKing) -> void:
+	if archer.is_suppressed():
+		return
 	var candidates := get_archer_volley_candidates("black" if archer.color == "white" else "white")
 	var targets: Array[Vector2i] = []
 	while not candidates.is_empty() and targets.size() < ArcherKing.VOLLEY_SQUARE_COUNT:
@@ -1147,6 +1195,70 @@ func resolve_archer_volley(archer: ArcherKing) -> void:
 		var occupant: ModelPiece = board[target.x][target.y]
 		if occupant != null:
 			await occupant.take_damage(1)
+
+func announce_archer_state(king: ArcherKing, state: StringName, message: String = "") -> void:
+	archer_state_changed.emit(king, state, message)
+
+func resolve_archer_turn_entry(color: String) -> bool:
+	var king := get_king(color)
+	if not king is ArcherKing:
+		return false
+	var archer := king as ArcherKing
+	if archer.is_suppressed() and archer.is_drawing():
+		archer.cancel_draw("Draw Cancelled — Suppressed")
+		return false
+	if archer.draw_target == Vector2i(-1, -1):
+		announce_archer_state(archer, &"drawing" if archer.charge_level > 0 else &"idle", "")
+		return false
+	var candidate: ModelPiece = find_piece_by_id(archer.draw_target_piece_id)
+	if candidate == null and archer.draw_target_piece_id.is_empty() and is_in_bounds(archer.draw_target.x, archer.draw_target.y):
+		candidate = board[archer.draw_target.x][archer.draw_target.y]
+	var valid := candidate != null and candidate.color != archer.color and is_piece_active(candidate)
+	var target := candidate.coordinate if valid else archer.draw_target
+	if valid:
+		archer.draw_target = target
+		valid = archer.can_natively_attack_square(archer.coordinate, target, archer.get_live_attack_position())
+	if not valid:
+		archer.cancel_draw("Shot Cancelled")
+		return false
+	var defender: ModelPiece = board[target.x][target.y]
+	archer.draw_target = Vector2i(-1, -1)
+	archer.draw_target_piece_id = ""
+	announce_archer_state(archer, &"idle", "Loose!")
+	await announce_archer_attack(archer, defender, archer.coordinate, target)
+	if archer.uses_quiver():
+		archer.arrows = maxi(0, archer.arrows - 1)
+		var arrow := _drop_archer_arrow(archer, target)
+		archer_arrow_dropped.emit(arrow)
+		announce_archer_state(archer, &"quiver", "Arrow Fired — %d Remaining" % archer.arrows)
+	return true
+
+func _collect_archer_arrows(piece: ModelPiece, coordinate: Vector2i) -> void:
+	for effect in tile_effects.duplicate():
+		if effect.type_id != &"archer_arrow" or effect.coordinate != coordinate or effect.owner_color != piece.color:
+			continue
+		var source: ModelPiece = find_piece_by_id(effect.source_piece_id)
+		if not source is ArcherKing or not (source as ArcherKing).uses_quiver():
+			continue
+		var archer := source as ArcherKing
+		if archer.arrows >= 2:
+			continue
+		archer.arrows += 1
+		tile_effects.erase(effect)
+		tile_effect_removed.emit(effect)
+		archer_arrow_collected.emit(piece, archer)
+		announce_archer_state(archer, &"quiver", "Arrow Recovered — %d/2" % archer.arrows)
+
+func _drop_archer_arrow(archer: ArcherKing, coordinate: Vector2i) -> ChessTileEffectState:
+	var effect := ChessTileEffectState.new()
+	effect.effect_id = _allocate_state_id("effect")
+	effect.type_id = &"archer_arrow"
+	effect.coordinate = coordinate
+	effect.owner_color = archer.color
+	effect.source_piece_id = archer.piece_id
+	tile_effects.append(effect)
+	tile_effect_added.emit(effect)
+	return effect
 		
 		
 		
@@ -1215,7 +1327,7 @@ func get_empty_adjacent_squares(coord: Vector2i) -> Array:
 func get_king(color: String) -> ModelPiece:
 	for row in board:
 		for piece in row:
-			if piece != null and piece.color == color and piece.type.ends_with("king"):
+			if piece != null and piece.color == color and piece.is_king:
 				return piece
 	return null
 
