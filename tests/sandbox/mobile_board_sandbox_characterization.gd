@@ -19,6 +19,8 @@ func _ready() -> void:
 	_check(sandbox.mode_button.text == "Edit" and sandbox.undo_button.text == "Back" and sandbox.redo_button.text == "Forward", "mobile toolbar uses compact labels", failures)
 	_check(sandbox.ai_mode_buttons.has(ChessCpuPlayer.ExecutionMode.DISABLED) and sandbox.ai_mode_buttons.has(ChessCpuPlayer.ExecutionMode.AUTO), "mobile AI panel exposes Off and Auto", failures)
 	_check(not sandbox.ai_mode_buttons.has(ChessCpuPlayer.ExecutionMode.MANUAL), "mobile AI panel omits unusable Manual mode", failures)
+	_check(sandbox.ai_brain_options.has("white") and sandbox.ai_brain_options.has("black"), "mobile AI panel exposes independent White and Black brain selectors", failures)
+	_check(sandbox.ai_brain_options.white.get_item_text(0) == "Ryck" and sandbox.ai_brain_options.white.get_item_text(1) == "LeMay" and sandbox.ai_brain_options.white.get_item_text(2) == "Dupre", "mobile brain selectors expose Ryck, LeMay, and Dupre", failures)
 	_check(sandbox.speed_slider == null and sandbox.grip_check == null and sandbox.visibility_check == null and sandbox.visibility_threshold_spin == null and sandbox.view_side_button == null, "desktop-only tuning and view controls are omitted", failures)
 	_check(sandbox.piece_palette.mobile_layout and sandbox.piece_palette.piece_items.size() == 10, "mobile tray exposes the complete ordinary piece palette", failures)
 	_check(sandbox.piece_palette.king_select_button != null and sandbox.piece_palette.king_select_button.text.begins_with("Select King"), "king selection is a full tray button", failures)

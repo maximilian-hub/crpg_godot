@@ -1,5 +1,7 @@
 extends Node
 
+const FaultInjectingLeMay = preload("res://tests/headless/fixtures/fault_injecting_lemay_ai_brain.gd")
+
 var failures: Array[String] = []
 var checks: int = 0
 
@@ -7,6 +9,13 @@ var checks: int = 0
 func _ready() -> void:
 	await _test_authoritative_primary_actions()
 	await _test_cpu_capture_and_tie_breaking()
+	await _test_lemay_one_reply_search()
+	await _test_lemay_alpha_beta_matches_exhaustive_search()
+	await _test_lemay_partial_candidate_timeout_uses_fallback()
+	await _test_lemay_timeout_before_candidate_uses_fallback()
+	await _test_lemay_failed_and_unsettled_branches_are_invalid()
+	await _test_lemay_reuses_generated_actions_during_evaluation()
+	await _test_lemay_arakne_ability_awareness()
 	await _test_cpu_preserves_skitter_path_identity()
 	await _test_cpu_active_ability()
 	await _test_cpu_rejects_friendly_charge()
@@ -22,6 +31,7 @@ func _ready() -> void:
 	await _test_cpu_owned_reaction()
 	await _test_human_owned_reaction_is_untouched()
 	await _test_two_cpu_turns()
+	await _test_ryck_vs_lemay_turns()
 	await _test_two_cpu_reaction_ownership()
 	await _test_two_cpu_battle_completion_stops_scheduling()
 
@@ -87,6 +97,162 @@ func _test_cpu_capture_and_tie_breaking() -> void:
 	_expect(model.board[0][3] == rook or model.board[3][0] == rook, "CPU prefers a legal capture over quiet moves")
 	cpu.queue_free()
 	model.free()
+
+
+func _test_lemay_one_reply_search() -> void:
+	var model := _new_empty_model()
+	var white_king := ClassicKing.new("white", Vector2i(7, 7))
+	var black_king := ClassicKing.new("black", Vector2i(0, 7))
+	var queen := Queen.new("white", Vector2i(4, 4))
+	var bait := Pawn.new("black", Vector2i(4, 3))
+	var rook := Rook.new("black", Vector2i(4, 0))
+	for piece in [white_king, black_king, queen, bait, rook]:
+		model.add_piece(piece, piece.coordinate)
+	var cpu := _add_cpu(model, "white", false)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	cpu.set_brain(ChessCpuPlayer.BrainKind.LEMAY)
+	var before := model.capture_position()
+	var thought = await cpu.think()
+	var profile := (cpu.brain as LeMayAiBrain).get_last_profile()
+	_expect(thought != null and thought.brain_id == &"lemay" and thought.analyzed_leaf_count > 0, "LeMay reports a one-reply search thought")
+	_expect(thought == null or thought.piece_coordinate != queen.coordinate or thought.target != bait.coordinate, "LeMay rejects a pawn capture whose best reply loses its Queen")
+	_expect(profile.selected_status == &"exact" and profile.incomplete_root_candidates == 0, "LeMay's completed tactical choice uses an exact minimax score")
+	_expect(model.position_revision == 0 and model.board[queen.coordinate.x][queen.coordinate.y] == queen and model.capture_position().pieces.size() == before.pieces.size(), "LeMay analysis leaves the live position untouched")
+	cpu.queue_free()
+	model.free()
+	await get_tree().process_frame
+
+
+func _test_lemay_alpha_beta_matches_exhaustive_search() -> void:
+	var model := _new_lemay_tactical_model()
+	var cpu := _add_cpu(model, "white", false)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	cpu.set_brain(ChessCpuPlayer.BrainKind.LEMAY)
+	var lemay := cpu.brain as LeMayAiBrain
+	lemay.think_budget_msec = 60000
+	lemay.max_reply_leaves = 100000
+	cpu.set_random_seed(19)
+	var pruned_thought = await cpu.think()
+	var pruned_profile := lemay.get_last_profile()
+
+	lemay.alpha_beta_enabled = false
+	cpu.set_random_seed(19)
+	var exhaustive_thought = await cpu.think()
+	var exhaustive_profile := lemay.get_last_profile()
+	_expect(pruned_thought != null and exhaustive_thought != null and pruned_thought.piece_coordinate == exhaustive_thought.piece_coordinate and pruned_thought.target == exhaustive_thought.target and pruned_thought.path == exhaustive_thought.path, "alpha-beta chooses the same best move as exhaustive two-ply minimax")
+	_expect(pruned_profile.alpha_beta_cutoffs > 0 and pruned_profile.evaluated_reply_count < exhaustive_profile.evaluated_reply_count, "alpha-beta prunes replies after establishing an exact incumbent")
+	_expect(pruned_profile.selected_status == &"exact" and pruned_profile.incomplete_root_candidates == 0 and pruned_profile.invalid_root_candidates == 0, "completed alpha-beta search reports an exact result")
+	cpu.queue_free()
+	model.free()
+	await get_tree().process_frame
+
+
+func _test_lemay_partial_candidate_timeout_uses_fallback() -> void:
+	var model := _new_lemay_tactical_model()
+	var before := model.capture_position()
+	var cpu := _add_cpu(model, "white", false)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	cpu.set_brain(ChessCpuPlayer.BrainKind.LEMAY)
+	var lemay := cpu.brain as LeMayAiBrain
+	lemay.think_budget_msec = 60000
+	lemay.max_reply_leaves = 1
+	var thought = await cpu.think()
+	var profile := lemay.get_last_profile()
+	_expect(thought != null and profile.fallback_used and profile.selected_status == &"fallback", "a partial minimizing candidate is excluded and triggers the heuristic fallback")
+	_expect(profile.evaluated_reply_count == 1 and profile.incomplete_root_candidates > 0 and profile.exact_root_candidates == 0, "reply limit records the partially evaluated candidate as incomplete rather than exact")
+	_expect(model.position_revision == 0 and model.capture_position().pieces.size() == before.pieces.size(), "timed-out LeMay search does not alter the live position")
+	cpu.queue_free()
+	model.free()
+	await get_tree().process_frame
+
+
+func _test_lemay_timeout_before_candidate_uses_fallback() -> void:
+	var model := _new_lemay_tactical_model()
+	var cpu := _add_cpu(model, "white", false)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	cpu.set_brain(ChessCpuPlayer.BrainKind.LEMAY)
+	var lemay := cpu.brain as LeMayAiBrain
+	lemay.think_budget_msec = 60000
+	lemay.max_reply_leaves = 0
+	var action_count := model.get_legal_primary_actions("white").size()
+	var thought = await cpu.think()
+	var profile := lemay.get_last_profile()
+	_expect(thought != null and profile.fallback_used and profile.evaluated_reply_count == 0 and profile.model_construction_count == 0, "timeout before any candidate returns the stable heuristic fallback without simulating")
+	_expect(profile.incomplete_root_candidates == action_count and profile.exact_root_candidates == 0, "every skipped root is explicitly reported as incomplete")
+	cpu.queue_free()
+	model.free()
+	await get_tree().process_frame
+
+
+func _test_lemay_failed_and_unsettled_branches_are_invalid() -> void:
+	for mode in [FaultInjectingLeMay.FaultMode.REJECT, FaultInjectingLeMay.FaultMode.LEAVE_UNSETTLED]:
+		var model := _new_lemay_tactical_model()
+		var cpu := _add_cpu(model, "white", false)
+		cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+		var brain := FaultInjectingLeMay.new(cpu)
+		brain.fault_mode = mode
+		brain.think_budget_msec = 60000
+		cpu.brain = brain
+		var thought = await cpu.think()
+		var profile := brain.get_last_profile()
+		_expect(thought != null and profile.fallback_used and profile.exact_root_candidates == 0, "failed or unsettled simulations cannot become exact minimax candidates")
+		_expect(profile.invalid_root_candidates == profile.root_action_count and thought.score < INF, "failed or unsettled branches are invalid rather than favorably infinite")
+		cpu.queue_free()
+		model.free()
+		await get_tree().process_frame
+
+
+func _test_lemay_reuses_generated_actions_during_evaluation() -> void:
+	var model := _new_lemay_tactical_model()
+	var cpu := _add_cpu(model, "white", false)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	cpu.set_brain(ChessCpuPlayer.BrainKind.LEMAY)
+	var lemay := cpu.brain as LeMayAiBrain
+	lemay.think_budget_msec = 60000
+	lemay.max_reply_leaves = 100000
+	lemay.alpha_beta_enabled = false
+	var thought = await cpu.think()
+	var profile := lemay.get_last_profile()
+	# One reply-list generation per root plus at most two cached lists per leaf.
+	_expect(thought != null and profile.legal_action_generation_count <= profile.root_action_count + profile.evaluated_reply_count * 2, "LeMay reuses each evaluated state's legal actions for mobility and lethal-threat detection")
+	_expect(profile.position_load_count == profile.model_construction_count and profile.model_construction_count <= profile.root_action_count + profile.evaluated_reply_count, "each simulation model is loaded once and evaluated without reconstruction")
+	_expect(thought.search_profile.legal_action_generation_count == profile.legal_action_generation_count, "LeMay exposes permanent per-thought profiling instrumentation")
+	cpu.queue_free()
+	model.free()
+	await get_tree().process_frame
+
+
+func _test_lemay_arakne_ability_awareness() -> void:
+	var model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(4, 4))
+	var enemy_king := ClassicKing.new("black", Vector2i(3, 3))
+	arakne.attack_power = 0
+	arakne.set_cooldown(0)
+	model.add_piece(arakne, arakne.coordinate)
+	model.add_piece(enemy_king, enemy_king.coordinate)
+	var cpu := _add_cpu(model, "white", false)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	cpu.set_brain(ChessCpuPlayer.BrainKind.LEMAY)
+	var thought = await cpu.think()
+	_expect(thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.target == enemy_king.coordinate, "LeMay recognizes lethal Spike Burst as an immediate win")
+	cpu.queue_free()
+	model.free()
+	await get_tree().process_frame
+
+
+func _new_lemay_tactical_model() -> ChessBoardModel:
+	var model := _new_empty_model()
+	for piece in [
+		ClassicKing.new("white", Vector2i(7, 7)),
+		ClassicKing.new("black", Vector2i(0, 7)),
+		Queen.new("white", Vector2i(4, 4)),
+		Pawn.new("white", Vector2i(6, 1)),
+		Pawn.new("black", Vector2i(4, 3)),
+		Rook.new("black", Vector2i(4, 0)),
+		Pawn.new("black", Vector2i(1, 1)),
+	]:
+		model.add_piece(piece, piece.coordinate)
+	return model
 
 
 func _test_cpu_active_ability() -> void:
@@ -615,6 +781,39 @@ func _test_two_cpu_turns() -> void:
 	await _wait_frames(2)
 	_expect(owners == ["white", "black"], "two CPU clients act once each in turn order")
 	_expect(model.board[7][3] == white_rook and model.board[0][4] == black_rook, "each CPU submits its own highest-scoring capture")
+	white_cpu.queue_free()
+	black_cpu.queue_free()
+	model.free()
+
+
+func _test_ryck_vs_lemay_turns() -> void:
+	var model := _new_empty_model()
+	for piece in [
+		ClassicKing.new("white", Vector2i(7, 7)),
+		Pawn.new("white", Vector2i(6, 0)),
+		ClassicKing.new("black", Vector2i(0, 7)),
+		Pawn.new("black", Vector2i(1, 0)),
+	]:
+		model.add_piece(piece, piece.coordinate)
+	var white_cpu := _add_cpu(model, "white", false)
+	var black_cpu := _add_cpu(model, "black", false)
+	white_cpu.set_brain(ChessCpuPlayer.BrainKind.RYCK)
+	black_cpu.set_brain(ChessCpuPlayer.BrainKind.LEMAY)
+	var owners: Array[String] = []
+	model.action_started.connect(func(color: String):
+		owners.append(color)
+		if owners.size() == 2:
+			white_cpu.is_enabled = false
+			black_cpu.is_enabled = false
+	)
+	black_cpu.configure(true, "black")
+	white_cpu.configure(true, "white")
+	# LeMay deliberately yields during authoritative analysis and can require more
+	# than 20 rendered frames even in this small integration fixture.
+	await _wait_for_action_count(owners, 2, 300)
+	await _wait_frames(2)
+	_expect(owners == ["white", "black"], "Ryck and LeMay can control opposing armies in one automatic battle")
+	_expect(white_cpu.brain_kind == ChessCpuPlayer.BrainKind.RYCK and black_cpu.brain_kind == ChessCpuPlayer.BrainKind.LEMAY, "opposing CPU clients retain independent brain assignments")
 	white_cpu.queue_free()
 	black_cpu.queue_free()
 	model.free()

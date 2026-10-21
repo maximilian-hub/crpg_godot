@@ -505,7 +505,7 @@ func _test_wraith_cpu_active_integration() -> void:
 	for coord in model.get_adjacent_squares(king.coordinate):
 		var blocker := Pawn.new("white", coord); blocker.stunned = true; blocker.stun_timer = 99; model.add_piece(blocker, coord)
 	var cpu := ChessCpuPlayer.new(); cpu.model = model; add_child(cpu); cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
-	var thought = cpu.think()
+	var thought = await cpu.think()
 	_expect(thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.piece_type_id == &"wraith_king", "CPU can enumerate and select Summon Wraith as a primary action")
 	cpu.queue_free(); model.queue_free(); await get_tree().process_frame
 

@@ -88,6 +88,13 @@ signal movement_type_selection_resolved(movement_type: StringName)
 # deliberately not part of ChessPosition, so test conveniences never leak into
 # saved or production battle state.
 var active_ability_cooldowns_disabled := false
+## Disabled on disposable AI search models to avoid thousands of log writes.
+var diagnostic_logging_enabled := true
+
+
+func _diagnostic(message: String) -> void:
+	if diagnostic_logging_enabled:
+		print(message)
 
 # One primary move/ability and every consequence it causes are one action.
 # current_turn does not change until the action and reaction queue are finished.
@@ -521,7 +528,7 @@ func begin_action(owner_color: String) -> bool:
 	action_in_progress = true
 	action_owner_color = owner_color
 	consecutive_forced_passes = 0
-	print("ACTION START — ", action_owner_color)
+	_diagnostic("ACTION START — " + action_owner_color)
 	action_started.emit(action_owner_color)
 	var king := get_king(owner_color)
 	if king is WraithKing: (king as WraithKing).begin_primary_action()
@@ -549,7 +556,7 @@ func finish_action() -> void:
 	if not selection_queue.is_empty():
 		await continue_action_resolution()
 		return
-	print("ACTION END — ", action_owner_color)
+	_diagnostic("ACTION END — " + action_owner_color)
 	var completed_action_owner := action_owner_color
 	action_in_progress = false
 	action_owner_color = ""
@@ -599,7 +606,7 @@ func resolve_unplayable_turns() -> bool:
 		passed_any = true
 		var skipped_color := current_turn
 		consecutive_forced_passes += 1
-		print("TURN PASSED — ", skipped_color, " has no legal actions (", consecutive_forced_passes, "/", MAX_CONSECUTIVE_FORCED_PASSES, ")")
+		_diagnostic("TURN PASSED — %s has no legal actions (%d/%d)" % [skipped_color, consecutive_forced_passes, MAX_CONSECUTIVE_FORCED_PASSES])
 		turn_passed.emit(skipped_color, consecutive_forced_passes)
 		if forced_pass_delay_seconds > 0.0 and is_inside_tree():
 			await get_tree().create_timer(forced_pass_delay_seconds).timeout
@@ -656,7 +663,7 @@ func complete_battle() -> void:
 	else:
 		battle_result = "white"
 
-	print("BATTLE FINISHED — ", battle_result)
+	_diagnostic("BATTLE FINISHED — " + battle_result)
 	battle_finished.emit(battle_result)
 	position_revision += 1
 	settled_action_completed.emit()
@@ -672,7 +679,7 @@ func complete_draw() -> void:
 	action_owner_color = ""
 	forced_pass_in_progress = false
 	battle_result = "draw"
-	print("BATTLE FINISHED — draw (six consecutive forced passes)")
+	_diagnostic("BATTLE FINISHED — draw (six consecutive forced passes)")
 	battle_finished.emit(battle_result)
 	position_revision += 1
 	settled_action_completed.emit()
@@ -805,7 +812,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callab
 		var from = piece.coordinate
 		# ... (more checks: bounds, piece at 'from', 'to' empty etc.) ...
 
-		print("actually moving piece, ", piece.type, " from ", from, " to ", to)
+		_diagnostic("actually moving piece, %s from %s to %s" % [piece.type, from, to])
 		board[from.x][from.y] = null
 		board[to.x][to.y] = piece
 		piece.coordinate = to # Update model coordinate *before* animation starts
@@ -820,7 +827,7 @@ func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callab
 		await _announce_piece_landed(piece, from, to)
 		if piece is WraithKing: (piece as WraithKing).on_landed_on_mark(to)
 		await presentation.wait_for_aftermath()
-		print("Animation finished for piece: ", piece.type)
+		_diagnostic("Animation finished for piece: " + piece.type)
 		if not is_piece_active(piece) or piece.coordinate != to:
 			return
 
@@ -896,7 +903,7 @@ func switch_turn():
 		current_turn = "white"
 		global_turn_number += 1
 	
-	print("switching turns.")
+	_diagnostic("switching turns.")
 	emit_signal("turn_changed", current_turn)
 	_apply_lunacy_turn_start(current_turn)
 
@@ -1225,7 +1232,7 @@ func get_furthest_rank(color: String) -> int:
 
 func _get_furthest_white_rank() -> int:
 	var back_rank = board.size()
-	print("white army's back rank is ", back_rank)
+	_diagnostic("white army's back rank is " + str(back_rank))
 	var furthest_rank = back_rank
 	
 	for r in range(board.size() - 1):
@@ -1307,7 +1314,7 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 
 	if piece.is_king and piece.color not in defeated_king_colors:
 		defeated_king_colors.append(piece.color)
-		print("KING DEFEATED — ", piece.color)
+		_diagnostic("KING DEFEATED — " + piece.color)
 
 	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
 	_remove_autonomous_entities_referencing(piece.piece_id)
@@ -1389,7 +1396,7 @@ func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String,
 		"event_data": event_data
 	})
 	reaction_queued.emit(calling_piece, action_type, event_data, selection_sequence)
-	print("Queued reaction: ", action_type, " for ", calling_piece.color)
+	_diagnostic("Queued reaction: %s for %s" % [action_type, calling_piece.color])
 
 ## Drain automatic/choice reactions. A choice pauses this function; the chosen
 ## square later calls resolve_reaction_selection(), which resumes this action.

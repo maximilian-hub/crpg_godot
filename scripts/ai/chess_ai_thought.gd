@@ -9,3 +9,6 @@ var piece_type_id: StringName
 var target: Vector2i
 var path: Array[Vector2i] = []
 var score: float
+var brain_id: StringName = &"ryck"
+var analyzed_leaf_count := 0
+var search_profile: Dictionary = {}

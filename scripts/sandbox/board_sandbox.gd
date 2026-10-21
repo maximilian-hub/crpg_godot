@@ -34,6 +34,7 @@ var restoring_history := false
 var baseline: ChessPosition
 var ai_mode := ChessCpuPlayer.ExecutionMode.DISABLED
 var ai_sides := {"white": false, "black": true}
+var ai_brains := {"white": ChessCpuPlayer.BrainKind.RYCK, "black": ChessCpuPlayer.BrainKind.RYCK}
 var seed_value := 1
 
 var mode_button: Button
@@ -46,6 +47,8 @@ var copy_button: Button
 var paste_button: Button
 var ai_mode_buttons := {}
 var ai_side_buttons := {}
+var ai_brain_options := {}
+var ai_brain_status_label: Label
 var think_button: Button
 var step_button: Button
 var speed_slider: HSlider
@@ -133,6 +136,12 @@ func _build_desktop_panel() -> void:
 	panel.add_child(side_row)
 	_add_ai_side_button(side_row, "White", "white")
 	_add_ai_side_button(side_row, "Black", "black")
+	_add_section_label("Army Brains")
+	_add_brain_selector(panel, "White", "white")
+	_add_brain_selector(panel, "Black", "black")
+	ai_brain_status_label = Label.new()
+	ai_brain_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel.add_child(ai_brain_status_label)
 
 	think_button = _add_button("AI Think", think_ai)
 	execute_button = _add_button("AI Execute", execute_ai)
@@ -288,6 +297,11 @@ func _build_mobile_panel() -> void:
 	ai_column.add_child(side_row)
 	_add_ai_side_button(side_row, "White", "white")
 	_add_ai_side_button(side_row, "Black", "black")
+	_add_brain_selector(ai_column, "White Brain", "white")
+	_add_brain_selector(ai_column, "Black Brain", "black")
+	ai_brain_status_label = Label.new()
+	ai_brain_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ai_column.add_child(ai_brain_status_label)
 	cooldowns_check = CheckButton.new()
 	cooldowns_check.text = "Disable Cooldowns"
 	cooldowns_check.toggled.connect(_on_cooldowns_toggled)
@@ -335,7 +349,7 @@ func _layout_mobile_controls() -> void:
 	mobile_ai_panel.offset_left = -(right + 270.0)
 	mobile_ai_panel.offset_top = top + 62.0
 	mobile_ai_panel.offset_right = -right
-	mobile_ai_panel.offset_bottom = top + 226.0
+	mobile_ai_panel.offset_bottom = top + 330.0
 	piece_palette.offset_left = left
 	piece_palette.offset_top = -(bottom + 96.0)
 	piece_palette.offset_right = -right
@@ -635,6 +649,9 @@ func _enable_mobile_touch_activation(button: Button) -> void:
 func _set_mode(next: Mode) -> void:
 	if not model.is_settled():
 		return
+	if next == Mode.PLAY and not _brain_configuration_error().is_empty():
+		_refresh_control_states()
+		return
 	mode = next
 	if mode != Mode.EDIT and visibility_check != null:
 		visibility_check.set_pressed_no_signal(false)
@@ -707,6 +724,9 @@ func _toggle_ai_side(color: String) -> void:
 	_refresh_control_states()
 
 func _configure_ai(next_mode: ChessCpuPlayer.ExecutionMode) -> void:
+	if next_mode != ChessCpuPlayer.ExecutionMode.DISABLED and not _brain_configuration_error(next_mode).is_empty():
+		_refresh_control_states()
+		return
 	ai_mode = next_mode
 	_clear_ai_thoughts()
 	_apply_ai_configuration()
@@ -716,6 +736,8 @@ func _configure_ai(next_mode: ChessCpuPlayer.ExecutionMode) -> void:
 func _apply_ai_configuration() -> void:
 	game.white_cpu_player.configure_mode(ChessCpuPlayer.ExecutionMode.DISABLED, "white")
 	game.black_cpu_player.configure_mode(ChessCpuPlayer.ExecutionMode.DISABLED, "black")
+	game.white_cpu_player.set_brain(ai_brains.white)
+	game.black_cpu_player.set_brain(ai_brains.black)
 	if mode != Mode.PLAY or ai_mode == ChessCpuPlayer.ExecutionMode.DISABLED:
 		return
 	for color in ["white", "black"]:
@@ -723,6 +745,51 @@ func _apply_ai_configuration() -> void:
 			var cpu := game.white_cpu_player if color == "white" else game.black_cpu_player
 			cpu.set_random_seed(seed_value)
 			cpu.configure_mode(ai_mode, color)
+
+
+func _add_brain_selector(parent: Control, label_text: String, color: String) -> void:
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size.x = 76.0
+	row.add_child(label)
+	var option := OptionButton.new()
+	option.add_item("Ryck", ChessCpuPlayer.BrainKind.RYCK)
+	option.add_item("LeMay", ChessCpuPlayer.BrainKind.LEMAY)
+	option.add_item("Dupre", ChessCpuPlayer.BrainKind.DUPRE)
+	option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	option.item_selected.connect(func(index: int): _on_brain_selected(color, option.get_item_id(index)))
+	row.add_child(option)
+	parent.add_child(row)
+	ai_brain_options[color] = option
+
+
+func _on_brain_selected(color: String, kind: ChessCpuPlayer.BrainKind) -> void:
+	ai_brains[color] = kind
+	_clear_ai_thoughts()
+	_apply_ai_configuration()
+	_apply_play_control()
+	_refresh_control_states()
+
+
+func _brain_configuration_error(requested_mode: int = -1) -> String:
+	if requested_mode < 0:
+		requested_mode = ai_mode
+	if requested_mode == ChessCpuPlayer.ExecutionMode.DISABLED:
+		return ""
+	var uses_lemay_family := false
+	for color in ["white", "black"]:
+		if ai_sides.get(color, false) and ai_brains.get(color, ChessCpuPlayer.BrainKind.RYCK) in [ChessCpuPlayer.BrainKind.LEMAY, ChessCpuPlayer.BrainKind.DUPRE]:
+			uses_lemay_family = true
+	if not uses_lemay_family:
+		return ""
+	var unsupported := LeMayAiBrain.unsupported_king_ids(model)
+	if unsupported.is_empty():
+		return ""
+	var labels := PackedStringArray()
+	for type_id in unsupported:
+		labels.append(String(type_id))
+	return "Selected tactical brain unavailable: unsupported King layer%s %s" % ["s" if labels.size() != 1 else "", ", ".join(labels)]
 
 func _apply_play_control() -> void:
 	var colors: Array[String] = []
@@ -742,7 +809,7 @@ func _manual_cpu() -> ChessCpuPlayer:
 func think_ai() -> void:
 	var cpu := _manual_cpu()
 	if mode == Mode.PLAY and ai_mode == ChessCpuPlayer.ExecutionMode.MANUAL and cpu != null:
-		cpu.think()
+		await cpu.think()
 	_refresh_control_states()
 
 func execute_ai() -> void:
@@ -920,6 +987,17 @@ func _refresh_control_states() -> void:
 		var active: bool = ai_sides[color_name]
 		ai_side_buttons[color_name].set_pressed_no_signal(active)
 		_style_button(ai_side_buttons[color_name], active, COLOR_WHITE_SIDE if color_name == "white" else COLOR_BLACK_SIDE, color_name == "white")
+	var unsupported_lemay := not LeMayAiBrain.unsupported_king_ids(model).is_empty()
+	for color_name in ai_brain_options:
+		var option: OptionButton = ai_brain_options[color_name]
+		option.disabled = not settled
+		option.set_item_disabled(1, unsupported_lemay)
+		option.set_item_disabled(2, unsupported_lemay)
+		option.select(option.get_item_index(int(ai_brains[color_name])))
+	if ai_brain_status_label != null:
+		var brain_error := _brain_configuration_error()
+		ai_brain_status_label.text = brain_error
+		ai_brain_status_label.modulate = Color("e87568") if not brain_error.is_empty() else Color("9a96a3")
 	if speed_slider != null:
 		var adapter: ChessPresentationAdapter = $ChessGame/ChessPresentationAdapter
 		var speed: int = adapter.presentation_policy.speed
@@ -966,7 +1044,15 @@ func _refresh_thought_state() -> void:
 		thought_label.add_theme_color_override("font_color", Color("9a96a3"))
 		return
 	var kind := "Move" if thought.action_kind == ChessPrimaryAction.Kind.MOVE else "Ability"
-	thought_label.text = "%s: %s %s → %s" % [kind, thought.piece_type_id, thought.piece_coordinate, thought.target]
+	thought_label.text = "%s • %s: %s %s → %s • %.1f%s" % [
+		String(thought.brain_id).capitalize(),
+		kind,
+		thought.piece_type_id,
+		thought.piece_coordinate,
+		thought.target,
+		thought.score,
+		" • %d leaves" % thought.analyzed_leaf_count if thought.analyzed_leaf_count > 0 else "",
+	]
 	thought_label.add_theme_color_override("font_color", COLOR_MANUAL)
 
 func _style_button(button: Button, active: bool, color: Color, dark_text := false) -> void:

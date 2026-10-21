@@ -2,6 +2,9 @@ extends Node
 class_name ChessCpuPlayer
 
 const ChessAiThoughtData = preload("res://scripts/ai/chess_ai_thought.gd")
+const RyckBrain = preload("res://scripts/ai/ryck_ai_brain.gd")
+const LeMayBrain = preload("res://scripts/ai/lemay_ai_brain.gd")
+const DupreBrain = preload("res://scripts/ai/dupre_ai_brain.gd")
 
 const RHETORICIAN_CLOSE_THREAT_REWARD := 12.0
 const RHETORICIAN_BACK_UP_PENALTY := 16.0
@@ -27,10 +30,13 @@ signal thought_changed(thought)
 @export var model: ChessBoardModel
 
 enum ExecutionMode { DISABLED, AUTO, MANUAL }
+enum BrainKind { RYCK, LEMAY, DUPRE }
 
 var controlled_color: String = "black"
 var is_enabled: bool = false
 var execution_mode := ExecutionMode.DISABLED
+var brain_kind := BrainKind.RYCK
+var brain: ChessAiBrain
 var rng := RandomNumberGenerator.new()
 var last_thought
 var king_safety_turns_remaining := 0
@@ -43,6 +49,7 @@ var _schedule_generation: int = 0
 
 func _ready() -> void:
 	rng.randomize()
+	_set_brain_instance()
 	if model == null:
 		return
 	model.action_finished.connect(_on_action_finished)
@@ -71,6 +78,26 @@ func configure_mode(mode: ExecutionMode, color: String) -> void:
 		_schedule_primary_action()
 
 
+func set_brain(kind: BrainKind) -> void:
+	brain_kind = kind
+	_set_brain_instance()
+	clear_thought()
+
+
+func get_brain_name() -> String:
+	match brain_kind:
+		BrainKind.LEMAY: return "LeMay"
+		BrainKind.DUPRE: return "Dupre"
+		_: return "Ryck"
+
+
+func _set_brain_instance() -> void:
+	match brain_kind:
+		BrainKind.LEMAY: brain = LeMayBrain.new(self)
+		BrainKind.DUPRE: brain = DupreBrain.new(self)
+		_: brain = RyckBrain.new(self)
+
+
 func set_random_seed(value: int) -> void:
 	rng.seed = value
 	clear_thought()
@@ -79,9 +106,16 @@ func think():
 	clear_thought()
 	if not is_enabled or execution_mode == ExecutionMode.DISABLED or model == null or model.battle_over or not model.is_settled() or model.current_turn != controlled_color:
 		return null
-	var action := choose_primary_action(model.get_legal_primary_actions(controlled_color))
-	if action == null:
+	if brain == null:
+		_set_brain_instance()
+	var thinking_brain := brain
+	var starting_revision := model.position_revision
+	var plan: ChessAiPlan = await thinking_brain.choose_plan(model.get_legal_primary_actions(controlled_color))
+	if thinking_brain != brain or model == null or model.position_revision != starting_revision:
 		return null
+	if plan == null or plan.action == null:
+		return null
+	var action := plan.action
 	var thought = ChessAiThoughtData.new()
 	thought.model_revision = model.position_revision
 	thought.color = controlled_color
@@ -90,7 +124,10 @@ func think():
 	thought.piece_type_id = action.piece.get_position_type_id()
 	thought.target = action.target
 	thought.path.assign(action.path)
-	thought.score = _score_primary_action(action)
+	thought.score = plan.score
+	thought.brain_id = plan.brain_id
+	thought.analyzed_leaf_count = plan.analyzed_leaf_count
+	thought.search_profile = plan.search_profile.duplicate(true)
 	last_thought = thought
 	thought_changed.emit(last_thought)
 	return thought
@@ -132,7 +169,7 @@ func execute_thought() -> bool:
 	return accepted
 
 func step() -> bool:
-	if think() == null:
+	if await think() == null:
 		return false
 	return await execute_thought()
 
@@ -646,7 +683,16 @@ func _take_primary_action(generation: int = -1) -> void:
 	):
 		return
 
-	if think() == null:
+	if await think() == null:
+		return
+	if (
+		execution_mode != ExecutionMode.AUTO
+		or (generation >= 0 and generation != _schedule_generation)
+		or model == null
+		or model.battle_over
+		or model.current_turn != controlled_color
+	):
+		clear_thought()
 		return
 	await execute_thought()
 

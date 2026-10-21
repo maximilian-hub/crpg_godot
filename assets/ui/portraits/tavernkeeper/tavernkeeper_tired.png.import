@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bd5aofra2bgo5"
-path="res://.godot/imported/tavernkeeper_angry.png-a83d92d465f7d37e587d9ba25f7f696d.ctex"
+uid="uid://8k4prvosdjs6"
+path="res://.godot/imported/tavernkeeper_tired.png-bb753612b8bf7f35066b6e6f3114b0e2.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/portraits/tavernkeeper/tavernkeeper_angry.png"
-dest_files=["res://.godot/imported/tavernkeeper_angry.png-a83d92d465f7d37e587d9ba25f7f696d.ctex"]
+source_file="res://assets/ui/portraits/tavernkeeper/tavernkeeper_tired.png"
+dest_files=["res://.godot/imported/tavernkeeper_tired.png-bb753612b8bf7f35066b6e6f3114b0e2.ctex"]
 
 [params]
 
