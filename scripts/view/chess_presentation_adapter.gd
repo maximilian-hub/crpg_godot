@@ -191,6 +191,7 @@ func present_playable_turn(color: String) -> void:
 
 
 func _on_board_initialized(board: Array) -> void:
+	_clear_all_archer_targeting()
 	piece_views = view.draw_board(board)
 	for row in board:
 		for piece in row:
@@ -201,6 +202,8 @@ func _on_board_initialized(board: Array) -> void:
 	_rebuild_nonphysical_views()
 
 func _on_board_rebuilt(board: Array) -> void:
+	_clear_all_archer_targeting()
+	if is_instance_valid(archer_draw_button): archer_draw_button.visible = false
 	_clear_nonphysical_views()
 	_clear_magic_controllers()
 	piece_views.clear()
@@ -1348,17 +1351,37 @@ func _create_archer_draw_button() -> void:
 	archer_draw_button.text = "Draw"
 	archer_draw_button.visible = false
 	archer_draw_button.z_index = 200
+	archer_draw_button.custom_minimum_size = Vector2(280.0, 88.0)
+	archer_draw_button.add_theme_font_size_override("font_size", 34)
+	var normal_style := StyleBoxFlat.new()
+	normal_style.bg_color = Color(0.07, 0.055, 0.10, 0.95)
+	normal_style.border_color = Color(0.66, 0.52, 0.24, 0.95)
+	normal_style.set_border_width_all(3)
+	normal_style.set_corner_radius_all(21)
+	normal_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	normal_style.shadow_size = 15
+	archer_draw_button.add_theme_stylebox_override("normal", normal_style)
+	var hover_style := normal_style.duplicate() as StyleBoxFlat
+	hover_style.bg_color = Color(0.16, 0.12, 0.20, 0.98)
+	hover_style.border_color = Color(1.0, 0.80, 0.32, 1.0)
+	archer_draw_button.add_theme_stylebox_override("hover", hover_style)
+	archer_draw_button.add_theme_stylebox_override("pressed", hover_style)
 	archer_draw_button.pressed.connect(controller.submit_selected_archer_charge)
-	view.add_child(archer_draw_button)
+	var screen_ui := get_node_or_null("../LunacyLayer/LunacyUI") as Control
+	if screen_ui != null:
+		screen_ui.add_child(archer_draw_button)
+		archer_draw_button.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		archer_draw_button.offset_left = -140.0
+		archer_draw_button.offset_top = -158.0
+		archer_draw_button.offset_right = 140.0
+		archer_draw_button.offset_bottom = -70.0
+	else:
+		view.add_child(archer_draw_button)
 
-func _on_contextual_archer_draw_changed(archer: ArcherKing, visible: bool) -> void:
+func _on_contextual_archer_draw_changed(_archer: ArcherKing, visible: bool) -> void:
 	if archer_draw_button == null:
 		return
 	archer_draw_button.visible = visible
-	if visible:
-		var piece_view := get_piece_view(archer) as PieceView
-		if is_instance_valid(piece_view):
-			archer_draw_button.position = piece_view.position + piece_view.get_head_anchor().position - Vector2(34, 38)
 
 func _on_archer_state_changed(king: ArcherKing, _state: StringName, message: String) -> void:
 	var piece_view := get_piece_view(king) as PieceView
@@ -1437,6 +1460,11 @@ func _clear_archer_targeting(king: ArcherKing) -> void:
 	var node: Node = archer_targeting_visuals.get(king)
 	archer_targeting_visuals.erase(king)
 	if is_instance_valid(node): node.queue_free()
+
+func _clear_all_archer_targeting() -> void:
+	for node in archer_targeting_visuals.values():
+		if is_instance_valid(node): node.queue_free()
+	archer_targeting_visuals.clear()
 
 func _refresh_all_archer_statuses() -> void:
 	for piece in piece_views:
