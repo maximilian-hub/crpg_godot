@@ -157,6 +157,10 @@ func capture_position() -> ChessPosition:
 	position.defeated_king_colors.assign(defeated_king_colors)
 	position.lunacy_by_color = lunacy_by_color.duplicate(true)
 	position.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
+	position.random_states = {
+		&"lunacy": _lunacy_rng.state,
+		&"archer_volley": _archer_volley_rng.state,
+	}
 	position.global_turn_number = global_turn_number
 	for row in board:
 		for piece in row:
@@ -177,8 +181,8 @@ func load_position(position: ChessPosition) -> bool:
 	if not is_settled():
 		printerr("load_position: Model must be settled.")
 		return false
-	# Schema 1 positions predate non-physical board state and migrate as empty layers.
-	if position.schema_version == 1: position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION
+	# Schema 1 predates non-physical board state; schema 2 predates RNG snapshots.
+	if position.schema_version in [1, 2]: position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION
 	var validation := ChessPositionValidator.validate(position)
 	if not validation.is_structurally_valid():
 		printerr("load_position: ", "; ".join(validation.structural_errors))
@@ -224,6 +228,10 @@ func load_position(position: ChessPosition) -> bool:
 	defeated_king_colors.assign(position.defeated_king_colors)
 	lunacy_by_color = position.lunacy_by_color.duplicate(true)
 	socratic_turns_by_color = position.socratic_turns_by_color.duplicate(true)
+	if position.random_states.has(&"lunacy"):
+		_lunacy_rng.state = int(position.random_states[&"lunacy"])
+	if position.random_states.has(&"archer_volley"):
+		_archer_volley_rng.state = int(position.random_states[&"archer_volley"])
 	global_turn_number = position.global_turn_number
 	last_destroyed_piece = null
 	last_move = {}

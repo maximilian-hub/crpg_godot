@@ -14,8 +14,10 @@ func _ready() -> void:
 	await _test_unrelated_action_preserves_context()
 	await _test_illegal_recommendation_falls_back()
 	await _test_immediate_win_and_urgent_defense_override()
+	await _test_special_ability_overrides_book()
 	await _test_black_book_play()
-	await _test_reset_and_incompatible_king()
+	await _test_special_kings_play_black_book()
+	await _test_reset_and_special_kings()
 	await _test_normal_dupre_after_book_exit()
 	if failures.is_empty():
 		print("DUPRE OPENING BOOK CHARACTERIZATION: PASS (", checks, " checks)")
@@ -180,7 +182,46 @@ func _test_black_book_play() -> void:
 	_cleanup(cpu, model)
 
 
-func _test_reset_and_incompatible_king() -> void:
+func _test_special_kings_play_black_book() -> void:
+	for king_type in [&"minotaur_king", &"rhetorician_king"]:
+		var model := _classic_model()
+		var position := model.capture_position()
+		for state in position.pieces:
+			if state.color == "black" and state.type_id == &"classic_king":
+				state.type_id = king_type
+		model.load_position(position)
+		await _submit(model, Vector2i(6, 4), Vector2i(4, 4))
+		var cpu := _cpu(model, "black", 19)
+		var thought = await cpu.think()
+		_expect(thought != null and thought.search_profile.opening_book_hit, String(king_type) + " follows compatible imported theory as Black")
+		_cleanup(cpu, model)
+
+
+func _test_special_ability_overrides_book() -> void:
+	var model := _classic_model()
+	var position := model.capture_position()
+	for state in position.pieces:
+		if state.color == "white" and state.type_id == &"classic_king":
+			state.type_id = &"minotaur_king"
+			state.current_cooldown = 0
+			state.cooldown_reset_pending = false
+		elif state.color == "white" and state.coordinate == Vector2i(6, 4):
+			state.coordinate = Vector2i(4, 7)
+		elif state.color == "black" and state.type_id == &"classic_king":
+			state.coordinate = Vector2i(3, 4)
+			state.max_hp = 4
+			state.current_hp = 2
+	model.load_position(position)
+	var cpu := _cpu(model, "white", 91)
+	var brain: DupreAiBrain = cpu.brain
+	brain.opening_session.begin(&"italian_game", model.global_turn_number)
+	var thought = await cpu.think()
+	_expect(thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.target == Vector2i(3, 4) and thought.search_profile.opening_book_override, "a lethal Minotaur ability overrides an active traditional opening")
+	_expect(brain.opening_session.book_moves_played == 0, "a special-King opening override does not consume Dupre's book-move allowance")
+	_cleanup(cpu, model)
+
+
+func _test_reset_and_special_kings() -> void:
 	var model := _classic_model()
 	var cpu := _cpu(model, "white", 10)
 	await cpu.think()
@@ -193,16 +234,16 @@ func _test_reset_and_incompatible_king() -> void:
 	_expect(not cpu.brain.opening_session.active, "changing the controlled side resets opening state")
 	_cleanup(cpu, model)
 
-	var arakne_model := _classic_model()
-	var state := arakne_model.capture_position()
-	for piece_state in state.pieces:
-		if piece_state.color == "white" and piece_state.type_id == &"classic_king": piece_state.type_id = &"arakne_king"
-	arakne_model.load_position(state)
-	var arakne_cpu := _cpu(arakne_model, "white", 11)
-	(arakne_cpu.brain as DupreAiBrain).max_reply_leaves = 0
-	var arakne_thought = await arakne_cpu.think()
-	_expect(arakne_thought != null and not arakne_thought.search_profile.opening_book_hit and arakne_cpu.brain.opening_session.exit_reason == &"incompatible_position", "non-Classic king setups do not receive Classic-only imported actions")
-	_cleanup(arakne_cpu, arakne_model)
+	for king_type in [&"arakne_king", &"minotaur_king", &"rhetorician_king"]:
+		var special_model := _classic_model()
+		var state := special_model.capture_position()
+		for piece_state in state.pieces:
+			if piece_state.color == "white" and piece_state.type_id == &"classic_king": piece_state.type_id = king_type
+		special_model.load_position(state)
+		var special_cpu := _cpu(special_model, "white", 11)
+		var special_thought = await special_cpu.think()
+		_expect(special_thought != null and special_thought.search_profile.opening_book_hit, String(king_type) + " can use authoritative orthodox opening moves")
+		_cleanup(special_cpu, special_model)
 
 
 func _test_normal_dupre_after_book_exit() -> void:

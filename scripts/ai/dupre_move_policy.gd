@@ -31,6 +31,10 @@ func score(action: ChessPrimaryAction) -> float:
 	if player._is_immediate_win(action):
 		return 10000.0
 	var result := player._score_primary_action(action)
+	if action.piece is KingPiece:
+		var layer = ChessKingAiRegistry.layer_for(action.piece.get_position_type_id())
+		if layer != null:
+			result += float(layer.action_policy_bonus(model, action, color))
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		return result
 	if creates_new_king_threat(action):

@@ -27,6 +27,12 @@ func _ready() -> void:
 	await _test_immediate_victory()
 	await _test_arakne_ability_victory()
 	await _test_arakne_skitter_path_identity()
+	await _test_minotaur_charge_support()
+	await _test_minotaur_charge_defense()
+	await _test_minotaur_rage_collateral()
+	await _test_rhetorician_compel_support()
+	await _test_rhetorician_rng_snapshot_consistency()
+	_test_brain_specific_king_support()
 	if failures.is_empty():
 		print("DUPRE CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -368,6 +374,119 @@ func _test_arakne_skitter_path_identity() -> void:
 	_expect(plan != null and chosen_path.size() == 2, "Dupre retains a complete path-aware Skitter action")
 	_expect(executed and landings == chosen_path, "Dupre executes the exact Skitter route it tactically verified")
 	_cleanup(cpu, model)
+
+
+func _test_minotaur_charge_support() -> void:
+	var model := _new_empty_model()
+	var minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	var enemy_king := ClassicKing.new("black", Vector2i(4, 4))
+	enemy_king.max_hp = 4
+	enemy_king.current_hp = 2
+	minotaur.set_cooldown(0)
+	for piece in [minotaur, enemy_king]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var thought = await cpu.think()
+	_expect(DupreAiBrain.unsupported_king_ids(model).is_empty(), "Dupre capability registry accepts a Minotaur matchup")
+	_expect(thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.target == enemy_king.coordinate, "Dupre selects an immediately lethal Minotaur Charge")
+	_expect(thought != null and thought.search_profile.selected_candidate_reason == &"immediate_win", "lethal Charge is retained outside the ordinary candidate cap")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_minotaur_charge_defense() -> void:
+	var model := _new_empty_model()
+	var king := ClassicKing.new("white", Vector2i(4, 4))
+	var blocker := Rook.new("white", Vector2i(6, 2))
+	var enemy_minotaur := MinotaurKing.new("black", Vector2i(4, 0))
+	enemy_minotaur.set_cooldown(0)
+	for piece in [king, blocker, enemy_minotaur]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var current_threats := cpu._king_threat_count(king, king.coordinate, cpu._current_board_state())
+	var thought = await cpu.think()
+	var chosen: ChessPrimaryAction
+	if thought != null:
+		for action in model.get_legal_primary_actions("white"):
+			if action.piece.coordinate == thought.piece_coordinate and action.target == thought.target and action.path == thought.path:
+				chosen = action
+				break
+	_expect(current_threats > 0, "Dupre's king-safety projection recognizes an enemy Minotaur Charge lane")
+	_expect(chosen != null and cpu._projected_king_threat_count(chosen) == 0, "Dupre answers a ready Charge with an authoritative safe defense")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_minotaur_rage_collateral() -> void:
+	var model := _new_empty_model()
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var exposed_queen := Queen.new("white", Vector2i(3, 4))
+	var minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	minotaur.set_cooldown(1)
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), rook, exposed_queen, minotaur]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var thought = await cpu.think()
+	_expect(thought != null and not (thought.piece_coordinate == rook.coordinate and thought.target == minotaur.coordinate), "authoritative verification rejects a nonlethal Minotaur attack whose Rage loses the Queen")
+	_expect(thought != null and thought.search_profile.selected_status == &"verified", "Rage collateral decision is based on completed tactical verification")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_rhetorician_compel_support() -> void:
+	var model := _new_empty_model()
+	var rhetorician := RhetoricianKing.new("white", Vector2i(4, 4))
+	var compelled := Pawn.new("black", Vector2i(2, 2))
+	var victim := Queen.new("black", Vector2i(3, 3))
+	rhetorician.set_cooldown(0)
+	for piece in [rhetorician, compelled, victim, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var actions := model.get_legal_primary_actions("white")
+	var policy := DuprePolicy.new(cpu)
+	var compel: ChessPrimaryAction
+	for action in actions:
+		if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.target == compelled.coordinate:
+			compel = action
+			break
+	var thought = await cpu.think()
+	_expect(compel != null and policy.score(compel) >= 8.0, "Rhetorician policy values the piece actually removed by a compelled capture")
+	_expect(thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.target == compelled.coordinate, "Dupre chooses a materially decisive Rhetorician compel")
+	_expect(thought != null and int(thought.search_profile.mandatory_candidate_count) > 0, "forcing Rhetorician abilities are protected from the ordinary candidate limit")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_rhetorician_rng_snapshot_consistency() -> void:
+	var source := _new_empty_model()
+	var rhetorician := RhetoricianKing.new("white", Vector2i(7, 7))
+	for piece in [rhetorician, Rook.new("white", Vector2i(6, 0)), Rook.new("black", Vector2i(1, 0)), ClassicKing.new("black", Vector2i(0, 7))]: source.add_piece(piece, piece.coordinate)
+	source.add_lunacy("white", 5)
+	source.set_lunacy_random_seed(731)
+	source.current_turn = "black"
+	var captured := source.capture_position()
+	var encoded := ChessPositionCodec.to_json(captured, false)
+	var decoded: Dictionary = ChessPositionCodec.from_json(encoded)
+	var first := _new_empty_model()
+	var second := _new_empty_model()
+	var loaded_first := first.load_position(decoded.position)
+	var loaded_second := second.load_position(decoded.position.copy())
+	var before_live := source.capture_position().random_states.duplicate(true)
+	if loaded_first and loaded_second:
+		first.begin_action("black")
+		second.begin_action("black")
+		await first.continue_action_resolution()
+		await second.continue_action_resolution()
+	var first_position := first.capture_position()
+	var second_position := second.capture_position()
+	_expect(loaded_first and loaded_second and first_position.random_states == second_position.random_states and ChessPositionCodec.to_json(first_position, false) == ChessPositionCodec.to_json(second_position, false), "identical Rhetorician snapshots reproduce the same Socratic outcome")
+	_expect(source.capture_position().random_states == before_live, "speculative Socratic resolution does not advance live-model RNG")
+	first.free(); second.free(); source.free()
+	await get_tree().process_frame
+
+
+func _test_brain_specific_king_support() -> void:
+	var model := _new_empty_model()
+	for piece in [MinotaurKing.new("white", Vector2i(7, 7)), RhetoricianKing.new("black", Vector2i(0, 0))]: model.add_piece(piece, piece.coordinate)
+	_expect(DupreAiBrain.unsupported_king_ids(model).is_empty(), "Dupre supports enhanced Minotaur and Rhetorician layers on either side")
+	_expect(LeMayAiBrain.unsupported_king_ids(model).size() == 2, "enabling enhanced Dupre layers does not silently broaden LeMay support")
+	model.free()
 
 
 func _add_dupre(model: ChessBoardModel) -> ChessCpuPlayer:

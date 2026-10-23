@@ -44,6 +44,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 		"global_turn_number": position.global_turn_number,
 		"battle": {"over": position.battle_over, "result": position.battle_result, "defeated_king_colors": position.defeated_king_colors.duplicate()},
 		"lunacy": {"white": int(position.lunacy_by_color.get("white", 0)), "black": int(position.lunacy_by_color.get("black", 0)), "socratic_turns": position.socratic_turns_by_color.duplicate(true)},
+		"random_states": _encode_random_states(position.random_states),
 		"pieces": piece_dicts, "tile_effects": effect_dicts, "autonomous_entities": entity_dicts,
 	}
 
@@ -64,14 +65,14 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	if data.get("schema", "") != "crpg_chess_position":
 		errors.append("Unknown position schema.")
 	var input_version := int(data.get("version", -1))
-	if input_version not in [1, ChessPosition.CURRENT_SCHEMA_VERSION]:
+	if input_version not in [1, 2, ChessPosition.CURRENT_SCHEMA_VERSION]:
 		errors.append("Unsupported position version.")
 	var board_data = data.get("board", {})
 	if not board_data is Dictionary:
 		errors.append("Board must be an object.")
 		board_data = {}
 	var position := ChessPosition.new()
-	position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION if input_version == 1 else input_version
+	position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION if input_version in [1, 2] else input_version
 	position.board_size = Vector2i(int(board_data.get("rows", 0)), int(board_data.get("columns", 0)))
 	position.board_type = StringName(board_data.get("type", "default"))
 	position.current_turn = String(data.get("current_turn", ""))
@@ -93,6 +94,15 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 		var turns = lunacy.get("socratic_turns", {})
 		if turns is Dictionary:
 			position.socratic_turns_by_color = {"white": int(turns.get("white", 0)), "black": int(turns.get("black", 0))}
+	var random_states = data.get("random_states", {})
+	if random_states is Dictionary:
+		for key in random_states:
+			var encoded = random_states[key]
+			if encoded is String and String(encoded).is_valid_int():
+				position.random_states[StringName(key)] = int(encoded)
+			elif encoded is int:
+				# Accept hand-authored dictionaries while emitting strings ourselves.
+				position.random_states[StringName(key)] = encoded
 	var last = data.get("last_move")
 	if last is Dictionary:
 		position.last_move.is_present = true
@@ -154,3 +164,11 @@ static func _decode_coord(value, errors: Array[String], field: String) -> Vector
 		errors.append("%s must be a two-item array." % field)
 		return Vector2i.ZERO
 	return Vector2i(int(value[0]), int(value[1]))
+
+static func _encode_random_states(states: Dictionary) -> Dictionary:
+	var result := {}
+	var keys := states.keys()
+	keys.sort_custom(func(a, b): return String(a) < String(b))
+	for key in keys:
+		result[String(key)] = str(int(states[key]))
+	return result

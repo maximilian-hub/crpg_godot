@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource path="res://tests/headless/dupre_special_king_performance.gd" type="Script" id="1"]
+
+[node name="DupreSpecialKingPerformance" type="Node"]
+script = ExtResource("1")

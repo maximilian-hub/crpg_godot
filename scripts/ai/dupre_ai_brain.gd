@@ -22,9 +22,22 @@ var _last_evaluation_complete := true
 var _evaluation_context_forcing := false
 
 
+static func unsupported_king_ids(model: ChessBoardModel) -> Array[StringName]:
+	var result: Array[StringName] = []
+	for color in ["white", "black"]:
+		var king := model.get_king(color)
+		if king == null:
+			continue
+		var type_id := king.get_position_type_id()
+		if not KingAiRegistry.supports_dupre(type_id) and type_id not in result:
+			result.append(type_id)
+	return result
+
+
 func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	_begin_profile(actions.size())
 	_begin_book_profile()
+	last_profile["king_support"] = _king_support_profile(player.model)
 	_pending_book_action.clear()
 	if actions.is_empty() or not unsupported_king_ids(player.model).is_empty():
 		_finish_profile()
@@ -270,6 +283,7 @@ func _candidate_reason_priority(reason: StringName) -> int:
 	match reason:
 		&"immediate_win": return 5
 		&"king_safety": return 4
+		&"king_ability": return 4
 		&"capture_king_attacker": return 3
 		&"favorable_capture": return 2
 		&"major_piece_defense": return 1
@@ -308,7 +322,7 @@ func _reply_class(model: ChessBoardModel, action: ChessPrimaryAction) -> int:
 			return 3
 		return 2
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
-		return 2
+		return 3 if _layer_action_is_forcing(model, action, action.piece.color) else 2
 	if _directly_threatens_major(model, action):
 		return 1
 	return 0
@@ -528,7 +542,7 @@ func _ensure_opening_session() -> void:
 	if max_book_moves <= 0:
 		opening_session.leave(&"disabled")
 		return
-	if not _is_compatible_classic_position():
+	if not _is_compatible_opening_position():
 		opening_session.leave(&"incompatible_position")
 		return
 	var families: Array[Dictionary] = OpeningBook.families()
@@ -613,7 +627,11 @@ func _has_mandatory_override(actions: Array[ChessPrimaryAction]) -> bool:
 		for piece in row:
 			if piece != null and piece.color == player.controlled_color and policy.is_valuable_piece_threatened(piece): return true
 	for action in actions:
-		if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and player._is_acceptable_primary_action(action) and player._score_primary_action(action) >= 8.0: return true
+		if (
+			action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY
+			and player._is_acceptable_primary_action(action)
+			and (_layer_action_is_forcing(player.model, action, player.controlled_color) or policy.score(action) >= 8.0)
+		): return true
 	return false
 
 
@@ -658,11 +676,13 @@ func _advance_node_for_descriptor(descriptor: Dictionary) -> void:
 	opening_session.node_id = matching_node
 
 
-func _is_compatible_classic_position() -> bool:
+func _is_compatible_opening_position() -> bool:
 	if player.model.board.size() != 8 or player.model.board[0].size() != 8: return false
 	for color in ["white", "black"]:
 		var king: ModelPiece = player.model.get_king(color)
-		if king == null or king.get_position_type_id() != &"classic_king": return false
+		if king == null: return false
+		var layer = KingAiRegistry.layer_for(king.get_position_type_id())
+		if layer == null or not layer.allows_traditional_opening(): return false
 		var counts := {&"pawn": 0, &"knight": 0, &"bishop": 0, &"rook": 0, &"queen": 0}
 		for row in player.model.board:
 			for piece in row:
@@ -689,19 +709,19 @@ func _last_move_descriptor() -> Dictionary:
 	var last: Dictionary = player.model.last_move
 	var piece: ModelPiece = last.get("piece")
 	if piece == null or not is_instance_valid(piece): return {}
-	return {"kind": ChessPrimaryAction.Kind.MOVE, "color": piece.color, "piece": piece.get_position_type_id(), "from": last.get("from"), "to": last.get("to"), "path": [last.get("to")]}
+	return {"kind": ChessPrimaryAction.Kind.MOVE, "color": piece.color, "piece": _opening_piece_type(piece), "from": last.get("from"), "to": last.get("to"), "path": [last.get("to")]}
 
 
 func _action_descriptor(action: ChessPrimaryAction) -> Dictionary:
-	return {"kind": action.kind, "color": action.piece.color, "piece": action.piece.get_position_type_id(), "from": action.piece.coordinate, "to": action.target, "path": action.path.duplicate()}
+	return {"kind": action.kind, "color": action.piece.color, "piece": _opening_piece_type(action.piece), "from": action.piece.coordinate, "to": action.target, "path": action.path.duplicate()}
 
 
 func _descriptor_matches_action(descriptor: Dictionary, action: ChessPrimaryAction) -> bool:
-	return int(descriptor.kind) == action.kind and descriptor.color == action.piece.color and StringName(descriptor.piece) == action.piece.get_position_type_id() and descriptor.from == action.piece.coordinate and descriptor.to == action.target and descriptor.get("path", [descriptor.to]) == action.path
+	return int(descriptor.kind) == action.kind and descriptor.color == action.piece.color and StringName(descriptor.piece) == _opening_piece_type(action.piece) and descriptor.from == action.piece.coordinate and descriptor.to == action.target and descriptor.get("path", [descriptor.to]) == action.path
 
 
 func _descriptor_matches_executed_action(descriptor: Dictionary, action: ChessPrimaryAction, origin: Vector2i) -> bool:
-	return int(descriptor.kind) == action.kind and descriptor.color == action.piece.color and StringName(descriptor.piece) == action.piece.get_position_type_id() and descriptor.from == origin and descriptor.to == action.target and descriptor.get("path", [descriptor.to]) == action.path
+	return int(descriptor.kind) == action.kind and descriptor.color == action.piece.color and StringName(descriptor.piece) == _opening_piece_type(action.piece) and descriptor.from == origin and descriptor.to == action.target and descriptor.get("path", [descriptor.to]) == action.path
 
 
 func _descriptor_key(descriptor: Dictionary) -> String:
@@ -732,6 +752,8 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 	for entry in ranked:
 		if player._is_immediate_win(entry.action):
 			_append_unique(selected, selected_keys, entry, &"immediate_win")
+		elif _layer_action_is_forcing(player.model, entry.action, player.controlled_color):
+			_append_unique(selected, selected_keys, entry, &"king_ability")
 	var king: ModelPiece = player.model.get_king(player.controlled_color)
 	if king != null:
 		var current_threats: int = maxi(
@@ -807,3 +829,33 @@ func _remember_action(action: ChessPrimaryAction, origin: Vector2i = Vector2i(-1
 		"from": action.piece.coordinate if origin == Vector2i(-1, -1) else origin,
 		"to": action.target,
 	}
+
+
+func _layer_action_is_forcing(model: ChessBoardModel, action: ChessPrimaryAction, perspective: String) -> bool:
+	if not action.piece is KingPiece:
+		return false
+	var layer = KingAiRegistry.layer_for(action.piece.get_position_type_id())
+	return layer != null and layer.action_is_forcing(model, action, perspective)
+
+
+func _opening_piece_type(piece: ModelPiece) -> StringName:
+	if piece is KingPiece:
+		var layer = KingAiRegistry.layer_for(piece.get_position_type_id())
+		if layer != null and layer.allows_traditional_opening():
+			return &"classic_king"
+	return piece.get_position_type_id()
+
+
+static func _king_support_profile(model: ChessBoardModel) -> Dictionary:
+	var result := {}
+	for color in ["white", "black"]:
+		var king := model.get_king(color)
+		if king == null:
+			continue
+		var type_id := king.get_position_type_id()
+		result[color] = {
+			"type": type_id,
+			"level": KingAiRegistry.dupre_support_level(type_id),
+			"reason": KingAiRegistry.dupre_unsupported_reason(type_id),
+		}
+	return result

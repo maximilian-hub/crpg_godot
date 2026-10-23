@@ -1,7 +1,7 @@
 extends Resource
 class_name ChessPosition
 
-const CURRENT_SCHEMA_VERSION := 2
+const CURRENT_SCHEMA_VERSION := 3
 
 @export var schema_version: int = CURRENT_SCHEMA_VERSION
 @export var board_size := Vector2i(8, 8)
@@ -16,6 +16,10 @@ const CURRENT_SCHEMA_VERSION := 2
 @export var defeated_king_colors: Array[String] = []
 @export var lunacy_by_color := {"white": 0, "black": 0}
 @export var socratic_turns_by_color := {"white": 0, "black": 0}
+## Model-owned random streams are part of reproducible authoritative state.
+## Values are encoded as decimal strings by ChessPositionCodec so JSON never
+## rounds their full 64-bit state.
+@export var random_states := {}
 @export var global_turn_number := 1
 
 func copy() -> ChessPosition:
@@ -36,5 +40,6 @@ func copy() -> ChessPosition:
 	result.defeated_king_colors.assign(defeated_king_colors)
 	result.lunacy_by_color = lunacy_by_color.duplicate(true)
 	result.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
+	result.random_states = random_states.duplicate(true)
 	result.global_turn_number = global_turn_number
 	return result

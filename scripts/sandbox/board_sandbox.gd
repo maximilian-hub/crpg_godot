@@ -811,13 +811,19 @@ func _brain_configuration_error(requested_mode: int = -1) -> String:
 		requested_mode = ai_mode
 	if requested_mode == ChessCpuPlayer.ExecutionMode.DISABLED:
 		return ""
-	var uses_lemay_family := false
+	var unsupported: Array[StringName] = []
 	for color in ["white", "black"]:
-		if ai_sides.get(color, false) and ai_brains.get(color, ChessCpuPlayer.BrainKind.RYCK) in [ChessCpuPlayer.BrainKind.LEMAY, ChessCpuPlayer.BrainKind.DUPRE]:
-			uses_lemay_family = true
-	if not uses_lemay_family:
-		return ""
-	var unsupported := LeMayAiBrain.unsupported_king_ids(model)
+		if not ai_sides.get(color, false):
+			continue
+		var brain: ChessCpuPlayer.BrainKind = ai_brains.get(color, ChessCpuPlayer.BrainKind.RYCK)
+		var rejected: Array[StringName] = []
+		if brain == ChessCpuPlayer.BrainKind.LEMAY:
+			rejected = LeMayAiBrain.unsupported_king_ids(model)
+		elif brain == ChessCpuPlayer.BrainKind.DUPRE:
+			rejected = DupreAiBrain.unsupported_king_ids(model)
+		for type_id in rejected:
+			if type_id not in unsupported:
+				unsupported.append(type_id)
 	if unsupported.is_empty():
 		return ""
 	var labels := PackedStringArray()
@@ -1022,11 +1028,12 @@ func _refresh_control_states() -> void:
 		ai_side_buttons[color_name].set_pressed_no_signal(active)
 		_style_button(ai_side_buttons[color_name], active, COLOR_WHITE_SIDE if color_name == "white" else COLOR_BLACK_SIDE, color_name == "white")
 	var unsupported_lemay := not LeMayAiBrain.unsupported_king_ids(model).is_empty()
+	var unsupported_dupre := not DupreAiBrain.unsupported_king_ids(model).is_empty()
 	for color_name in ai_brain_options:
 		var option: OptionButton = ai_brain_options[color_name]
 		option.disabled = not settled
 		option.set_item_disabled(1, unsupported_lemay)
-		option.set_item_disabled(2, unsupported_lemay)
+		option.set_item_disabled(2, unsupported_dupre)
 		option.select(option.get_item_index(int(ai_brains[color_name])))
 	if ai_brain_status_label != null:
 		var brain_error := _brain_configuration_error()
