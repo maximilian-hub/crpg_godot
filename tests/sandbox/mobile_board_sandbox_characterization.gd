@@ -30,6 +30,14 @@ func _ready() -> void:
 	_check(sandbox.mode == sandbox.Mode.PLAY, "native touch activates top toolbar buttons", failures)
 	var mobile_toolbar := sandbox.mobile_toolbar_panel.get_child(0) as HBoxContainer
 	_check(not sandbox.piece_palette.visible and not sandbox.mobile_ai_panel.visible and mobile_toolbar.get_children().all(func(child): return child == sandbox.mode_button or not child.visible), "Play Mode hides all mobile editor chrome except the Edit toggle", failures)
+	var presentation_adapter: Node = sandbox.game.get_node("ChessPresentationAdapter")
+	var archer_draw_button := presentation_adapter.get("archer_draw_button") as Button
+	var archer_draw_presses := [0]
+	archer_draw_button.pressed.connect(func(): archer_draw_presses[0] += 1)
+	archer_draw_button.visible = true
+	_route_touch_button(sandbox, archer_draw_button, 16)
+	_check(archer_draw_presses[0] == 1, "native touch activates the Archer Charge Draw button", failures)
+	archer_draw_button.visible = false
 	_route_touch_button(sandbox, sandbox.mode_button, 11)
 	await get_tree().process_frame
 	_check(sandbox.piece_palette.visible and mobile_toolbar.get_children().all(func(child): return child.visible), "returning to Edit Mode restores the mobile editor controls", failures)

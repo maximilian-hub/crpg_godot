@@ -467,6 +467,10 @@ func _mobile_button_at(position: Vector2) -> Button:
 	for candidate: Button in mobile_button_callbacks:
 		if candidate.is_visible_in_tree() and candidate.get_global_rect().has_point(position):
 			return candidate
+	var presentation_adapter: Node = game.get_node_or_null("ChessPresentationAdapter")
+	var archer_draw_button := presentation_adapter.get("archer_draw_button") as Button if presentation_adapter != null else null
+	if archer_draw_button != null and archer_draw_button.is_visible_in_tree() and archer_draw_button.get_global_rect().has_point(position):
+		return archer_draw_button
 	var grant_panel := game.get_node_or_null("LunacyLayer/LunacyUI/MovementGrantPanel")
 	if grant_panel != null:
 		for child in grant_panel.find_children("*", "Button", true, false):
