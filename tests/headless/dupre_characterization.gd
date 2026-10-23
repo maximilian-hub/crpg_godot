@@ -33,6 +33,7 @@ func _ready() -> void:
 	await _test_rhetorician_compel_support()
 	await _test_rhetorician_rng_snapshot_consistency()
 	_test_necromancer_policy_support()
+	_test_necromancer_does_not_trade_queen_for_pawn()
 	_test_necromancer_reaction_policy()
 	await _test_necromancer_simulation_settles_reaction()
 	_test_brain_specific_king_support()
@@ -519,6 +520,29 @@ func _test_necromancer_reaction_policy() -> void:
 	var second = cpu.brain.choose_reaction_target(model, necromancer, "raise_dead", Vector2i(5, 3), targets)
 	_expect(first == second, "Dupre reaction placement is deterministic for an identical position")
 	_expect(first != Vector2i(0, 1), "Dupre Raise Dead avoids a Bone Pawn placement that dies immediately")
+	_cleanup(cpu, model)
+
+
+func _test_necromancer_does_not_trade_queen_for_pawn() -> void:
+	var model := _new_empty_model()
+	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
+	var queen := Queen.new("white", Vector2i(4, 4))
+	var attacking_pawn := Pawn.new("black", Vector2i(3, 3))
+	necromancer.set_cooldown(0)
+	for piece in [necromancer, queen, attacking_pawn, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var policy := DuprePolicy.new(cpu)
+	var capture: ChessPrimaryAction
+	var defensive_summon: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece == queen and action.target == attacking_pawn.coordinate:
+			capture = action
+		elif action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.target == Vector2i(5, 3):
+			defensive_summon = action
+	var layer = ChessKingAiRegistry.layer_for(&"necromancer_king")
+	_expect(capture != null and defensive_summon != null, "queen-capture and superficially defensive summon are both legal in the Necromancer exchange fixture")
+	_expect(defensive_summon != null and not layer.action_is_forcing(model, defensive_summon, "white"), "merely defending a still-capturable Queen does not make a Necromancer summon forcing")
+	_expect(capture != null and defensive_summon != null and policy.score(capture) > policy.score(defensive_summon), "Dupre prefers taking the vulnerable pawn over sacrificing its Queen for a Bone Pawn recapture")
 	_cleanup(cpu, model)
 
 

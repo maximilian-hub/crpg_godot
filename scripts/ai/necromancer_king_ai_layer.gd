@@ -65,7 +65,11 @@ func placement_score(model: ChessBoardModel, necromancer: ModelPiece, target: Ve
 		if piece.color != necromancer.color and pawn.can_directly_attack_square(target, coordinate, attack_position):
 			score += 5.0 if piece.is_king else _piece_value(piece) * 0.6
 		elif piece.color == necromancer.color and not piece.is_king and _piece_value(piece) >= 5.0:
-			if base_map.is_hanging(piece) and not projected.is_hanging(piece):
+			# A new defender does not save a major which can still be captured; it
+			# merely promises a recapture after the expensive piece is gone. Reward
+			# only placements which actually remove every direct attacker (typically
+			# by blocking a ray).
+			if base_map.attack_count(coordinate, model.get_other_color(piece.color)) > 0 and projected.attack_count(coordinate, model.get_other_color(piece.color)) == 0:
 				score += _piece_value(piece) * 4.0
 	var advance := float(model.get_back_rank(necromancer.color) - target.x) if necromancer.color == "white" else float(target.x - model.get_back_rank(necromancer.color))
 	var center := 3.5 - absf(float(target.y) - 3.5)
@@ -91,7 +95,7 @@ func _placement_is_forcing(model: ChessBoardModel, necromancer: ModelPiece, targ
 			if pawn.can_directly_attack_square(target, coordinate, attack_position):
 				return true
 		if piece is ModelPiece and piece.color == necromancer.color and not piece.is_king and _piece_value(piece) >= 5.0:
-			if tactical.is_hanging(piece) and not projected.is_hanging(piece):
+			if tactical.attack_count(coordinate, model.get_other_color(piece.color)) > 0 and projected.attack_count(coordinate, model.get_other_color(piece.color)) == 0:
 				return true
 	return false
 
