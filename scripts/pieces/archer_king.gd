@@ -81,7 +81,7 @@ func can_natively_attack_square(origin: Vector2i, target: Vector2i, position: Ch
 	var delta := target - origin
 	var distance := maxi(absi(delta.x), absi(delta.y))
 	var minimum_range := 2
-	var maximum_range := 4
+	var maximum_range := 3
 	if uses_charge():
 		if charge_level <= 0:
 			return false

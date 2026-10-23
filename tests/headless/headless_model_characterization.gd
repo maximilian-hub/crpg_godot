@@ -137,7 +137,7 @@ func _test_archer_king() -> void:
 	_expect(adjacent_enemy.coordinate not in attack_model.get_legal_moves(archer), "Sharpshooter has no traditional adjacent attack")
 	_expect(archer.is_suppressed() and ranged_enemy.coordinate not in attack_model.get_legal_moves(archer), "an adjacent enemy suppresses Sharpshooter")
 	attack_model.destroy_piece(adjacent_enemy, true)
-	_expect(ranged_enemy.coordinate in attack_model.get_legal_moves(archer), "Sharpshooter attacks targets two to four squares away")
+	_expect(ranged_enemy.coordinate in attack_model.get_legal_moves(archer), "Sharpshooter attacks targets two to three squares away")
 	_expect(await attack_model.submit_move(archer, ranged_enemy.coordinate), "Sharpshooter accepts its ranged attack")
 	_expect(archer.coordinate == Vector2i(4, 4) and attack_model.board[4][4] == archer and attack_model.board[1][4] == ranged_enemy and ranged_enemy.current_hp == 1, "Sharpshooter deals one damage without moving the Archer King")
 	attack_model.free()
@@ -152,10 +152,10 @@ func _test_archer_king() -> void:
 	los_model.add_piece(obscured_enemy, obscured_enemy.coordinate)
 	los_model.add_piece(diagonal_enemy, diagonal_enemy.coordinate)
 	var los_attacks := los_model.get_legal_moves(los_archer)
-	_expect(obscured_enemy.coordinate not in los_attacks, "Sharpshooter cannot attack an enemy obscured inside its two-to-four-square range")
+	_expect(obscured_enemy.coordinate not in los_attacks, "Sharpshooter cannot attack an enemy obscured inside its two-to-three-square range")
 	_expect(diagonal_enemy.coordinate in los_attacks, "Sharpshooter can attack along an open corner-peek diagonal inside its range")
 	var los_position := ChessAttackPosition.from_board(los_model.board)
-	_expect(not los_archer.can_directly_attack_square(Vector2i(7, 7), Vector2i(2, 7), los_position), "Sharpshooter projected threats stop beyond four squares")
+	_expect(not los_archer.can_directly_attack_square(Vector2i(7, 7), Vector2i(3, 7), los_position), "Sharpshooter projected threats stop beyond three squares")
 	los_model.free()
 
 	var volley_model := _new_empty_model()
@@ -184,6 +184,14 @@ func _test_archer_king() -> void:
 		var variant := ChessPieceCatalog.create_piece(variant_id, "white", Vector2i(4, 4)) as ArcherKing
 		_expect(variant != null and variant.get_position_type_id() == variant_id, "%s is a selectable, persistent Archer King type" % variant_id)
 		variant.free()
+	for ranged_variant_id in [&"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination"]:
+		var range_model := _new_empty_model()
+		var ranged_variant := ChessPieceCatalog.create_piece(ranged_variant_id, "white", Vector2i(4, 4)) as ArcherKing
+		var four_square_target := Pawn.new("black", Vector2i(0, 4))
+		range_model.add_piece(ranged_variant, ranged_variant.coordinate)
+		range_model.add_piece(four_square_target, four_square_target.coordinate)
+		_expect(four_square_target.coordinate not in range_model.get_legal_moves(ranged_variant), "%s cannot attack at four-square range" % ranged_variant_id)
+		range_model.free()
 
 	var ability_model := _new_empty_model()
 	var ability_archer := ChessPieceCatalog.create_piece(&"archer_king_quiver", "white", Vector2i(4, 4)) as ArcherKing
