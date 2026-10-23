@@ -2,17 +2,19 @@ extends LeMayAiBrain
 class_name DupreAiBrain
 
 const DuprePolicy = preload("res://scripts/ai/dupre_move_policy.gd")
+const TacticalMap = preload("res://scripts/ai/dupre_tactical_map.gd")
 const OpeningBook = preload("res://scripts/ai/dupre_opening_book.gd")
 const OpeningSession = preload("res://scripts/ai/dupre_opening_session.gd")
 const DEFAULT_CANDIDATE_LIMIT := 6
 const DEFAULT_MAX_BOOK_MOVES := 7
-const TACTICAL_SAFETY_MARGIN := 12.0
+const TACTICAL_SAFETY_MARGIN := 5.0
 
 var candidate_limit := DEFAULT_CANDIDATE_LIMIT
 var max_book_moves := DEFAULT_MAX_BOOK_MOVES
 var previous_own_actions: Dictionary = {}
 var opening_session = OpeningSession.new()
 var _pending_book_action: Dictionary = {}
+var _tactical_map: DupreTacticalMap
 
 
 func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
@@ -23,12 +25,19 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		_finish_profile()
 		return null
 	_root_revision = player.model.position_revision
+	_ensure_tactical_map()
+	_populate_tactical_profile()
 	_ensure_opening_session()
+	var book_metrics := OpeningBook.load_metrics()
+	last_profile["opening_book_load_usec"] = book_metrics.load_usec
+	last_profile["opening_book_data_bytes"] = book_metrics.data_bytes
+	last_profile["opening_book_family_count"] = book_metrics.family_count
 	var book_plan = _try_opening_book(actions)
 	if book_plan != null:
 		return book_plan
-	var policy := DuprePolicy.new(player, previous_own_actions)
+	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
 	var ranked := await _rank_actions(actions, policy)
+	_populate_policy_profile(policy)
 	if ranked.is_empty():
 		_finish_profile()
 		return null
@@ -49,6 +58,7 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 			CandidateStatus.COMPLETED:
 				last_profile.exact_root_candidates += 1
 				result["policy"] = entry.policy
+				result["candidate_reason"] = entry.get("candidate_reason", &"")
 				exact.append(result)
 				best_tactical = maxf(best_tactical, float(result.score))
 			CandidateStatus.PRUNED:
@@ -62,17 +72,19 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	var selected_action: ChessPrimaryAction
 	var selected_score := 0.0
 	if exact.is_empty():
-		selected_action = ranked[0].action
-		selected_score = ranked[0].policy
+		selected_action = candidates[0].action if not candidates.is_empty() else ranked[0].action
+		selected_score = candidates[0].policy if not candidates.is_empty() else ranked[0].policy
 		last_profile.fallback_used = true
 		last_profile.unverified_selection = true
 		last_profile.selected_status = &"policy_fallback"
+		last_profile.selected_candidate_reason = candidates[0].get("candidate_reason", &"policy") if not candidates.is_empty() else &"policy"
 	else:
 		var safe: Array[Dictionary] = exact.filter(func(candidate: Dictionary): return float(candidate.score) >= best_tactical - TACTICAL_SAFETY_MARGIN)
 		safe.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
 		selected_action = safe[0].action
 		selected_score = safe[0].score
 		last_profile.selected_status = &"verified"
+		last_profile.selected_candidate_reason = safe[0].get("candidate_reason", &"policy")
 
 	var plan := ChessAiPlan.new(selected_action)
 	plan.brain_id = &"dupre"
@@ -90,6 +102,7 @@ func reset_session(_reason: StringName = &"reset") -> void:
 	# reinitialization after sandbox position replacement.
 	_pending_book_action.clear()
 	previous_own_actions.clear()
+	_tactical_map = null
 
 
 func on_action_executed(action: ChessPrimaryAction, origin: Vector2i) -> void:
@@ -101,7 +114,7 @@ func on_action_executed(action: ChessPrimaryAction, origin: Vector2i) -> void:
 	if not _pending_book_action.is_empty() and _descriptor_matches_executed_action(_pending_book_action, action, origin):
 		opening_session.book_moves_played += 1
 		if not opening_session.deviated:
-			_advance_lines_for_descriptor(_pending_book_action)
+			_advance_node_for_descriptor(_pending_book_action)
 		if opening_session.book_moves_played >= max_book_moves:
 			opening_session.leave(&"move_limit")
 	_pending_book_action.clear()
@@ -116,6 +129,17 @@ func _begin_book_profile() -> void:
 	last_profile["opening_family"] = &""
 	last_profile["opening_book_moves_played"] = 0
 	last_profile["opening_exit_reason"] = &""
+	last_profile["opening_book_load_usec"] = 0
+	last_profile["opening_book_data_bytes"] = 0
+	last_profile["opening_book_family_count"] = 0
+	last_profile["tactical_map_build_usec"] = 0
+	last_profile["tactical_map_direct_attack_calls"] = 0
+	last_profile["tactical_projection_count"] = 0
+	last_profile["tactical_incremental_recalculations"] = 0
+	last_profile["tactical_projection_attack_calls"] = 0
+	last_profile["tactical_projection_usec"] = 0
+	last_profile["mandatory_candidate_count"] = 0
+	last_profile["selected_candidate_reason"] = &""
 
 
 func _ensure_opening_session() -> void:
@@ -128,22 +152,23 @@ func _ensure_opening_session() -> void:
 		opening_session.leave(&"incompatible_position")
 		return
 	var families: Array[Dictionary] = OpeningBook.families()
+	if families.is_empty():
+		opening_session.leave(&"book_data_unavailable")
+		return
 	var eligible: Array[Dictionary] = []
 	eligible.assign(families)
-	var initial_lines: Array[int] = []
-	var initial_cursor := 0
+	var initial_node := 0
 	var last := _last_move_descriptor()
 	if player.controlled_color == "black" and not last.is_empty() and last.color == "white":
 		eligible.clear()
 		for family in families:
-			if not _matching_line_indices(family, 0, last).is_empty(): eligible.append(family)
+			if OpeningBook.matching_child_node(StringName(family.id), 0, last) >= 0: eligible.append(family)
 		if eligible.is_empty(): eligible.assign(families)
 	var selected: Dictionary = eligible[player.rng.randi_range(0, eligible.size() - 1)]
 	if player.controlled_color == "black" and not last.is_empty() and last.color == "white":
-		initial_lines = _matching_line_indices(selected, 0, last)
-		if not initial_lines.is_empty(): initial_cursor = 1
-	opening_session.begin(selected, player.model.global_turn_number, initial_cursor, initial_lines)
-	if player.controlled_color == "black" and initial_cursor == 0:
+		initial_node = OpeningBook.matching_child_node(StringName(selected.id), 0, last)
+	opening_session.begin(StringName(selected.id), player.model.global_turn_number, maxi(initial_node, 0))
+	if player.controlled_color == "black" and initial_node < 0:
 		opening_session.deviated = true
 	if not last.is_empty() and last.color != player.controlled_color:
 		opening_session.last_observed_enemy_move = _descriptor_key(last)
@@ -163,11 +188,18 @@ func _try_opening_book(actions: Array[ChessPrimaryAction]):
 		last_profile.opening_book_fallback = true
 		_populate_book_profile()
 		return null
-	var policy := DuprePolicy.new(player, previous_own_actions)
+	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
 	var matches: Array[ChessPrimaryAction] = []
 	for descriptor in _current_book_descriptors():
 		for action in actions:
-			if _descriptor_matches_action(descriptor, action) and player._is_acceptable_primary_action(action) and policy.score(action) >= -2.0 and action not in matches:
+			if (
+				_descriptor_matches_action(descriptor, action)
+				and player._is_acceptable_primary_action(action)
+				and not policy.creates_new_king_threat(action)
+				and policy.newly_exposed_undefended_value(action) <= 0.0
+				and policy.score(action) >= -2.0
+				and action not in matches
+			):
 				matches.append(action)
 	if matches.is_empty():
 		opening_session.leave(&"no_legal_continuation")
@@ -178,10 +210,12 @@ func _try_opening_book(actions: Array[ChessPrimaryAction]):
 	_pending_book_action = _action_descriptor(selected)
 	last_profile.opening_book_hit = true
 	last_profile.selected_status = &"book_fast_path"
+	last_profile.selected_candidate_reason = &"opening_book"
 	_populate_book_profile()
 	var plan := ChessAiPlan.new(selected)
 	plan.brain_id = &"dupre"
 	plan.score = policy.score(selected)
+	_populate_policy_profile(policy)
 	plan.analyzed_leaf_count = 0
 	_finish_profile()
 	plan.search_profile = get_last_profile()
@@ -194,7 +228,7 @@ func _has_mandatory_override(actions: Array[ChessPrimaryAction]) -> bool:
 	var king: ModelPiece = player.model.get_king(player.controlled_color)
 	if king == null or player.king_safety_turns_remaining > 0: return true
 	if player._king_threat_count(king, king.coordinate, player._current_board_state()) > 0: return true
-	var policy := DuprePolicy.new(player, previous_own_actions)
+	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
 	for row in player.model.board:
 		for piece in row:
 			if piece != null and piece.color == player.controlled_color and policy.is_valuable_piece_threatened(piece): return true
@@ -210,32 +244,22 @@ func _sync_opponent_move() -> void:
 	if key == opening_session.last_observed_enemy_move: return
 	opening_session.last_observed_enemy_move = key
 	if opening_session.deviated: return
-	var matching := _matching_line_indices(opening_session.selected_family, opening_session.cursor, descriptor, opening_session.candidate_line_indices)
-	if matching.is_empty():
+	var matching_node := OpeningBook.matching_child_node(opening_session.selected_family_id, opening_session.node_id, descriptor)
+	if matching_node < 0:
 		opening_session.deviated = true
 		return
-	opening_session.candidate_line_indices = matching
-	opening_session.cursor += 1
+	opening_session.node_id = matching_node
 
 
 func _current_book_descriptors() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var keys := {}
 	if not opening_session.deviated:
-		for line_index in opening_session.candidate_line_indices:
-			var line: Array = opening_session.selected_family.lines[line_index]
-			if opening_session.cursor < line.size():
-				var descriptor: Dictionary = line[opening_session.cursor]
-				if descriptor.color == player.controlled_color: _append_descriptor(result, keys, descriptor)
+		for descriptor in OpeningBook.child_descriptors(opening_session.selected_family_id, opening_session.node_id, player.controlled_color):
+			_append_descriptor(result, keys, descriptor)
 	if not result.is_empty(): return result
-	for line in opening_session.selected_family.get("lines", []):
-		var own_index := 0
-		for descriptor in line:
-			if descriptor.color != player.controlled_color: continue
-			if own_index == opening_session.book_moves_played:
-				_append_descriptor(result, keys, descriptor)
-				break
-			own_index += 1
+	for descriptor in OpeningBook.recovery_descriptors(opening_session.selected_family_id, player.controlled_color, opening_session.book_moves_played):
+		_append_descriptor(result, keys, descriptor)
 	return result
 
 
@@ -246,25 +270,12 @@ func _append_descriptor(result: Array[Dictionary], keys: Dictionary, descriptor:
 	result.append(descriptor)
 
 
-func _advance_lines_for_descriptor(descriptor: Dictionary) -> void:
-	var matching := _matching_line_indices(opening_session.selected_family, opening_session.cursor, descriptor, opening_session.candidate_line_indices)
-	if matching.is_empty():
+func _advance_node_for_descriptor(descriptor: Dictionary) -> void:
+	var matching_node := OpeningBook.matching_child_node(opening_session.selected_family_id, opening_session.node_id, descriptor)
+	if matching_node < 0:
 		opening_session.deviated = true
 		return
-	opening_session.candidate_line_indices = matching
-	opening_session.cursor += 1
-
-
-func _matching_line_indices(family: Dictionary, cursor: int, descriptor: Dictionary, source: Array[int] = []) -> Array[int]:
-	var result: Array[int] = []
-	var indices: Array[int] = []
-	if source.is_empty():
-		for index in range(family.get("lines", []).size()): indices.append(index)
-	else: indices.assign(source)
-	for index in indices:
-		var line: Array = family.lines[index]
-		if cursor < line.size() and _descriptors_equal(line[cursor], descriptor): result.append(index)
-	return result
+	opening_session.node_id = matching_node
 
 
 func _is_compatible_classic_position() -> bool:
@@ -289,7 +300,7 @@ func _expire_opening_session() -> void:
 
 func _populate_book_profile() -> void:
 	last_profile.opening_book_active = opening_session.active
-	last_profile.opening_family = opening_session.selected_family.get("id", &"")
+	last_profile.opening_family = opening_session.selected_family_id
 	last_profile.opening_book_moves_played = opening_session.book_moves_played
 	last_profile.opening_exit_reason = opening_session.exit_reason
 
@@ -311,10 +322,6 @@ func _descriptor_matches_action(descriptor: Dictionary, action: ChessPrimaryActi
 
 func _descriptor_matches_executed_action(descriptor: Dictionary, action: ChessPrimaryAction, origin: Vector2i) -> bool:
 	return int(descriptor.kind) == action.kind and descriptor.color == action.piece.color and StringName(descriptor.piece) == action.piece.get_position_type_id() and descriptor.from == origin and descriptor.to == action.target and descriptor.get("path", [descriptor.to]) == action.path
-
-
-func _descriptors_equal(a: Dictionary, b: Dictionary) -> bool:
-	return int(a.kind) == int(b.kind) and a.color == b.color and StringName(a.piece) == StringName(b.piece) and a.from == b.from and a.to == b.to and a.get("path", [a.to]) == b.get("path", [b.to])
 
 
 func _descriptor_key(descriptor: Dictionary) -> String:
@@ -340,43 +347,79 @@ func _rank_actions(actions: Array[ChessPrimaryAction], policy) -> Array[Dictiona
 func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 	var selected: Array[Dictionary] = []
 	var selected_keys := {}
-	for entry in ranked:
-		if selected.size() >= candidate_limit:
-			break
-		_append_unique(selected, selected_keys, entry)
-
-	# Winning moves and best king-safety responses are mandatory regardless of rank.
+	# Mandatory tactical actions are searched before the ordinary policy slots so
+	# a soft timeout cannot strand an obvious win or check response at the end.
 	for entry in ranked:
 		if player._is_immediate_win(entry.action):
-			_append_unique(selected, selected_keys, entry)
+			_append_unique(selected, selected_keys, entry, &"immediate_win")
 	var king: ModelPiece = player.model.get_king(player.controlled_color)
 	if king != null:
-		var current_threats: int = player._king_threat_count(king, king.coordinate, player._current_board_state())
+		var current_threats: int = maxi(
+			policy.tactical_map.king_attackers(player.controlled_color).size(),
+			player._king_threat_count(king, king.coordinate, player._current_board_state())
+		)
 		if current_threats > 0 or player.king_safety_turns_remaining > 0:
 			var minimum := 999
 			for entry in ranked:
-				minimum = mini(minimum, player._projected_king_threat_count(entry.action))
+				minimum = mini(minimum, maxi(policy.direct_king_threat_count_after(entry.action), player._projected_king_threat_count(entry.action)))
 			for entry in ranked:
-				if player._projected_king_threat_count(entry.action) == minimum:
-					_append_unique(selected, selected_keys, entry)
+				if maxi(policy.direct_king_threat_count_after(entry.action), player._projected_king_threat_count(entry.action)) == minimum:
+					_append_unique(selected, selected_keys, entry, &"king_safety")
+	for entry in ranked:
+		if policy.captures_current_king_attacker(entry.action):
+			_append_unique(selected, selected_keys, entry, &"capture_king_attacker")
+		elif policy.capture_material_swing(entry.action) >= 3.0:
+			_append_unique(selected, selected_keys, entry, &"favorable_capture")
 	var valuable_defenses_by_piece := {}
 	for entry in ranked:
 		var piece: ModelPiece = entry.action.piece
 		if policy.is_valuable_piece_threatened(piece):
 			var defense_count := int(valuable_defenses_by_piece.get(piece.piece_id, 0))
 			if defense_count < 3:
-				_append_unique(selected, selected_keys, entry)
+				_append_unique(selected, selected_keys, entry, &"major_piece_defense")
 				valuable_defenses_by_piece[piece.piece_id] = defense_count + 1
+	last_profile.mandatory_candidate_count = selected.size()
+	var ordinary_count := 0
+	for entry in ranked:
+		if ordinary_count >= candidate_limit:
+			break
+		var before := selected.size()
+		_append_unique(selected, selected_keys, entry, &"policy")
+		if selected.size() > before:
+			ordinary_count += 1
 	return selected
 
 
-func _append_unique(result: Array[Dictionary], keys: Dictionary, entry: Dictionary) -> void:
+func _append_unique(result: Array[Dictionary], keys: Dictionary, entry: Dictionary, reason: StringName = &"") -> void:
 	var action: ChessPrimaryAction = entry.action
 	var key := "%s|%s|%s|%s" % [action.piece.piece_id, action.kind, action.target, action.path]
 	if keys.has(key):
 		return
 	keys[key] = true
+	entry["candidate_reason"] = reason
 	result.append(entry)
+
+
+func _ensure_tactical_map() -> void:
+	if _tactical_map == null or _tactical_map.revision != player.model.position_revision:
+		_tactical_map = TacticalMap.from_model(player.model)
+
+
+func _populate_tactical_profile() -> void:
+	if _tactical_map == null:
+		return
+	last_profile.tactical_map_build_usec = _tactical_map.build_usec
+	last_profile.tactical_map_direct_attack_calls = _tactical_map.direct_attack_calls
+
+
+func _populate_policy_profile(policy) -> void:
+	var metrics: Dictionary = policy.projection_metrics()
+	last_profile.tactical_map_direct_attack_calls = _tactical_map.direct_attack_calls
+	last_profile.tactical_map_build_usec = _tactical_map.build_usec + _tactical_map.query_usec
+	last_profile.tactical_projection_count = metrics.count
+	last_profile.tactical_incremental_recalculations = metrics.recalculations
+	last_profile.tactical_projection_attack_calls = metrics.attack_calls
+	last_profile.tactical_projection_usec = metrics.usec
 
 
 func _remember_action(action: ChessPrimaryAction, origin: Vector2i = Vector2i(-1, -1)) -> void:

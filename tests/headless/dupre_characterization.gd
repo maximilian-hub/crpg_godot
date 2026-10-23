@@ -1,6 +1,7 @@
 extends Node
 
 const DuprePolicy = preload("res://scripts/ai/dupre_move_policy.gd")
+const TacticalMap = preload("res://scripts/ai/dupre_tactical_map.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -10,6 +11,13 @@ func _ready() -> void:
 	_test_opening_development_policy()
 	_test_useful_rook_activity_policy()
 	_test_immediate_reversal_policy()
+	await _test_discovered_king_attack_policy()
+	await _test_uncovered_free_piece_policy()
+	await _test_capture_unprotected_checking_queen()
+	await _test_favorable_checked_queen_exchange()
+	_test_durable_target_projection()
+	_test_incremental_projection_matches_rebuild()
+	_test_tactical_map_revision_invalidation()
 	await _test_hanging_valuable_piece()
 	await _test_poisoned_capture()
 	await _test_immediate_victory()
@@ -72,6 +80,136 @@ func _test_immediate_reversal_policy() -> void:
 		if action.target == Vector2i(7, 0): reversal = action
 		if action.target == Vector2i(4, 0): continuation = action
 	_expect(reversal != null and continuation != null and policy.score(continuation) > policy.score(reversal), "purpose policy penalizes immediately undoing Dupre's previous quiet move")
+	_cleanup(cpu, model)
+
+
+func _test_discovered_king_attack_policy() -> void:
+	var model := _new_empty_model()
+	var king := ClassicKing.new("white", Vector2i(7, 4))
+	king.current_hp = 1
+	var knight := Knight.new("white", Vector2i(5, 2))
+	var pawn := Pawn.new("white", Vector2i(6, 0))
+	var bishop := Bishop.new("black", Vector2i(4, 1))
+	for piece in [king, knight, pawn, bishop, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var policy := DuprePolicy.new(cpu)
+	var exposing_move: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece == knight and action.target == Vector2i(4, 4):
+			exposing_move = action
+			break
+	_expect(exposing_move != null and policy.creates_new_king_threat(exposing_move), "purpose policy detects a knight move that uncovers an immediate bishop attack on its King")
+	_expect(exposing_move != null and policy.score(exposing_move) < -9000.0, "newly exposing the King receives a catastrophic policy penalty")
+	var thought = await cpu.think()
+	_expect(thought != null and thought.piece_coordinate != knight.coordinate, "ordinary Dupre avoids the discovered lethal attack when a safe move exists")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_uncovered_free_piece_policy() -> void:
+	var model := _new_empty_model()
+	var knight := Knight.new("white", Vector2i(3, 2))
+	var queen := Queen.new("white", Vector2i(4, 3))
+	var pawn := Pawn.new("white", Vector2i(6, 0))
+	var bishop := Bishop.new("black", Vector2i(2, 1))
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), knight, queen, pawn, bishop, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var policy := DuprePolicy.new(cpu)
+	var exposing_move: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece == knight and action.target == Vector2i(4, 4):
+			exposing_move = action
+			break
+	_expect(exposing_move != null and policy.newly_exposed_undefended_value(exposing_move) == 9.0, "purpose policy detects a move that uncovers an undefended Queen")
+	var thought = await cpu.think()
+	_expect(thought != null and thought.piece_coordinate != knight.coordinate, "ordinary Dupre avoids uncovering a free major piece when safe alternatives exist")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_capture_unprotected_checking_queen() -> void:
+	var model := _new_empty_model()
+	var king := ClassicKing.new("white", Vector2i(7, 4))
+	king.current_hp = 1
+	var knight := Knight.new("white", Vector2i(4, 3))
+	var checking_queen := Queen.new("black", Vector2i(3, 1))
+	for piece in [king, knight, checking_queen, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var thought = await cpu.think()
+	_expect(thought != null and thought.piece_coordinate == knight.coordinate and thought.target == checking_queen.coordinate, "Dupre captures an unprotected checking Queen instead of merely moving its King")
+	_expect(thought != null and int(thought.search_profile.mandatory_candidate_count) > 0, "capture of a checking piece is included as a mandatory tactical candidate")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_favorable_checked_queen_exchange() -> void:
+	var model := _new_empty_model()
+	var king := ClassicKing.new("white", Vector2i(7, 4))
+	king.current_hp = 1
+	var knight := Knight.new("white", Vector2i(4, 3))
+	var checking_queen := Queen.new("black", Vector2i(3, 1))
+	var defending_pawn := Pawn.new("black", Vector2i(2, 0))
+	for piece in [king, knight, checking_queen, defending_pawn, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var policy := DuprePolicy.new(cpu)
+	var capture: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece == knight and action.target == checking_queen.coordinate: capture = action
+	_expect(capture != null and policy.capture_material_swing(capture) == 6.0, "tactical map recognizes a defended Queen-for-Knight capture as a favorable exchange")
+	var thought = await cpu.think()
+	_expect(thought != null and thought.piece_coordinate == knight.coordinate and thought.target == checking_queen.coordinate, "Dupre chooses the favorable exchange while answering check")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_durable_target_projection() -> void:
+	var model := _new_empty_model()
+	var knight := Knight.new("white", Vector2i(4, 3))
+	var durable_queen := Queen.new("black", Vector2i(3, 1))
+	durable_queen.max_hp = 2
+	durable_queen.current_hp = 2
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), knight, durable_queen, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var policy := DuprePolicy.new(cpu)
+	var attack: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece == knight and action.target == durable_queen.coordinate: attack = action
+	var projected := policy.projected_map(attack)
+	_expect(attack != null and projected.occupancy.get(knight.coordinate) == knight and projected.occupancy.get(durable_queen.coordinate) == durable_queen, "nonlethal attacks on durable pieces do not incorrectly move the attacker in tactical projections")
+	_expect(attack != null and policy.capture_material_swing(attack) == 0.0, "nonlethal damage is not mislabeled as a material capture")
+	_cleanup(cpu, model)
+
+
+func _test_incremental_projection_matches_rebuild() -> void:
+	var model := _new_empty_model()
+	var knight := Knight.new("white", Vector2i(5, 2))
+	var bishop := Bishop.new("black", Vector2i(4, 1))
+	for piece in [ClassicKing.new("white", Vector2i(7, 4)), knight, bishop, Queen.new("white", Vector2i(6, 3)), ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var policy := DuprePolicy.new(cpu)
+	var move: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece == knight and action.target == Vector2i(4, 4): move = action
+	var incremental := policy.projected_map(move)
+	var rebuilt := policy.tactical_map.rebuild_projection(cpu._project_board_after(move))
+	_expect(move != null and incremental.equivalent_to(rebuilt), "incremental tactical projection matches a complete rebuild across an opened bishop ray")
+	_cleanup(cpu, model)
+
+
+func _test_tactical_map_revision_invalidation() -> void:
+	var model := _new_empty_model()
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	cpu.brain._ensure_tactical_map()
+	var original_map = cpu.brain._tactical_map
+	var original_revision: int = original_map.revision
+	var pawn := Pawn.new("white", Vector2i(6, 0))
+	model.add_piece(pawn, pawn.coordinate)
+	# Test fixtures add pieces directly; live settled actions and position loads
+	# advance this authoritative revision themselves.
+	model.position_revision += 1
+	cpu.brain._ensure_tactical_map()
+	_expect(cpu.brain._tactical_map != original_map and cpu.brain._tactical_map.revision == model.position_revision and model.position_revision != original_revision, "tactical map is discarded and rebuilt when the authoritative position revision changes")
 	_cleanup(cpu, model)
 
 

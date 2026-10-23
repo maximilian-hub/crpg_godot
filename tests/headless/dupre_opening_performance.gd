@@ -4,12 +4,16 @@ var failures: Array[String] = []
 
 
 func _ready() -> void:
+	DupreOpeningBook.clear_cache_for_tests()
 	var book := await _benchmark(true)
+	var warm_book := await _benchmark(true)
 	var standard := await _benchmark(false)
-	print("DUPRE OPENING PERFORMANCE: ", JSON.stringify({"book_fast_path": book, "standard_dupre": standard}))
+	print("DUPRE OPENING PERFORMANCE: ", JSON.stringify({"book_cold": book, "book_warm": warm_book, "standard_dupre": standard}))
 	if int(book.model_construction_count) != 0 or int(book.evaluated_reply_count) != 0: failures.append("ordinary book decision performed authoritative simulations")
 	if int(book.legal_action_generation_passes_including_root) >= int(standard.legal_action_generation_passes_including_root): failures.append("book decision did not reduce legal-action generation")
 	if int(book.elapsed_usec) >= int(standard.elapsed_usec): failures.append("book decision was not faster than standard Dupre")
+	if int(warm_book.elapsed_usec) >= int(standard.elapsed_usec): failures.append("warm imported-book decision was not faster than standard Dupre")
+	if int(warm_book.model_construction_count) != 0 or int(warm_book.evaluated_reply_count) != 0: failures.append("warm imported-book decision performed simulations")
 	if not bool(book.opening_book_hit) or book.selected_status != &"book_fast_path": failures.append("book benchmark did not use the fast path")
 	if failures.is_empty():
 		print("DUPRE OPENING PERFORMANCE: PASS")
@@ -33,7 +37,7 @@ func _benchmark(book_enabled: bool) -> Dictionary:
 	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
 	cpu.set_brain(ChessCpuPlayer.BrainKind.DUPRE)
 	cpu.set_random_seed(8128)
-	(cpu.brain as DupreAiBrain).max_book_moves = 4 if book_enabled else 0
+	(cpu.brain as DupreAiBrain).max_book_moves = 7 if book_enabled else 0
 	var started := Time.get_ticks_usec()
 	var thought = await cpu.think()
 	var elapsed := Time.get_ticks_usec() - started

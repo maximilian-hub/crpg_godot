@@ -12,6 +12,8 @@
 
 .import/
 .cache/
+__pycache__/
+*.py[cod]
 *.translation
 
 .DS_Store

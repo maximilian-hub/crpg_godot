@@ -8,18 +8,23 @@ const ROOK_ACTIVITY_REWARD := 1.5
 const SAFE_RESCUE_MULTIPLIER := 1.25
 const HANGING_DESTINATION_MULTIPLIER := 1.5
 const THREAT_MULTIPLIER := 0.6
+const NEW_KING_THREAT_PENALTY := 10000.0
+const EXPOSED_UNDEFENDED_ALLY_MULTIPLIER := 4.0
 
 var player: ChessCpuPlayer
 var model: ChessBoardModel
 var color: String
 var previous_own_actions: Dictionary
+var tactical_map: DupreTacticalMap
+var _projected_maps: Dictionary = {}
 
 
-func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}) -> void:
+func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_tactical_map: DupreTacticalMap = null) -> void:
 	player = p_player
 	model = player.model
 	color = player.controlled_color
 	previous_own_actions = p_previous_own_action
+	tactical_map = p_tactical_map if p_tactical_map != null else DupreTacticalMap.from_model(model)
 
 
 func score(action: ChessPrimaryAction) -> float:
@@ -28,6 +33,8 @@ func score(action: ChessPrimaryAction) -> float:
 	var result := player._score_primary_action(action)
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		return result
+	if creates_new_king_threat(action):
+		result -= NEW_KING_THREAT_PENALTY
 	var origin := action.piece.coordinate
 	var destination := action.target
 	var target: ModelPiece = model.board[destination.x][destination.y]
@@ -51,29 +58,104 @@ func score(action: ChessPrimaryAction) -> float:
 	if _is_immediate_reversal(action):
 		result -= REVERSAL_PENALTY
 
-	var current_board := _occupancy()
-	var projected := _project_normal_move(action, current_board)
+	var projected := projected_map(action)
 	var piece_value := _piece_value(action.piece)
-	var was_attacked := _square_attacked_by(origin, _other_color(color), current_board)
-	var becomes_attacked := _square_attacked_by(destination, _other_color(color), projected)
+	var projected_piece_coordinate := destination if projected.occupancy.get(destination) == action.piece else origin
+	var was_attacked := tactical_map.attack_count(origin, _other_color(color)) > 0
+	var becomes_attacked := projected.attack_count(projected_piece_coordinate, _other_color(color)) > 0
 	if was_attacked and not becomes_attacked and piece_value >= 3.0:
 		result += piece_value * SAFE_RESCUE_MULTIPLIER
 	elif becomes_attacked and piece_value >= 3.0:
 		result -= piece_value * HANGING_DESTINATION_MULTIPLIER
 
 	var best_threat := 0.0
-	var attack_position := ChessAttackPosition.from_occupancy(Vector2i(model.board.size(), model.board[0].size()), projected)
-	for coordinate in projected:
-		var enemy = projected[coordinate]
+	for coordinate in projected.occupancy:
+		var enemy = projected.occupancy[coordinate]
 		if enemy is ModelPiece and enemy.color != color:
-			if action.piece.can_directly_attack_square(destination, coordinate, attack_position):
+			if coordinate in projected.attacks_from(action.piece):
 				best_threat = maxf(best_threat, 8.0 if enemy.is_king else _piece_value(enemy))
 	result += best_threat * THREAT_MULTIPLIER
+	result -= newly_exposed_undefended_value(action) * EXPOSED_UNDEFENDED_ALLY_MULTIPLIER
 	return result
 
 
+func creates_new_king_threat(action: ChessPrimaryAction) -> bool:
+	if action.kind != ChessPrimaryAction.Kind.MOVE:
+		return false
+	var king: ModelPiece = model.get_king(color)
+	if king == null:
+		return false
+	var projected := projected_map(action)
+	var projected_coordinate := action.target if action.piece == king and projected.occupancy.get(action.target) == king else king.coordinate
+	var current := tactical_map.attack_count(king.coordinate, _other_color(color))
+	return projected.attack_count(projected_coordinate, _other_color(color)) > current
+
+
+func newly_exposed_undefended_value(action: ChessPrimaryAction) -> float:
+	if action.kind != ChessPrimaryAction.Kind.MOVE:
+		return 0.0
+	return tactical_map.newly_exposed_undefended_value(projected_map(action), color, _piece_value)
+
+
 func is_valuable_piece_threatened(piece: ModelPiece) -> bool:
-	return not piece.is_king and _piece_value(piece) >= 5.0 and _square_attacked_by(piece.coordinate, _other_color(piece.color), _occupancy())
+	return not piece.is_king and _piece_value(piece) >= 5.0 and tactical_map.attack_count(piece.coordinate, _other_color(piece.color)) > 0
+
+
+func projected_map(action: ChessPrimaryAction) -> DupreTacticalMap:
+	var key := "%s|%s|%s|%s" % [action.piece.piece_id, action.kind, action.target, action.path]
+	if not _projected_maps.has(key):
+		_projected_maps[key] = tactical_map.project(player._project_board_after(action))
+	return _projected_maps[key]
+
+
+func direct_king_threat_count_after(action: ChessPrimaryAction) -> int:
+	var king: ModelPiece = model.get_king(color)
+	if king == null:
+		return 0
+	var projected := projected_map(action)
+	var coordinate := action.target if action.piece == king and projected.occupancy.get(action.target) == king else king.coordinate
+	return projected.attack_count(coordinate, _other_color(color))
+
+
+func capture_material_swing(action: ChessPrimaryAction) -> float:
+	if action.kind != ChessPrimaryAction.Kind.MOVE:
+		return 0.0
+	var target: ModelPiece = model.board[action.target.x][action.target.y]
+	if target == null or target.color == color or target.current_hp > action.piece.attack_power:
+		return 0.0
+	var result := _piece_value(target)
+	var projected := projected_map(action)
+	if projected.attack_count(action.target, _other_color(color)) > 0:
+		result -= _piece_value(action.piece)
+	return result
+
+
+func captures_current_king_attacker(action: ChessPrimaryAction) -> bool:
+	if action.kind != ChessPrimaryAction.Kind.MOVE:
+		return false
+	var target: ModelPiece = model.board[action.target.x][action.target.y]
+	if target == null or target.color == color or target.current_hp > action.piece.attack_power:
+		return false
+	for attacker in tactical_map.king_attackers(color):
+		if attacker == target:
+			return true
+	return false
+
+
+func projection_metrics() -> Dictionary:
+	var recalculations := 0
+	var attack_calls := 0
+	var projection_usec := 0
+	for projected in _projected_maps.values():
+		recalculations += projected.incremental_recalculations
+		attack_calls += projected.direct_attack_calls
+		projection_usec += projected.build_usec + projected.query_usec
+	return {
+		"count": _projected_maps.size(),
+		"recalculations": recalculations,
+		"attack_calls": attack_calls,
+		"usec": projection_usec,
+	}
 
 
 func _is_immediate_reversal(action: ChessPrimaryAction) -> bool:
@@ -88,35 +170,6 @@ func _is_immediate_reversal(action: ChessPrimaryAction) -> bool:
 		and previous.get("from", Vector2i(-1, -1)) == action.target
 		and previous.get("to", Vector2i(-1, -1)) == action.piece.coordinate
 	)
-
-
-func _project_normal_move(action: ChessPrimaryAction, board: Dictionary) -> Dictionary:
-	var result := board.duplicate()
-	result.erase(action.piece.coordinate)
-	result.erase(action.target)
-	if action.piece.type == "pawn" and action.piece.coordinate.y != action.target.y and model.board[action.target.x][action.target.y] == null:
-		result.erase(Vector2i(action.piece.coordinate.x, action.target.y))
-	result[action.target] = action.piece
-	return result
-
-
-func _square_attacked_by(target: Vector2i, attacker_color: String, board: Dictionary) -> bool:
-	var position := ChessAttackPosition.from_occupancy(Vector2i(model.board.size(), model.board[0].size()), board)
-	for origin in board:
-		var piece = board[origin]
-		if piece is ModelPiece and piece.color == attacker_color and not piece.stunned:
-			if piece.can_directly_attack_square(origin, target, position):
-				return true
-	return false
-
-
-func _occupancy() -> Dictionary:
-	var result := {}
-	for row in model.board:
-		for piece in row:
-			if piece != null:
-				result[piece.coordinate] = piece
-	return result
 
 
 func _piece_value(piece: ModelPiece) -> float:
