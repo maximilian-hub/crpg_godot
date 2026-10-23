@@ -9,6 +9,8 @@ godot --headless --path . tests/headless/cpu_player_characterization.tscn
 godot --headless --path . tests/headless/lemay_performance_characterization.tscn
 godot --headless --path . tests/headless/dupre_characterization.tscn
 godot --headless --path . tests/headless/dupre_match_characterization.tscn
+godot --headless --path . tests/headless/dupre_opening_book_characterization.tscn
+godot --headless --path . tests/headless/dupre_opening_performance.tscn
 ```
 
 It covers explicit/idempotent initialization, validated move and ability
@@ -37,3 +39,6 @@ The Dupre suites cover purposeful development, rook activity, move reversal,
 hanging pieces, poisoned captures, explicit unverified fallback, immediate
 victories, Spike Burst, path-aware Skitter, and fixed-seed color-reversed
 controlled games against Ryck and LeMay.
+The opening-book suites cover seeded family selection, branches, deviations,
+RPG-action tolerance, emergency overrides, execution-counted limits, lifecycle
+resets, both colors, and the zero-simulation opening fast path.

@@ -53,6 +53,7 @@ func _ready() -> void:
 	if model == null:
 		return
 	model.action_finished.connect(_on_action_finished)
+	model.board_rebuilt.connect(_on_board_rebuilt)
 	model.action_cancelled.connect(_on_action_cancelled)
 	model.forced_pass_sequence_finished.connect(_on_forced_pass_sequence_finished)
 	model.reaction_selection_requested.connect(_on_reaction_selection_requested)
@@ -65,6 +66,7 @@ func configure(enabled: bool, color: String) -> void:
 	configure_mode(ExecutionMode.AUTO if enabled else ExecutionMode.DISABLED, color)
 
 func configure_mode(mode: ExecutionMode, color: String) -> void:
+	var side_changed := controlled_color != color
 	execution_mode = mode
 	is_enabled = mode != ExecutionMode.DISABLED
 	controlled_color = color if color == "white" else "black"
@@ -74,6 +76,8 @@ func configure_mode(mode: ExecutionMode, color: String) -> void:
 	king_safety_turns_remaining = 0
 	_king_safety_revision += 1
 	clear_thought()
+	if brain != null and side_changed:
+		brain.reset_session(&"side_changed")
 	if execution_mode == ExecutionMode.AUTO:
 		_schedule_primary_action()
 
@@ -153,6 +157,7 @@ func execute_thought() -> bool:
 	if matching == null:
 		return false
 	var safety_revision_before_action := _king_safety_revision
+	var executed_origin := matching.piece.coordinate
 	var consumes_safety_turn := king_safety_turns_remaining > 0
 	var accepted: bool
 	if matching.kind == ChessPrimaryAction.Kind.MOVE:
@@ -166,6 +171,8 @@ func execute_thought() -> bool:
 		accepted = await model.submit_archer_charge(matching.piece as ArcherKing)
 	if accepted and consumes_safety_turn and safety_revision_before_action == _king_safety_revision:
 		king_safety_turns_remaining -= 1
+	if accepted and brain != null:
+		brain.on_action_executed(matching, executed_origin)
 	if accepted and execution_mode == ExecutionMode.MANUAL:
 		await _resolve_manual_reactions()
 	return accepted
@@ -727,6 +734,12 @@ func _take_reaction() -> void:
 
 func _on_action_finished() -> void:
 	_schedule_primary_action()
+
+
+func _on_board_rebuilt(_board: Array) -> void:
+	clear_thought()
+	if brain != null:
+		brain.reset_session(&"position_replaced")
 
 
 func _on_action_cancelled() -> void:

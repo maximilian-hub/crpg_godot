@@ -1,0 +1,48 @@
+CHESS RPG · AI DESIGN NORTH STAR
+
+A world of chess players, not chess engines
+-The opponent should feel like a person with established chess knowledge, recognizable habits, imperfect judgment, and an individual playing style.
+
+Opening familiarity
+-Opening moves are selected quickly and confidently from a broad repertoire of recognizable traditional chess lines, with future Chess RPG–specific theory mixed in.
+
+Separation of thinking and acting
+-The AI computes as quickly as possible. A separate character-direction system controls hesitation, confidence, physical animation, and dramatic pacing.
+
+Flexible opening knowledge
+-Books remain useful across unusual kings and minor board deviations. A configurable move limit ends book use, and king-specific behavior may override it.
+
+Distinct personalities
+-Characters eventually will express different strategic preferences, piece affinities, risk tolerances, and playing strengths through reusable parameters.
+
+Future-proof mechanics
+-Future abilities, hazards, baubles(planned gem-slot items that can slightly modify a king piece), and future player skills should enter through shared game-rule interfaces rather than requiring redesigns of the opponent AI.
+
+
+
+OPENING NORTH STAR
+  Familiar chess, confidently played
+  Dupre should feel like an experienced resident of a world where chess is common knowledge. He begins games with a broad repertoire of recognizable chess openings, playing familiar continuations immediately and confidently.
+  He commits to an opening family, adapts when opponents deviate, and tolerates unusual Chess RPG mechanics without instantly forgetting his opening knowledge.
+  His knowledge is imperfect: an opening may be strategically questionable against a particular king. He is not required to play optimally, but he should still respond to obvious immediate danger.
+  After a configurable number of his own book moves, he transitions to his normal decision-making system.
+  The AI selects moves as quickly as possible. Character direction—not AI search—controls physical hesitation, animation, and dramatic timing.
+  Dupre should capable of having this opening behaviour overridden, like if he's using a king that wants to use its ability on Turn 1.
+
+  The concrete design decisions
+  Aspect:	V1 decision
+  Opening repertoire:	Many recognizable traditional openings
+  Selection	Uniform: random choice among eligible opening families
+  Commitment:	Choose one family per match
+  Length:	Configurable maximum number of Dupre's book moves
+  Opponent: deviations	Try compatible continuations, then normal Dupre
+  Minor RPG actions:	Do not automatically invalidate opening context
+  Tactical emergencies:	Override book preferences
+  King-specific rules:	May override or disable book recommendations
+  Book performance:	Fast-path decisions, not full search by default
+  Character timing:	Controlled entirely outside the AI
+  Future personalities:	Supported by extensibility points; not built yet
+  Future Chess RPG theory:	Can coexist with traditional opening knowledge
+  
+  One nuance I'd include: the maximum book length is a ceiling, not a promise. Dupre might leave his book on move two because the position demands it, or continue until move six if everything remains familiar.
+  And selecting an opening family should not mean predetermining an exact move sequence regardless of the opponent's choices. The family can contain multiple branches.
