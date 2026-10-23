@@ -9,12 +9,17 @@ const DEFAULT_CANDIDATE_LIMIT := 6
 const DEFAULT_MAX_BOOK_MOVES := 7
 const TACTICAL_SAFETY_MARGIN := 5.0
 
+enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID }
+
 var candidate_limit := DEFAULT_CANDIDATE_LIMIT
 var max_book_moves := DEFAULT_MAX_BOOK_MOVES
+var quiescence_enabled := true
 var previous_own_actions: Dictionary = {}
 var opening_session = OpeningSession.new()
 var _pending_book_action: Dictionary = {}
 var _tactical_map: DupreTacticalMap
+var _last_evaluation_complete := true
+var _evaluation_context_forcing := false
 
 
 func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
@@ -45,20 +50,49 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	last_profile["policy_candidate_count"] = candidates.size()
 	last_profile["unverified_selection"] = false
 	var root_position: ChessPosition = player.model.capture_position()
-	var exact: Array[Dictionary] = []
-	var best_tactical := -INF
-
+	var records: Array[Dictionary] = []
 	for entry in candidates:
 		if _budget_exhausted():
 			last_profile.incomplete_root_candidates += 1
 			continue
+		var screen_started := Time.get_ticks_usec()
+		var record := await _screen_candidate(root_position, entry)
+		last_profile.screening_usec += Time.get_ticks_usec() - screen_started
+		records.append(record)
+		await _cooperate()
+
+	var exact: Array[Dictionary] = []
+	var survivors: Array[Dictionary] = []
+	for record in records:
+		match record.screen_status:
+			ScreenStatus.EXACT:
+				exact.append(record)
+				last_profile.exact_root_candidates += 1
+			ScreenStatus.READY:
+				survivors.append(record)
+			ScreenStatus.INCOMPLETE:
+				last_profile.incomplete_root_candidates += 1
+			ScreenStatus.INVALID:
+				last_profile.invalid_root_candidates += 1
+	survivors.sort_custom(func(a: Dictionary, b: Dictionary):
+		if not is_equal_approx(float(a.screen_bound), float(b.screen_bound)):
+			return float(a.screen_bound) > float(b.screen_bound)
+		return float(a.policy) > float(b.policy)
+	)
+	var best_tactical := -INF
+	for candidate in exact:
+		best_tactical = maxf(best_tactical, float(candidate.score))
+	for record in survivors:
+		if _budget_exhausted():
+			last_profile.incomplete_root_candidates += 1
+			continue
 		var rejection_floor := best_tactical - TACTICAL_SAFETY_MARGIN if best_tactical > -INF else -INF
-		var result := await _search_root_candidate(root_position, entry.action, rejection_floor)
+		var verification_started := Time.get_ticks_usec()
+		var result := await _complete_screened_candidate(record, rejection_floor)
+		last_profile.exhaustive_verification_usec += Time.get_ticks_usec() - verification_started
 		match result.status:
 			CandidateStatus.COMPLETED:
 				last_profile.exact_root_candidates += 1
-				result["policy"] = entry.policy
-				result["candidate_reason"] = entry.get("candidate_reason", &"")
 				exact.append(result)
 				best_tactical = maxf(best_tactical, float(result.score))
 			CandidateStatus.PRUNED:
@@ -72,12 +106,13 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	var selected_action: ChessPrimaryAction
 	var selected_score := 0.0
 	if exact.is_empty():
-		selected_action = candidates[0].action if not candidates.is_empty() else ranked[0].action
-		selected_score = candidates[0].policy if not candidates.is_empty() else ranked[0].policy
+		var fallback_record := _best_screened_fallback(records)
+		selected_action = fallback_record.action if not fallback_record.is_empty() else (candidates[0].action if not candidates.is_empty() else ranked[0].action)
+		selected_score = float(fallback_record.get("screen_bound", fallback_record.get("policy", 0.0))) if not fallback_record.is_empty() else (candidates[0].policy if not candidates.is_empty() else ranked[0].policy)
 		last_profile.fallback_used = true
 		last_profile.unverified_selection = true
-		last_profile.selected_status = &"policy_fallback"
-		last_profile.selected_candidate_reason = candidates[0].get("candidate_reason", &"policy") if not candidates.is_empty() else &"policy"
+		last_profile.selected_status = &"screened_fallback"
+		last_profile.selected_candidate_reason = fallback_record.get("candidate_reason", &"policy") if not fallback_record.is_empty() else (candidates[0].get("candidate_reason", &"policy") if not candidates.is_empty() else &"policy")
 	else:
 		var safe: Array[Dictionary] = exact.filter(func(candidate: Dictionary): return float(candidate.score) >= best_tactical - TACTICAL_SAFETY_MARGIN)
 		safe.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
@@ -93,6 +128,341 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	_finish_profile()
 	plan.search_profile = get_last_profile()
 	return plan
+
+
+func _screen_candidate(root_position: ChessPosition, entry: Dictionary) -> Dictionary:
+	var record := {
+		"action": entry.action,
+		"policy": entry.policy,
+		"candidate_reason": entry.get("candidate_reason", &"policy"),
+		"screen_status": ScreenStatus.INVALID,
+		"screen_bound": INF,
+		"score": 0.0,
+		"replies": [],
+		"reply_scores": {},
+	}
+	var simulation := await _make_model(root_position)
+	if simulation == null:
+		return record
+	var accepted := await _execute_descriptor(simulation, _describe_action(entry.action))
+	await _cooperate()
+	if not accepted or not simulation.is_settled():
+		_free_model(simulation)
+		return record
+	if simulation.battle_over:
+		record.screen_status = ScreenStatus.EXACT
+		record.score = _evaluate_terminal(simulation)
+		record.screen_bound = record.score
+		_free_model(simulation)
+		return record
+	var legal_started := Time.get_ticks_usec()
+	var reply_actions := simulation.get_legal_primary_actions(simulation.current_turn)
+	_record_legal_generation(legal_started)
+	var replies := _ordered_screen_replies(simulation, reply_actions)
+	last_profile.total_available_replies += replies.size()
+	if replies.is_empty():
+		record.screen_status = ScreenStatus.EXACT
+		record.score = await _evaluate_model(simulation, {simulation.current_turn: reply_actions})
+		record.screen_bound = record.score
+		_free_model(simulation)
+		return record
+	var capture_started := Time.get_ticks_usec()
+	record["child_position"] = simulation.capture_position()
+	_record_phase(&"position_capture_usec", capture_started)
+	_free_model(simulation)
+	record.replies = replies
+	var worst := INF
+	for reply in replies:
+		if not bool(reply.forcing):
+			continue
+		if _budget_exhausted():
+			record.screen_status = ScreenStatus.INCOMPLETE
+			record.screen_bound = worst
+			return record
+		var evaluated := await _evaluate_record_reply(record, reply)
+		if not evaluated.valid:
+			record.screen_status = ScreenStatus.INVALID
+			return record
+		if not evaluated.complete:
+			record.screen_status = ScreenStatus.INCOMPLETE
+			record.screen_bound = worst
+			return record
+		worst = minf(worst, float(evaluated.score))
+		last_profile.screened_reply_count += 1
+		await _cooperate()
+	record.screen_status = ScreenStatus.READY
+	record.screen_bound = worst
+	return record
+
+
+func _complete_screened_candidate(record: Dictionary, alpha: float) -> Dictionary:
+	var worst := INF
+	for reply in record.replies:
+		if _budget_exhausted():
+			return _screen_result(record, CandidateStatus.INCOMPLETE, worst)
+		var key := _reply_cache_key(reply)
+		var score: float
+		if record.reply_scores.has(key):
+			score = float(record.reply_scores[key])
+			last_profile.reused_screened_reply_count += 1
+		else:
+			var evaluated := await _evaluate_record_reply(record, reply)
+			if not evaluated.valid:
+				return _screen_result(record, CandidateStatus.INVALID)
+			if not evaluated.complete:
+				return _screen_result(record, CandidateStatus.INCOMPLETE, worst)
+			score = float(evaluated.score)
+			if not bool(reply.forcing):
+				last_profile.exhaustive_quiet_reply_count += 1
+		worst = minf(worst, score)
+		if alpha_beta_enabled and alpha > -INF and worst <= alpha:
+			last_profile.alpha_beta_cutoffs += 1
+			last_profile.screen_pruned_candidates += 1
+			return _screen_result(record, CandidateStatus.PRUNED, worst)
+		await _cooperate()
+	return _screen_result(record, CandidateStatus.COMPLETED, worst)
+
+
+func _evaluate_record_reply(record: Dictionary, reply: Dictionary) -> Dictionary:
+	var leaf := await _make_model(record.child_position)
+	if leaf == null:
+		return {"valid": false}
+	var accepted := await _execute_descriptor(leaf, reply)
+	await _cooperate()
+	if not accepted or not leaf.is_settled():
+		_free_model(leaf)
+		return {"valid": false}
+	_evaluation_context_forcing = bool(reply.get("forcing", false))
+	var score := await _evaluate_model(leaf)
+	_evaluation_context_forcing = false
+	var complete := _last_evaluation_complete
+	_free_model(leaf)
+	last_profile.evaluated_reply_count += 1
+	record.reply_scores[_reply_cache_key(reply)] = score
+	return {"valid": true, "complete": complete, "score": score}
+
+
+func _screen_result(record: Dictionary, status: CandidateStatus, score := 0.0) -> Dictionary:
+	return {
+		"action": record.action,
+		"status": status,
+		"score": score,
+		"policy": record.policy,
+		"candidate_reason": record.candidate_reason,
+	}
+
+
+func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
+	var eligible: Array[Dictionary] = records.filter(func(record: Dictionary): return record.screen_status != ScreenStatus.INVALID)
+	if eligible.is_empty():
+		return {}
+	eligible.sort_custom(func(a: Dictionary, b: Dictionary):
+		var a_priority := _candidate_reason_priority(a.get("candidate_reason", &"policy"))
+		var b_priority := _candidate_reason_priority(b.get("candidate_reason", &"policy"))
+		if a_priority != b_priority: return a_priority > b_priority
+		if not is_equal_approx(float(a.screen_bound), float(b.screen_bound)): return float(a.screen_bound) > float(b.screen_bound)
+		return float(a.policy) > float(b.policy)
+	)
+	return eligible[0]
+
+
+func _candidate_reason_priority(reason: StringName) -> int:
+	match reason:
+		&"immediate_win": return 5
+		&"king_safety": return 4
+		&"capture_king_attacker": return 3
+		&"favorable_capture": return 2
+		&"major_piece_defense": return 1
+	return 0
+
+
+func _ordered_screen_replies(model: ChessBoardModel, actions: Array[ChessPrimaryAction]) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for index in range(actions.size()):
+		var action := actions[index]
+		var descriptor := _describe_action(action)
+		var reply_class := _reply_class(model, action)
+		descriptor["reply_class"] = reply_class
+		descriptor["forcing"] = reply_class > 0
+		if reply_class > 0:
+			last_profile.forcing_reply_count += 1
+		else:
+			last_profile.quiet_reply_count += 1
+		descriptor["priority"] = float(reply_class * 10000) + _reply_priority(model, action)
+		descriptor["index"] = index
+		result.append(descriptor)
+	result.sort_custom(func(a: Dictionary, b: Dictionary):
+		if not is_equal_approx(float(a.priority), float(b.priority)):
+			return float(a.priority) > float(b.priority)
+		return int(a.index) < int(b.index)
+	)
+	return result
+
+
+func _reply_class(model: ChessBoardModel, action: ChessPrimaryAction) -> int:
+	var target: ModelPiece = model.board[action.target.x][action.target.y]
+	if target != null and target.color != action.piece.color:
+		if target.is_king and _action_damage(action) >= target.current_hp:
+			return 4
+		if target.is_king:
+			return 3
+		return 2
+	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
+		return 2
+	if _directly_threatens_major(model, action):
+		return 1
+	return 0
+
+
+func _directly_threatens_major(model: ChessBoardModel, action: ChessPrimaryAction) -> bool:
+	if action.kind != ChessPrimaryAction.Kind.MOVE:
+		return false
+	var occupancy := {}
+	for row in model.board:
+		for piece in row:
+			if piece != null: occupancy[piece.coordinate] = piece
+	var origin := action.piece.coordinate
+	var defender: ModelPiece = model.board[action.target.x][action.target.y]
+	if defender != null and defender.color != action.piece.color and defender.current_hp > action.piece.attack_power:
+		return false
+	occupancy.erase(origin)
+	occupancy.erase(action.target)
+	occupancy[action.target] = action.piece
+	var position := ChessAttackPosition.from_occupancy(Vector2i(model.board.size(), model.board[0].size()), occupancy)
+	for coordinate in occupancy:
+		var piece = occupancy[coordinate]
+		if piece is ModelPiece and piece.color != action.piece.color and not piece.is_king and _material_value(piece) >= 5.0:
+			if action.piece.can_directly_attack_square(action.target, coordinate, position):
+				return true
+	return false
+
+
+func _action_damage(action: ChessPrimaryAction) -> int:
+	if action.kind == ChessPrimaryAction.Kind.MOVE:
+		return action.piece.attack_power
+	if action.piece is ArakneKing:
+		return ArakneKing.SPIKE_BURST_DAMAGE
+	if action.piece is MinotaurKing:
+		return 2
+	return 0
+
+
+func _reply_cache_key(reply: Dictionary) -> String:
+	return "%s|%s|%s|%s" % [reply.kind, reply.piece_id, reply.target, reply.path]
+
+
+func _material_value(piece: ModelPiece) -> float:
+	return float(MATERIAL_VALUES.get(piece.get_position_type_id(), 1.0))
+
+
+func _evaluate_model(model: ChessBoardModel, cached_actions: Dictionary = {}) -> float:
+	_last_evaluation_complete = true
+	var static_result := await _evaluate_dupre_static(model, cached_actions, _evaluation_context_forcing)
+	if not quiescence_enabled or model.battle_over or model.current_turn != player.controlled_color:
+		return static_result.score
+	var forcing: Array[ChessPrimaryAction] = []
+	for action in static_result.own_actions:
+		if _reply_class(model, action) >= 2:
+			forcing.append(action)
+	var unstable := not forcing.is_empty() or (_evaluation_context_forcing and _has_hanging_major(static_result.tactical_map))
+	if not unstable:
+		return static_result.score
+	var best := float(static_result.score)
+	var position: ChessPosition = model.capture_position()
+	for action in forcing:
+		if _dupre_budget_exhausted():
+			_last_evaluation_complete = false
+			last_profile.quiescence_incomplete_count = int(last_profile.get("quiescence_incomplete_count", 0)) + 1
+			return best
+		var continuation := await _make_model(position)
+		if continuation == null:
+			_last_evaluation_complete = false
+			last_profile.quiescence_incomplete_count = int(last_profile.get("quiescence_incomplete_count", 0)) + 1
+			return best
+		var accepted := await _execute_descriptor(continuation, _describe_action(action))
+		await _cooperate()
+		if not accepted or not continuation.is_settled():
+			_free_model(continuation)
+			_last_evaluation_complete = false
+			last_profile.quiescence_incomplete_count = int(last_profile.get("quiescence_incomplete_count", 0)) + 1
+			return best
+		var result := await _evaluate_dupre_static(continuation, {}, true)
+		best = maxf(best, float(result.score))
+		last_profile.quiescence_node_count = int(last_profile.get("quiescence_node_count", 0)) + 1
+		_free_model(continuation)
+		await _cooperate()
+	return best
+
+
+func _evaluate_dupre_static(model: ChessBoardModel, cached_actions: Dictionary = {}, tactical_detail := true) -> Dictionary:
+	var started := Time.get_ticks_usec()
+	var yielded_usec := 0
+	if model.battle_over:
+		var terminal := _evaluate_terminal(model)
+		_record_evaluation(started)
+		return {"score": terminal, "own_actions": [], "enemy_actions": [], "tactical_map": TacticalMap.from_model(model)}
+	var enemy := model.get_other_color(player.controlled_color)
+	var score := 0.0
+	for row in model.board:
+		for piece in row:
+			if piece == null:
+				continue
+			var sign_value := 1.0 if piece.color == player.controlled_color else -1.0
+			if piece.is_king:
+				score += sign_value * float(piece.current_hp) * 50.0
+			else:
+				var value := _material_value(piece) * 10.0
+				var hp_ratio := float(piece.current_hp) / float(maxi(1, piece.max_hp))
+				value -= value * 0.3 * (1.0 - hp_ratio)
+				score += sign_value * value
+	yielded_usec += await _cooperate()
+	var own_actions: Array = cached_actions.get(player.controlled_color, [])
+	if not cached_actions.has(player.controlled_color):
+		own_actions = _collect_actions_for(model, player.controlled_color)
+		yielded_usec += await _cooperate()
+	var enemy_actions: Array = cached_actions.get(enemy, [])
+	if not cached_actions.has(enemy):
+		enemy_actions = _collect_actions_for(model, enemy)
+		yielded_usec += await _cooperate()
+	score += float(own_actions.size() - enemy_actions.size()) * 0.1
+	var tactical := TacticalMap.from_model(model)
+	if tactical_detail:
+		for coordinate in tactical.occupancy:
+			var piece = tactical.occupancy[coordinate]
+			# Minor pieces are already valued by material and by the actual opponent
+			# replies. Reserve the horizon penalty for majors to keep leaf evaluation
+			# cheap enough for the authoritative simulator.
+			if not piece is ModelPiece or piece.is_king or _material_value(piece) < 5.0:
+				continue
+			if tactical.is_hanging(piece):
+				var penalty := _material_value(piece) * 4.0
+				score += -penalty if piece.color == player.controlled_color else penalty
+		score -= float(tactical.king_attackers(player.controlled_color).size()) * 25.0
+		score += float(tactical.king_attackers(enemy).size()) * 25.0
+	if _has_lethal_action(model, enemy_actions, player.controlled_color): score -= 500.0
+	if _has_lethal_action(model, own_actions, enemy): score += 500.0
+	var evaluated_layers := {}
+	for color in [player.controlled_color, enemy]:
+		var king: ModelPiece = model.get_king(color)
+		if king != null and not evaluated_layers.has(king.get_position_type_id()):
+			var layer = KingAiRegistry.layer_for(king.get_position_type_id())
+			if layer != null:
+				evaluated_layers[king.get_position_type_id()] = true
+				score += float(layer.evaluation_bonus(model, player.controlled_color))
+	_record_evaluation(started, yielded_usec)
+	return {"score": score, "own_actions": own_actions, "enemy_actions": enemy_actions, "tactical_map": tactical}
+
+
+func _has_hanging_major(tactical: DupreTacticalMap) -> bool:
+	for coordinate in tactical.occupancy:
+		var piece = tactical.occupancy[coordinate]
+		if piece is ModelPiece and not piece.is_king and _material_value(piece) >= 5.0 and tactical.is_hanging(piece):
+			return true
+	return false
+
+
+func _dupre_budget_exhausted() -> bool:
+	return _budget_exhausted() or int(last_profile.get("quiescence_node_count", 0)) + int(last_profile.get("evaluated_reply_count", 0)) >= max_reply_leaves
 
 
 func reset_session(_reason: StringName = &"reset") -> void:
@@ -140,6 +510,16 @@ func _begin_book_profile() -> void:
 	last_profile["tactical_projection_usec"] = 0
 	last_profile["mandatory_candidate_count"] = 0
 	last_profile["selected_candidate_reason"] = &""
+	last_profile["screened_reply_count"] = 0
+	last_profile["reused_screened_reply_count"] = 0
+	last_profile["exhaustive_quiet_reply_count"] = 0
+	last_profile["screen_pruned_candidates"] = 0
+	last_profile["quiescence_node_count"] = 0
+	last_profile["quiescence_incomplete_count"] = 0
+	last_profile["forcing_reply_count"] = 0
+	last_profile["quiet_reply_count"] = 0
+	last_profile["screening_usec"] = 0
+	last_profile["exhaustive_verification_usec"] = 0
 
 
 func _ensure_opening_session() -> void:

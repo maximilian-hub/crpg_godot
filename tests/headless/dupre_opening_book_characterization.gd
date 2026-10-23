@@ -212,7 +212,7 @@ func _test_normal_dupre_after_book_exit() -> void:
 	brain.max_book_moves = 0
 	brain.max_reply_leaves = 1
 	var thought = await cpu.think()
-	_expect(thought != null and not thought.search_profile.opening_book_hit and thought.search_profile.selected_status == &"policy_fallback" and thought.search_profile.evaluated_reply_count == 1, "after book exit Dupre retains normal policy-guided tactical behavior")
+	_expect(thought != null and not thought.search_profile.opening_book_hit and thought.search_profile.selected_status == &"screened_fallback" and thought.search_profile.evaluated_reply_count == 1, "after book exit Dupre retains normal policy-guided tactical behavior")
 	_cleanup(cpu, model)
 
 

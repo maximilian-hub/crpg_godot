@@ -20,6 +20,10 @@ func _ready() -> void:
 	_test_tactical_map_revision_invalidation()
 	await _test_hanging_valuable_piece()
 	await _test_poisoned_capture()
+	await _test_forcing_screen_cache_reuse()
+	await _test_quiescence_capture_extension()
+	await _test_quiescence_stops_when_quiet()
+	await _test_quiescence_timeout_is_incomplete()
 	await _test_immediate_victory()
 	await _test_arakne_ability_victory()
 	await _test_arakne_skitter_path_identity()
@@ -238,7 +242,65 @@ func _test_poisoned_capture() -> void:
 	var brain = cpu.brain
 	brain.max_reply_leaves = 1
 	var fallback = await cpu.think()
-	_expect(fallback != null and fallback.search_profile.selected_status == &"policy_fallback" and fallback.search_profile.unverified_selection and fallback.search_profile.evaluated_reply_count == 1 and fallback.search_profile.incomplete_root_candidates > 0, "Dupre excludes a partially verified candidate and explicitly reports an unverified policy fallback")
+	_expect(fallback != null and fallback.search_profile.selected_status == &"screened_fallback" and fallback.search_profile.unverified_selection and fallback.search_profile.evaluated_reply_count == 1 and fallback.search_profile.incomplete_root_candidates > 0, "Dupre excludes a partially verified candidate and explicitly reports an unverified screened fallback")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_forcing_screen_cache_reuse() -> void:
+	var model := _new_empty_model()
+	var queen := Queen.new("white", Vector2i(4, 4))
+	var bait := Pawn.new("black", Vector2i(4, 3))
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7)), queen, bait, Rook.new("black", Vector2i(4, 0))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var thought = await cpu.think()
+	_expect(thought != null and int(thought.search_profile.screened_reply_count) > 0, "Dupre screens forcing opponent replies before exhaustive completion")
+	_expect(thought != null and int(thought.search_profile.reused_screened_reply_count) > 0, "exhaustive completion reuses replies already evaluated during forcing screening")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_quiescence_capture_extension() -> void:
+	var model := _new_empty_model()
+	var rook := Rook.new("white", Vector2i(4, 4))
+	var queen := Queen.new("black", Vector2i(4, 3))
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7)), rook, queen]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain._begin_profile(0)
+	brain._begin_book_profile()
+	brain.quiescence_enabled = false
+	var static_score: float = await brain._evaluate_model(model)
+	brain.quiescence_enabled = true
+	var extended_score: float = await brain._evaluate_model(model)
+	_expect(extended_score > static_score and int(brain.last_profile.get("quiescence_node_count", 0)) > 0, "one-ply quiescence values an available forcing capture beyond the static leaf")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_quiescence_stops_when_quiet() -> void:
+	var model := _new_empty_model()
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 0)), Pawn.new("white", Vector2i(6, 0)), Pawn.new("black", Vector2i(1, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain._begin_profile(0)
+	brain._begin_book_profile()
+	await brain._evaluate_model(model)
+	_expect(int(brain.last_profile.get("quiescence_node_count", 0)) == 0, "quiescence does not extend a tactically quiet position")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_quiescence_timeout_is_incomplete() -> void:
+	var model := _new_empty_model()
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7)), Rook.new("white", Vector2i(4, 4)), Queen.new("black", Vector2i(4, 3))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain._begin_profile(0)
+	brain._begin_book_profile()
+	brain.max_reply_leaves = 0
+	await brain._evaluate_model(model)
+	_expect(not brain._last_evaluation_complete and int(brain.last_profile.quiescence_incomplete_count) == 1, "a budget cutoff during quiescence marks the evaluation incomplete instead of returning an exact leaf")
 	_cleanup(cpu, model)
 	await get_tree().process_frame
 
