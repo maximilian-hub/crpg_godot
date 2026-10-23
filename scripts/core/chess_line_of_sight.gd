@@ -48,26 +48,31 @@ static func _ray_is_blocked(board: Array, origin: Vector2i, destination: Vector2
 			var coordinate := Vector2i(row_index, column_index)
 			if coordinate == origin or coordinate == destination or board[row_index][column_index] == null:
 				continue
-			if _is_adjacent_diagonal_corridor_blocker(origin, destination, coordinate):
+			if _is_diagonal_corridor_flank(origin, destination, coordinate):
 				continue
 			if _segment_intersects_cell(source, endpoint, coordinate):
 				return true
 	return false
 
 
-## A cardinally adjacent piece leaves open the two exact 45-degree corridors
-## passing its corners. It still blocks straight and off-diagonal sightlines;
-## other pieces farther along an open corridor continue to block normally.
-static func _is_adjacent_diagonal_corridor_blocker(origin: Vector2i, destination: Vector2i, blocker: Vector2i) -> bool:
+## Pieces bordering an exact 45-degree corridor do not close it merely because
+## the offset sample rays clip their corners. A piece occupying the diagonal
+## itself still blocks normally, as do these flank pieces for every other ray.
+static func _is_diagonal_corridor_flank(origin: Vector2i, destination: Vector2i, blocker: Vector2i) -> bool:
 	var destination_delta := destination - origin
 	var blocker_delta := blocker - origin
+	if destination_delta.x == 0 or absi(destination_delta.x) != absi(destination_delta.y):
+		return false
+	var row_step := signi(destination_delta.x)
+	var column_step := signi(destination_delta.y)
+	var row_progress := blocker_delta.x * row_step
+	var column_progress := blocker_delta.y * column_step
+	var corridor_length := absi(destination_delta.x)
 	return (
-		destination_delta.x != 0
-		and absi(destination_delta.x) == absi(destination_delta.y)
-		and (
-			blocker_delta == Vector2i(signi(destination_delta.x), 0)
-			or blocker_delta == Vector2i(0, signi(destination_delta.y))
-		)
+		row_progress >= 0
+		and column_progress >= 0
+		and maxi(row_progress, column_progress) <= corridor_length
+		and absi(row_progress - column_progress) == 1
 	)
 
 

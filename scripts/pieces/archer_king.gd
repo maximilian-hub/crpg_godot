@@ -16,6 +16,7 @@ const VARIANT_CHARGE: StringName = &"charge"
 var archer_variant: StringName = VARIANT_STANDARD
 var draw_target := Vector2i(-1, -1)
 var draw_target_piece_id := ""
+var draw_turns_waited := 0
 var charge_level := 0
 var arrows := 2
 
@@ -91,10 +92,10 @@ func can_natively_attack_square(origin: Vector2i, target: Vector2i, position: Ch
 	return position.get_visibility_map(origin).has(target)
 
 func has_active_ability() -> bool:
-	return not is_suppressed()
+	return not is_suppressed() and not (uses_draw_mechanic() and is_drawing())
 
 func get_active_ability_targets() -> Array:
-	return [] if is_suppressed() else [coordinate]
+	return [] if not has_active_ability() else [coordinate]
 
 func active_target_selected(target: Vector2i) -> void:
 	if target != coordinate:
@@ -104,6 +105,7 @@ func active_target_selected(target: Vector2i) -> void:
 
 func begin_draw(target: Vector2i) -> void:
 	draw_target = target
+	draw_turns_waited = 0
 	var target_piece: ModelPiece = model.board[target.x][target.y] if model != null and model.is_in_bounds(target.x, target.y) else null
 	draw_target_piece_id = target_piece.piece_id if target_piece != null else ""
 	model.announce_archer_state(self, &"drawing", "Drawing Bow")
@@ -115,6 +117,7 @@ func begin_charge() -> void:
 func cancel_draw(message := "") -> void:
 	draw_target = Vector2i(-1, -1)
 	draw_target_piece_id = ""
+	draw_turns_waited = 0
 	charge_level = 0
 	model.announce_archer_state(self, &"idle", message)
 
@@ -125,13 +128,14 @@ func advance_charge() -> void:
 	model.announce_archer_state(self, &"drawing", "Charge Level MAX" if charge_level == 3 else "Charge Level 2")
 
 func capture_custom_state() -> Dictionary:
-	return {"draw_target": [draw_target.x, draw_target.y], "draw_target_piece_id": draw_target_piece_id, "charge_level": charge_level, "arrows": arrows}
+	return {"draw_target": [draw_target.x, draw_target.y], "draw_target_piece_id": draw_target_piece_id, "draw_turns_waited": draw_turns_waited, "charge_level": charge_level, "arrows": arrows}
 
 func restore_custom_state(state: Dictionary) -> void:
 	var target = state.get("draw_target", [-1, -1])
 	if target is Array and target.size() == 2:
 		draw_target = Vector2i(int(target[0]), int(target[1]))
 	draw_target_piece_id = String(state.get("draw_target_piece_id", ""))
+	draw_turns_waited = maxi(0, int(state.get("draw_turns_waited", 0)))
 	charge_level = clampi(int(state.get("charge_level", 0)), 0, 3)
 	arrows = clampi(int(state.get("arrows", 2)), 0, 2)
 

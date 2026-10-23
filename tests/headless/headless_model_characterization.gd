@@ -79,6 +79,15 @@ func _test_line_of_sight_map() -> void:
 	corner_map = corner_model.get_visibility_map(corner_origin, 0.5)
 	_expect(corridor_blocker.coordinate in corner_map and Vector2i(1, 1) not in corner_map, "a farther piece on the diagonal remains visible and closes the corner-peek corridor behind itself")
 
+	var flanked_model := _new_empty_model()
+	var flanked_origin := Vector2i(7, 7)
+	for coordinate in [Vector2i(6, 7), Vector2i(7, 6), Vector2i(5, 6), Vector2i(6, 5), Vector2i(4, 5), Vector2i(5, 4)]:
+		flanked_model.add_piece(Pawn.new("black", coordinate), coordinate)
+	var flanked_map := flanked_model.get_visibility_map(flanked_origin)
+	_expect(Vector2i(3, 3) in flanked_map, "an empty exact diagonal stays visible through pieces flanking the full corridor")
+	flanked_model.add_piece(Pawn.new("black", Vector2i(4, 4)), Vector2i(4, 4))
+	_expect(Vector2i(3, 3) not in flanked_model.get_visibility_map(flanked_origin), "a piece occupying the diagonal still closes a fully flanked corridor")
+
 	var mirrored_model := _new_empty_model()
 	var reflected_model := _new_empty_model()
 	mirrored_model.add_piece(Pawn.new("white", Vector2i(3, 3)), Vector2i(3, 3))
@@ -94,6 +103,7 @@ func _test_line_of_sight_map() -> void:
 	_expect(symmetric and from_left.size() == from_right.size(), "line-of-sight scores are symmetric across mirrored board positions")
 	model.free()
 	corner_model.free()
+	flanked_model.free()
 	mirrored_model.free()
 	reflected_model.free()
 
@@ -222,14 +232,22 @@ func _test_archer_king() -> void:
 	var automatic_model := _new_empty_model()
 	var automatic_archer := ChessPieceCatalog.create_piece(&"archer_king_draw", "white", Vector2i(4, 4)) as ArcherKing
 	var automatic_target := Pawn.new("black", Vector2i(1, 4))
+	var automatic_ally := Rook.new("white", Vector2i(7, 7))
+	var automatic_enemy_ally := Pawn.new("black", Vector2i(0, 0))
 	automatic_target.max_hp = 2
 	automatic_target.current_hp = 2
 	automatic_model.add_piece(automatic_archer, automatic_archer.coordinate)
 	automatic_model.add_piece(automatic_target, automatic_target.coordinate)
+	automatic_model.add_piece(automatic_ally, automatic_ally.coordinate)
+	automatic_model.add_piece(automatic_enemy_ally, automatic_enemy_ally.coordinate)
 	_expect(await automatic_model.submit_move(automatic_archer, automatic_target.coordinate), "Draw accepts the initial ranged target as its first-turn action")
 	_expect(automatic_model.current_turn == "black" and automatic_archer.draw_target == automatic_target.coordinate, "Draw remains telegraphed throughout the opponent's turn")
 	_expect(await automatic_model.submit_move(automatic_target, Vector2i(2, 4)), "the targeted piece can move while Draw is telegraphed")
-	_expect(automatic_target.current_hp == 1 and automatic_target.coordinate == Vector2i(2, 4) and automatic_archer.draw_target == Vector2i(-1, -1) and automatic_model.current_turn == "black", "Draw follows and automatically attacks a moved target that remains in range and line of sight")
+	_expect(automatic_target.current_hp == 2 and automatic_archer.draw_target == Vector2i(2, 4) and automatic_archer.draw_turns_waited == 1 and automatic_model.current_turn == "white", "Draw spends the Archer's second turn drawing while preserving a valid moved target")
+	_expect(automatic_archer.get_legal_moves().is_empty() and not automatic_archer.has_active_ability(), "the Archer cannot move, attack, or use Volley during its second drawing turn")
+	_expect(await automatic_model.submit_move(automatic_ally, Vector2i(6, 7)), "another allied piece can act during Draw's second turn")
+	_expect(await automatic_model.submit_move(automatic_enemy_ally, Vector2i(1, 0)), "the opponent can act before Draw's third turn")
+	_expect(automatic_target.current_hp == 1 and automatic_target.coordinate == Vector2i(2, 4) and automatic_archer.draw_target == Vector2i(-1, -1) and automatic_model.current_turn == "black", "Draw follows and automatically attacks a valid target on the third turn")
 	automatic_model.free()
 
 	var quiver_model := _new_empty_model()

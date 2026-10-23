@@ -1221,9 +1221,14 @@ func resolve_archer_turn_entry(color: String) -> bool:
 	if not valid:
 		archer.cancel_draw("Shot Cancelled")
 		return false
+	if archer.uses_draw_mechanic() and archer.draw_turns_waited < 1:
+		archer.draw_turns_waited += 1
+		announce_archer_state(archer, &"drawing", "Drawing Bow")
+		return false
 	var defender: ModelPiece = board[target.x][target.y]
 	archer.draw_target = Vector2i(-1, -1)
 	archer.draw_target_piece_id = ""
+	archer.draw_turns_waited = 0
 	announce_archer_state(archer, &"idle", "Loose!")
 	await announce_archer_attack(archer, defender, archer.coordinate, target)
 	if archer.uses_quiver():
