@@ -8,8 +8,10 @@ const OpeningSession = preload("res://scripts/ai/dupre_opening_session.gd")
 const DEFAULT_CANDIDATE_LIMIT := 6
 const DEFAULT_MAX_BOOK_MOVES := 7
 const TACTICAL_SAFETY_MARGIN := 5.0
+const FORCING_ABILITY_CAP := 3
 
 enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID }
+enum ExecutionStatus { COMPLETED, INCOMPLETE, INVALID }
 
 var candidate_limit := DEFAULT_CANDIDATE_LIMIT
 var max_book_moves := DEFAULT_MAX_BOOK_MOVES
@@ -64,6 +66,8 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	last_profile["unverified_selection"] = false
 	var root_position: ChessPosition = player.model.capture_position()
 	var records: Array[Dictionary] = []
+	var exact: Array[Dictionary] = []
+	var best_tactical := -INF
 	for entry in candidates:
 		if _budget_exhausted():
 			last_profile.incomplete_root_candidates += 1
@@ -72,47 +76,29 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		var record := await _screen_candidate(root_position, entry)
 		last_profile.screening_usec += Time.get_ticks_usec() - screen_started
 		records.append(record)
-		await _cooperate()
-
-	var exact: Array[Dictionary] = []
-	var survivors: Array[Dictionary] = []
-	for record in records:
 		match record.screen_status:
 			ScreenStatus.EXACT:
 				exact.append(record)
 				last_profile.exact_root_candidates += 1
+				best_tactical = maxf(best_tactical, float(record.score))
+				_record_first_completion()
 			ScreenStatus.READY:
-				survivors.append(record)
+				var rejection_floor := best_tactical - TACTICAL_SAFETY_MARGIN if best_tactical > -INF else -INF
+				var verification_started := Time.get_ticks_usec()
+				var result := await _complete_screened_candidate(record, rejection_floor)
+				last_profile.exhaustive_verification_usec += Time.get_ticks_usec() - verification_started
+				match result.status:
+					CandidateStatus.COMPLETED:
+						last_profile.exact_root_candidates += 1
+						exact.append(result)
+						best_tactical = maxf(best_tactical, float(result.score))
+						_record_first_completion()
+					CandidateStatus.PRUNED: last_profile.pruned_root_candidates += 1
+					CandidateStatus.INCOMPLETE: last_profile.incomplete_root_candidates += 1
+					CandidateStatus.INVALID: last_profile.invalid_root_candidates += 1
 			ScreenStatus.INCOMPLETE:
 				last_profile.incomplete_root_candidates += 1
 			ScreenStatus.INVALID:
-				last_profile.invalid_root_candidates += 1
-	survivors.sort_custom(func(a: Dictionary, b: Dictionary):
-		if not is_equal_approx(float(a.screen_bound), float(b.screen_bound)):
-			return float(a.screen_bound) > float(b.screen_bound)
-		return float(a.policy) > float(b.policy)
-	)
-	var best_tactical := -INF
-	for candidate in exact:
-		best_tactical = maxf(best_tactical, float(candidate.score))
-	for record in survivors:
-		if _budget_exhausted():
-			last_profile.incomplete_root_candidates += 1
-			continue
-		var rejection_floor := best_tactical - TACTICAL_SAFETY_MARGIN if best_tactical > -INF else -INF
-		var verification_started := Time.get_ticks_usec()
-		var result := await _complete_screened_candidate(record, rejection_floor)
-		last_profile.exhaustive_verification_usec += Time.get_ticks_usec() - verification_started
-		match result.status:
-			CandidateStatus.COMPLETED:
-				last_profile.exact_root_candidates += 1
-				exact.append(result)
-				best_tactical = maxf(best_tactical, float(result.score))
-			CandidateStatus.PRUNED:
-				last_profile.pruned_root_candidates += 1
-			CandidateStatus.INCOMPLETE:
-				last_profile.incomplete_root_candidates += 1
-			CandidateStatus.INVALID:
 				last_profile.invalid_root_candidates += 1
 		await _cooperate()
 
@@ -121,7 +107,7 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	if exact.is_empty():
 		var fallback_record := _best_screened_fallback(records)
 		selected_action = fallback_record.action if not fallback_record.is_empty() else (candidates[0].action if not candidates.is_empty() else ranked[0].action)
-		selected_score = float(fallback_record.get("screen_bound", fallback_record.get("policy", 0.0))) if not fallback_record.is_empty() else (candidates[0].policy if not candidates.is_empty() else ranked[0].policy)
+		selected_score = float(fallback_record.get("policy", 0.0)) if not fallback_record.is_empty() else (candidates[0].policy if not candidates.is_empty() else ranked[0].policy)
 		last_profile.fallback_used = true
 		last_profile.unverified_selection = true
 		last_profile.selected_status = &"screened_fallback"
@@ -131,7 +117,9 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		safe.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
 		selected_action = safe[0].action
 		selected_score = safe[0].score
-		last_profile.selected_status = &"verified"
+		last_profile.selected_policy_reactions = int(safe[0].get("policy_reactions", 0))
+		last_profile.selected_status = &"verified_policy_reactions" if last_profile.selected_policy_reactions > 0 else &"verified"
+		last_profile.conditional_verification = last_profile.selected_policy_reactions > 0
 		last_profile.selected_candidate_reason = safe[0].get("candidate_reason", &"policy")
 
 	var plan := ChessAiPlan.new(selected_action)
@@ -153,13 +141,16 @@ func _screen_candidate(root_position: ChessPosition, entry: Dictionary) -> Dicti
 		"score": 0.0,
 		"replies": [],
 		"reply_scores": {},
+		"policy_reactions": 0,
 	}
 	var simulation := await _make_model(root_position)
 	if simulation == null:
 		return record
-	var accepted := await _execute_descriptor(simulation, _describe_action(entry.action))
+	var execution := await _execute_dupre_descriptor(simulation, _describe_action(entry.action))
+	record.policy_reactions = int(execution.policy_reactions)
 	await _cooperate()
-	if not accepted or not simulation.is_settled():
+	if execution.status != ExecutionStatus.COMPLETED:
+		record.screen_status = ScreenStatus.INCOMPLETE if execution.status == ExecutionStatus.INCOMPLETE else ScreenStatus.INVALID
 		_free_model(simulation)
 		return record
 	if simulation.battle_over:
@@ -240,11 +231,12 @@ func _evaluate_record_reply(record: Dictionary, reply: Dictionary) -> Dictionary
 	var leaf := await _make_model(record.child_position)
 	if leaf == null:
 		return {"valid": false}
-	var accepted := await _execute_descriptor(leaf, reply)
+	var execution := await _execute_dupre_descriptor(leaf, reply)
 	await _cooperate()
-	if not accepted or not leaf.is_settled():
+	if execution.status != ExecutionStatus.COMPLETED:
 		_free_model(leaf)
-		return {"valid": false}
+		return {"valid": execution.status != ExecutionStatus.INVALID, "complete": false}
+	record.policy_reactions = int(record.get("policy_reactions", 0)) + int(execution.policy_reactions)
 	_evaluation_context_forcing = bool(reply.get("forcing", false))
 	var score := await _evaluate_model(leaf)
 	_evaluation_context_forcing = false
@@ -262,6 +254,7 @@ func _screen_result(record: Dictionary, status: CandidateStatus, score := 0.0) -
 		"score": score,
 		"policy": record.policy,
 		"candidate_reason": record.candidate_reason,
+		"policy_reactions": record.get("policy_reactions", 0),
 	}
 
 
@@ -269,11 +262,12 @@ func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
 	var eligible: Array[Dictionary] = records.filter(func(record: Dictionary): return record.screen_status != ScreenStatus.INVALID)
 	if eligible.is_empty():
 		return {}
+	# Partial minimizing scores are optimistic upper bounds. They can explain why
+	# verification stopped, but must never outrank another fallback as if exact.
 	eligible.sort_custom(func(a: Dictionary, b: Dictionary):
 		var a_priority := _candidate_reason_priority(a.get("candidate_reason", &"policy"))
 		var b_priority := _candidate_reason_priority(b.get("candidate_reason", &"policy"))
 		if a_priority != b_priority: return a_priority > b_priority
-		if not is_equal_approx(float(a.screen_bound), float(b.screen_bound)): return float(a.screen_bound) > float(b.screen_bound)
 		return float(a.policy) > float(b.policy)
 	)
 	return eligible[0]
@@ -393,9 +387,9 @@ func _evaluate_model(model: ChessBoardModel, cached_actions: Dictionary = {}) ->
 			_last_evaluation_complete = false
 			last_profile.quiescence_incomplete_count = int(last_profile.get("quiescence_incomplete_count", 0)) + 1
 			return best
-		var accepted := await _execute_descriptor(continuation, _describe_action(action))
+		var execution := await _execute_dupre_descriptor(continuation, _describe_action(action))
 		await _cooperate()
-		if not accepted or not continuation.is_settled():
+		if execution.status != ExecutionStatus.COMPLETED:
 			_free_model(continuation)
 			_last_evaluation_complete = false
 			last_profile.quiescence_incomplete_count = int(last_profile.get("quiescence_incomplete_count", 0)) + 1
@@ -479,6 +473,60 @@ func _dupre_budget_exhausted() -> bool:
 	return _budget_exhausted() or int(last_profile.get("quiescence_node_count", 0)) + int(last_profile.get("evaluated_reply_count", 0)) >= max_reply_leaves
 
 
+func choose_reaction_target(model: ChessBoardModel, calling_piece: ModelPiece, action_type: String, event_data, targets: Array):
+	if targets.is_empty():
+		return null
+	var layer = KingAiRegistry.layer_for(calling_piece.get_position_type_id())
+	if layer == null:
+		return null
+	var tactical := TacticalMap.from_model(model)
+	var best_target = null
+	var best_score := -INF
+	for target in targets:
+		if not target is Vector2i:
+			continue
+		var score := float(layer.reaction_target_score(model, calling_piece, action_type, event_data, target, calling_piece.color, tactical))
+		if score > best_score:
+			best_score = score
+			best_target = target
+	return best_target
+
+
+func _execute_dupre_descriptor(simulation: ChessBoardModel, descriptor: Dictionary) -> Dictionary:
+	var accepted := await super._execute_descriptor(simulation, descriptor)
+	if not accepted:
+		return {"status": ExecutionStatus.INVALID, "policy_reactions": 0}
+	var reaction_count := 0
+	while simulation.has_pending_reaction():
+		if _dupre_budget_exhausted():
+			return {"status": ExecutionStatus.INCOMPLETE, "policy_reactions": reaction_count}
+		var pending := simulation.get_pending_reaction()
+		var calling_piece: ModelPiece = pending.get("calling_piece")
+		var targets: Array = pending.get("targets", [])
+		if not is_instance_valid(calling_piece) or targets.is_empty():
+			return {"status": ExecutionStatus.INVALID, "policy_reactions": reaction_count}
+		var target = choose_reaction_target(simulation, calling_piece, String(pending.get("action_type", "")), pending.get("event_data"), targets)
+		if not target is Vector2i or target not in targets:
+			return {"status": ExecutionStatus.INVALID, "policy_reactions": reaction_count}
+		if not await simulation.submit_reaction_selection(target):
+			return {"status": ExecutionStatus.INVALID, "policy_reactions": reaction_count}
+		reaction_count += 1
+		last_profile.policy_reactions_resolved += 1
+		if calling_piece.color == player.controlled_color:
+			last_profile.own_policy_reactions_resolved += 1
+		else:
+			last_profile.opponent_policy_reactions_resolved += 1
+		await _cooperate()
+	if not simulation.is_settled():
+		return {"status": ExecutionStatus.INVALID, "policy_reactions": reaction_count}
+	return {"status": ExecutionStatus.COMPLETED, "policy_reactions": reaction_count}
+
+
+func _record_first_completion() -> void:
+	if int(last_profile.get("time_to_first_completed_usec", -1)) < 0:
+		last_profile.time_to_first_completed_usec = Time.get_ticks_usec() - _search_started_usec
+
+
 func reset_session(_reason: StringName = &"reset") -> void:
 	opening_session.reset()
 	# A reset makes the next valid position eligible for a fresh family.  The
@@ -534,6 +582,14 @@ func _begin_book_profile() -> void:
 	last_profile["quiet_reply_count"] = 0
 	last_profile["screening_usec"] = 0
 	last_profile["exhaustive_verification_usec"] = 0
+	last_profile["time_to_first_completed_usec"] = -1
+	last_profile["forcing_ability_retained"] = 0
+	last_profile["forcing_ability_deferred"] = 0
+	last_profile["policy_reactions_resolved"] = 0
+	last_profile["own_policy_reactions_resolved"] = 0
+	last_profile["opponent_policy_reactions_resolved"] = 0
+	last_profile["selected_policy_reactions"] = 0
+	last_profile["conditional_verification"] = false
 
 
 func _ensure_opening_session() -> void:
@@ -752,8 +808,6 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 	for entry in ranked:
 		if player._is_immediate_win(entry.action):
 			_append_unique(selected, selected_keys, entry, &"immediate_win")
-		elif _layer_action_is_forcing(player.model, entry.action, player.controlled_color):
-			_append_unique(selected, selected_keys, entry, &"king_ability")
 	var king: ModelPiece = player.model.get_king(player.controlled_color)
 	if king != null:
 		var current_threats: int = maxi(
@@ -772,6 +826,18 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			_append_unique(selected, selected_keys, entry, &"capture_king_attacker")
 		elif policy.capture_material_swing(entry.action) >= 3.0:
 			_append_unique(selected, selected_keys, entry, &"favorable_capture")
+	var retained_forcing := 0
+	for entry in ranked:
+		if not _layer_action_is_forcing(player.model, entry.action, player.controlled_color):
+			continue
+		if retained_forcing < FORCING_ABILITY_CAP:
+			var before := selected.size()
+			_append_unique(selected, selected_keys, entry, &"king_ability")
+			if selected.size() > before:
+				retained_forcing += 1
+		else:
+			last_profile.forcing_ability_deferred += 1
+	last_profile.forcing_ability_retained = retained_forcing
 	var valuable_defenses_by_piece := {}
 	for entry in ranked:
 		var piece: ModelPiece = entry.action.piece

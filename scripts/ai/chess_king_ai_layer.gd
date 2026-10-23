@@ -16,7 +16,7 @@ func allows_traditional_opening() -> bool:
 	return true
 
 
-func action_policy_bonus(_model: ChessBoardModel, _action: ChessPrimaryAction, _perspective: String) -> float:
+func action_policy_bonus(_model: ChessBoardModel, _action: ChessPrimaryAction, _perspective: String, _tactical_map = null) -> float:
 	return 0.0
 
 
@@ -30,3 +30,7 @@ func active_ability_is_lethal(_action: ChessPrimaryAction, _target: ModelPiece) 
 
 func evaluation_bonus(_model: ChessBoardModel, _perspective: String) -> float:
 	return 0.0
+
+
+func reaction_target_score(_model: ChessBoardModel, _calling_piece: ModelPiece, _action_type: String, _event_data, _target: Vector2i, _perspective: String, _tactical_map = null) -> float:
+	return -INF

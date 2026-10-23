@@ -9,7 +9,7 @@ func supports(king_type: StringName) -> bool:
 	return king_type == &"rhetorician_king"
 
 
-func action_policy_bonus(model: ChessBoardModel, action: ChessPrimaryAction, _perspective: String) -> float:
+func action_policy_bonus(model: ChessBoardModel, action: ChessPrimaryAction, _perspective: String, _tactical_map = null) -> float:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is RhetoricianKing:
 		return 0.0
 	var compelled: ModelPiece = model.board[action.target.x][action.target.y]

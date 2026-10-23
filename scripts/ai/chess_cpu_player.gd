@@ -665,6 +665,17 @@ func _is_doomed_bone_pawn_square(color: String, coordinate: Vector2i) -> bool:
 
 
 func _choose_reaction_target(calling_piece: ModelPiece, targets: Array) -> Vector2i:
+	if brain != null:
+		var pending := model.get_pending_reaction()
+		var preferred = brain.choose_reaction_target(
+			model,
+			calling_piece,
+			String(pending.get("action_type", "")),
+			pending.get("event_data"),
+			targets
+		)
+		if preferred is Vector2i and preferred in targets:
+			return preferred
 	var choices := targets
 	if calling_piece is NecromancerKing:
 		var safe := targets.filter(func(target): return not _is_doomed_bone_pawn_square(calling_piece.color, target))

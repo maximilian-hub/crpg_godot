@@ -32,6 +32,9 @@ func _ready() -> void:
 	await _test_minotaur_rage_collateral()
 	await _test_rhetorician_compel_support()
 	await _test_rhetorician_rng_snapshot_consistency()
+	_test_necromancer_policy_support()
+	_test_necromancer_reaction_policy()
+	await _test_necromancer_simulation_settles_reaction()
 	_test_brain_specific_king_support()
 	if failures.is_empty():
 		print("DUPRE CHARACTERIZATION: PASS (", checks, " checks)")
@@ -478,6 +481,63 @@ func _test_rhetorician_rng_snapshot_consistency() -> void:
 	_expect(loaded_first and loaded_second and first_position.random_states == second_position.random_states and ChessPositionCodec.to_json(first_position, false) == ChessPositionCodec.to_json(second_position, false), "identical Rhetorician snapshots reproduce the same Socratic outcome")
 	_expect(source.capture_position().random_states == before_live, "speculative Socratic resolution does not advance live-model RNG")
 	first.free(); second.free(); source.free()
+	await get_tree().process_frame
+
+
+func _test_necromancer_policy_support() -> void:
+	var model := _new_empty_model()
+	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
+	necromancer.set_cooldown(0)
+	for piece in [necromancer, Pawn.new("white", Vector2i(6, 0)), ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var layer = ChessKingAiRegistry.layer_for(&"necromancer_king")
+	var doomed_score := float(layer.placement_score(model, necromancer, Vector2i(0, 1), "white"))
+	var safe_score := float(layer.placement_score(model, necromancer, Vector2i(5, 3), "white"))
+	var summon: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
+			summon = action
+			break
+	var policy := DuprePolicy.new(cpu)
+	_expect(DupreAiBrain.unsupported_king_ids(model).is_empty(), "Dupre accepts Necromancer as an enhanced supported King")
+	_expect(safe_score > doomed_score, "Necromancer policy rejects a Bone Pawn placement that dies on the enemy back rank")
+	_expect(summon != null, "ready Necromancer exposes a summon action to Dupre")
+	if summon != null:
+		var summon_score := policy.score(summon)
+		var projected_threats := policy.direct_king_threat_count_after(summon)
+		_expect(is_finite(summon_score) and projected_threats >= 0, "Necromancer summon projections keep placeholder occupancy out of live-piece identity comparisons")
+	_cleanup(cpu, model)
+
+
+func _test_necromancer_reaction_policy() -> void:
+	var model := _new_empty_model()
+	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
+	for piece in [necromancer, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var targets := [Vector2i(0, 1), Vector2i(5, 3), Vector2i(5, 4)]
+	var first = cpu.brain.choose_reaction_target(model, necromancer, "raise_dead", Vector2i(5, 3), targets)
+	var second = cpu.brain.choose_reaction_target(model, necromancer, "raise_dead", Vector2i(5, 3), targets)
+	_expect(first == second, "Dupre reaction placement is deterministic for an identical position")
+	_expect(first != Vector2i(0, 1), "Dupre Raise Dead avoids a Bone Pawn placement that dies immediately")
+	_cleanup(cpu, model)
+
+
+func _test_necromancer_simulation_settles_reaction() -> void:
+	var model := _new_empty_model()
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var victim := Bishop.new("black", Vector2i(4, 4))
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), rook, victim, NecromancerKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain._begin_profile(1)
+	brain._begin_book_profile()
+	var simulation = await brain._make_model(model.capture_position())
+	var descriptor := {"kind": ChessPrimaryAction.Kind.MOVE, "piece_id": rook.piece_id, "target": victim.coordinate, "path": [victim.coordinate]}
+	var execution := await brain._execute_dupre_descriptor(simulation, descriptor)
+	_expect(execution.status == DupreAiBrain.ExecutionStatus.COMPLETED and simulation.is_settled(), "Dupre simulation drains Raise Dead before evaluating the branch")
+	_expect(int(execution.policy_reactions) == 1 and int(brain.last_profile.opponent_policy_reactions_resolved) == 1, "opponent Raise Dead is recorded as a policy-resolved reaction")
+	brain._free_model(simulation)
+	_cleanup(cpu, model)
 	await get_tree().process_frame
 
 

@@ -31,10 +31,15 @@ func score(action: ChessPrimaryAction) -> float:
 	if player._is_immediate_win(action):
 		return 10000.0
 	var result := player._score_primary_action(action)
-	if action.piece is KingPiece:
-		var layer = ChessKingAiRegistry.layer_for(action.piece.get_position_type_id())
+	var evaluated_layers := {}
+	for side in [color, _other_color(color)]:
+		var king: ModelPiece = model.get_king(side)
+		if king == null or evaluated_layers.has(king.get_position_type_id()):
+			continue
+		var layer = ChessKingAiRegistry.layer_for(king.get_position_type_id())
 		if layer != null:
-			result += float(layer.action_policy_bonus(model, action, color))
+			evaluated_layers[king.get_position_type_id()] = true
+			result += float(layer.action_policy_bonus(model, action, color, tactical_map))
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		return result
 	if creates_new_king_threat(action):
@@ -64,7 +69,7 @@ func score(action: ChessPrimaryAction) -> float:
 
 	var projected := projected_map(action)
 	var piece_value := _piece_value(action.piece)
-	var projected_piece_coordinate := destination if projected.occupancy.get(destination) == action.piece else origin
+	var projected_piece_coordinate := destination if _projected_piece_is(projected, destination, action.piece) else origin
 	var was_attacked := tactical_map.attack_count(origin, _other_color(color)) > 0
 	var becomes_attacked := projected.attack_count(projected_piece_coordinate, _other_color(color)) > 0
 	if was_attacked and not becomes_attacked and piece_value >= 3.0:
@@ -90,7 +95,7 @@ func creates_new_king_threat(action: ChessPrimaryAction) -> bool:
 	if king == null:
 		return false
 	var projected := projected_map(action)
-	var projected_coordinate := action.target if action.piece == king and projected.occupancy.get(action.target) == king else king.coordinate
+	var projected_coordinate := action.target if action.kind == ChessPrimaryAction.Kind.MOVE and action.piece == king and _projected_piece_is(projected, action.target, king) else king.coordinate
 	var current := tactical_map.attack_count(king.coordinate, _other_color(color))
 	return projected.attack_count(projected_coordinate, _other_color(color)) > current
 
@@ -117,8 +122,13 @@ func direct_king_threat_count_after(action: ChessPrimaryAction) -> int:
 	if king == null:
 		return 0
 	var projected := projected_map(action)
-	var coordinate := action.target if action.piece == king and projected.occupancy.get(action.target) == king else king.coordinate
+	var coordinate := action.target if action.kind == ChessPrimaryAction.Kind.MOVE and action.piece == king and _projected_piece_is(projected, action.target, king) else king.coordinate
 	return projected.attack_count(coordinate, _other_color(color))
+
+
+func _projected_piece_is(projected: DupreTacticalMap, coordinate: Vector2i, piece: ModelPiece) -> bool:
+	var occupant = projected.occupancy.get(coordinate)
+	return occupant is ModelPiece and occupant == piece
 
 
 func capture_material_swing(action: ChessPrimaryAction) -> float:
