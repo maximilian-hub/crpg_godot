@@ -2,6 +2,7 @@ extends Node
 
 const DuprePolicy = preload("res://scripts/ai/dupre_move_policy.gd")
 const TacticalMap = preload("res://scripts/ai/dupre_tactical_map.gd")
+const ExchangeAnalyzer = preload("res://scripts/ai/dupre_exchange_analyzer.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -34,6 +35,7 @@ func _ready() -> void:
 	await _test_rhetorician_rng_snapshot_consistency()
 	_test_necromancer_policy_support()
 	_test_necromancer_does_not_trade_queen_for_pawn()
+	await _test_material_obligation_candidates()
 	_test_necromancer_reaction_policy()
 	await _test_necromancer_simulation_settles_reaction()
 	_test_brain_specific_king_support()
@@ -188,9 +190,13 @@ func _test_durable_target_projection() -> void:
 	var attack: ChessPrimaryAction
 	for action in model.get_legal_primary_actions("white"):
 		if action.piece == knight and action.target == durable_queen.coordinate: attack = action
+	var before := ChessPositionCodec.to_json(model.capture_position(), false)
 	var projected := policy.projected_map(attack)
+	var exchange: Dictionary = policy.exchange_result(attack)
 	_expect(attack != null and projected.occupancy.get(knight.coordinate) == knight and projected.occupancy.get(durable_queen.coordinate) == durable_queen, "nonlethal attacks on durable pieces do not incorrectly move the attacker in tactical projections")
 	_expect(attack != null and policy.capture_material_swing(attack) == 0.0, "nonlethal damage is not mislabeled as a material capture")
+	_expect(float(exchange.delta) > 0.0 and int(exchange.confidence) == ExchangeAnalyzer.Confidence.MEDIUM, "exchange analysis values nonlethal HP damage with explicitly reduced confidence")
+	_expect(ChessPositionCodec.to_json(model.capture_position(), false) == before, "static exchange analysis does not mutate the live model")
 	_cleanup(cpu, model)
 
 
@@ -540,10 +546,47 @@ func _test_necromancer_does_not_trade_queen_for_pawn() -> void:
 		elif action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.target == Vector2i(5, 3):
 			defensive_summon = action
 	var layer = ChessKingAiRegistry.layer_for(&"necromancer_king")
+	var current_risk: Dictionary = policy.material_risk(queen)
+	var summon_risk: Dictionary = policy.material_risk_after(defensive_summon, queen) if defensive_summon != null else {}
+	var capture_exchange: Dictionary = policy.exchange_result(capture) if capture != null else {}
 	_expect(capture != null and defensive_summon != null, "queen-capture and superficially defensive summon are both legal in the Necromancer exchange fixture")
 	_expect(defensive_summon != null and not layer.action_is_forcing(model, defensive_summon, "white"), "merely defending a still-capturable Queen does not make a Necromancer summon forcing")
 	_expect(capture != null and defensive_summon != null and policy.score(capture) > policy.score(defensive_summon), "Dupre prefers taking the vulnerable pawn over sacrificing its Queen for a Bone Pawn recapture")
+	_expect(float(current_risk.loss) >= 8.0 and float(summon_risk.get("loss", 0.0)) >= 8.0, "exchange analysis recognizes that adding a defender does not erase a profitable pawn-for-Queen exchange")
+	_expect(not capture_exchange.is_empty() and capture_exchange.sequence.size() <= 6, "bounded exchange analysis reports a finite capture sequence")
 	_cleanup(cpu, model)
+
+
+func _test_material_obligation_candidates() -> void:
+	var model := _new_empty_model()
+	var queen := Queen.new("white", Vector2i(4, 4))
+	var pawn := Pawn.new("black", Vector2i(3, 3))
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), queen, pawn, ClassicKing.new("black", Vector2i(0, 6))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain.think_budget_msec = 1500
+	brain._begin_profile(model.get_legal_primary_actions("white").size())
+	brain._begin_book_profile()
+	brain._ensure_tactical_map()
+	var policy := DuprePolicy.new(cpu, {}, brain._tactical_map)
+	var ranked: Array[Dictionary] = []
+	var index := 0
+	for action in model.get_legal_primary_actions("white"):
+		ranked.append({"action": action, "policy": policy.score(action), "index": index})
+		index += 1
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
+	var candidates: Array[Dictionary] = brain._select_candidates(ranked, policy)
+	var capture_reason: StringName = &""
+	for candidate in candidates:
+		if candidate.action.piece == queen and candidate.action.target == pawn.coordinate:
+			capture_reason = candidate.candidate_reason
+			break
+	_expect(brain.last_profile.danger_class == &"critical" and int(brain.last_profile.material_obligation_count) == 1, "a profitable pawn attack on the Queen classifies the root as a critical material obligation")
+	_expect(capture_reason == &"material_obligation", "capturing the pawn is retained ahead of ordinary policy candidates as an obligation response")
+	var thought = await cpu.think()
+	_expect(thought != null and thought.piece_coordinate == queen.coordinate and thought.target == pawn.coordinate, "Dupre answers the critical Queen threat by taking the vulnerable pawn")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
 
 
 func _test_necromancer_simulation_settles_reaction() -> void:

@@ -32,5 +32,9 @@ func evaluation_bonus(_model: ChessBoardModel, _perspective: String) -> float:
 	return 0.0
 
 
+func exchange_policy_adjustment(_model: ChessBoardModel, _action: ChessPrimaryAction, _perspective: String, _exchange: Dictionary, _tactical_map = null) -> float:
+	return 0.0
+
+
 func reaction_target_score(_model: ChessBoardModel, _calling_piece: ModelPiece, _action_type: String, _event_data, _target: Vector2i, _perspective: String, _tactical_map = null) -> float:
 	return -INF

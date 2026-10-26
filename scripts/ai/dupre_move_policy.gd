@@ -1,6 +1,8 @@
 extends RefCounted
 class_name DupreMovePolicy
 
+const ExchangeAnalyzer = preload("res://scripts/ai/dupre_exchange_analyzer.gd")
+
 const REVERSAL_PENALTY := 4.0
 const BACK_RANK_ROOK_SHUFFLE_PENALTY := 1.25
 const DEVELOPMENT_REWARD := 2.0
@@ -16,7 +18,9 @@ var model: ChessBoardModel
 var color: String
 var previous_own_actions: Dictionary
 var tactical_map: DupreTacticalMap
+var exchange_analyzer
 var _projected_maps: Dictionary = {}
+var _exchange_results: Dictionary = {}
 
 
 func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_tactical_map: DupreTacticalMap = null) -> void:
@@ -25,6 +29,7 @@ func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_t
 	color = player.controlled_color
 	previous_own_actions = p_previous_own_action
 	tactical_map = p_tactical_map if p_tactical_map != null else DupreTacticalMap.from_model(model)
+	exchange_analyzer = ExchangeAnalyzer.new(model)
 
 
 func score(action: ChessPrimaryAction) -> float:
@@ -40,6 +45,14 @@ func score(action: ChessPrimaryAction) -> float:
 		if layer != null:
 			evaluated_layers[king.get_position_type_id()] = true
 			result += float(layer.action_policy_bonus(model, action, color, tactical_map))
+	var exchange := exchange_result(action)
+	if action.kind == ChessPrimaryAction.Kind.MOVE:
+		var captured: ModelPiece = model.board[action.target.x][action.target.y]
+		if captured != null and captured.color != action.piece.color:
+			result += float(exchange.delta) - _piece_value(captured)
+	for type_id in evaluated_layers:
+		var exchange_layer = ChessKingAiRegistry.layer_for(type_id)
+		result += float(exchange_layer.exchange_policy_adjustment(model, action, color, exchange, tactical_map))
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
 		return result
 	if creates_new_king_threat(action):
@@ -132,16 +145,32 @@ func _projected_piece_is(projected: DupreTacticalMap, coordinate: Vector2i, piec
 
 
 func capture_material_swing(action: ChessPrimaryAction) -> float:
-	if action.kind != ChessPrimaryAction.Kind.MOVE:
-		return 0.0
-	var target: ModelPiece = model.board[action.target.x][action.target.y]
-	if target == null or target.color == color or target.current_hp > action.piece.attack_power:
-		return 0.0
-	var result := _piece_value(target)
+	var result := exchange_result(action)
+	# Compatibility: callers use this method to identify actual material
+	# captures. Nonlethal HP damage is valued by score(), but is not a capture.
+	return 0.0 if result.reason == &"durable_target" else float(result.delta)
+
+
+func exchange_result(action: ChessPrimaryAction) -> Dictionary:
+	var key := "%s|%s|%s|%s" % [action.piece.piece_id, action.kind, action.target, action.path]
+	if not _exchange_results.has(key):
+		_exchange_results[key] = exchange_analyzer.analyze_capture(action, projected_map(action))
+	return _exchange_results[key]
+
+
+func material_risk(piece: ModelPiece) -> Dictionary:
+	return exchange_analyzer.analyze_piece_risk(piece, tactical_map)
+
+
+func material_risk_after(action: ChessPrimaryAction, piece: ModelPiece) -> Dictionary:
 	var projected := projected_map(action)
-	if projected.attack_count(action.target, _other_color(color)) > 0:
-		result -= _piece_value(action.piece)
-	return result
+	var coordinate = projected.piece_coordinates.get(piece.piece_id)
+	if coordinate == null:
+		return {"delta": 0.0, "loss": 0.0, "confidence": ExchangeAnalyzer.Confidence.HIGH, "reason": &"removed", "sequence": []}
+	var projected_piece = projected.occupancy.get(coordinate)
+	if not projected_piece is ModelPiece:
+		return {"delta": 0.0, "loss": 0.0, "confidence": ExchangeAnalyzer.Confidence.LOW, "reason": &"unknown", "sequence": []}
+	return exchange_analyzer.analyze_piece_risk(projected_piece, projected)
 
 
 func captures_current_king_attacker(action: ChessPrimaryAction) -> bool:
@@ -169,6 +198,7 @@ func projection_metrics() -> Dictionary:
 		"recalculations": recalculations,
 		"attack_calls": attack_calls,
 		"usec": projection_usec,
+		"exchange": exchange_analyzer.metrics(),
 	}
 
 

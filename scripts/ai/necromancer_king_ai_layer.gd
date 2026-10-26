@@ -13,9 +13,14 @@ func action_policy_bonus(model: ChessBoardModel, action: ChessPrimaryAction, per
 	var result := 0.0
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.piece is NecromancerKing:
 		result += placement_score(model, action.piece, action.target, perspective, tactical_map)
+	return result
+
+
+func exchange_policy_adjustment(model: ChessBoardModel, action: ChessPrimaryAction, perspective: String, _exchange: Dictionary, tactical_map = null) -> float:
 	# Capturing a major or minor against a Necromancer is not the whole material
 	# gain: Raise Dead immediately restores a Bone Pawn. Price that authoritative
 	# consequence into the cheap policy without duplicating its execution rules.
+	var result := 0.0
 	if action.kind == ChessPrimaryAction.Kind.MOVE:
 		var target: ModelPiece = model.board[action.target.x][action.target.y]
 		if target != null and target.color != action.piece.color and target.current_hp <= action.piece.attack_power and _is_raise_dead_piece(target):

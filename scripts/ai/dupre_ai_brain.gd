@@ -9,6 +9,8 @@ const DEFAULT_CANDIDATE_LIMIT := 6
 const DEFAULT_MAX_BOOK_MOVES := 7
 const TACTICAL_SAFETY_MARGIN := 5.0
 const FORCING_ABILITY_CAP := 3
+const MAX_OBLIGATION_RESPONSES := 4
+const SEVERE_MATERIAL_LOSS := 3.0
 
 enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID }
 enum ExecutionStatus { COMPLETED, INCOMPLETE, INVALID }
@@ -57,11 +59,12 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		return book_plan
 	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
 	var ranked := await _rank_actions(actions, policy)
-	_populate_policy_profile(policy)
 	if ranked.is_empty():
+		_populate_policy_profile(policy)
 		_finish_profile()
 		return null
 	var candidates := _select_candidates(ranked, policy)
+	_populate_policy_profile(policy)
 	last_profile["policy_candidate_count"] = candidates.size()
 	last_profile["unverified_selection"] = false
 	var root_position: ChessPosition = player.model.capture_position()
@@ -100,6 +103,9 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 				last_profile.incomplete_root_candidates += 1
 			ScreenStatus.INVALID:
 				last_profile.invalid_root_candidates += 1
+		if bool(record.get("terminal", false)) and float(record.get("score", 0.0)) >= 1000000.0:
+			last_profile.terminal_win_early_stop = true
+			break
 		await _cooperate()
 
 	var selected_action: ChessPrimaryAction
@@ -142,6 +148,7 @@ func _screen_candidate(root_position: ChessPosition, entry: Dictionary) -> Dicti
 		"replies": [],
 		"reply_scores": {},
 		"policy_reactions": 0,
+		"terminal": false,
 	}
 	var simulation := await _make_model(root_position)
 	if simulation == null:
@@ -157,6 +164,7 @@ func _screen_candidate(root_position: ChessPosition, entry: Dictionary) -> Dicti
 		record.screen_status = ScreenStatus.EXACT
 		record.score = _evaluate_terminal(simulation)
 		record.screen_bound = record.score
+		record.terminal = true
 		_free_model(simulation)
 		return record
 	var legal_started := Time.get_ticks_usec()
@@ -278,6 +286,7 @@ func _candidate_reason_priority(reason: StringName) -> int:
 		&"immediate_win": return 5
 		&"king_safety": return 4
 		&"king_ability": return 4
+		&"material_obligation": return 4
 		&"capture_king_attacker": return 3
 		&"favorable_capture": return 2
 		&"major_piece_defense": return 1
@@ -590,6 +599,15 @@ func _begin_book_profile() -> void:
 	last_profile["opponent_policy_reactions_resolved"] = 0
 	last_profile["selected_policy_reactions"] = 0
 	last_profile["conditional_verification"] = false
+	last_profile["danger_class"] = &"quiet"
+	last_profile["material_obligation_count"] = 0
+	last_profile["obligation_response_count"] = 0
+	last_profile["exchange_analysis_calls"] = 0
+	last_profile["exchange_analysis_usec"] = 0
+	last_profile["exchange_high_confidence"] = 0
+	last_profile["exchange_medium_confidence"] = 0
+	last_profile["exchange_low_confidence"] = 0
+	last_profile["terminal_win_early_stop"] = false
 
 
 func _ensure_opening_session() -> void:
@@ -809,18 +827,47 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		if player._is_immediate_win(entry.action):
 			_append_unique(selected, selected_keys, entry, &"immediate_win")
 	var king: ModelPiece = player.model.get_king(player.controlled_color)
+	var king_danger := false
 	if king != null:
 		var current_threats: int = maxi(
 			policy.tactical_map.king_attackers(player.controlled_color).size(),
 			player._king_threat_count(king, king.coordinate, player._current_board_state())
 		)
 		if current_threats > 0 or player.king_safety_turns_remaining > 0:
+			king_danger = true
 			var minimum := 999
 			for entry in ranked:
 				minimum = mini(minimum, maxi(policy.direct_king_threat_count_after(entry.action), player._projected_king_threat_count(entry.action)))
 			for entry in ranked:
 				if maxi(policy.direct_king_threat_count_after(entry.action), player._projected_king_threat_count(entry.action)) == minimum:
 					_append_unique(selected, selected_keys, entry, &"king_safety")
+	var obligations := _material_obligations(policy)
+	last_profile.material_obligation_count = obligations.size()
+	for obligation in obligations:
+		var responses: Array[Dictionary] = []
+		var attacker_ids := {}
+		for exchange_step in obligation.sequence:
+			attacker_ids[String(exchange_step.get("attacker", ""))] = true
+		for entry in ranked:
+			var risk: Dictionary = policy.material_risk_after(entry.action, obligation.piece)
+			if float(risk.loss) + 0.01 < float(obligation.loss):
+				var target_piece: ModelPiece = player.model.board[entry.action.target.x][entry.action.target.y]
+				responses.append({
+					"entry": entry,
+					"loss": float(risk.loss),
+					"confidence": int(risk.confidence),
+					"captures_attacker": target_piece != null and attacker_ids.has(target_piece.piece_id),
+				})
+		responses.sort_custom(func(a: Dictionary, b: Dictionary):
+			if bool(a.captures_attacker) != bool(b.captures_attacker): return bool(a.captures_attacker)
+			if not is_equal_approx(float(a.loss), float(b.loss)): return float(a.loss) < float(b.loss)
+			if int(a.confidence) != int(b.confidence): return int(a.confidence) > int(b.confidence)
+			return float(a.entry.policy) > float(b.entry.policy)
+		)
+		for index in range(mini(MAX_OBLIGATION_RESPONSES, responses.size())):
+			var before := selected.size()
+			_append_unique(selected, selected_keys, responses[index].entry, &"material_obligation")
+			if selected.size() > before: last_profile.obligation_response_count += 1
 	for entry in ranked:
 		if policy.captures_current_king_attacker(entry.action):
 			_append_unique(selected, selected_keys, entry, &"capture_king_attacker")
@@ -838,14 +885,10 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		else:
 			last_profile.forcing_ability_deferred += 1
 	last_profile.forcing_ability_retained = retained_forcing
-	var valuable_defenses_by_piece := {}
-	for entry in ranked:
-		var piece: ModelPiece = entry.action.piece
-		if policy.is_valuable_piece_threatened(piece):
-			var defense_count := int(valuable_defenses_by_piece.get(piece.piece_id, 0))
-			if defense_count < 3:
-				_append_unique(selected, selected_keys, entry, &"major_piece_defense")
-				valuable_defenses_by_piece[piece.piece_id] = defense_count + 1
+	if king_danger or not obligations.is_empty():
+		last_profile.danger_class = &"critical"
+	elif retained_forcing > 0 or selected.size() > 0:
+		last_profile.danger_class = &"tactical"
 	last_profile.mandatory_candidate_count = selected.size()
 	var ordinary_count := 0
 	for entry in ranked:
@@ -856,6 +899,23 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		if selected.size() > before:
 			ordinary_count += 1
 	return selected
+
+
+func _material_obligations(policy) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for coordinate in policy.tactical_map.occupancy:
+		var piece = policy.tactical_map.occupancy[coordinate]
+		if not piece is ModelPiece or piece.color != player.controlled_color or piece.is_king:
+			continue
+		var value := _material_value(piece)
+		if value < 3.0:
+			continue
+		var risk: Dictionary = policy.material_risk(piece)
+		var threshold := 0.01 if value >= 5.0 else SEVERE_MATERIAL_LOSS
+		if float(risk.loss) >= threshold:
+			result.append({"piece": piece, "loss": float(risk.loss), "confidence": int(risk.confidence), "sequence": risk.sequence})
+	result.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.loss) > float(b.loss))
+	return result
 
 
 func _append_unique(result: Array[Dictionary], keys: Dictionary, entry: Dictionary, reason: StringName = &"") -> void:
@@ -888,6 +948,12 @@ func _populate_policy_profile(policy) -> void:
 	last_profile.tactical_incremental_recalculations = metrics.recalculations
 	last_profile.tactical_projection_attack_calls = metrics.attack_calls
 	last_profile.tactical_projection_usec = metrics.usec
+	var exchange: Dictionary = metrics.get("exchange", {})
+	last_profile.exchange_analysis_calls = int(exchange.get("calls", 0))
+	last_profile.exchange_analysis_usec = int(exchange.get("usec", 0))
+	last_profile.exchange_high_confidence = int(exchange.get("high", 0))
+	last_profile.exchange_medium_confidence = int(exchange.get("medium", 0))
+	last_profile.exchange_low_confidence = int(exchange.get("low", 0))
 
 
 func _remember_action(action: ChessPrimaryAction, origin: Vector2i = Vector2i(-1, -1)) -> void:
