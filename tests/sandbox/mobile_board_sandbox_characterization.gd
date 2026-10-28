@@ -16,6 +16,7 @@ func _ready() -> void:
 	_check(ROUTER.destination_path(false) == ROUTER.GAME_SCENE_PATH, "normal builds route to the game", failures)
 	_check(ROUTER.destination_path(true) == ROUTER.SANDBOX_SCENE_PATH, "sandbox builds route directly to the sandbox", failures)
 	_check(sandbox.mobile_root != null and not sandbox.panel.visible, "mobile layout replaces the desktop panel", failures)
+	_check(sandbox.record_panel != null and sandbox.record_open_dialog == null and sandbox.record_save_dialog == null, "mobile replay uses clipboard exchange and omits desktop file dialogs", failures)
 	_check(sandbox.piece_skin_option == null and sandbox.piece_scale_spin == null and sandbox.piece_base_x_spin == null and PieceView.standard_skin == PieceView.StandardSkin.CLASSIC, "mobile sandbox omits skin, scale, and base-anchor tuning and keeps Classic artwork", failures)
 	_check(sandbox.mode_button.text == "Edit" and sandbox.undo_button.text == "Back" and sandbox.redo_button.text == "Forward", "mobile toolbar uses compact labels", failures)
 	_check(sandbox.ai_mode_buttons.has(ChessCpuPlayer.ExecutionMode.DISABLED) and sandbox.ai_mode_buttons.has(ChessCpuPlayer.ExecutionMode.AUTO), "mobile AI panel exposes Off and Auto", failures)

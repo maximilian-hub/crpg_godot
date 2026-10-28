@@ -6,6 +6,7 @@ const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_abili
 const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
 const ArcherKing := preload("res://scripts/pieces/archer_king.gd")
 const LineOfSight := preload("res://scripts/core/chess_line_of_sight.gd")
+const ActionCodec := preload("res://scripts/state/chess_action_codec.gd")
 
 ## Serves as the Model layer of our chess games.
 # You may notice a lack of Checking; this is intentional.
@@ -20,6 +21,7 @@ var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
 signal action_started(owner_color: String)
+signal primary_action_committed(descriptor: Dictionary)
 signal action_finished()
 signal action_cancelled()
 signal forced_pass_sequence_started()
@@ -752,6 +754,7 @@ func submit_move(piece: ModelPiece, to: Vector2i) -> bool:
 		return false
 	if action_in_progress or battle_over or to not in get_legal_moves(piece):
 		return false
+	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, to)))
 	await move_piece(piece, to)
 	return true
 
@@ -768,6 +771,7 @@ func submit_move_path(piece: ModelPiece, path: Array[Vector2i]) -> bool:
 			break
 	if not legal:
 		return false
+	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, path.back(), path)))
 	await move_piece_path(piece, path)
 	return true
 
@@ -822,6 +826,7 @@ func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
 		return false
 	if target not in king.get_active_ability_targets():
 		return false
+	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.ACTIVE_ABILITY, king, target)))
 	await perform_active_ability(king, target)
 	return true
 
@@ -830,6 +835,7 @@ func submit_archer_charge(archer: ArcherKing) -> bool:
 		return false
 	if action_in_progress or battle_over or not begin_action(archer.color):
 		return false
+	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.ARCHER_CHARGE, archer, archer.coordinate)))
 	_archer_charge_started_this_action = true
 	archer.begin_charge()
 	await continue_action_resolution()

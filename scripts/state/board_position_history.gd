@@ -5,22 +5,26 @@ signal changed(can_undo: bool, can_redo: bool)
 
 var entries: Array[ChessPosition] = []
 var labels: Array[String] = []
+var metadata: Array[Dictionary] = []
 var cursor := -1
 var baseline: ChessPosition
 
-func establish_baseline(position: ChessPosition, label := "Baseline") -> void:
+func establish_baseline(position: ChessPosition, label := "Baseline", frame_metadata: Dictionary = {}) -> void:
 	baseline = position.copy()
 	entries.assign([baseline.copy()])
 	labels.assign([label])
+	metadata.assign([frame_metadata.duplicate(true)])
 	cursor = 0
 	_emit_changed()
 
-func push(position: ChessPosition, label := "") -> void:
+func push(position: ChessPosition, label := "", frame_metadata: Dictionary = {}) -> void:
 	while entries.size() > cursor + 1:
 		entries.pop_back()
 		labels.pop_back()
+		metadata.pop_back()
 	entries.append(position.copy())
 	labels.append(label)
+	metadata.append(frame_metadata.duplicate(true))
 	cursor = entries.size() - 1
 	_emit_changed()
 

@@ -134,6 +134,20 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	plan.analyzed_leaf_count = last_profile.evaluated_reply_count
 	_finish_profile()
 	plan.search_profile = get_last_profile()
+	var diagnostics: Array[Dictionary] = []
+	for record in records:
+		if diagnostics.size() >= 12: break
+		diagnostics.append({
+			"action": ActionCodec.describe(record.action),
+			"policy_score": record.policy,
+			"search_score": record.score,
+			"status": ScreenStatus.keys()[int(record.screen_status)].to_lower(),
+			"reason": String(record.get("candidate_reason", &"policy")),
+		})
+	if diagnostics.is_empty():
+		for entry in ranked.slice(0, mini(12, ranked.size())):
+			diagnostics.append({"action": ActionCodec.describe(entry.action), "policy_score": entry.policy, "status": "not_searched", "reason": "policy"})
+	plan.candidates = diagnostics
 	return plan
 
 
@@ -546,6 +560,19 @@ func reset_session(_reason: StringName = &"reset") -> void:
 	_tactical_map = null
 
 
+func capture_debug_state() -> Dictionary:
+	return {
+		"candidate_limit": candidate_limit, "max_book_moves": max_book_moves, "quiescence_enabled": quiescence_enabled,
+		"previous_own_actions": previous_own_actions.duplicate(true),
+		"opening": {
+			"active": opening_session.active, "family": String(opening_session.selected_family_id), "node_id": opening_session.node_id,
+			"book_moves_played": opening_session.book_moves_played, "own_actions_played": opening_session.own_actions_played,
+			"started_global_turn": opening_session.started_global_turn, "deviated": opening_session.deviated,
+			"exit_reason": String(opening_session.exit_reason), "last_observed_enemy_move": opening_session.last_observed_enemy_move,
+		},
+	}
+
+
 func on_action_executed(action: ChessPrimaryAction, origin: Vector2i) -> void:
 	_remember_action(action, origin)
 	if not opening_session.active:
@@ -687,6 +714,8 @@ func _try_opening_book(actions: Array[ChessPrimaryAction]):
 	plan.analyzed_leaf_count = 0
 	_finish_profile()
 	plan.search_profile = get_last_profile()
+	for match_action in matches.slice(0, mini(12, matches.size())):
+		plan.candidates.append({"action": ActionCodec.describe(match_action), "score": policy.score(match_action), "status": "book", "reason": "opening_book"})
 	return plan
 
 

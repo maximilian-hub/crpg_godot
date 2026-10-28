@@ -24,3 +24,7 @@ func on_action_executed(_action: ChessPrimaryAction, _origin: Vector2i) -> void:
 
 func reset_session(_reason: StringName = &"reset") -> void:
 	pass
+
+
+func capture_debug_state() -> Dictionary:
+	return {}

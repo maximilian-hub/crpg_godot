@@ -3,6 +3,9 @@ class_name BoardSandbox
 
 const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy.gd")
 const BoardPiecePaletteScript = preload("res://scripts/editor/board_piece_palette.gd")
+const GameRecordScript = preload("res://scripts/state/chess_game_record.gd")
+const GameRecordCodec = preload("res://scripts/state/chess_game_record_codec.gd")
+const ActionCodec = preload("res://scripts/state/chess_action_codec.gd")
 
 enum Mode { EDIT, PLAY }
 
@@ -86,6 +89,26 @@ var mobile_ui_touch_target: Variant = null
 var mobile_button_callbacks: Dictionary = {}
 var mobile_board_pointer := -1
 var mobile_ai_visible_before_play := false
+var active_record = GameRecordScript.new()
+var replay_record
+var replay_mode := false
+var replay_cursor := 0
+var replay_warnings: Array[String] = []
+var pending_action: Dictionary = {}
+var pending_ai: Dictionary = {}
+var record_provenance: Dictionary = {}
+var record_panel: PanelContainer
+var record_status_label: Label
+var record_frame_label: Label
+var record_note_edit: TextEdit
+var replay_previous_button: Button
+var replay_next_button: Button
+var replay_flag_button: Button
+var replay_fork_button: Button
+var replay_analyze_button: Button
+var record_open_dialog: FileDialog
+var record_save_dialog: FileDialog
+var replay_analysis_running := false
 var piece_skin_tuning := {
 	PieceView.StandardSkin.CLASSIC: {"scale": 1.0, "base_offset": Vector2.ZERO},
 	PieceView.StandardSkin.CHUNKY: {"scale": 1.25, "base_offset": Vector2(0.0, 5.0)},
@@ -108,14 +131,16 @@ func _ready() -> void:
 	model.action_started.connect(func(_owner_color: String): _refresh_control_states())
 	model.action_finished.connect(_refresh_control_states)
 	model.action_cancelled.connect(_refresh_control_states)
+	model.primary_action_committed.connect(_on_primary_action_committed)
 	model.board_rebuilt.connect(_on_board_rebuilt)
 	history.changed.connect(func(_can_undo: bool, _can_redo: bool): _refresh_control_states())
-	game.white_cpu_player.thought_changed.connect(func(_thought): _refresh_control_states())
-	game.black_cpu_player.thought_changed.connect(func(_thought): _refresh_control_states())
+	game.white_cpu_player.thought_changed.connect(func(thought): _on_ai_thought_changed(thought); _refresh_control_states())
+	game.black_cpu_player.thought_changed.connect(func(thought): _on_ai_thought_changed(thought); _refresh_control_states())
 	_build_panel()
+	_build_record_panel()
 	_set_mode(Mode.EDIT)
 	baseline = model.capture_position()
-	history.establish_baseline(baseline, "Normal Start")
+	history.establish_baseline(baseline, "Normal Start", {"kind": &"baseline", "context": _capture_record_context()})
 	_refresh_control_states()
 
 func _build_panel() -> void:
@@ -127,6 +152,7 @@ func _build_panel() -> void:
 func _build_desktop_panel() -> void:
 	mode_button = _add_button("", func(): _set_mode(Mode.PLAY if mode == Mode.EDIT else Mode.EDIT))
 	view_side_button = _add_button("", _toggle_viewing_side)
+	_add_button("Record / Replay", _toggle_record_panel)
 	var history_row := HBoxContainer.new()
 	panel.add_child(history_row)
 	undo_button = _add_button_to(history_row, "Undo [←]", undo)
@@ -325,6 +351,113 @@ func _refresh_piece_art() -> void:
 		if palette_item is BoardPiecePaletteItem:
 			palette_item._layout_content()
 
+func _build_record_panel() -> void:
+	record_panel = PanelContainer.new()
+	record_panel.name = "RecordReplayPanel"
+	record_panel.set_anchors_preset(Control.PRESET_CENTER)
+	record_panel.offset_left = -190.0
+	record_panel.offset_top = -250.0
+	record_panel.offset_right = 190.0
+	record_panel.offset_bottom = 250.0
+	record_panel.visible = false
+	$SandboxLayer.add_child(record_panel)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	record_panel.add_child(column)
+	var title := Label.new()
+	title.text = "Game Record / Replay"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(title)
+	record_frame_label = Label.new()
+	record_frame_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(record_frame_label)
+	var nav := HBoxContainer.new()
+	column.add_child(nav)
+	replay_previous_button = _add_button_to(nav, "◀ Previous", _replay_previous)
+	replay_next_button = _add_button_to(nav, "Next ▶", _replay_next)
+	var actions := HBoxContainer.new()
+	column.add_child(actions)
+	_add_button_to(actions, "Copy Game", copy_game_record)
+	_add_button_to(actions, "Paste Game", paste_game_record)
+	if not mobile_layout:
+		_add_button_to(actions, "Open…", func(): record_open_dialog.popup_centered_ratio(0.7))
+		_add_button_to(actions, "Save…", func(): record_save_dialog.popup_centered_ratio(0.7))
+	var replay_actions := HBoxContainer.new()
+	column.add_child(replay_actions)
+	replay_flag_button = _add_button_to(replay_actions, "Flag Frame", _flag_replay_frame)
+	replay_fork_button = _add_button_to(replay_actions, "Fork Here", fork_replay_here)
+	replay_analyze_button = _add_button_to(replay_actions, "Analyze Again", analyze_replay_again)
+	_add_button_to(column, "Copy Current Position", copy_position)
+	var note_label := Label.new()
+	note_label.text = "Issue note"
+	column.add_child(note_label)
+	record_note_edit = TextEdit.new()
+	record_note_edit.custom_minimum_size.y = 92.0
+	record_note_edit.placeholder_text = "What looked wrong at the flagged frame?"
+	record_note_edit.text_changed.connect(_on_record_note_changed)
+	column.add_child(record_note_edit)
+	record_status_label = Label.new()
+	record_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	record_status_label.custom_minimum_size.y = 58.0
+	column.add_child(record_status_label)
+	_add_button_to(column, "Close", _toggle_record_panel)
+	if not mobile_layout:
+		record_open_dialog = FileDialog.new()
+		record_open_dialog.access = FileDialog.ACCESS_FILESYSTEM
+		record_open_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+		record_open_dialog.add_filter("*.crpggame", "CRPG Chess Game")
+		record_open_dialog.file_selected.connect(_open_game_record_file)
+		add_child(record_open_dialog)
+		record_save_dialog = FileDialog.new()
+		record_save_dialog.access = FileDialog.ACCESS_FILESYSTEM
+		record_save_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+		record_save_dialog.add_filter("*.crpggame", "CRPG Chess Game")
+		record_save_dialog.file_selected.connect(_save_game_record_file)
+		add_child(record_save_dialog)
+	_refresh_record_panel()
+
+func _toggle_record_panel() -> void:
+	if record_panel == null: return
+	record_panel.visible = not record_panel.visible
+	if record_panel.visible:
+		if mobile_ai_panel != null: mobile_ai_panel.visible = false
+		if piece_palette != null and mobile_layout: piece_palette.visible = false
+		_refresh_record_panel()
+	elif mobile_layout and mode == Mode.EDIT and piece_palette != null:
+		piece_palette.visible = true
+
+func _refresh_record_panel() -> void:
+	if record_frame_label == null: return
+	var count: int = replay_record.frames.size() if replay_mode and replay_record != null else history.entries.size()
+	var cursor: int = replay_cursor if replay_mode else history.cursor
+	record_frame_label.text = "%s — Frame %d / %d" % ["Replay" if replay_mode else "Live Recording", cursor + 1, count]
+	replay_previous_button.disabled = not replay_mode or replay_cursor <= 0
+	replay_next_button.disabled = not replay_mode or replay_record == null or replay_cursor >= replay_record.frames.size() - 1
+	replay_flag_button.disabled = not replay_mode
+	replay_fork_button.disabled = not replay_mode
+	replay_analyze_button.disabled = not replay_mode or replay_cursor <= 0
+	var record = replay_record if replay_mode else _record_from_history()
+	var note: String = record.issue_note if record != null else ""
+	if record_note_edit.text != note:
+		record_note_edit.set_text(note)
+	replay_flag_button.text = "Flagged ✓" if record != null and record.flagged_frame == cursor else "Flag Frame"
+	if replay_mode and replay_record != null:
+		var frame: Dictionary = replay_record.frames[replay_cursor]
+		var details := String(frame.get("label", ""))
+		var ai: Dictionary = frame.get("ai", {})
+		if not ai.is_empty():
+			var candidates: Array = ai.get("candidates", [])
+			details += "\n%s score %.2f — %d candidates" % [ai.get("brain_id", "AI"), float(ai.get("score", 0.0)), candidates.size()]
+			for candidate_index in range(mini(candidates.size(), 12)):
+				var candidate: Dictionary = candidates[candidate_index]
+				var action: Dictionary = candidate.get("action", {})
+				var candidate_score := float(candidate.get("search_score", candidate.get("score", candidate.get("policy_score", 0.0))))
+				details += "\n%d. %s → %s  %.2f%s" % [candidate_index + 1, action.get("from", action.get("piece_type", "?")), action.get("target", "?"), candidate_score, "  " + String(candidate.get("reason", "")) if candidate.has("reason") else ""]
+		if not replay_warnings.is_empty():
+			details += "\n⚠ " + "\n⚠ ".join(replay_warnings)
+		record_status_label.text = details
+
+
 func _build_mobile_panel() -> void:
 	panel.visible = false
 	mobile_root = Control.new()
@@ -347,6 +480,7 @@ func _build_mobile_panel() -> void:
 	clear_button = _add_button_to(toolbar, "Clear", func(): editor.clear_board())
 	mobile_palette_button = _add_button_to(toolbar, "Pieces", _toggle_mobile_palette)
 	_add_button_to(toolbar, "AI", _toggle_mobile_ai_panel)
+	_add_button_to(toolbar, "Replay", _toggle_record_panel)
 
 	mobile_ai_panel = PanelContainer.new()
 	mobile_ai_panel.name = "AISettings"
@@ -738,6 +872,8 @@ func _enable_mobile_touch_activation(button: Button) -> void:
 	)
 
 func _set_mode(next: Mode) -> void:
+	if replay_mode:
+		return
 	if not model.is_settled():
 		return
 	if next == Mode.PLAY and not _brain_configuration_error().is_empty():
@@ -777,14 +913,29 @@ func _apply_mobile_mode_visibility() -> void:
 
 func _on_edit_committed(_before: ChessPosition, after: ChessPosition, label: String) -> void:
 	if not restoring_history:
-		history.push(after, label)
+		history.push(after, label, {"kind": &"edit", "context": _capture_record_context()})
+	_refresh_record_panel()
 	_refresh_control_states()
 
 func _on_settled_action_completed() -> void:
 	_clear_ai_thoughts()
-	if mode == Mode.PLAY and not restoring_history:
-		history.push(model.capture_position(), "Gameplay action")
+	if mode == Mode.PLAY and not restoring_history and not replay_mode:
+		var label: String = ActionCodec.label(pending_action)
+		history.push(model.capture_position(), label, {"kind": &"gameplay", "action": pending_action.duplicate(true), "ai": pending_ai.duplicate(true), "context": _capture_record_context()})
+		pending_action.clear()
+		pending_ai.clear()
+	_refresh_record_panel()
 	_refresh_control_states()
+
+func _on_primary_action_committed(descriptor: Dictionary) -> void:
+	if not replay_mode and not replay_analysis_running:
+		pending_action = descriptor.duplicate(true)
+
+func _on_ai_thought_changed(thought) -> void:
+	if thought == null or replay_mode or replay_analysis_running: return
+	pending_ai = thought.to_dictionary()
+	var cpu := game.white_cpu_player if thought.color == "white" else game.black_cpu_player
+	pending_ai["pre_decision_context"] = cpu.last_pre_decision_context.duplicate(true)
 
 func _on_board_rebuilt(_board: Array) -> void:
 	_clear_ai_thoughts()
@@ -800,7 +951,7 @@ func redo() -> void:
 func reset() -> void:
 	_restore(history.get_baseline())
 	if baseline != null:
-		history.establish_baseline(baseline)
+		history.establish_baseline(baseline, "Baseline", {"kind": &"baseline", "context": _capture_record_context()})
 
 func _restore(position: ChessPosition) -> void:
 	if position == null or not model.is_settled():
@@ -822,7 +973,7 @@ func _on_preset_selected(index: int) -> void:
 	model.load_position(position)
 	restoring_history = false
 	baseline = model.capture_position()
-	history.establish_baseline(baseline, "Preset")
+	history.establish_baseline(baseline, "Preset", {"kind": &"baseline", "context": _capture_record_context()})
 	editor.select_cursor_tool()
 	_refresh_control_states()
 
@@ -961,6 +1112,173 @@ func paste_position() -> void:
 		history.establish_baseline(baseline, "Imported position")
 	_refresh_control_states()
 
+func _capture_record_context() -> Dictionary:
+	return {
+		"ai_mode": ai_mode, "ai_sides": ai_sides.duplicate(true), "seed": seed_value,
+		"white": game.white_cpu_player.capture_debug_context(),
+		"black": game.black_cpu_player.capture_debug_context(),
+	}
+
+func _record_from_history():
+	active_record.frames.clear()
+	active_record.provenance = record_provenance.duplicate(true)
+	for index in range(history.entries.size()):
+		var meta: Dictionary = history.metadata[index] if index < history.metadata.size() else {}
+		active_record.frames.append({
+			"position": history.entries[index].copy(), "label": history.labels[index],
+			"kind": meta.get("kind", &"gameplay"), "action": meta.get("action", {}).duplicate(true),
+			"ai": meta.get("ai", {}).duplicate(true), "context": meta.get("context", {}).duplicate(true),
+		})
+	return active_record
+
+func copy_game_record() -> void:
+	var record = replay_record if replay_mode else _record_from_history()
+	DisplayServer.clipboard_set(GameRecordCodec.to_json(record))
+	record_status_label.text = "Copied %d-frame game JSON to clipboard." % record.frames.size()
+
+func paste_game_record() -> void:
+	import_record_text(DisplayServer.clipboard_get())
+
+func import_record_text(text: String) -> bool:
+	var json := JSON.new()
+	if json.parse(text) != OK or not json.data is Dictionary:
+		_set_record_error("Clipboard does not contain valid JSON.")
+		return false
+	if json.data.get("schema", "") == "crpg_chess_position":
+		var decoded := ChessPositionCodec.from_dictionary(json.data)
+		if decoded.position == null:
+			_set_record_error("Position import failed: %s" % "; ".join(decoded.errors))
+			return false
+		_start_live_from_position(decoded.position, "Imported position")
+		return true
+	var decoded_record: Dictionary = GameRecordCodec.from_dictionary(json.data)
+	if decoded_record.record == null:
+		_set_record_error("Game import failed: %s" % "; ".join(decoded_record.errors))
+		return false
+	_enter_replay(decoded_record.record, decoded_record.warnings)
+	return true
+
+func _enter_replay(record, warnings: Array) -> void:
+	replay_record = record
+	replay_mode = true
+	replay_warnings.assign(warnings)
+	replay_cursor = clampi(record.flagged_frame if record.flagged_frame >= 0 else 0, 0, record.frames.size() - 1)
+	mode = Mode.EDIT
+	_apply_ai_configuration()
+	editor.set_enabled(false)
+	if piece_palette != null: piece_palette.set_palette_enabled(false)
+	_load_replay_frame(replay_cursor)
+	record_note_edit.set_text(record.issue_note)
+	record_status_label.text = "\n".join(warnings) if not warnings.is_empty() else "Replay loaded."
+	_refresh_record_panel()
+
+func _load_replay_frame(index: int) -> void:
+	if replay_record == null or index < 0 or index >= replay_record.frames.size() or not model.is_settled(): return
+	replay_cursor = index
+	restoring_history = true
+	model.load_position((replay_record.frames[index].position as ChessPosition).copy())
+	restoring_history = false
+	_refresh_record_panel()
+
+func _replay_previous() -> void:
+	_load_replay_frame(replay_cursor - 1)
+
+func _replay_next() -> void:
+	_load_replay_frame(replay_cursor + 1)
+
+func _flag_replay_frame() -> void:
+	if replay_record == null: return
+	replay_record.flagged_frame = replay_cursor
+	_refresh_record_panel()
+
+func _on_record_note_changed() -> void:
+	var record = replay_record if replay_mode else active_record
+	if record != null: record.issue_note = record_note_edit.text
+
+func fork_replay_here() -> void:
+	if replay_record == null: return
+	var parent_id: String = replay_record.record_id
+	var parent_frame := replay_cursor
+	var position: ChessPosition = replay_record.frames[replay_cursor].position
+	replay_mode = false
+	replay_record = null
+	replay_warnings.clear()
+	record_provenance = {"parent_record_id": parent_id, "parent_frame": parent_frame}
+	_start_live_from_position(position, "Forked replay frame %d" % (parent_frame + 1))
+	record_status_label.text = "Forked frame %d into a new live recording." % (parent_frame + 1)
+
+func _start_live_from_position(position: ChessPosition, label: String) -> void:
+	replay_mode = false
+	replay_warnings.clear()
+	restoring_history = true
+	model.load_position(position.copy())
+	restoring_history = false
+	baseline = model.capture_position()
+	history.establish_baseline(baseline, label, {"kind": &"baseline", "context": _capture_record_context()})
+	active_record = GameRecordScript.new()
+	_apply_ai_configuration()
+	editor.set_enabled(true)
+	if piece_palette != null: piece_palette.set_palette_enabled(true)
+	_refresh_record_panel()
+
+func analyze_replay_again() -> void:
+	if replay_record == null or replay_cursor <= 0: return
+	var recorded_ai: Dictionary = replay_record.frames[replay_cursor].get("ai", {})
+	if recorded_ai.is_empty():
+		record_status_label.text = "This frame has no recorded AI decision."
+		return
+	replay_analysis_running = true
+	var shown_position: ChessPosition = replay_record.frames[replay_cursor].position
+	restoring_history = true
+	model.load_position((replay_record.frames[replay_cursor - 1].position as ChessPosition).copy())
+	restoring_history = false
+	var color := String(recorded_ai.get("color", model.current_turn))
+	var cpu := game.white_cpu_player if color == "white" else game.black_cpu_player
+	var previous_enabled: bool = cpu.is_enabled
+	var previous_execution_mode: int = cpu.execution_mode
+	var previous_color: String = cpu.controlled_color
+	var previous_rng_state: int = cpu.rng.state
+	var previous_safety: int = cpu.king_safety_turns_remaining
+	# Replay deliberately disables both players. Temporarily make only the chosen
+	# player think without calling configure_mode(), which would reset its brain.
+	cpu.is_enabled = true
+	cpu.execution_mode = ChessCpuPlayer.ExecutionMode.MANUAL
+	cpu.controlled_color = color
+	var recorded_context: Dictionary = recorded_ai.get("pre_decision_context", {})
+	if not recorded_context.is_empty():
+		cpu.rng.state = int(String(recorded_context.get("rng_state", previous_rng_state)))
+		cpu.king_safety_turns_remaining = int(recorded_context.get("king_safety_turns", previous_safety))
+	var current = await cpu.think()
+	var recorded_target = recorded_ai.get("selected", {}).get("target", [])
+	var current_target: Array = [current.target.x, current.target.y] if current != null else []
+	cpu.rng.state = previous_rng_state
+	cpu.king_safety_turns_remaining = previous_safety
+	cpu.controlled_color = previous_color
+	cpu.execution_mode = previous_execution_mode
+	cpu.is_enabled = previous_enabled
+	restoring_history = true
+	model.load_position(shown_position.copy())
+	restoring_history = false
+	replay_analysis_running = false
+	pending_action.clear()
+	pending_ai.clear()
+	record_status_label.text = "Recorded target: %s\nCurrent %s target: %s%s" % [recorded_target, cpu.get_brain_name(), current_target, " (same)" if recorded_target == current_target else " (changed)"]
+
+func _save_game_record_file(path: String) -> void:
+	var final_path: String = path if path.ends_with(".crpggame") else path + ".crpggame"
+	var error: Error = GameRecordCodec.save_file(replay_record if replay_mode else _record_from_history(), final_path)
+	record_status_label.text = "Saved: %s" % final_path if error == OK else "Save failed (%s)." % error
+
+func _open_game_record_file(path: String) -> void:
+	var decoded: Dictionary = GameRecordCodec.load_file(path)
+	if decoded.record == null:
+		_set_record_error("Open failed: %s" % "; ".join(decoded.errors))
+		return
+	_enter_replay(decoded.record, decoded.warnings)
+
+func _set_record_error(message: String) -> void:
+	if record_status_label != null: record_status_label.text = message
+
 func _set_speed(speed: int) -> void:
 	var adapter: ChessPresentationAdapter = $ChessGame/ChessPresentationAdapter
 	adapter.set_presentation_speed(speed)
@@ -1064,32 +1382,32 @@ func _refresh_control_states() -> void:
 	if mode_button == null:
 		return
 	var settled := model.is_settled()
-	var editing := mode == Mode.EDIT and settled
+	var editing := mode == Mode.EDIT and settled and not replay_mode
 	if mobile_layout:
 		mode_button.text = "Edit" if mode == Mode.EDIT else "Play"
 	else:
 		mode_button.text = "Mode: Edit [P]" if mode == Mode.EDIT else "Mode: Play [P]"
-	mode_button.disabled = not settled
+	mode_button.disabled = not settled or replay_mode
 	_style_button(mode_button, true, COLOR_EDIT if mode == Mode.EDIT else COLOR_PLAY)
 	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
 	if view_side_button != null:
 		view_side_button.text = "View: White" if board.viewing_color == "white" else "View: Black"
 		view_side_button.disabled = not settled
 		_style_button(view_side_button, true, COLOR_WHITE_SIDE if board.viewing_color == "white" else COLOR_BLACK_SIDE, board.viewing_color == "white")
-	undo_button.disabled = not settled or not history.can_undo()
-	redo_button.disabled = not settled or not history.can_redo()
-	reset_button.disabled = not settled or not history.can_undo()
+	undo_button.disabled = replay_mode or not settled or not history.can_undo()
+	redo_button.disabled = replay_mode or not settled or not history.can_redo()
+	reset_button.disabled = replay_mode or not settled or not history.can_undo()
 	clear_button.disabled = not editing
 	if copy_button != null:
 		copy_button.disabled = not settled
 	if paste_button != null:
 		paste_button.disabled = not editing
 	if preset_option != null:
-		preset_option.disabled = not settled
+		preset_option.disabled = replay_mode or not settled
 	if turn_option != null:
 		turn_option.disabled = not editing
 	for value in ai_mode_buttons:
-		ai_mode_buttons[value].disabled = not settled
+		ai_mode_buttons[value].disabled = replay_mode or not settled
 		var active: bool = value == ai_mode
 		var color := Color("67626f")
 		if value == ChessCpuPlayer.ExecutionMode.AUTO:
@@ -1099,7 +1417,7 @@ func _refresh_control_states() -> void:
 		ai_mode_buttons[value].set_pressed_no_signal(active)
 		_style_button(ai_mode_buttons[value], active, color)
 	for color_name in ai_side_buttons:
-		ai_side_buttons[color_name].disabled = not settled
+		ai_side_buttons[color_name].disabled = replay_mode or not settled
 		var active: bool = ai_sides[color_name]
 		ai_side_buttons[color_name].set_pressed_no_signal(active)
 		_style_button(ai_side_buttons[color_name], active, COLOR_WHITE_SIDE if color_name == "white" else COLOR_BLACK_SIDE, color_name == "white")
@@ -1107,7 +1425,7 @@ func _refresh_control_states() -> void:
 	var unsupported_dupre := not DupreAiBrain.unsupported_king_ids(model).is_empty()
 	for color_name in ai_brain_options:
 		var option: OptionButton = ai_brain_options[color_name]
-		option.disabled = not settled
+		option.disabled = replay_mode or not settled
 		option.set_item_disabled(1, unsupported_lemay)
 		option.set_item_disabled(2, unsupported_dupre)
 		option.select(option.get_item_index(int(ai_brains[color_name])))
@@ -1142,7 +1460,7 @@ func _refresh_control_states() -> void:
 		grip_x_spin.editable = settled
 		grip_y_spin.editable = settled
 		grip_save_button.disabled = not settled
-	var manual_ai_available := mode == Mode.PLAY and ai_mode == ChessCpuPlayer.ExecutionMode.MANUAL and _manual_cpu() != null and settled and not model.battle_over
+	var manual_ai_available := not replay_mode and mode == Mode.PLAY and ai_mode == ChessCpuPlayer.ExecutionMode.MANUAL and _manual_cpu() != null and settled and not model.battle_over
 	if think_button != null:
 		think_button.disabled = not manual_ai_available
 		step_button.disabled = not manual_ai_available

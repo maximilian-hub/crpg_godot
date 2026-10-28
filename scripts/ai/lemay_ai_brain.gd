@@ -2,6 +2,7 @@ extends ChessAiBrain
 class_name LeMayAiBrain
 
 const KingAiRegistry = preload("res://scripts/ai/chess_king_ai_registry.gd")
+const ActionCodec = preload("res://scripts/state/chess_action_codec.gd")
 const DEFAULT_MAX_REPLY_LEAVES := 4096
 const DEFAULT_THINK_BUDGET_MSEC := 5000
 const DEFAULT_COMPUTE_SLICE_USEC := 3000
@@ -108,6 +109,10 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	plan.analyzed_leaf_count = last_profile.evaluated_reply_count
 	_finish_profile()
 	plan.search_profile = get_last_profile()
+	var diagnostics: Array[Dictionary] = []
+	for entry in ordered_roots.slice(0, mini(12, ordered_roots.size())):
+		diagnostics.append({"action": ActionCodec.describe(entry.action), "score": entry.heuristic, "status": "root_heuristic"})
+	plan.candidates = diagnostics
 	return plan
 
 

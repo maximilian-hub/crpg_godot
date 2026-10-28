@@ -39,6 +39,7 @@ var brain_kind := BrainKind.RYCK
 var brain: ChessAiBrain
 var rng := RandomNumberGenerator.new()
 var last_thought
+var last_pre_decision_context: Dictionary = {}
 var king_safety_turns_remaining := 0
 var _king_safety_revision := 0
 
@@ -112,6 +113,9 @@ func think():
 		return null
 	if brain == null:
 		_set_brain_instance()
+	# Capture this before candidate ordering/search advances the RNG or mutates a
+	# stateful brain, so an exported decision can be reproduced faithfully.
+	last_pre_decision_context = capture_debug_context()
 	var thinking_brain := brain
 	var starting_revision := model.position_revision
 	var plan: ChessAiPlan = await thinking_brain.choose_plan(model.get_legal_primary_actions(controlled_color))
@@ -132,6 +136,7 @@ func think():
 	thought.brain_id = plan.brain_id
 	thought.analyzed_leaf_count = plan.analyzed_leaf_count
 	thought.search_profile = plan.search_profile.duplicate(true)
+	thought.candidates = plan.candidates.duplicate(true)
 	last_thought = thought
 	thought_changed.emit(last_thought)
 	return thought
@@ -144,6 +149,14 @@ func clear_thought() -> void:
 		return
 	last_thought = null
 	thought_changed.emit(null)
+
+
+func capture_debug_context() -> Dictionary:
+	return {
+		"brain": get_brain_name(), "brain_kind": brain_kind, "color": controlled_color,
+		"rng_state": str(rng.state), "king_safety_turns": king_safety_turns_remaining,
+		"brain_state": brain.capture_debug_state() if brain != null else {},
+	}
 
 func execute_thought() -> bool:
 	if last_thought == null or model == null or last_thought.model_revision != model.position_revision or model.current_turn != last_thought.color or not model.is_settled():
