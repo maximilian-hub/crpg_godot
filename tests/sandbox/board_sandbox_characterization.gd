@@ -27,6 +27,8 @@ func _ready() -> void:
 	_check(sandbox.mode_button.text == "Mode: Edit [P]", "mode button identifies Edit Mode and its shortcut", failures)
 	_check(sandbox.view_side_button.text == "View: White" and view.viewing_color == "white", "sandbox starts from White perspective", failures)
 	_check(sandbox.undo_button.text == "Undo [←]" and sandbox.redo_button.text == "Redo [→]" and sandbox.reset_button.text == "Reset [R]", "history controls display keyboard shortcuts", failures)
+	_check(sandbox.piece_skin_option != null and sandbox.piece_skin_option.get_item_text(0) == "Classic" and sandbox.piece_skin_option.get_item_text(1) == "Chunky", "desktop sandbox exposes the Classic and Chunky piece skins", failures)
+	_check(sandbox.piece_scale_spin != null and sandbox.piece_base_x_spin != null and sandbox.piece_base_y_spin != null, "desktop sandbox exposes universal piece scale and base-anchor tuning", failures)
 	_check(sandbox.ai_mode_buttons[ChessCpuPlayer.ExecutionMode.DISABLED].button_pressed, "AI Off is visibly selected at startup", failures)
 	_check(not sandbox.ai_side_buttons["white"].button_pressed and sandbox.ai_side_buttons["black"].button_pressed, "AI side toggles show the default Black selection", failures)
 	_check(sandbox.ai_brain_options.has("white") and sandbox.ai_brain_options.has("black"), "sandbox exposes an independent brain selector for each army", failures)
@@ -85,6 +87,17 @@ func _ready() -> void:
 	var palette_pawn = sandbox.piece_palette.piece_items["pawn:white"].preview
 	var board_pawn = view.get_piece_node(Vector2i(6, 0))
 	_check(palette_pawn.sprite.texture == board_pawn.sprite.texture, "palette previews reuse in-game PieceView artwork", failures)
+	sandbox.piece_skin_option.select(1)
+	sandbox._on_piece_skin_selected(1)
+	_check(board_pawn.sprite.texture.resource_path == "res://assets/pieces/chunky/white_pawn.png" and board_pawn.sprite.material == null and palette_pawn.sprite.texture == board_pawn.sprite.texture, "Chunky skin uses baked White art and updates board pieces and palette previews together", failures)
+	_check(is_equal_approx(board_pawn.sprite.scale.x, 1.25) and board_pawn.get_sprite_bottom_local_y() == 5.0, "Chunky art starts at its 1.25 scale and shared +5 base offset", failures)
+	sandbox.piece_scale_spin.value = 1.25
+	sandbox.piece_base_x_spin.value = 2.0
+	sandbox.piece_base_y_spin.value = -3.0
+	_check(is_equal_approx(board_pawn.sprite.scale.x, 1.25) and board_pawn.get_sprite_bottom_local_y() == -3.0 and board_pawn.sprite.position.x == 2.0, "universal Chunky scale and base anchor update board artwork live", failures)
+	sandbox.piece_skin_option.select(0)
+	sandbox._on_piece_skin_selected(0)
+	_check(board_pawn.sprite.texture.resource_path == "res://assets/pieces/standard/black_pawn.png" and is_equal_approx(sandbox.piece_scale_spin.value, 1.0) and sandbox.piece_base_x_spin.value == 0.0, "Classic skin restores its independent tuning without rebuilding the position", failures)
 	var white_back_rank_piece: PieceView = view.get_piece_node(Vector2i(7, 0))
 	var black_back_rank_piece: PieceView = view.get_piece_node(Vector2i(0, 0))
 	_check(white_back_rank_piece.position.y > black_back_rank_piece.position.y, "White back rank starts nearest in White view", failures)

@@ -1,34 +1,43 @@
-# TEMPORARY DEV ART PIPELINE TOOL
-# Used to bake the runtime white-piece shader into a PNG for Pixelorama source art.
-# Safe to delete after the baked canonical white base has been captured.
+# DEV ART PIPELINE TOOL
+# Bakes the runtime White palette shader into all six Chunky piece PNGs.
+# Run with the normal renderer; headless mode cannot execute CanvasItem shaders.
 
 extends Node
 
-const SOURCE_TEXTURE_PATH := "res://assets/pieces/standard/black_king.png"
+const PIECE_NAMES := ["pawn", "rook", "knight", "bishop", "queen", "king"]
+const SOURCE_DIRECTORY := "res://assets/pieces/chunky"
 const WHITE_SHADER_PATH := "res://assets/pieces/profiles/white_piece_palette.gdshader"
-const OUTPUT_DIRECTORY := "res://.cache/sprite_bakes"
-const OUTPUT_PATH := OUTPUT_DIRECTORY + "/standard_white_king.png"
 
 
 func _ready() -> void:
-	# This Godot 4.4 macOS build maps --headless to the dummy renderer, which
-	# cannot execute CanvasItem shaders or produce frame_post_draw readback.
 	if DisplayServer.get_name() == "headless":
-		_fail("The --headless display driver uses a dummy renderer on this Godot 4.4 macOS build. Run this scene with the normal macOS renderer.")
-		return
-	var source_texture := load(SOURCE_TEXTURE_PATH) as Texture2D
-	if source_texture == null:
-		_fail("Could not load source texture: %s" % SOURCE_TEXTURE_PATH)
+		_fail("The headless display driver cannot render the White palette shader. Run this scene with the normal renderer.")
 		return
 	var white_shader := load(WHITE_SHADER_PATH) as Shader
 	if white_shader == null:
 		_fail("Could not load White palette shader: %s" % WHITE_SHADER_PATH)
 		return
+	for piece_name in PIECE_NAMES:
+		var error := await _bake_piece(piece_name, white_shader)
+		if not error.is_empty():
+			_fail(error)
+			return
+	print("WHITE PIECE BATCH BAKE: PASS")
+	print("Baked %d Chunky pieces with dimensions, alpha, orientation, and pixel alignment preserved." % PIECE_NAMES.size())
+	get_tree().quit(0)
 
-	var source_size := source_texture.get_size()
+
+func _bake_piece(piece_name: String, white_shader: Shader) -> String:
+	var source_path := "%s/black_%s.png" % [SOURCE_DIRECTORY, piece_name]
+	var output_path := "%s/white_%s.png" % [SOURCE_DIRECTORY, piece_name]
+	var source_texture := load(source_path) as Texture2D
+	if source_texture == null:
+		return "Could not load source texture: %s" % source_path
+
+	var source_size := Vector2i(source_texture.get_size())
 	var viewport := SubViewport.new()
-	viewport.name = "WhiteKingBakeViewport"
-	viewport.size = Vector2i(source_size)
+	viewport.name = "%sBakeViewport" % piece_name.capitalize()
+	viewport.size = source_size
 	viewport.transparent_bg = true
 	viewport.render_target_clear_mode = SubViewport.CLEAR_MODE_ALWAYS
 	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -42,13 +51,10 @@ func _ready() -> void:
 	var material := ShaderMaterial.new()
 	material.shader = white_shader
 	var sprite := Sprite2D.new()
-	sprite.name = "NativeKingSource"
 	sprite.texture = source_texture
 	sprite.material = material
 	sprite.centered = false
 	sprite.position = Vector2.ZERO
-	sprite.scale = Vector2.ONE
-	sprite.modulate = Color.WHITE
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	viewport.add_child(sprite)
 
@@ -56,41 +62,26 @@ func _ready() -> void:
 	await RenderingServer.frame_post_draw
 	var baked_image := viewport.get_texture().get_image()
 	if baked_image == null or baked_image.is_empty():
-		_fail("SubViewport image readback failed.")
-		return
-	if baked_image.get_size() != Vector2i(source_size):
-		_fail("Bake resized unexpectedly: expected %s, got %s." % [Vector2i(source_size), baked_image.get_size()])
-		return
-
+		viewport.queue_free()
+		return "%s image readback failed." % piece_name.capitalize()
 	var source_image := source_texture.get_image()
-	if source_image == null or source_image.is_empty():
-		_fail("Could not read source image for alpha/orientation validation.")
-		return
 	var validation_error := _validate_alpha_alignment(source_image, baked_image)
 	if not validation_error.is_empty():
-		_fail(validation_error)
-		return
-
-	var output_directory_absolute := ProjectSettings.globalize_path(OUTPUT_DIRECTORY)
-	var directory_error := DirAccess.make_dir_recursive_absolute(output_directory_absolute)
-	if directory_error != OK:
-		_fail("Could not create output directory %s (error %d)." % [output_directory_absolute, directory_error])
-		return
-	var output_absolute := ProjectSettings.globalize_path(OUTPUT_PATH)
-	var save_error := baked_image.save_png(output_absolute)
+		viewport.queue_free()
+		return "%s: %s" % [piece_name.capitalize(), validation_error]
+	var save_error := baked_image.save_png(ProjectSettings.globalize_path(output_path))
+	viewport.queue_free()
 	if save_error != OK:
-		_fail("Could not save PNG to %s (error %d)." % [output_absolute, save_error])
-		return
-
-	print("WHITE KING BAKE: PASS")
-	print("Dimensions: %dx%d; alpha preserved; orientation and pixel alignment verified." % [baked_image.get_width(), baked_image.get_height()])
-	print("Output: %s" % output_absolute)
-	get_tree().quit(0)
+		return "Could not save %s (error %d)." % [output_path, save_error]
+	print("Baked %s -> %s (%dx%d)" % [source_path, output_path, source_size.x, source_size.y])
+	return ""
 
 
 func _validate_alpha_alignment(source: Image, baked: Image) -> String:
+	if source == null or source.is_empty():
+		return "Could not read the source image."
 	if source.get_size() != baked.get_size():
-		return "Source and baked image dimensions differ during validation."
+		return "Source and baked image dimensions differ."
 	var transparent_pixels := 0
 	var visible_pixels := 0
 	for y in range(source.get_height()):
@@ -98,18 +89,14 @@ func _validate_alpha_alignment(source: Image, baked: Image) -> String:
 			var source_alpha := source.get_pixel(x, y).a
 			var baked_alpha := baked.get_pixel(x, y).a
 			if absf(source_alpha - baked_alpha) > (1.0 / 255.0):
-				return "Baked alpha mask differs at (%d, %d); output may be flipped or misaligned." % [x, y]
-			if baked_alpha <= (1.0 / 255.0):
-				transparent_pixels += 1
-			else:
-				visible_pixels += 1
-	if transparent_pixels == 0:
-		return "Baked image has no transparent background pixels."
-	if visible_pixels == 0:
-		return "Baked image contains no visible artwork."
+				return "Alpha mask differs at (%d, %d)." % [x, y]
+			if baked_alpha <= (1.0 / 255.0): transparent_pixels += 1
+			else: visible_pixels += 1
+	if transparent_pixels == 0: return "Baked image has no transparent pixels."
+	if visible_pixels == 0: return "Baked image contains no visible artwork."
 	return ""
 
 
 func _fail(message: String) -> void:
-	push_error("WHITE KING BAKE: FAIL — %s" % message)
+	push_error("WHITE PIECE BATCH BAKE: FAIL — %s" % message)
 	get_tree().quit(1)

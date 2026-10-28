@@ -25,6 +25,28 @@ const PIECE_ART_PROFILES := {
 	&"quarterly_initiative_king": preload("res://assets/pieces/profiles/quarterly_initiative_king.tres"),
 	&"archer_king": preload("res://assets/pieces/profiles/archer_king.tres"),
 }
+const CHUNKY_TEXTURES := {
+	&"pawn": preload("res://assets/pieces/chunky/black_pawn.png"),
+	&"rook": preload("res://assets/pieces/chunky/black_rook.png"),
+	&"knight": preload("res://assets/pieces/chunky/black_knight.png"),
+	&"bishop": preload("res://assets/pieces/chunky/black_bishop.png"),
+	&"queen": preload("res://assets/pieces/chunky/black_queen.png"),
+	&"king": preload("res://assets/pieces/chunky/black_king.png"),
+}
+const CHUNKY_WHITE_TEXTURES := {
+	&"pawn": preload("res://assets/pieces/chunky/white_pawn.png"),
+	&"rook": preload("res://assets/pieces/chunky/white_rook.png"),
+	&"knight": preload("res://assets/pieces/chunky/white_knight.png"),
+	&"bishop": preload("res://assets/pieces/chunky/white_bishop.png"),
+	&"queen": preload("res://assets/pieces/chunky/white_queen.png"),
+	&"king": preload("res://assets/pieces/chunky/white_king.png"),
+}
+
+enum StandardSkin { CLASSIC, CHUNKY }
+
+static var standard_skin := StandardSkin.CLASSIC
+static var standard_skin_scale := 1.0
+static var standard_skin_base_offset := Vector2.ZERO
 
 var coordinate: Vector2i
 var model: ModelPiece
@@ -66,10 +88,20 @@ func _apply_piece_art(color: String, requested_type: String) -> void:
 	var art_id := _get_art_id(requested_type)
 	art_profile = PIECE_ART_PROFILES.get(art_id, PIECE_ART_PROFILES[&"pawn"])
 	var selected_texture: Texture2D = art_profile.texture_for_color(color)
+	var selected_scale: float = art_profile.texture_scale(selected_texture)
+	if standard_skin == StandardSkin.CHUNKY and CHUNKY_TEXTURES.has(art_id):
+		selected_texture = CHUNKY_WHITE_TEXTURES[art_id] if color == "white" else CHUNKY_TEXTURES[art_id]
+		# The chunky set is authored at half the standard width. Preserve that
+		# pixel scale so its tightly cropped, differently tall silhouettes retain
+		# their intended relative sizes instead of all being normalized to 64 high.
+		var reference_width := float(art_profile.reference_texture.get_width())
+		selected_scale = art_profile.texture_scale(art_profile.reference_texture) * reference_width / float(selected_texture.get_width())
+	if CHUNKY_TEXTURES.has(art_id):
+		selected_scale *= standard_skin_scale
 	sprite.texture = selected_texture
-	sprite.scale = Vector2.ONE * art_profile.texture_scale(selected_texture)
+	sprite.scale = Vector2.ONE * selected_scale
 	sprite.material = null
-	if color == "white" and art_profile.white_texture == null:
+	if color == "white" and art_profile.white_texture == null and standard_skin != StandardSkin.CHUNKY:
 		var white_material := ShaderMaterial.new()
 		white_material.shader = WHITE_PALETTE_SHADER
 		sprite.material = white_material
@@ -86,7 +118,8 @@ func align_sprite_to_ground() -> void:
 	if sprite == null or sprite.texture == null:
 		return
 	var displayed_height := float(sprite.texture.get_height()) * absf(sprite.scale.y)
-	sprite.position = Vector2(0.0, -displayed_height * 0.5)
+	var base_offset := standard_skin_base_offset if CHUNKY_TEXTURES.has(_get_art_id(model.type)) else Vector2.ZERO
+	sprite.position = Vector2(base_offset.x, -displayed_height * 0.5 + base_offset.y)
 	_update_effect_anchors()
 
 func _update_effect_anchors() -> void:

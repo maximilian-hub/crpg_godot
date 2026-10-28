@@ -62,6 +62,10 @@ var grip_x_spin: SpinBox
 var grip_y_spin: SpinBox
 var grip_save_button: Button
 var grip_status_label: Label
+var piece_skin_option: OptionButton
+var piece_scale_spin: SpinBox
+var piece_base_x_spin: SpinBox
+var piece_base_y_spin: SpinBox
 var seed_spin: SpinBox
 var preset_option: OptionButton
 var turn_option: OptionButton
@@ -82,9 +86,16 @@ var mobile_ui_touch_target: Variant = null
 var mobile_button_callbacks: Dictionary = {}
 var mobile_board_pointer := -1
 var mobile_ai_visible_before_play := false
+var piece_skin_tuning := {
+	PieceView.StandardSkin.CLASSIC: {"scale": 1.0, "base_offset": Vector2.ZERO},
+	PieceView.StandardSkin.CHUNKY: {"scale": 1.25, "base_offset": Vector2(0.0, 5.0)},
+}
 
 func _ready() -> void:
 	mobile_layout = force_mobile_layout_for_testing or OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
+	PieceView.standard_skin = PieceView.StandardSkin.CLASSIC
+	PieceView.standard_skin_scale = 1.0
+	PieceView.standard_skin_base_offset = Vector2.ZERO
 	editor.model = model
 	var board_view: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
 	interaction.configure(model, editor, board_view)
@@ -124,6 +135,30 @@ func _build_desktop_panel() -> void:
 	clear_button = _add_button("Clear", func(): editor.clear_board())
 	copy_button = _add_button("Copy Position", copy_position)
 	paste_button = _add_button("Paste Position", paste_position)
+
+	piece_skin_option = OptionButton.new()
+	piece_skin_option.add_item("Classic")
+	piece_skin_option.add_item("Chunky")
+	piece_skin_option.item_selected.connect(_on_piece_skin_selected)
+	_add_labeled_control("Piece Skin", piece_skin_option)
+	piece_scale_spin = SpinBox.new()
+	piece_scale_spin.min_value = 0.25
+	piece_scale_spin.max_value = 4.0
+	piece_scale_spin.step = 0.05
+	piece_scale_spin.value = 1.0
+	piece_scale_spin.tooltip_text = "Universal display-scale multiplier for the six standard pieces in the selected skin"
+	piece_scale_spin.value_changed.connect(_on_piece_scale_changed)
+	_add_labeled_control("Piece Scale", piece_scale_spin)
+	var base_row := HBoxContainer.new()
+	panel.add_child(base_row)
+	piece_base_x_spin = _make_grip_spin_box()
+	piece_base_y_spin = _make_grip_spin_box()
+	base_row.add_child(_make_compact_labeled_control("Base X", piece_base_x_spin))
+	base_row.add_child(_make_compact_labeled_control("Y", piece_base_y_spin))
+	piece_base_x_spin.tooltip_text = "Shared horizontal offset from the board contact point"
+	piece_base_y_spin.tooltip_text = "Shared vertical offset from the board contact point"
+	piece_base_x_spin.value_changed.connect(_on_piece_base_changed)
+	piece_base_y_spin.value_changed.connect(_on_piece_base_changed)
 
 	_add_section_label("AI Mode")
 	var mode_row := HBoxContainer.new()
@@ -248,6 +283,47 @@ func _build_desktop_panel() -> void:
 	piece_palette.offset_top = 140.0
 	piece_palette.offset_right = -12.0
 	piece_palette.offset_bottom = 140.0
+
+func _exit_tree() -> void:
+	PieceView.standard_skin = PieceView.StandardSkin.CLASSIC
+	PieceView.standard_skin_scale = 1.0
+	PieceView.standard_skin_base_offset = Vector2.ZERO
+
+func _on_piece_skin_selected(index: int) -> void:
+	PieceView.standard_skin = PieceView.StandardSkin.CHUNKY if index == 1 else PieceView.StandardSkin.CLASSIC
+	_load_piece_skin_tuning()
+	_refresh_piece_art()
+
+func _on_piece_scale_changed(value: float) -> void:
+	var tuning: Dictionary = piece_skin_tuning[PieceView.standard_skin]
+	tuning["scale"] = value
+	PieceView.standard_skin_scale = value
+	_refresh_piece_art()
+
+func _on_piece_base_changed(_value: float) -> void:
+	if piece_base_x_spin == null or piece_base_y_spin == null:
+		return
+	var offset := Vector2(piece_base_x_spin.value, piece_base_y_spin.value)
+	var tuning: Dictionary = piece_skin_tuning[PieceView.standard_skin]
+	tuning["base_offset"] = offset
+	PieceView.standard_skin_base_offset = offset
+	_refresh_piece_art()
+
+func _load_piece_skin_tuning() -> void:
+	var tuning: Dictionary = piece_skin_tuning[PieceView.standard_skin]
+	PieceView.standard_skin_scale = float(tuning["scale"])
+	PieceView.standard_skin_base_offset = tuning["base_offset"]
+	if piece_scale_spin != null:
+		piece_scale_spin.set_value_no_signal(PieceView.standard_skin_scale)
+		piece_base_x_spin.set_value_no_signal(PieceView.standard_skin_base_offset.x)
+		piece_base_y_spin.set_value_no_signal(PieceView.standard_skin_base_offset.y)
+
+func _refresh_piece_art() -> void:
+	for piece_view in find_children("*", "PieceView", true, false):
+		piece_view.update_sprite()
+		var palette_item := piece_view.get_parent()
+		if palette_item is BoardPiecePaletteItem:
+			palette_item._layout_content()
 
 func _build_mobile_panel() -> void:
 	panel.visible = false
