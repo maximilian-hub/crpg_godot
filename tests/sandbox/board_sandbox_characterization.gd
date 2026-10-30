@@ -317,6 +317,10 @@ func _ready() -> void:
 	await model.submit_move(model.board[6][0], Vector2i(4, 0))
 	await model.submit_move(model.board[1][0], Vector2i(3, 0))
 	_check(_timers_nonnegative(model), "completed gameplay actions never create negative timers", failures)
+	var gameplay_cursor: int = sandbox.history.cursor
+	sandbox.undo()
+	_check(sandbox.history.cursor == gameplay_cursor, "gameplay history cannot be changed from Play Mode", failures)
+	sandbox._set_mode(sandbox.Mode.EDIT)
 	sandbox.undo()
 	await get_tree().process_frame
 	_check(model.board[1][0] != null and model.board[3][0] == null and model.board[4][0] != null, "first gameplay Undo restores the intermediate model position", failures)
@@ -324,7 +328,6 @@ func _ready() -> void:
 	sandbox.undo()
 	await get_tree().process_frame
 	_check(model.board[6][0] != null and model.board[4][0] == null, "second gameplay Undo restores the baseline", failures)
-	sandbox._set_mode(sandbox.Mode.EDIT)
 	sandbox._on_preset_selected(1)
 	model.forced_pass_delay_seconds = 0.0
 	sandbox._set_mode(sandbox.Mode.PLAY)

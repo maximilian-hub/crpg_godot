@@ -24,6 +24,7 @@ const MORTAR_IMMINENT_URGENCY := 40.0
 const MORTAR_LETHAL_MULTIPLIER := 2.5
 
 signal thought_changed(thought)
+signal thinking_changed(thinking: bool)
 
 ## Headless client that chooses actions for one color and submits Model commands.
 
@@ -40,6 +41,7 @@ var brain: ChessAiBrain
 var rng := RandomNumberGenerator.new()
 var last_thought
 var last_pre_decision_context: Dictionary = {}
+var is_thinking := false
 var king_safety_turns_remaining := 0
 var _king_safety_revision := 0
 
@@ -118,7 +120,11 @@ func think():
 	last_pre_decision_context = capture_debug_context()
 	var thinking_brain := brain
 	var starting_revision := model.position_revision
+	is_thinking = true
+	thinking_changed.emit(true)
 	var plan: ChessAiPlan = await thinking_brain.choose_plan(model.get_legal_primary_actions(controlled_color))
+	is_thinking = false
+	thinking_changed.emit(false)
 	if thinking_brain != brain or model == null or model.position_revision != starting_revision:
 		return null
 	if plan == null or plan.action == null:

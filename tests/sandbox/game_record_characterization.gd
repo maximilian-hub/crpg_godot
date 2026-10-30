@@ -14,6 +14,13 @@ func _ready() -> void:
 	sandbox.editor.select_palette_piece(&"pawn", "white")
 	sandbox.editor.place_selected(Vector2i(4, 4))
 	_check(sandbox.history.entries.size() == 2 and sandbox.history.metadata[1].kind == &"edit", "editor mutations append typed recording frames", failures)
+	sandbox.game.white_cpu_player.is_thinking = true
+	sandbox._refresh_control_states()
+	sandbox._set_mode(sandbox.Mode.PLAY)
+	sandbox.undo()
+	_check(sandbox.mode == sandbox.Mode.EDIT and sandbox.history.cursor == 1 and sandbox.undo_button.disabled and sandbox.mode_button.disabled, "history and mode changes are blocked while an AI search is in flight", failures)
+	sandbox.game.white_cpu_player.is_thinking = false
+	sandbox._refresh_control_states()
 	var record = sandbox._record_from_history()
 	record.flagged_frame = 1
 	record.issue_note = "Unexpected test behavior"

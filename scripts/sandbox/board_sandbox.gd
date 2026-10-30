@@ -136,6 +136,8 @@ func _ready() -> void:
 	history.changed.connect(func(_can_undo: bool, _can_redo: bool): _refresh_control_states())
 	game.white_cpu_player.thought_changed.connect(func(thought): _on_ai_thought_changed(thought); _refresh_control_states())
 	game.black_cpu_player.thought_changed.connect(func(thought): _on_ai_thought_changed(thought); _refresh_control_states())
+	game.white_cpu_player.thinking_changed.connect(func(_thinking): _refresh_control_states())
+	game.black_cpu_player.thinking_changed.connect(func(_thinking): _refresh_control_states())
 	_build_panel()
 	_build_record_panel()
 	_set_mode(Mode.EDIT)
@@ -874,6 +876,8 @@ func _enable_mobile_touch_activation(button: Button) -> void:
 func _set_mode(next: Mode) -> void:
 	if replay_mode:
 		return
+	if _any_cpu_thinking():
+		return
 	if not model.is_settled():
 		return
 	if next == Mode.PLAY and not _brain_configuration_error().is_empty():
@@ -943,23 +947,32 @@ func _on_board_rebuilt(_board: Array) -> void:
 	_refresh_control_states()
 
 func undo() -> void:
+	if not _can_navigate_live_history(): return
 	_restore(history.undo())
 
 func redo() -> void:
+	if not _can_navigate_live_history(): return
 	_restore(history.redo())
 
 func reset() -> void:
+	if not _can_navigate_live_history(): return
 	_restore(history.get_baseline())
 	if baseline != null:
 		history.establish_baseline(baseline, "Baseline", {"kind": &"baseline", "context": _capture_record_context()})
 
 func _restore(position: ChessPosition) -> void:
-	if position == null or not model.is_settled():
+	if position == null or not _can_navigate_live_history():
 		return
 	restoring_history = true
 	model.load_position(position)
 	restoring_history = false
 	_refresh_control_states()
+
+func _any_cpu_thinking() -> bool:
+	return game.white_cpu_player.is_thinking or game.black_cpu_player.is_thinking
+
+func _can_navigate_live_history() -> bool:
+	return mode == Mode.EDIT and not replay_mode and model.is_settled() and not _any_cpu_thinking()
 
 func _on_preset_selected(index: int) -> void:
 	var position := ChessPositionPresets.normal_start()
@@ -1382,21 +1395,22 @@ func _refresh_control_states() -> void:
 	if mode_button == null:
 		return
 	var settled := model.is_settled()
-	var editing := mode == Mode.EDIT and settled and not replay_mode
+	var ai_thinking := _any_cpu_thinking()
+	var editing := mode == Mode.EDIT and settled and not replay_mode and not ai_thinking
 	if mobile_layout:
 		mode_button.text = "Edit" if mode == Mode.EDIT else "Play"
 	else:
 		mode_button.text = "Mode: Edit [P]" if mode == Mode.EDIT else "Mode: Play [P]"
-	mode_button.disabled = not settled or replay_mode
+	mode_button.disabled = not settled or replay_mode or ai_thinking
 	_style_button(mode_button, true, COLOR_EDIT if mode == Mode.EDIT else COLOR_PLAY)
 	var board: ChessBoardView = $ChessGame/CanvasLayer/ChessBoard
 	if view_side_button != null:
 		view_side_button.text = "View: White" if board.viewing_color == "white" else "View: Black"
 		view_side_button.disabled = not settled
 		_style_button(view_side_button, true, COLOR_WHITE_SIDE if board.viewing_color == "white" else COLOR_BLACK_SIDE, board.viewing_color == "white")
-	undo_button.disabled = replay_mode or not settled or not history.can_undo()
-	redo_button.disabled = replay_mode or not settled or not history.can_redo()
-	reset_button.disabled = replay_mode or not settled or not history.can_undo()
+	undo_button.disabled = not editing or not history.can_undo()
+	redo_button.disabled = not editing or not history.can_redo()
+	reset_button.disabled = not editing or not history.can_undo()
 	clear_button.disabled = not editing
 	if copy_button != null:
 		copy_button.disabled = not settled
