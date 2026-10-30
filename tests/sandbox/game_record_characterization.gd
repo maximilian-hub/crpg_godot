@@ -21,9 +21,11 @@ func _ready() -> void:
 	_check(sandbox.mode == sandbox.Mode.EDIT and sandbox.history.cursor == 1 and sandbox.undo_button.disabled and sandbox.mode_button.disabled, "history and mode changes are blocked while an AI search is in flight", failures)
 	sandbox.game.white_cpu_player.is_thinking = false
 	sandbox._refresh_control_states()
+	_check(not sandbox.replay_flag_button.disabled, "the current live recording frame can be flagged before export", failures)
+	sandbox._flag_replay_frame()
 	var record = sandbox._record_from_history()
-	record.flagged_frame = 1
 	record.issue_note = "Unexpected test behavior"
+	_check(record.flagged_frame == 1, "live frame flags are retained by the exported recording", failures)
 	record.frames[1].ai = {
 		"brain_id": "ryck", "color": "white", "score": 0.0,
 		"selected": {"target": [4, 4]}, "candidates": [],

@@ -27,6 +27,7 @@ func _ready() -> void:
 	_check(sandbox.mode_button.text == "Mode: Edit [P]", "mode button identifies Edit Mode and its shortcut", failures)
 	_check(sandbox.view_side_button.text == "View: White" and view.viewing_color == "white", "sandbox starts from White perspective", failures)
 	_check(sandbox.undo_button.text == "Undo [←]" and sandbox.redo_button.text == "Redo [→]" and sandbox.reset_button.text == "Reset [R]", "history controls display keyboard shortcuts", failures)
+	_check(is_equal_approx(sandbox.record_panel.anchor_left, 1.0) and sandbox.record_panel.get_global_rect().position.y >= sandbox.piece_palette.get_global_rect().end.y, "desktop record/replay panel is docked on the right beneath the piece selector", failures)
 	_check(sandbox.piece_skin_option != null and sandbox.piece_skin_option.get_item_text(0) == "Classic" and sandbox.piece_skin_option.get_item_text(1) == "Chunky", "desktop sandbox exposes the Classic and Chunky piece skins", failures)
 	_check(sandbox.piece_scale_spin != null and sandbox.piece_base_x_spin != null and sandbox.piece_base_y_spin != null, "desktop sandbox exposes universal piece scale and base-anchor tuning", failures)
 	_check(sandbox.ai_mode_buttons[ChessCpuPlayer.ExecutionMode.DISABLED].button_pressed, "AI Off is visibly selected at startup", failures)

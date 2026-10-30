@@ -36,6 +36,7 @@ func _ready() -> void:
 	_test_necromancer_policy_support()
 	_test_necromancer_does_not_trade_queen_for_pawn()
 	await _test_material_obligation_candidates()
+	await _test_king_attack_timeout_fallback()
 	_test_necromancer_reaction_policy()
 	await _test_necromancer_simulation_settles_reaction()
 	_test_brain_specific_king_support()
@@ -258,7 +259,8 @@ func _test_poisoned_capture() -> void:
 	var brain = cpu.brain
 	brain.max_reply_leaves = 1
 	var fallback = await cpu.think()
-	_expect(fallback != null and fallback.search_profile.selected_status == &"screened_fallback" and fallback.search_profile.unverified_selection and fallback.search_profile.evaluated_reply_count == 1 and fallback.search_profile.incomplete_root_candidates > 0, "Dupre excludes a partially verified candidate and explicitly reports an unverified screened fallback")
+	_expect(fallback != null and fallback.search_profile.selected_status == &"breadth_fallback" and fallback.search_profile.unverified_selection and fallback.search_profile.evaluated_reply_count == 1 and fallback.search_profile.incomplete_root_candidates > 0, "Dupre excludes a partially verified candidate and explicitly reports an unverified breadth fallback")
+	_expect(fallback != null and int(fallback.search_profile.prepared_root_candidates) == int(fallback.search_profile.policy_candidate_count), "Dupre prepares every selected root before spending its bounded reply budget")
 	_cleanup(cpu, model)
 	await get_tree().process_frame
 
@@ -585,6 +587,30 @@ func _test_material_obligation_candidates() -> void:
 	_expect(capture_reason == &"material_obligation", "capturing the pawn is retained ahead of ordinary policy candidates as an obligation response")
 	var thought = await cpu.think()
 	_expect(thought != null and thought.piece_coordinate == queen.coordinate and thought.target == pawn.coordinate, "Dupre answers the critical Queen threat by taking the vulnerable pawn")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_king_attack_timeout_fallback() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var arakne := ArakneKing.new("white", Vector2i(3, 5))
+	var bishop := Bishop.new("black", Vector2i(0, 2))
+	var knight := Knight.new("black", Vector2i(2, 5))
+	for piece in [arakne, NecromancerKing.new("black", Vector2i(0, 4)), bishop, knight]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_book_moves = 0
+	brain.max_reply_leaves = 0
+	var thought = await cpu.think()
+	var saw_king_attack := false
+	var saw_material_response := false
+	for diagnostic in thought.candidates if thought != null else []:
+		if diagnostic.reason == "king_attack": saw_king_attack = true
+		if diagnostic.reason == "material_obligation": saw_material_response = true
+	_expect(thought != null and thought.piece_coordinate == bishop.coordinate and thought.target == arakne.coordinate, "a direct nonlethal King hit outranks a knight rescue when Dupre must use an unverified fallback")
+	_expect(saw_king_attack and saw_material_response and int(thought.search_profile.prepared_root_candidates) == 0, "timeout diagnostics retain both unprepared King-attack and material-response candidates")
 	_cleanup(cpu, model)
 	await get_tree().process_frame
 

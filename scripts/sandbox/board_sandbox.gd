@@ -356,11 +356,18 @@ func _refresh_piece_art() -> void:
 func _build_record_panel() -> void:
 	record_panel = PanelContainer.new()
 	record_panel.name = "RecordReplayPanel"
-	record_panel.set_anchors_preset(Control.PRESET_CENTER)
-	record_panel.offset_left = -190.0
-	record_panel.offset_top = -250.0
-	record_panel.offset_right = 190.0
-	record_panel.offset_bottom = 250.0
+	if mobile_layout:
+		record_panel.set_anchors_preset(Control.PRESET_CENTER)
+		record_panel.offset_left = -190.0
+		record_panel.offset_top = -250.0
+		record_panel.offset_right = 190.0
+		record_panel.offset_bottom = 250.0
+	else:
+		record_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		record_panel.offset_left = -392.0
+		record_panel.offset_top = 360.0
+		record_panel.offset_right = -12.0
+		record_panel.offset_bottom = 860.0
 	record_panel.visible = false
 	$SandboxLayer.add_child(record_panel)
 	var column := VBoxContainer.new()
@@ -416,7 +423,20 @@ func _build_record_panel() -> void:
 		record_save_dialog.add_filter("*.crpggame", "CRPG Chess Game")
 		record_save_dialog.file_selected.connect(_save_game_record_file)
 		add_child(record_save_dialog)
+		get_viewport().size_changed.connect(_layout_record_panel)
+		call_deferred(&"_layout_record_panel")
 	_refresh_record_panel()
+
+func _layout_record_panel() -> void:
+	if mobile_layout or record_panel == null or piece_palette == null: return
+	var palette_bottom: float = piece_palette.position.y + piece_palette.size.y
+	var top: float = palette_bottom + 12.0
+	var available_height: float = get_viewport().get_visible_rect().size.y - top - 12.0
+	record_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	record_panel.offset_left = -392.0
+	record_panel.offset_top = top
+	record_panel.offset_right = -12.0
+	record_panel.offset_bottom = top + minf(500.0, maxf(260.0, available_height))
 
 func _toggle_record_panel() -> void:
 	if record_panel == null: return
@@ -435,7 +455,7 @@ func _refresh_record_panel() -> void:
 	record_frame_label.text = "%s — Frame %d / %d" % ["Replay" if replay_mode else "Live Recording", cursor + 1, count]
 	replay_previous_button.disabled = not replay_mode or replay_cursor <= 0
 	replay_next_button.disabled = not replay_mode or replay_record == null or replay_cursor >= replay_record.frames.size() - 1
-	replay_flag_button.disabled = not replay_mode
+	replay_flag_button.disabled = count <= 0
 	replay_fork_button.disabled = not replay_mode
 	replay_analyze_button.disabled = not replay_mode or replay_cursor <= 0
 	var record = replay_record if replay_mode else _record_from_history()
@@ -917,6 +937,7 @@ func _apply_mobile_mode_visibility() -> void:
 
 func _on_edit_committed(_before: ChessPosition, after: ChessPosition, label: String) -> void:
 	if not restoring_history:
+		_invalidate_flag_on_history_branch()
 		history.push(after, label, {"kind": &"edit", "context": _capture_record_context()})
 	_refresh_record_panel()
 	_refresh_control_states()
@@ -925,6 +946,7 @@ func _on_settled_action_completed() -> void:
 	_clear_ai_thoughts()
 	if mode == Mode.PLAY and not restoring_history and not replay_mode:
 		var label: String = ActionCodec.label(pending_action)
+		_invalidate_flag_on_history_branch()
 		history.push(model.capture_position(), label, {"kind": &"gameplay", "action": pending_action.duplicate(true), "ai": pending_ai.duplicate(true), "context": _capture_record_context()})
 		pending_action.clear()
 		pending_ai.clear()
@@ -934,6 +956,10 @@ func _on_settled_action_completed() -> void:
 func _on_primary_action_committed(descriptor: Dictionary) -> void:
 	if not replay_mode and not replay_analysis_running:
 		pending_action = descriptor.duplicate(true)
+
+func _invalidate_flag_on_history_branch() -> void:
+	if active_record != null and active_record.flagged_frame > history.cursor:
+		active_record.flagged_frame = -1
 
 func _on_ai_thought_changed(thought) -> void:
 	if thought == null or replay_mode or replay_analysis_running: return
@@ -1134,6 +1160,8 @@ func _capture_record_context() -> Dictionary:
 
 func _record_from_history():
 	active_record.frames.clear()
+	if active_record.flagged_frame >= history.entries.size():
+		active_record.flagged_frame = -1
 	active_record.provenance = record_provenance.duplicate(true)
 	for index in range(history.entries.size()):
 		var meta: Dictionary = history.metadata[index] if index < history.metadata.size() else {}
@@ -1200,8 +1228,11 @@ func _replay_next() -> void:
 	_load_replay_frame(replay_cursor + 1)
 
 func _flag_replay_frame() -> void:
-	if replay_record == null: return
-	replay_record.flagged_frame = replay_cursor
+	var record = replay_record if replay_mode else active_record
+	if record == null: return
+	var cursor: int = replay_cursor if replay_mode else history.cursor
+	if cursor < 0: return
+	record.flagged_frame = -1 if record.flagged_frame == cursor else cursor
 	_refresh_record_panel()
 
 func _on_record_note_changed() -> void:

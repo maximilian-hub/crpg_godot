@@ -9,10 +9,11 @@ const DEFAULT_CANDIDATE_LIMIT := 6
 const DEFAULT_MAX_BOOK_MOVES := 7
 const TACTICAL_SAFETY_MARGIN := 5.0
 const FORCING_ABILITY_CAP := 3
+const DIRECT_KING_ATTACK_CAP := 3
 const MAX_OBLIGATION_RESPONSES := 4
 const SEVERE_MATERIAL_LOSS := 3.0
 
-enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID }
+enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID, PRUNED }
 enum ExecutionStatus { COMPLETED, INCOMPLETE, INVALID }
 
 var candidate_limit := DEFAULT_CANDIDATE_LIMIT
@@ -69,44 +70,56 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	last_profile["unverified_selection"] = false
 	var root_position: ChessPosition = player.model.capture_position()
 	var records: Array[Dictionary] = []
-	var exact: Array[Dictionary] = []
-	var best_tactical := -INF
 	for entry in candidates:
-		if _budget_exhausted():
-			last_profile.incomplete_root_candidates += 1
-			continue
+		records.append(_new_candidate_record(entry))
+	# Preparation is deliberately breadth-first: every selected action gets a
+	# fallback record before any one candidate is allowed to spend the budget on
+	# opponent-reply evaluation.
+	for record in records:
+		if _budget_exhausted(): break
 		var screen_started := Time.get_ticks_usec()
-		var record := await _screen_candidate(root_position, entry)
+		await _prepare_candidate(root_position, record)
 		last_profile.screening_usec += Time.get_ticks_usec() - screen_started
-		records.append(record)
-		match record.screen_status:
-			ScreenStatus.EXACT:
-				exact.append(record)
-				last_profile.exact_root_candidates += 1
-				best_tactical = maxf(best_tactical, float(record.score))
-				_record_first_completion()
-			ScreenStatus.READY:
-				var rejection_floor := best_tactical - TACTICAL_SAFETY_MARGIN if best_tactical > -INF else -INF
-				var verification_started := Time.get_ticks_usec()
-				var result := await _complete_screened_candidate(record, rejection_floor)
-				last_profile.exhaustive_verification_usec += Time.get_ticks_usec() - verification_started
-				match result.status:
-					CandidateStatus.COMPLETED:
-						last_profile.exact_root_candidates += 1
-						exact.append(result)
-						best_tactical = maxf(best_tactical, float(result.score))
-						_record_first_completion()
-					CandidateStatus.PRUNED: last_profile.pruned_root_candidates += 1
-					CandidateStatus.INCOMPLETE: last_profile.incomplete_root_candidates += 1
-					CandidateStatus.INVALID: last_profile.invalid_root_candidates += 1
-			ScreenStatus.INCOMPLETE:
-				last_profile.incomplete_root_candidates += 1
-			ScreenStatus.INVALID:
-				last_profile.invalid_root_candidates += 1
 		if bool(record.get("terminal", false)) and float(record.get("score", 0.0)) >= 1000000.0:
 			last_profile.terminal_win_early_stop = true
 			break
 		await _cooperate()
+	# First screen one forcing reply per candidate per round.
+	while not _budget_exhausted():
+		var advanced := false
+		for record in records:
+			if _budget_exhausted(): break
+			var screen_started := Time.get_ticks_usec()
+			if await _advance_candidate_reply(record, true, -INF): advanced = true
+			last_profile.screening_usec += Time.get_ticks_usec() - screen_started
+		if not advanced: break
+		last_profile.breadth_screen_rounds += 1
+	# Then complete remaining replies with the same round-robin fairness.
+	while not _budget_exhausted():
+		var advanced := false
+		var completed_scores: Array[float] = []
+		for candidate in records:
+			if candidate.screen_status == ScreenStatus.EXACT: completed_scores.append(float(candidate.score))
+		var alpha: float = float(completed_scores.max()) - TACTICAL_SAFETY_MARGIN if not completed_scores.is_empty() else -INF
+		for record in records:
+			if _budget_exhausted(): break
+			var verification_started := Time.get_ticks_usec()
+			if await _advance_candidate_reply(record, false, alpha): advanced = true
+			last_profile.exhaustive_verification_usec += Time.get_ticks_usec() - verification_started
+		if not advanced: break
+		last_profile.breadth_completion_rounds += 1
+
+	var exact: Array[Dictionary] = records.filter(func(record: Dictionary): return record.screen_status == ScreenStatus.EXACT)
+	var best_tactical := -INF
+	for record in records:
+		match int(record.screen_status):
+			ScreenStatus.EXACT:
+				last_profile.exact_root_candidates += 1
+				best_tactical = maxf(best_tactical, float(record.score))
+				_record_first_completion()
+			ScreenStatus.INVALID: last_profile.invalid_root_candidates += 1
+			ScreenStatus.PRUNED: pass
+			_: last_profile.incomplete_root_candidates += 1
 
 	var selected_action: ChessPrimaryAction
 	var selected_score := 0.0
@@ -116,7 +129,8 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		selected_score = float(fallback_record.get("policy", 0.0)) if not fallback_record.is_empty() else (candidates[0].policy if not candidates.is_empty() else ranked[0].policy)
 		last_profile.fallback_used = true
 		last_profile.unverified_selection = true
-		last_profile.selected_status = &"screened_fallback"
+		last_profile.selected_status = &"breadth_fallback"
+		last_profile.timeout_fallback_source = fallback_record.get("phase", &"not_prepared") if not fallback_record.is_empty() else &"ranked"
 		last_profile.selected_candidate_reason = fallback_record.get("candidate_reason", &"policy") if not fallback_record.is_empty() else (candidates[0].get("candidate_reason", &"policy") if not candidates.is_empty() else &"policy")
 	else:
 		var safe: Array[Dictionary] = exact.filter(func(candidate: Dictionary): return float(candidate.score) >= best_tactical - TACTICAL_SAFETY_MARGIN)
@@ -141,9 +155,23 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 			"action": ActionCodec.describe(record.action),
 			"policy_score": record.policy,
 			"search_score": record.score,
-			"status": ScreenStatus.keys()[int(record.screen_status)].to_lower(),
+			"status": String(record.get("phase", &"not_prepared")),
 			"reason": String(record.get("candidate_reason", &"policy")),
+			"replies_evaluated": record.reply_scores.size(),
+			"replies_available": record.replies.size(),
+			"selected": record.action == selected_action,
 		})
+	if not diagnostics.any(func(candidate: Dictionary): return bool(candidate.get("selected", false))):
+		for record in records:
+			if record.action != selected_action: continue
+			if diagnostics.size() >= 12: diagnostics.pop_back()
+			diagnostics.append({
+				"action": ActionCodec.describe(record.action), "policy_score": record.policy,
+				"search_score": record.score, "status": String(record.get("phase", &"not_prepared")),
+				"reason": String(record.get("candidate_reason", &"policy")),
+				"replies_evaluated": record.reply_scores.size(), "replies_available": record.replies.size(), "selected": true,
+			})
+			break
 	if diagnostics.is_empty():
 		for entry in ranked.slice(0, mini(12, ranked.size())):
 			diagnostics.append({"action": ActionCodec.describe(entry.action), "policy_score": entry.policy, "status": "not_searched", "reason": "policy"})
@@ -151,36 +179,48 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	return plan
 
 
-func _screen_candidate(root_position: ChessPosition, entry: Dictionary) -> Dictionary:
-	var record := {
+func _new_candidate_record(entry: Dictionary) -> Dictionary:
+	return {
 		"action": entry.action,
 		"policy": entry.policy,
 		"candidate_reason": entry.get("candidate_reason", &"policy"),
-		"screen_status": ScreenStatus.INVALID,
+		"screen_status": ScreenStatus.INCOMPLETE,
+		"phase": &"not_prepared",
 		"screen_bound": INF,
 		"score": 0.0,
 		"replies": [],
 		"reply_scores": {},
 		"policy_reactions": 0,
 		"terminal": false,
+		"forcing_cursor": 0,
+		"completion_cursor": 0,
+		"worst": INF,
 	}
+
+
+func _prepare_candidate(root_position: ChessPosition, record: Dictionary) -> void:
 	var simulation := await _make_model(root_position)
 	if simulation == null:
-		return record
-	var execution := await _execute_dupre_descriptor(simulation, _describe_action(entry.action))
+		record.screen_status = ScreenStatus.INVALID
+		record.phase = &"invalid"
+		return
+	var execution := await _execute_dupre_descriptor(simulation, _describe_action(record.action))
 	record.policy_reactions = int(execution.policy_reactions)
 	await _cooperate()
 	if execution.status != ExecutionStatus.COMPLETED:
 		record.screen_status = ScreenStatus.INCOMPLETE if execution.status == ExecutionStatus.INCOMPLETE else ScreenStatus.INVALID
+		record.phase = &"incomplete" if execution.status == ExecutionStatus.INCOMPLETE else &"invalid"
 		_free_model(simulation)
-		return record
+		return
+	last_profile.prepared_root_candidates += 1
 	if simulation.battle_over:
 		record.screen_status = ScreenStatus.EXACT
 		record.score = _evaluate_terminal(simulation)
 		record.screen_bound = record.score
 		record.terminal = true
+		record.phase = &"complete"
 		_free_model(simulation)
-		return record
+		return
 	var legal_started := Time.get_ticks_usec()
 	var reply_actions := simulation.get_legal_primary_actions(simulation.current_turn)
 	_record_legal_generation(legal_started)
@@ -190,63 +230,60 @@ func _screen_candidate(root_position: ChessPosition, entry: Dictionary) -> Dicti
 		record.screen_status = ScreenStatus.EXACT
 		record.score = await _evaluate_model(simulation, {simulation.current_turn: reply_actions})
 		record.screen_bound = record.score
+		record.phase = &"complete"
 		_free_model(simulation)
-		return record
+		return
 	var capture_started := Time.get_ticks_usec()
 	record["child_position"] = simulation.capture_position()
 	_record_phase(&"position_capture_usec", capture_started)
 	_free_model(simulation)
 	record.replies = replies
-	var worst := INF
-	for reply in replies:
-		if not bool(reply.forcing):
+	record.screen_status = ScreenStatus.READY
+	record.phase = &"prepared"
+
+
+func _advance_candidate_reply(record: Dictionary, forcing_only: bool, alpha: float) -> bool:
+	if record.screen_status != ScreenStatus.READY: return false
+	var cursor_key := "forcing_cursor" if forcing_only else "completion_cursor"
+	var cursor := int(record[cursor_key])
+	while cursor < record.replies.size():
+		var reply: Dictionary = record.replies[cursor]
+		cursor += 1
+		record[cursor_key] = cursor
+		var key := _reply_cache_key(reply)
+		if forcing_only and not bool(reply.forcing): continue
+		if not forcing_only and record.reply_scores.has(key):
+			last_profile.reused_screened_reply_count += 1
 			continue
-		if _budget_exhausted():
-			record.screen_status = ScreenStatus.INCOMPLETE
-			record.screen_bound = worst
-			return record
 		var evaluated := await _evaluate_record_reply(record, reply)
 		if not evaluated.valid:
 			record.screen_status = ScreenStatus.INVALID
-			return record
+			record.phase = &"invalid"
+			return true
 		if not evaluated.complete:
 			record.screen_status = ScreenStatus.INCOMPLETE
-			record.screen_bound = worst
-			return record
-		worst = minf(worst, float(evaluated.score))
-		last_profile.screened_reply_count += 1
-		await _cooperate()
-	record.screen_status = ScreenStatus.READY
-	record.screen_bound = worst
-	return record
-
-
-func _complete_screened_candidate(record: Dictionary, alpha: float) -> Dictionary:
-	var worst := INF
-	for reply in record.replies:
-		if _budget_exhausted():
-			return _screen_result(record, CandidateStatus.INCOMPLETE, worst)
-		var key := _reply_cache_key(reply)
-		var score: float
-		if record.reply_scores.has(key):
-			score = float(record.reply_scores[key])
-			last_profile.reused_screened_reply_count += 1
+			record.phase = &"incomplete"
+			return true
+		record.worst = minf(float(record.worst), float(evaluated.score))
+		record.screen_bound = record.worst
+		record.phase = &"screening"
+		if forcing_only:
+			last_profile.screened_reply_count += 1
 		else:
-			var evaluated := await _evaluate_record_reply(record, reply)
-			if not evaluated.valid:
-				return _screen_result(record, CandidateStatus.INVALID)
-			if not evaluated.complete:
-				return _screen_result(record, CandidateStatus.INCOMPLETE, worst)
-			score = float(evaluated.score)
-			if not bool(reply.forcing):
-				last_profile.exhaustive_quiet_reply_count += 1
-		worst = minf(worst, score)
-		if alpha_beta_enabled and alpha > -INF and worst <= alpha:
-			last_profile.alpha_beta_cutoffs += 1
-			last_profile.screen_pruned_candidates += 1
-			return _screen_result(record, CandidateStatus.PRUNED, worst)
+			last_profile.exhaustive_quiet_reply_count += 1
+			if alpha_beta_enabled and alpha > -INF and float(record.worst) <= alpha:
+				record.phase = &"pruned"
+				record.screen_status = ScreenStatus.PRUNED
+				last_profile.pruned_root_candidates += 1
+				last_profile.alpha_beta_cutoffs += 1
+				last_profile.screen_pruned_candidates += 1
 		await _cooperate()
-	return _screen_result(record, CandidateStatus.COMPLETED, worst)
+		return true
+	if not forcing_only:
+		record.screen_status = ScreenStatus.EXACT
+		record.score = float(record.worst)
+		record.phase = &"complete"
+	return false
 
 
 func _evaluate_record_reply(record: Dictionary, reply: Dictionary) -> Dictionary:
@@ -269,19 +306,8 @@ func _evaluate_record_reply(record: Dictionary, reply: Dictionary) -> Dictionary
 	return {"valid": true, "complete": complete, "score": score}
 
 
-func _screen_result(record: Dictionary, status: CandidateStatus, score := 0.0) -> Dictionary:
-	return {
-		"action": record.action,
-		"status": status,
-		"score": score,
-		"policy": record.policy,
-		"candidate_reason": record.candidate_reason,
-		"policy_reactions": record.get("policy_reactions", 0),
-	}
-
-
 func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
-	var eligible: Array[Dictionary] = records.filter(func(record: Dictionary): return record.screen_status != ScreenStatus.INVALID)
+	var eligible: Array[Dictionary] = records.filter(func(record: Dictionary): return record.screen_status not in [ScreenStatus.INVALID, ScreenStatus.PRUNED])
 	if eligible.is_empty():
 		return {}
 	# Partial minimizing scores are optimistic upper bounds. They can explain why
@@ -297,10 +323,11 @@ func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
 
 func _candidate_reason_priority(reason: StringName) -> int:
 	match reason:
-		&"immediate_win": return 5
-		&"king_safety": return 4
+		&"immediate_win": return 6
+		&"king_safety": return 5
+		&"king_attack": return 4
 		&"king_ability": return 4
-		&"material_obligation": return 4
+		&"material_obligation": return 3
 		&"capture_king_attacker": return 3
 		&"favorable_capture": return 2
 		&"major_piece_defense": return 1
@@ -635,6 +662,10 @@ func _begin_book_profile() -> void:
 	last_profile["exchange_medium_confidence"] = 0
 	last_profile["exchange_low_confidence"] = 0
 	last_profile["terminal_win_early_stop"] = false
+	last_profile["prepared_root_candidates"] = 0
+	last_profile["breadth_screen_rounds"] = 0
+	last_profile["breadth_completion_rounds"] = 0
+	last_profile["timeout_fallback_source"] = &""
 
 
 func _ensure_opening_session() -> void:
@@ -870,6 +901,13 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			for entry in ranked:
 				if maxi(policy.direct_king_threat_count_after(entry.action), player._projected_king_threat_count(entry.action)) == minimum:
 					_append_unique(selected, selected_keys, entry, &"king_safety")
+	var retained_king_attacks := 0
+	for entry in ranked:
+		if retained_king_attacks >= DIRECT_KING_ATTACK_CAP: break
+		if _is_direct_king_attack(entry.action) and not player._is_immediate_win(entry.action):
+			var before := selected.size()
+			_append_unique(selected, selected_keys, entry, &"king_attack")
+			if selected.size() > before: retained_king_attacks += 1
 	var obligations := _material_obligations(policy)
 	last_profile.material_obligation_count = obligations.size()
 	for obligation in obligations:
@@ -928,6 +966,12 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		if selected.size() > before:
 			ordinary_count += 1
 	return selected
+
+
+func _is_direct_king_attack(action: ChessPrimaryAction) -> bool:
+	if action == null or action.kind != ChessPrimaryAction.Kind.MOVE: return false
+	var target: ModelPiece = player.model.board[action.target.x][action.target.y]
+	return target != null and target.color != action.piece.color and target.is_king and _action_damage(action) > 0
 
 
 func _material_obligations(policy) -> Array[Dictionary]:
