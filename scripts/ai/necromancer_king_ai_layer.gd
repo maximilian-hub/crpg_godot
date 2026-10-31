@@ -10,6 +10,64 @@ func supports(king_type: StringName) -> bool:
 	return king_type == &"necromancer_king"
 
 
+func describe_ability_action(model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
+	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is NecromancerKing:
+		return []
+	return _describe_summon(model, action.piece, action.target, occupancy)
+
+
+func _describe_summon(model: ChessBoardModel, necromancer: ModelPiece, target: Vector2i, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
+	var result: Array[DupreAbilityEffect] = []
+	if occupancy.has(target):
+		return result
+	var summon := AbilityEffect.new()
+	summon.source_piece_id = necromancer.piece_id
+	summon.source_color = necromancer.color
+	summon.ability_id = &"summon_bone_pawn"
+	summon.target_coordinate = target
+	summon.kind = AbilityEffect.Kind.SUMMON
+	summon.metadata = {"piece_type": "bone_pawn"}
+	result.append(summon)
+	var pawn := BonePawnPiece.new(necromancer.color, target)
+	pawn.piece_id = "dupre_effect_bone_%s_%s" % [target.x, target.y]
+	var projected_occupancy := occupancy.duplicate()
+	projected_occupancy[target] = pawn
+	var board_size := Vector2i(model.board.size(), model.board[0].size())
+	var attack_position := ChessAttackPosition.from_occupancy(board_size, projected_occupancy)
+	for coordinate in projected_occupancy:
+		var piece = projected_occupancy[coordinate]
+		if not piece is ModelPiece or piece == pawn:
+			continue
+		if piece.color != necromancer.color and pawn.can_directly_attack_square(target, coordinate, attack_position):
+			var pressure := AbilityEffect.new()
+			pressure.source_piece_id = pawn.piece_id
+			pressure.source_color = pawn.color
+			pressure.ability_id = &"summon_bone_pawn"
+			pressure.target_piece_id = piece.piece_id
+			pressure.target_coordinate = coordinate
+			pressure.kind = AbilityEffect.Kind.DAMAGE
+			pressure.damage = pawn.attack_power
+			pressure.lethal = pressure.damage >= piece.current_hp
+			pressure.certainty = AbilityEffect.Certainty.CONDITIONAL
+			pressure.metadata = {"summoned_attack": true}
+			result.append(pressure)
+	# Build both views from the caller's state; speculative occupancies must not
+	# silently fall back to the live board while describing an action.
+	var before := DupreTacticalMap.from_model(model).project(occupancy)
+	var after := before.project(projected_occupancy)
+	if after.king_attackers(necromancer.color).size() < before.king_attackers(necromancer.color).size():
+		var block := AbilityEffect.new()
+		block.source_piece_id = necromancer.piece_id
+		block.source_color = necromancer.color
+		block.ability_id = &"summon_bone_pawn"
+		block.target_piece_id = necromancer.piece_id
+		block.target_coordinate = target
+		block.kind = AbilityEffect.Kind.BLOCK
+		block.metadata = {"king_attackers_removed": before.king_attackers(necromancer.color).size() - after.king_attackers(necromancer.color).size()}
+		result.append(block)
+	return result
+
+
 func action_policy_bonus(model: ChessBoardModel, action: ChessPrimaryAction, perspective: String, tactical_map = null) -> float:
 	var result := 0.0
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.piece is NecromancerKing:
@@ -81,8 +139,7 @@ func placement_score(model: ChessBoardModel, necromancer: ModelPiece, target: Ve
 	if enemy_king is KingPiece:
 		var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
 		if enemy_layer != null:
-			var ability_threat: Dictionary = enemy_layer.active_ability_threat(model, enemy_king, pawn, target, projected.occupancy, 0)
-			if bool(ability_threat.get("lethal", false)):
+			if _piece_has_lethal_effect(enemy_layer.collect_ability_threats(model, enemy_king, projected.occupancy, 0), pawn, target):
 				score -= REMOVABLE_SUMMON_PENALTY
 	var enemy := model.get_other_color(necromancer.color)
 	if projected.attack_count(target, enemy) > 0 and projected.attack_count(target, necromancer.color) == 0:
@@ -108,8 +165,7 @@ func _placement_is_forcing(model: ChessBoardModel, necromancer: ModelPiece, targ
 	if enemy_king is KingPiece:
 		var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
 		if enemy_layer != null:
-			var ability_threat: Dictionary = enemy_layer.active_ability_threat(model, enemy_king, pawn, target, projected.occupancy, 0)
-			if bool(ability_threat.get("lethal", false)):
+			if _piece_has_lethal_effect(enemy_layer.collect_ability_threats(model, enemy_king, projected.occupancy, 0), pawn, target):
 				return false
 	if projected.attack_count(target, model.get_other_color(necromancer.color)) > 0 and projected.attack_count(target, necromancer.color) == 0:
 		return false
@@ -149,3 +205,10 @@ func _piece_value(piece: ModelPiece) -> float:
 		"rook": return 5.0
 		"bishop", "knight": return 3.0
 	return 1.0
+
+
+func _piece_has_lethal_effect(effects: Array[DupreAbilityEffect], piece: ModelPiece, coordinate: Vector2i) -> bool:
+	for effect in effects:
+		if effect.lethal and (effect.target_piece_id == piece.piece_id or (effect.target_piece_id.is_empty() and effect.target_coordinate == coordinate)):
+			return true
+	return false

@@ -1,6 +1,8 @@
 extends RefCounted
 class_name ChessKingAiLayer
 
+const AbilityEffect = preload("res://scripts/ai/dupre_ability_effect.gd")
+
 enum SupportLevel { UNSUPPORTED, GENERIC, ENHANCED }
 
 
@@ -33,7 +35,31 @@ func active_ability_is_lethal(_action: ChessPrimaryAction, _target: ModelPiece) 
 ## registered with the live model. Horizon is measured in future turn entries
 ## for the attacking King: 0 means ready now, 1 means ready when it next moves.
 func active_ability_threat(_model: ChessBoardModel, _king: KingPiece, _target: ModelPiece, _target_coordinate: Vector2i, _occupancy: Dictionary, _horizon: int = 0) -> Dictionary:
+	for effect in collect_ability_threats(_model, _king, _occupancy, _horizon):
+		if effect.target_piece_id == _target.piece_id or (effect.target_piece_id.is_empty() and effect.target_coordinate == _target_coordinate):
+			return {
+				"ability_id": effect.ability_id,
+				"damage": effect.damage,
+				"lethal": effect.lethal,
+				"ready_in_turn_entries": effect.ready_in_turn_entries,
+				"certainty": effect.certainty,
+				"effect": effect,
+			}
 	return {}
+
+
+## Side-effect-free descriptions. Effects contain stable ids/coordinates, not
+## references to speculative pieces, and are valid only for the supplied state.
+func collect_ability_threats(_model: ChessBoardModel, _king: KingPiece, _occupancy: Dictionary, _horizon: int = 0) -> Array[DupreAbilityEffect]:
+	return []
+
+
+func describe_ability_action(_model: ChessBoardModel, _action: ChessPrimaryAction, _occupancy: Dictionary) -> Array[DupreAbilityEffect]:
+	return []
+
+
+func describe_action_reactions(_model: ChessBoardModel, _action: ChessPrimaryAction, _occupancy: Dictionary) -> Array[DupreAbilityEffect]:
+	return []
 
 
 func active_ability_ready_in_turn_entries(model: ChessBoardModel, king: KingPiece) -> int:

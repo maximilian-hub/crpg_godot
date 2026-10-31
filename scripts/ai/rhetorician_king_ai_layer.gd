@@ -9,6 +9,59 @@ func supports(king_type: StringName) -> bool:
 	return king_type == &"rhetorician_king"
 
 
+func collect_ability_threats(model: ChessBoardModel, king: KingPiece, occupancy: Dictionary, horizon: int = 0) -> Array[DupreAbilityEffect]:
+	var result: Array[DupreAbilityEffect] = []
+	if not king is RhetoricianKing:
+		return result
+	var ready_in := active_ability_ready_in_turn_entries(model, king)
+	if ready_in > horizon:
+		return result
+	for coordinate in occupancy:
+		var compelled = occupancy[coordinate]
+		if not compelled is ModelPiece or compelled.color == king.color:
+			continue
+		var distance := maxi(absi(coordinate.x - king.coordinate.x), absi(coordinate.y - king.coordinate.y))
+		if distance != 2:
+			continue
+		var effect := _compel_effect(model, king, compelled, coordinate, occupancy)
+		effect.ready_in_turn_entries = ready_in
+		result.append(effect)
+	return result
+
+
+func describe_ability_action(model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
+	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is RhetoricianKing:
+		return []
+	var compelled = occupancy.get(action.target)
+	if not compelled is ModelPiece:
+		return []
+	return [_compel_effect(model, action.piece, compelled, action.target, occupancy)]
+
+
+func _compel_effect(model: ChessBoardModel, king: ModelPiece, compelled: ModelPiece, coordinate: Vector2i, occupancy: Dictionary) -> DupreAbilityEffect:
+	var effect := AbilityEffect.new()
+	effect.source_piece_id = king.piece_id
+	effect.source_color = king.color
+	effect.ability_id = RhetoricianKing.ACTIVE_ABILITY_ID
+	effect.target_piece_id = compelled.piece_id
+	effect.target_coordinate = coordinate
+	effect.kind = AbilityEffect.Kind.FORCED_MOVEMENT
+	var delta: Vector2i = king.coordinate - coordinate
+	effect.destination = coordinate + Vector2i(signi(delta.x), signi(delta.y))
+	if not model.is_in_bounds(effect.destination.x, effect.destination.y) or effect.destination == king.coordinate:
+		effect.certainty = AbilityEffect.Certainty.CONDITIONAL
+		effect.metadata = {"invalid_destination": true}
+		return effect
+	var occupant = occupancy.get(effect.destination)
+	if occupant is ModelPiece:
+		effect.metadata = {"captured_piece_id": occupant.piece_id, "captured_color": occupant.color}
+		effect.material_delta = _piece_value(occupant) * (1.0 if occupant.color != king.color else -1.0)
+		effect.lethal = occupant.is_king
+	else:
+		effect.metadata = {"vacates_target": true}
+	return effect
+
+
 func action_policy_bonus(model: ChessBoardModel, action: ChessPrimaryAction, _perspective: String, _tactical_map = null) -> float:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is RhetoricianKing:
 		return 0.0

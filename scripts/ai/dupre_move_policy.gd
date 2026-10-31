@@ -21,8 +21,12 @@ var tactical_map: DupreTacticalMap
 var exchange_analyzer
 var _projected_maps: Dictionary = {}
 var _exchange_results: Dictionary = {}
+var _ability_effect_cache: Dictionary = {}
 var ability_threat_query_count := 0
 var ability_threat_query_usec := 0
+var ability_effect_collection_count := 0
+var ability_effect_collection_usec := 0
+var ability_effect_cache_hits := 0
 
 
 func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_tactical_map: DupreTacticalMap = null) -> void:
@@ -143,13 +147,37 @@ func _ability_threat(piece: ModelPiece, horizon: int, projected: DupreTacticalMa
 	var projected_piece = position.occupancy.get(coordinate)
 	if not projected_piece is ModelPiece:
 		return {}
-	var enemy_king: ModelPiece = model.get_king(_other_color(piece.color))
+	for effect in ability_effects(horizon, position):
+		if effect.target_piece_id == projected_piece.piece_id or (effect.target_piece_id.is_empty() and effect.target_coordinate == coordinate):
+			return {
+				"ability_id": effect.ability_id,
+				"damage": effect.damage,
+				"lethal": effect.lethal,
+				"ready_in_turn_entries": effect.ready_in_turn_entries,
+				"certainty": effect.certainty,
+				"effect": effect,
+			}
+	return {}
+
+
+func ability_effects(horizon: int = 0, projected: DupreTacticalMap = null) -> Array[DupreAbilityEffect]:
+	var position := tactical_map if projected == null else projected
+	var enemy_king: ModelPiece = model.get_king(_other_color(color))
 	if not enemy_king is KingPiece:
-		return {}
+		return []
+	var key := "%s|%s|%s|%s|%s" % [position.get_instance_id(), horizon, enemy_king.piece_id, enemy_king.current_cooldown, enemy_king.cooldown_reset_pending]
+	if _ability_effect_cache.has(key):
+		ability_effect_cache_hits += 1
+		return _ability_effect_cache[key]
 	var layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
 	if layer == null:
-		return {}
-	return layer.active_ability_threat(model, enemy_king, projected_piece, coordinate, position.occupancy, horizon)
+		return []
+	var started := Time.get_ticks_usec()
+	ability_effect_collection_count += 1
+	var effects: Array[DupreAbilityEffect] = layer.collect_ability_threats(model, enemy_king, position.occupancy, horizon)
+	ability_effect_collection_usec += Time.get_ticks_usec() - started
+	_ability_effect_cache[key] = effects
+	return effects
 
 
 func ability_threat_after(action: ChessPrimaryAction, piece: ModelPiece, horizon: int = 0) -> Dictionary:
@@ -234,7 +262,18 @@ func projection_metrics() -> Dictionary:
 		"exchange": exchange_analyzer.metrics(),
 		"ability_threat_queries": ability_threat_query_count,
 		"ability_threat_usec": ability_threat_query_usec,
+		"ability_effect_collections": ability_effect_collection_count,
+		"ability_effect_collection_usec": ability_effect_collection_usec,
+		"ability_effect_cache_hits": ability_effect_cache_hits,
+		"ability_effect_count": _cached_effect_count(),
 	}
+
+
+func _cached_effect_count() -> int:
+	var result := 0
+	for effects in _ability_effect_cache.values():
+		result += effects.size()
+	return result
 
 
 func _is_immediate_reversal(action: ChessPrimaryAction) -> bool:

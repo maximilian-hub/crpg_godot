@@ -18,6 +18,86 @@ func active_ability_is_lethal(action: ChessPrimaryAction, target: ModelPiece) ->
 	)
 
 
+func collect_ability_threats(model: ChessBoardModel, king: KingPiece, occupancy: Dictionary, horizon: int = 0) -> Array[DupreAbilityEffect]:
+	var result: Array[DupreAbilityEffect] = []
+	if not king is MinotaurKing:
+		return result
+	var ready_in := active_ability_ready_in_turn_entries(model, king)
+	if ready_in > horizon:
+		return result
+	for target_coordinate in _charge_targets(model, king.coordinate, occupancy):
+		var target = occupancy.get(target_coordinate)
+		if not target is ModelPiece or target.color == king.color:
+			continue
+		var effect := _charge_effect(king, target, target_coordinate)
+		effect.ready_in_turn_entries = ready_in
+		result.append(effect)
+	return result
+
+
+func describe_ability_action(_model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
+	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is MinotaurKing:
+		return []
+	var target = occupancy.get(action.target)
+	if not target is ModelPiece:
+		var wall_effect := AbilityEffect.new()
+		wall_effect.source_piece_id = action.piece.piece_id
+		wall_effect.source_color = action.piece.color
+		wall_effect.ability_id = MinotaurKing.ACTIVE_ABILITY_ID
+		wall_effect.target_coordinate = action.target
+		wall_effect.kind = AbilityEffect.Kind.STUN
+		wall_effect.metadata = {"self_stun": true}
+		return [wall_effect]
+	return [_charge_effect(action.piece, target, action.target)]
+
+
+func describe_action_reactions(_model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
+	if action.kind != ChessPrimaryAction.Kind.MOVE:
+		return []
+	var target = occupancy.get(action.target)
+	if not target is MinotaurKing or target.color == action.piece.color or action.piece.attack_power >= target.current_hp:
+		return []
+	var effect := AbilityEffect.new()
+	effect.source_piece_id = target.piece_id
+	effect.source_color = target.color
+	effect.ability_id = &"retaliating_rage"
+	effect.target_piece_id = action.piece.piece_id
+	effect.target_coordinate = action.target
+	effect.trigger = AbilityEffect.Trigger.REACTION
+	effect.kind = AbilityEffect.Kind.DAMAGE
+	effect.damage = 1
+	effect.certainty = AbilityEffect.Certainty.SIMULATION_REQUIRED
+	effect.metadata = {"area": "adjacent_after_damage"}
+	return [effect]
+
+
+func _charge_effect(king: ModelPiece, target: ModelPiece, coordinate: Vector2i) -> DupreAbilityEffect:
+	var effect := AbilityEffect.new()
+	effect.source_piece_id = king.piece_id
+	effect.source_color = king.color
+	effect.ability_id = MinotaurKing.ACTIVE_ABILITY_ID
+	effect.target_piece_id = target.piece_id
+	effect.target_coordinate = coordinate
+	effect.kind = AbilityEffect.Kind.DAMAGE
+	effect.damage = 2
+	effect.lethal = target.current_hp <= 2
+	effect.metadata = {"displaces_source": true}
+	return effect
+
+
+func _charge_targets(model: ChessBoardModel, origin: Vector2i, occupancy: Dictionary) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for direction in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var coordinate: Vector2i = origin + direction
+		var empty_count := 0
+		while model.is_in_bounds(coordinate.x, coordinate.y) and not occupancy.has(coordinate):
+			empty_count += 1
+			coordinate += direction
+		if empty_count >= 2:
+			result.append(coordinate if model.is_in_bounds(coordinate.x, coordinate.y) else coordinate - direction)
+	return result
+
+
 func action_policy_bonus(model: ChessBoardModel, action: ChessPrimaryAction, _perspective: String, _tactical_map = null) -> float:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is MinotaurKing:
 		return 0.0

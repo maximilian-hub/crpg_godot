@@ -35,6 +35,7 @@ func _ready() -> void:
 	await _test_rhetorician_rng_snapshot_consistency()
 	_test_necromancer_policy_support()
 	_test_arakne_ability_threat_horizon()
+	_test_ability_effect_contract()
 	_test_necromancer_removable_summon_policy()
 	_test_necromancer_does_not_trade_queen_for_pawn()
 	await _test_material_obligation_candidates()
@@ -518,7 +519,11 @@ func _test_necromancer_policy_support() -> void:
 	if summon != null:
 		var summon_score := policy.score(summon)
 		var projected_threats := policy.direct_king_threat_count_after(summon)
+		var before_position := ChessPositionCodec.to_json(model.capture_position(), false)
+		var effects: Array[DupreAbilityEffect] = layer.describe_ability_action(model, summon, TacticalMap.from_model(model).occupancy)
 		_expect(is_finite(summon_score) and projected_threats >= 0, "Necromancer summon projections keep placeholder occupancy out of live-piece identity comparisons")
+		_expect(effects.any(func(effect): return effect.kind == DupreAbilityEffect.Kind.SUMMON), "Necromancer summon is exposed through the shared ability-effect contract")
+		_expect(ChessPositionCodec.to_json(model.capture_position(), false) == before_position, "ability-effect description never mutates the authoritative live position")
 	_cleanup(cpu, model)
 
 
@@ -545,6 +550,46 @@ func _test_arakne_ability_threat_horizon() -> void:
 	var disabled_cooldowns := DuprePolicy.new(cpu).ability_threat(knight, 0)
 	_expect(bool(disabled_cooldowns.get("lethal", false)), "disabled cooldowns make Spike Burst immediately visible to tactical policy")
 	_cleanup(cpu, model)
+
+
+func _test_ability_effect_contract() -> void:
+	var model := _new_empty_model()
+	var minotaur := MinotaurKing.new("white", Vector2i(4, 0))
+	var charge_target := Queen.new("black", Vector2i(4, 4))
+	minotaur.set_cooldown(0)
+	for piece in [minotaur, charge_target, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var minotaur_layer = ChessKingAiRegistry.layer_for(&"minotaur_king")
+	var occupancy := DupreTacticalMap.from_model(model).occupancy
+	var charge_effects: Array[DupreAbilityEffect] = minotaur_layer.collect_ability_threats(model, minotaur, occupancy, 0)
+	_expect(charge_effects.size() == 1 and charge_effects[0].ability_id == &"charge" and charge_effects[0].damage == 2 and charge_effects[0].target_piece_id == charge_target.piece_id, "ability-effect contract describes an authoritative Minotaur Charge lane")
+	model.free()
+
+	model = _new_empty_model()
+	var rhetorician := RhetoricianKing.new("white", Vector2i(4, 4))
+	var compelled := Pawn.new("black", Vector2i(2, 2))
+	var victim := Rook.new("black", Vector2i(3, 3))
+	rhetorician.set_cooldown(0)
+	for piece in [rhetorician, compelled, victim, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	var compel_effects: Array[DupreAbilityEffect] = ChessKingAiRegistry.layer_for(&"rhetorician_king").collect_ability_threats(model, rhetorician, DupreTacticalMap.from_model(model).occupancy, 0)
+	_expect(compel_effects.size() == 1 and compel_effects[0].kind == DupreAbilityEffect.Kind.FORCED_MOVEMENT and compel_effects[0].destination == victim.coordinate and compel_effects[0].metadata.get("captured_piece_id", "") == victim.piece_id, "ability-effect contract records Compel's forced destination and captured occupant")
+	model.free()
+
+	model = _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(3, 4))
+	var knight := Knight.new("black", Vector2i(2, 5))
+	for piece in [arakne, knight, ClassicKing.new("black", Vector2i(0, 7))]: model.add_piece(piece, piece.coordinate)
+	arakne.set_cooldown(0)
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var policy := DuprePolicy.new(cpu)
+	policy.ability_threat(knight, 0)
+	policy.ability_threat(knight, 0)
+	var metrics := policy.projection_metrics()
+	_expect(int(metrics.ability_effect_collections) == 1 and int(metrics.ability_effect_cache_hits) == 1, "ability effects are collected once and reused within a Dupre decision")
+	_cleanup(cpu, model)
+
+	for archer_id in [&"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge"]:
+		_expect(not ChessKingAiRegistry.supports_dupre(archer_id), "experimental Archer variant remains outside the Dupre ability framework: %s" % archer_id)
 
 
 func _test_necromancer_removable_summon_policy() -> void:

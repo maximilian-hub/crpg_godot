@@ -660,6 +660,10 @@ func _begin_book_profile() -> void:
 	last_profile["ability_threat_next_turn_count"] = 0
 	last_profile["ability_threat_query_count"] = 0
 	last_profile["ability_threat_query_usec"] = 0
+	last_profile["ability_effect_collection_count"] = 0
+	last_profile["ability_effect_collection_usec"] = 0
+	last_profile["ability_effect_cache_hits"] = 0
+	last_profile["ability_effect_count"] = 0
 	last_profile["obligation_response_count"] = 0
 	last_profile["exchange_analysis_calls"] = 0
 	last_profile["exchange_analysis_usec"] = 0
@@ -1048,6 +1052,10 @@ func _populate_policy_profile(policy) -> void:
 	var metrics: Dictionary = policy.projection_metrics()
 	last_profile.ability_threat_query_count += int(metrics.get("ability_threat_queries", 0))
 	last_profile.ability_threat_query_usec += int(metrics.get("ability_threat_usec", 0))
+	last_profile.ability_effect_collection_count += int(metrics.get("ability_effect_collections", 0))
+	last_profile.ability_effect_collection_usec += int(metrics.get("ability_effect_collection_usec", 0))
+	last_profile.ability_effect_cache_hits += int(metrics.get("ability_effect_cache_hits", 0))
+	last_profile.ability_effect_count += int(metrics.get("ability_effect_count", 0))
 	last_profile.tactical_map_direct_attack_calls = _tactical_map.direct_attack_calls
 	last_profile.tactical_map_build_usec = _tactical_map.build_usec + _tactical_map.query_usec
 	last_profile.tactical_projection_count = metrics.count
