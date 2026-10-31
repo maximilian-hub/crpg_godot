@@ -326,9 +326,9 @@ func _candidate_reason_priority(reason: StringName) -> int:
 		&"immediate_win": return 6
 		&"king_safety": return 5
 		&"king_attack": return 4
-		&"king_ability": return 4
 		&"material_obligation": return 3
 		&"capture_king_attacker": return 3
+		&"king_ability": return 2
 		&"favorable_capture": return 2
 		&"major_piece_defense": return 1
 	return 0
@@ -655,6 +655,11 @@ func _begin_book_profile() -> void:
 	last_profile["conditional_verification"] = false
 	last_profile["danger_class"] = &"quiet"
 	last_profile["material_obligation_count"] = 0
+	last_profile["ability_obligation_count"] = 0
+	last_profile["ability_threat_current_count"] = 0
+	last_profile["ability_threat_next_turn_count"] = 0
+	last_profile["ability_threat_query_count"] = 0
+	last_profile["ability_threat_query_usec"] = 0
 	last_profile["obligation_response_count"] = 0
 	last_profile["exchange_analysis_calls"] = 0
 	last_profile["exchange_analysis_usec"] = 0
@@ -753,13 +758,25 @@ func _try_opening_book(actions: Array[ChessPrimaryAction]):
 func _has_mandatory_override(actions: Array[ChessPrimaryAction]) -> bool:
 	for action in actions:
 		if player._is_acceptable_primary_action(action) and player._is_immediate_win(action): return true
+	for action in actions:
+		if player._is_acceptable_primary_action(action) and _is_direct_king_attack(action): return true
 	var king: ModelPiece = player.model.get_king(player.controlled_color)
 	if king == null or player.king_safety_turns_remaining > 0: return true
 	if player._king_threat_count(king, king.coordinate, player._current_board_state()) > 0: return true
 	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
 	for row in player.model.board:
 		for piece in row:
-			if piece != null and piece.color == player.controlled_color and policy.is_valuable_piece_threatened(piece): return true
+			if piece == null or piece.color != player.controlled_color:
+				continue
+			if policy.is_valuable_piece_threatened(piece):
+				_accumulate_ability_threat_profile(policy)
+				return true
+			if not piece.is_king and _material_value(piece) >= 3.0:
+				var ability_threat: Dictionary = policy.ability_threat(piece, 1)
+				if bool(ability_threat.get("lethal", false)):
+					_accumulate_ability_threat_profile(policy)
+					return true
+	_accumulate_ability_threat_profile(policy)
 	for action in actions:
 		if (
 			action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY
@@ -913,10 +930,15 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 	for obligation in obligations:
 		var responses: Array[Dictionary] = []
 		var attacker_ids := {}
-		for exchange_step in obligation.sequence:
+		for exchange_step in obligation.get("sequence", []):
 			attacker_ids[String(exchange_step.get("attacker", ""))] = true
 		for entry in ranked:
-			var risk: Dictionary = policy.material_risk_after(entry.action, obligation.piece)
+			var risk: Dictionary
+			if bool(obligation.get("ability", false)):
+				var remaining: Dictionary = policy.ability_threat_after(entry.action, obligation.piece, 1)
+				risk = {"loss": obligation.loss if bool(remaining.get("lethal", false)) else 0.0, "confidence": DupreExchangeAnalyzer.Confidence.HIGH}
+			else:
+				risk = policy.material_risk_after(entry.action, obligation.piece)
 			if float(risk.loss) + 0.01 < float(obligation.loss):
 				var target_piece: ModelPiece = player.model.board[entry.action.target.x][entry.action.target.y]
 				responses.append({
@@ -969,7 +991,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 
 
 func _is_direct_king_attack(action: ChessPrimaryAction) -> bool:
-	if action == null or action.kind != ChessPrimaryAction.Kind.MOVE: return false
+	if action == null: return false
 	var target: ModelPiece = player.model.board[action.target.x][action.target.y]
 	return target != null and target.color != action.piece.color and target.is_king and _action_damage(action) > 0
 
@@ -982,6 +1004,15 @@ func _material_obligations(policy) -> Array[Dictionary]:
 			continue
 		var value := _material_value(piece)
 		if value < 3.0:
+			continue
+		var ability_threat: Dictionary = policy.ability_threat(piece, 1)
+		if bool(ability_threat.get("lethal", false)):
+			result.append({"piece": piece, "loss": value, "confidence": DupreExchangeAnalyzer.Confidence.HIGH, "sequence": [], "ability": true, "ability_id": ability_threat.get("ability_id", &"")})
+			last_profile.ability_obligation_count += 1
+			if int(ability_threat.get("ready_in_turn_entries", 0)) == 0:
+				last_profile.ability_threat_current_count += 1
+			else:
+				last_profile.ability_threat_next_turn_count += 1
 			continue
 		var risk: Dictionary = policy.material_risk(piece)
 		var threshold := 0.01 if value >= 5.0 else SEVERE_MATERIAL_LOSS
@@ -1015,6 +1046,8 @@ func _populate_tactical_profile() -> void:
 
 func _populate_policy_profile(policy) -> void:
 	var metrics: Dictionary = policy.projection_metrics()
+	last_profile.ability_threat_query_count += int(metrics.get("ability_threat_queries", 0))
+	last_profile.ability_threat_query_usec += int(metrics.get("ability_threat_usec", 0))
 	last_profile.tactical_map_direct_attack_calls = _tactical_map.direct_attack_calls
 	last_profile.tactical_map_build_usec = _tactical_map.build_usec + _tactical_map.query_usec
 	last_profile.tactical_projection_count = metrics.count
@@ -1027,6 +1060,11 @@ func _populate_policy_profile(policy) -> void:
 	last_profile.exchange_high_confidence = int(exchange.get("high", 0))
 	last_profile.exchange_medium_confidence = int(exchange.get("medium", 0))
 	last_profile.exchange_low_confidence = int(exchange.get("low", 0))
+
+
+func _accumulate_ability_threat_profile(policy) -> void:
+	last_profile.ability_threat_query_count += int(policy.ability_threat_query_count)
+	last_profile.ability_threat_query_usec += int(policy.ability_threat_query_usec)
 
 
 func _remember_action(action: ChessPrimaryAction, origin: Vector2i = Vector2i(-1, -1)) -> void:

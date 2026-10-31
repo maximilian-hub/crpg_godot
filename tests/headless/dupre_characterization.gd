@@ -34,9 +34,13 @@ func _ready() -> void:
 	await _test_rhetorician_compel_support()
 	await _test_rhetorician_rng_snapshot_consistency()
 	_test_necromancer_policy_support()
+	_test_arakne_ability_threat_horizon()
+	_test_necromancer_removable_summon_policy()
 	_test_necromancer_does_not_trade_queen_for_pawn()
 	await _test_material_obligation_candidates()
 	await _test_king_attack_timeout_fallback()
+	await _test_game3_imminent_spike_burst_obligation()
+	await _test_game3_king_damage_outranks_summon()
 	_test_necromancer_reaction_policy()
 	await _test_necromancer_simulation_settles_reaction()
 	_test_brain_specific_king_support()
@@ -518,6 +522,57 @@ func _test_necromancer_policy_support() -> void:
 	_cleanup(cpu, model)
 
 
+func _test_arakne_ability_threat_horizon() -> void:
+	var model := _new_empty_model()
+	var arakne := ArakneKing.new("white", Vector2i(3, 4))
+	var knight := Knight.new("black", Vector2i(2, 5))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 4))
+	for piece in [arakne, knight, necromancer]: model.add_piece(piece, piece.coordinate)
+	arakne.current_cooldown = 1
+	arakne.cooldown_reset_pending = false
+	arakne.initial_cooldown_turn_pending = false
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var policy := DuprePolicy.new(cpu)
+	var current: Dictionary = policy.ability_threat(knight, 0)
+	var next_turn: Dictionary = policy.ability_threat(knight, 1)
+	_expect(current.is_empty() and bool(next_turn.get("lethal", false)) and int(next_turn.get("ready_in_turn_entries", -1)) == 1, "Arakne threat projection distinguishes unavailable-now Spike Burst from next-turn readiness")
+	arakne.cooldown_reset_pending = true
+	arakne.current_cooldown = 0
+	var scheduled := DuprePolicy.new(cpu).ability_threat(knight, 1)
+	_expect(scheduled.is_empty(), "a newly spent Spike Burst is not incorrectly considered ready on Arakne's next turn entry")
+	model.active_ability_cooldowns_disabled = true
+	var disabled_cooldowns := DuprePolicy.new(cpu).ability_threat(knight, 0)
+	_expect(bool(disabled_cooldowns.get("lethal", false)), "disabled cooldowns make Spike Burst immediately visible to tactical policy")
+	_cleanup(cpu, model)
+
+
+func _test_necromancer_removable_summon_policy() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var arakne := ArakneKing.new("white", Vector2i(3, 4))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 4))
+	arakne.set_cooldown(0)
+	necromancer.set_cooldown(0)
+	for piece in [arakne, necromancer, Bishop.new("black", Vector2i(0, 5)), Knight.new("black", Vector2i(2, 2))]: model.add_piece(piece, piece.coordinate)
+	var layer = ChessKingAiRegistry.layer_for(&"necromancer_king")
+	var score := float(layer.placement_score(model, necromancer, Vector2i(2, 3), "black"))
+	var summon: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("black"):
+		if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.target == Vector2i(2, 3):
+			summon = action
+			break
+	_expect(summon != null and score < 2.0, "Necromancer policy discounts the game3 d6 summon that ready Spike Burst can erase")
+	_expect(summon != null and not layer.action_is_forcing(model, summon, "black"), "an immediately removable Bone Pawn is not forcing merely because it attacks the enemy King")
+	model.active_ability_cooldowns_disabled = false
+	arakne.current_cooldown = 1
+	arakne.cooldown_reset_pending = false
+	arakne.initial_cooldown_turn_pending = false
+	var recharging_score := float(layer.placement_score(model, necromancer, Vector2i(2, 3), "black"))
+	_expect(recharging_score > score, "Necromancer summon policy retains value while Spike Burst is unavailable")
+	model.free()
+
+
 func _test_necromancer_reaction_policy() -> void:
 	var model := _new_empty_model()
 	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
@@ -611,6 +666,67 @@ func _test_king_attack_timeout_fallback() -> void:
 		if diagnostic.reason == "material_obligation": saw_material_response = true
 	_expect(thought != null and thought.piece_coordinate == bishop.coordinate and thought.target == arakne.coordinate, "a direct nonlethal King hit outranks a knight rescue when Dupre must use an unverified fallback")
 	_expect(saw_king_attack and saw_material_response and int(thought.search_profile.prepared_root_candidates) == 0, "timeout diagnostics retain both unprepared King-attack and material-response candidates")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_game3_imminent_spike_burst_obligation() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var arakne := ArakneKing.new("white", Vector2i(3, 4))
+	var knight := Knight.new("black", Vector2i(2, 5))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 4))
+	arakne.current_cooldown = 1
+	arakne.cooldown_reset_pending = false
+	arakne.initial_cooldown_turn_pending = false
+	for piece in [arakne, knight, necromancer]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_book_moves = 0
+	brain.max_reply_leaves = 0
+	brain._begin_profile(model.get_legal_primary_actions("black").size())
+	brain._begin_book_profile()
+	brain._ensure_tactical_map()
+	var policy := DuprePolicy.new(cpu, {}, brain._tactical_map)
+	var ranked: Array[Dictionary] = []
+	var index := 0
+	for action in model.get_legal_primary_actions("black"):
+		ranked.append({"action": action, "policy": policy.score(action), "index": index})
+		index += 1
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
+	var candidates := brain._select_candidates(ranked, policy)
+	var saw_escape := false
+	for candidate in candidates:
+		if candidate.get("candidate_reason", &"") == &"material_obligation" and policy.ability_threat_after(candidate.action, knight, 1).is_empty():
+			saw_escape = true
+			break
+	_expect(brain._has_mandatory_override(model.get_legal_primary_actions("black")), "an f6 Knight facing next-turn Spike Burst overrides opening-book play")
+	_expect(int(brain.last_profile.ability_obligation_count) == 1 and int(brain.last_profile.ability_threat_next_turn_count) == 1 and saw_escape, "the imminent Spike Burst becomes a material obligation with retained saving responses")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_game3_king_damage_outranks_summon() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var arakne := ArakneKing.new("white", Vector2i(3, 4))
+	var necromancer := NecromancerKing.new("black", Vector2i(0, 4))
+	var knight := Knight.new("black", Vector2i(2, 2))
+	var bone := BonePawn.new("black", Vector2i(2, 5))
+	arakne.current_cooldown = 1
+	arakne.cooldown_reset_pending = false
+	arakne.initial_cooldown_turn_pending = false
+	necromancer.set_cooldown(0)
+	for piece in [arakne, necromancer, knight, bone, Bishop.new("black", Vector2i(0, 5))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_book_moves = 0
+	brain.max_reply_leaves = 0
+	var thought = await cpu.think()
+	_expect(thought != null and thought.target == arakne.coordinate and thought.action_kind == ChessPrimaryAction.Kind.MOVE, "game3 timeout fallback takes immediate Arakne HP instead of summoning another future threat")
+	_expect(thought != null and thought.search_profile.selected_candidate_reason == &"king_attack" and thought.search_profile.unverified_selection, "game3 fallback reports immediate King damage as the reason for its unverified selection")
 	_cleanup(cpu, model)
 	await get_tree().process_frame
 

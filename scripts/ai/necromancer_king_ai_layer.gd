@@ -3,6 +3,7 @@ class_name NecromancerKingAiLayer
 
 const BonePawnPiece = preload("res://scripts/pieces/bone_pawn.gd")
 const DOOMED_SCORE := -100000.0
+const REMOVABLE_SUMMON_PENALTY := 6.0
 
 
 func supports(king_type: StringName) -> bool:
@@ -76,6 +77,16 @@ func placement_score(model: ChessBoardModel, necromancer: ModelPiece, target: Ve
 			# by blocking a ray).
 			if base_map.attack_count(coordinate, model.get_other_color(piece.color)) > 0 and projected.attack_count(coordinate, model.get_other_color(piece.color)) == 0:
 				score += _piece_value(piece) * 4.0
+	var enemy_king: ModelPiece = model.get_king(model.get_other_color(necromancer.color))
+	if enemy_king is KingPiece:
+		var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
+		if enemy_layer != null:
+			var ability_threat: Dictionary = enemy_layer.active_ability_threat(model, enemy_king, pawn, target, projected.occupancy, 0)
+			if bool(ability_threat.get("lethal", false)):
+				score -= REMOVABLE_SUMMON_PENALTY
+	var enemy := model.get_other_color(necromancer.color)
+	if projected.attack_count(target, enemy) > 0 and projected.attack_count(target, necromancer.color) == 0:
+		score -= REMOVABLE_SUMMON_PENALTY
 	var advance := float(model.get_back_rank(necromancer.color) - target.x) if necromancer.color == "white" else float(target.x - model.get_back_rank(necromancer.color))
 	var center := 3.5 - absf(float(target.y) - 3.5)
 	score += advance * 0.08 + center * 0.04
@@ -91,9 +102,18 @@ func _placement_is_forcing(model: ChessBoardModel, necromancer: ModelPiece, targ
 	pawn.piece_id = "dupre_forcing_bone_%s_%s" % [target.x, target.y]
 	occupancy[target] = pawn
 	var projected: DupreTacticalMap = tactical.project(occupancy)
-	var attack_position := ChessAttackPosition.from_occupancy(projected.board_size, projected.occupancy)
 	if projected.king_attackers(necromancer.color).size() < tactical.king_attackers(necromancer.color).size():
 		return true
+	var enemy_king: ModelPiece = model.get_king(model.get_other_color(necromancer.color))
+	if enemy_king is KingPiece:
+		var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
+		if enemy_layer != null:
+			var ability_threat: Dictionary = enemy_layer.active_ability_threat(model, enemy_king, pawn, target, projected.occupancy, 0)
+			if bool(ability_threat.get("lethal", false)):
+				return false
+	if projected.attack_count(target, model.get_other_color(necromancer.color)) > 0 and projected.attack_count(target, necromancer.color) == 0:
+		return false
+	var attack_position := ChessAttackPosition.from_occupancy(projected.board_size, projected.occupancy)
 	for coordinate in occupancy:
 		var piece = occupancy[coordinate]
 		if piece is ModelPiece and piece.color != necromancer.color and (piece.is_king or _piece_value(piece) >= 5.0):

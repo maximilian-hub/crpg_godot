@@ -14,6 +14,9 @@ func _ready() -> void:
 	await _test_unrelated_action_preserves_context()
 	await _test_illegal_recommendation_falls_back()
 	await _test_immediate_win_and_urgent_defense_override()
+	await _test_game4_nonlethal_king_attack_overrides_book()
+	await _test_nonlethal_king_ability_overrides_book()
+	await _test_imminent_arakne_ability_overrides_book()
 	await _test_special_ability_overrides_book()
 	await _test_black_book_play()
 	await _test_special_kings_play_black_book()
@@ -171,6 +174,94 @@ func _test_immediate_win_and_urgent_defense_override() -> void:
 	var defensive = await danger_cpu.think()
 	_expect(defensive != null and defensive.search_profile.opening_book_override and not defensive.search_profile.opening_book_hit, "an immediately threatened major piece prevents blind book play")
 	_cleanup(danger_cpu, danger_model)
+
+
+func _test_game4_nonlethal_king_attack_overrides_book() -> void:
+	var model := _classic_model()
+	var position := model.capture_position()
+	position.current_turn = "black"
+	for state in position.pieces:
+		if state.color == "white" and state.type_id == &"classic_king":
+			state.type_id = &"arakne_king"
+			state.coordinate = Vector2i(3, 1)
+			state.max_hp = 2
+			state.current_hp = 2
+			state.current_cooldown = 1
+			state.cooldown_reset_pending = false
+		elif state.color == "black" and state.type_id == &"classic_king":
+			state.type_id = &"necromancer_king"
+			state.max_hp = 2
+			state.current_hp = 2
+		elif state.color == "black" and state.type_id == &"knight" and state.coordinate == Vector2i(0, 1):
+			state.type_id = &"bone_pawn"
+			state.coordinate = Vector2i(2, 2)
+	model.load_position(position)
+	var arakne := model.get_king("white") as ArakneKing
+	arakne.initial_cooldown_turn_pending = false
+	var cpu := _cpu(model, "black", 104)
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_reply_leaves = 0
+	brain.opening_session.begin(&"english_opening", model.global_turn_number)
+	brain.opening_session.book_moves_played = 6
+	var thought = await cpu.think()
+	_expect(_is_move(thought, Vector2i(2, 2), Vector2i(3, 1)), "game4 Bone Pawn damage overrides the seventh English Opening move")
+	_expect(thought != null and thought.search_profile.opening_book_override and not thought.search_profile.opening_book_hit and thought.search_profile.selected_candidate_reason == &"king_attack", "game4 override records immediate King damage as the selected tactical reason")
+	await cpu.execute_thought()
+	var bone: ModelPiece = model.board[2][2]
+	_expect(arakne.current_hp == 1 and bone != null and bone.type == "bone_pawn", "nonlethal Bone Pawn combat removes one King HP while the attacker remains on its square")
+	_expect(brain.opening_session.book_moves_played == 6, "a direct King-damage override does not consume Dupre's seventh book move")
+	_cleanup(cpu, model)
+
+
+func _test_nonlethal_king_ability_overrides_book() -> void:
+	var model := _classic_model()
+	var position := model.capture_position()
+	for state in position.pieces:
+		if state.color == "white" and state.type_id == &"classic_king":
+			state.type_id = &"minotaur_king"
+			state.coordinate = Vector2i(4, 0)
+			state.current_cooldown = 0
+			state.cooldown_reset_pending = false
+		elif state.color == "black" and state.type_id == &"classic_king":
+			state.coordinate = Vector2i(4, 4)
+			state.max_hp = 4
+			state.current_hp = 4
+	model.load_position(position)
+	var minotaur := model.get_king("white") as MinotaurKing
+	minotaur.initial_cooldown_turn_pending = false
+	var cpu := _cpu(model, "white", 105)
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_reply_leaves = 0
+	brain.opening_session.begin(&"italian_game", model.global_turn_number)
+	var thought = await cpu.think()
+	_expect(thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.target == Vector2i(4, 4), "a nonlethal damaging King ability interrupts traditional opening play")
+	_expect(thought != null and thought.search_profile.opening_book_override and thought.search_profile.selected_candidate_reason == &"king_attack", "nonlethal active-ability damage uses the shared King-attack priority")
+	_cleanup(cpu, model)
+
+
+func _test_imminent_arakne_ability_overrides_book() -> void:
+	var model := _classic_model()
+	var position := model.capture_position()
+	position.current_turn = "black"
+	for state in position.pieces:
+		if state.color == "white" and state.type_id == &"classic_king":
+			state.type_id = &"arakne_king"
+			state.coordinate = Vector2i(3, 4)
+			state.current_cooldown = 1
+			state.cooldown_reset_pending = false
+		elif state.color == "black" and state.type_id == &"knight" and state.coordinate == Vector2i(0, 6):
+			state.coordinate = Vector2i(2, 5)
+	model.load_position(position)
+	var arakne := model.get_king("white") as ArakneKing
+	arakne.initial_cooldown_turn_pending = false
+	var cpu := _cpu(model, "black", 81)
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_reply_leaves = 0
+	brain.opening_session.begin(&"english_opening", model.global_turn_number)
+	var thought = await cpu.think()
+	_expect(thought != null and thought.search_profile.opening_book_override and not thought.search_profile.opening_book_hit, "next-turn lethal Spike Burst against a minor piece overrides traditional book play")
+	_expect(thought != null and int(thought.search_profile.ability_obligation_count) >= 1 and int(thought.search_profile.ability_threat_next_turn_count) >= 1, "opening fallback reports the imminent ability-driven material obligation")
+	_cleanup(cpu, model)
 
 
 func _test_black_book_play() -> void:

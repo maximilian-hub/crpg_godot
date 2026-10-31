@@ -28,6 +28,22 @@ func active_ability_is_lethal(_action: ChessPrimaryAction, _target: ModelPiece) 
 	return false
 
 
+## Cheap, side-effect-free threat query for policy and opening safety. The
+## occupancy argument may describe a projected position whose pieces are not
+## registered with the live model. Horizon is measured in future turn entries
+## for the attacking King: 0 means ready now, 1 means ready when it next moves.
+func active_ability_threat(_model: ChessBoardModel, _king: KingPiece, _target: ModelPiece, _target_coordinate: Vector2i, _occupancy: Dictionary, _horizon: int = 0) -> Dictionary:
+	return {}
+
+
+func active_ability_ready_in_turn_entries(model: ChessBoardModel, king: KingPiece) -> int:
+	if model.active_ability_cooldowns_disabled or king.is_active_ability_ready():
+		return 0
+	if king.cooldown_reset_pending:
+		return king.base_cooldown + 1
+	return king.current_cooldown + int(king.initial_cooldown_turn_pending)
+
+
 func evaluation_bonus(_model: ChessBoardModel, _perspective: String) -> float:
 	return 0.0
 

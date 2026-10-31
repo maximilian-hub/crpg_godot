@@ -21,6 +21,8 @@ var tactical_map: DupreTacticalMap
 var exchange_analyzer
 var _projected_maps: Dictionary = {}
 var _exchange_results: Dictionary = {}
+var ability_threat_query_count := 0
+var ability_threat_query_usec := 0
 
 
 func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_tactical_map: DupreTacticalMap = null) -> void:
@@ -123,6 +125,37 @@ func is_valuable_piece_threatened(piece: ModelPiece) -> bool:
 	return not piece.is_king and _piece_value(piece) >= 5.0 and tactical_map.attack_count(piece.coordinate, _other_color(piece.color)) > 0
 
 
+func ability_threat(piece: ModelPiece, horizon: int = 0, projected: DupreTacticalMap = null) -> Dictionary:
+	var started := Time.get_ticks_usec()
+	ability_threat_query_count += 1
+	var result := _ability_threat(piece, horizon, projected)
+	ability_threat_query_usec += Time.get_ticks_usec() - started
+	return result
+
+
+func _ability_threat(piece: ModelPiece, horizon: int, projected: DupreTacticalMap) -> Dictionary:
+	if piece == null or piece.is_king:
+		return {}
+	var position := tactical_map if projected == null else projected
+	var coordinate = position.piece_coordinates.get(piece.piece_id)
+	if coordinate == null:
+		return {}
+	var projected_piece = position.occupancy.get(coordinate)
+	if not projected_piece is ModelPiece:
+		return {}
+	var enemy_king: ModelPiece = model.get_king(_other_color(piece.color))
+	if not enemy_king is KingPiece:
+		return {}
+	var layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
+	if layer == null:
+		return {}
+	return layer.active_ability_threat(model, enemy_king, projected_piece, coordinate, position.occupancy, horizon)
+
+
+func ability_threat_after(action: ChessPrimaryAction, piece: ModelPiece, horizon: int = 0) -> Dictionary:
+	return ability_threat(piece, horizon, projected_map(action))
+
+
 func projected_map(action: ChessPrimaryAction) -> DupreTacticalMap:
 	var key := "%s|%s|%s|%s" % [action.piece.piece_id, action.kind, action.target, action.path]
 	if not _projected_maps.has(key):
@@ -199,6 +232,8 @@ func projection_metrics() -> Dictionary:
 		"attack_calls": attack_calls,
 		"usec": projection_usec,
 		"exchange": exchange_analyzer.metrics(),
+		"ability_threat_queries": ability_threat_query_count,
+		"ability_threat_usec": ability_threat_query_usec,
 	}
 
 
