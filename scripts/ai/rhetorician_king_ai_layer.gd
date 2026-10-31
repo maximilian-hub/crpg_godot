@@ -29,6 +29,10 @@ func collect_ability_threats(model: ChessBoardModel, king: KingPiece, occupancy:
 	return result
 
 
+func has_ability_threat_effects() -> bool:
+	return true
+
+
 func describe_ability_action(model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is RhetoricianKing:
 		return []
@@ -59,6 +63,25 @@ func _compel_effect(model: ChessBoardModel, king: ModelPiece, compelled: ModelPi
 		effect.lethal = occupant.is_king
 	else:
 		effect.metadata = {"vacates_target": true}
+	var projected_occupancy := occupancy.duplicate()
+	projected_occupancy.erase(coordinate)
+	projected_occupancy.erase(effect.destination)
+	projected_occupancy[effect.destination] = compelled
+	var base_map := DupreTacticalMap.from_model(model).project(occupancy)
+	var projected_map := base_map.project(projected_occupancy)
+	var exposed_king: ModelPiece
+	for candidate in occupancy.values():
+		if candidate is ModelPiece and candidate.is_king and candidate.color == compelled.color:
+			exposed_king = candidate
+			break
+	if exposed_king != null:
+		var before_attackers := base_map.attack_count(exposed_king.coordinate, king.color)
+		var projected_king_coordinate = effect.destination if exposed_king == compelled else exposed_king.coordinate
+		var after_attackers := projected_map.attack_count(projected_king_coordinate, king.color)
+		if after_attackers > before_attackers:
+			effect.metadata["king_exposure"] = true
+			effect.metadata["exposed_king_id"] = exposed_king.piece_id
+			effect.metadata["king_attackers_added"] = after_attackers - before_attackers
 	return effect
 
 

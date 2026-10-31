@@ -22,11 +22,15 @@ var exchange_analyzer
 var _projected_maps: Dictionary = {}
 var _exchange_results: Dictionary = {}
 var _ability_effect_cache: Dictionary = {}
+var _action_effect_cache: Dictionary = {}
+var _action_assessment_cache: Dictionary = {}
 var ability_threat_query_count := 0
 var ability_threat_query_usec := 0
 var ability_effect_collection_count := 0
 var ability_effect_collection_usec := 0
 var ability_effect_cache_hits := 0
+var ability_action_effect_collection_count := 0
+var ability_action_effect_collection_usec := 0
 
 
 func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_tactical_map: DupreTacticalMap = null) -> void:
@@ -165,6 +169,8 @@ func ability_effects(horizon: int = 0, projected: DupreTacticalMap = null) -> Ar
 	var enemy_king: ModelPiece = model.get_king(_other_color(color))
 	if not enemy_king is KingPiece:
 		return []
+	if not position.piece_coordinates.has(enemy_king.piece_id):
+		return []
 	var key := "%s|%s|%s|%s|%s" % [position.get_instance_id(), horizon, enemy_king.piece_id, enemy_king.current_cooldown, enemy_king.cooldown_reset_pending]
 	if _ability_effect_cache.has(key):
 		ability_effect_cache_hits += 1
@@ -182,6 +188,186 @@ func ability_effects(horizon: int = 0, projected: DupreTacticalMap = null) -> Ar
 
 func ability_threat_after(action: ChessPrimaryAction, piece: ModelPiece, horizon: int = 0) -> Dictionary:
 	return ability_threat(piece, horizon, projected_map(action))
+
+
+func ability_loss_after(action: ChessPrimaryAction, piece: ModelPiece, horizon: int = 1) -> float:
+	if piece == null:
+		return 0.0
+	var position := projected_map(action)
+	for effect in ability_effects(horizon, position):
+		if effect.certainty != DupreAbilityEffect.Certainty.CERTAIN:
+			continue
+		if _effect_impacts_piece(effect, piece.piece_id) and (effect.lethal or bool(effect.metadata.get("king_exposure", false))):
+			return _piece_value(piece)
+	return 0.0
+
+
+func ability_obligations(horizon: int = 1) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var seen := {}
+	for effect in ability_effects(horizon):
+		if effect.certainty != DupreAbilityEffect.Certainty.CERTAIN or (not effect.lethal and not bool(effect.metadata.get("king_exposure", false))):
+			continue
+		for piece_id in _effect_impacted_piece_ids(effect):
+			if piece_id.is_empty() or seen.has(piece_id):
+				continue
+			var piece := _piece_by_id(tactical_map, piece_id)
+			if piece == null or piece.color != color:
+				continue
+			var value := 100.0 if piece.is_king else _piece_value(piece)
+			result.append({"piece": piece, "loss": value, "effect": effect, "ability_id": effect.ability_id})
+			seen[piece_id] = true
+	return result
+
+
+func creates_new_ability_emergency(action: ChessPrimaryAction, horizon: int = 1) -> bool:
+	var enemy_king: ModelPiece = model.get_king(_other_color(color))
+	if not enemy_king is KingPiece:
+		return false
+	var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
+	if enemy_layer == null or not enemy_layer.has_ability_threat_effects():
+		return false
+	var current_ids := {}
+	for obligation in ability_obligations(horizon):
+		current_ids[obligation.piece.piece_id] = true
+	var projected := projected_map(action)
+	for effect in ability_effects(horizon, projected):
+		if effect.certainty != DupreAbilityEffect.Certainty.CERTAIN or (not effect.lethal and not bool(effect.metadata.get("king_exposure", false))):
+			continue
+		var piece_id := _effect_impacted_piece_id(effect)
+		if current_ids.has(piece_id):
+			continue
+		var piece := _piece_by_id(projected, piece_id)
+		if piece != null and piece.color == color and (piece.is_king or _piece_value(piece) >= 3.0):
+			return true
+	return false
+
+
+func action_effects(action: ChessPrimaryAction) -> Array[DupreAbilityEffect]:
+	var key := _action_key(action)
+	if _action_effect_cache.has(key):
+		ability_effect_cache_hits += 1
+		return _action_effect_cache[key]
+	var result: Array[DupreAbilityEffect] = []
+	var started := Time.get_ticks_usec()
+	ability_action_effect_collection_count += 1
+	var own_layer = ChessKingAiRegistry.layer_for(action.piece.get_position_type_id()) if action.piece is KingPiece else null
+	if own_layer != null:
+		result.append_array(own_layer.describe_ability_action(model, action, tactical_map.occupancy))
+	var enemy_king: ModelPiece = model.get_king(_other_color(action.piece.color))
+	if enemy_king is KingPiece:
+		var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
+		if enemy_layer != null:
+			result.append_array(enemy_layer.describe_action_reactions(model, action, tactical_map.occupancy))
+	_action_effect_cache[key] = result
+	ability_action_effect_collection_usec += Time.get_ticks_usec() - started
+	return result
+
+
+func action_may_have_effects(action: ChessPrimaryAction) -> bool:
+	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.piece is KingPiece and ChessKingAiRegistry.layer_for(action.piece.get_position_type_id()) != null:
+		return true
+	var enemy_king: ModelPiece = model.get_king(_other_color(action.piece.color))
+	if not enemy_king is KingPiece:
+		return false
+	var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
+	return enemy_layer != null and enemy_layer.has_action_reaction_effects()
+
+
+func action_effect_assessment(action: ChessPrimaryAction) -> Dictionary:
+	var key := _action_key(action)
+	if _action_assessment_cache.has(key):
+		return _action_assessment_cache[key]
+	var result := {
+		"certain_value": 0.0,
+		"high_impact": false,
+		"forcing": false,
+		"requires_verification": false,
+		"uncertain": false,
+		"king_damage": 0,
+		"lethal_king": false,
+		"effect_count": 0,
+		"effects": [],
+	}
+	for effect in action_effects(action):
+		if not effect.is_valid():
+			continue
+		result.effect_count += 1
+		result.effects.append(effect.to_diagnostic())
+		if effect.certainty != DupreAbilityEffect.Certainty.CERTAIN:
+			result.uncertain = true
+			result.requires_verification = true
+			if effect.certainty == DupreAbilityEffect.Certainty.SIMULATION_REQUIRED or effect.lethal or effect.damage > 0:
+				result.high_impact = true
+			continue
+		if bool(effect.metadata.get("king_exposure", false)):
+			result.certain_value += 30.0
+			result.high_impact = true
+			result.forcing = true
+		var target := _piece_by_id(tactical_map, _effect_impacted_piece_id(effect))
+		match effect.kind:
+			DupreAbilityEffect.Kind.DAMAGE:
+				if target != null and target.color != color:
+					if target.is_king:
+						result.king_damage += effect.damage
+						result.lethal_king = result.lethal_king or effect.lethal
+						result.certain_value += 1000.0 if effect.lethal else 20.0 * maxf(1.0, effect.damage)
+						result.high_impact = true
+						result.forcing = true
+					elif effect.lethal:
+						result.certain_value += _piece_value(target)
+						result.high_impact = result.high_impact or _piece_value(target) >= 3.0
+						result.forcing = result.forcing or _piece_value(target) >= 3.0
+			DupreAbilityEffect.Kind.FORCED_MOVEMENT:
+				result.certain_value += effect.material_delta
+				result.lethal_king = result.lethal_king or effect.lethal
+				result.high_impact = result.high_impact or effect.lethal or absf(effect.material_delta) >= 3.0
+				result.forcing = result.forcing or result.high_impact
+			DupreAbilityEffect.Kind.BLOCK:
+				var removed := int(effect.metadata.get("king_attackers_removed", 0))
+				result.certain_value += float(removed) * 25.0
+				result.high_impact = result.high_impact or removed > 0
+				result.forcing = result.forcing or removed > 0
+			DupreAbilityEffect.Kind.STUN:
+				if bool(effect.metadata.get("self_stun", false)):
+					result.certain_value -= 6.0
+	_action_assessment_cache[key] = result
+	return result
+
+
+func _effect_impacts_piece(effect: DupreAbilityEffect, piece_id: String) -> bool:
+	return piece_id in _effect_impacted_piece_ids(effect)
+
+
+func _effect_impacted_piece_ids(effect: DupreAbilityEffect) -> Array[String]:
+	var result: Array[String] = []
+	var primary := _effect_impacted_piece_id(effect)
+	if not primary.is_empty():
+		result.append(primary)
+	var exposed := String(effect.metadata.get("exposed_king_id", ""))
+	if not exposed.is_empty() and exposed not in result:
+		result.append(exposed)
+	return result
+
+
+func _effect_impacted_piece_id(effect: DupreAbilityEffect) -> String:
+	if effect.kind == DupreAbilityEffect.Kind.FORCED_MOVEMENT:
+		var captured := String(effect.metadata.get("captured_piece_id", ""))
+		if not captured.is_empty():
+			return captured
+	return effect.target_piece_id
+
+
+func _piece_by_id(position: DupreTacticalMap, piece_id: String) -> ModelPiece:
+	var coordinate = position.piece_coordinates.get(piece_id)
+	if coordinate == null:
+		return null
+	var piece = position.occupancy.get(coordinate)
+	return piece if piece is ModelPiece else null
+
+
+func _action_key(action: ChessPrimaryAction) -> String:
+	return "%s|%s|%s|%s" % [action.piece.piece_id, action.kind, action.target, action.path]
 
 
 func projected_map(action: ChessPrimaryAction) -> DupreTacticalMap:
@@ -266,12 +452,16 @@ func projection_metrics() -> Dictionary:
 		"ability_effect_collection_usec": ability_effect_collection_usec,
 		"ability_effect_cache_hits": ability_effect_cache_hits,
 		"ability_effect_count": _cached_effect_count(),
+		"ability_action_effect_collections": ability_action_effect_collection_count,
+		"ability_action_effect_collection_usec": ability_action_effect_collection_usec,
 	}
 
 
 func _cached_effect_count() -> int:
 	var result := 0
 	for effects in _ability_effect_cache.values():
+		result += effects.size()
+	for effects in _action_effect_cache.values():
 		result += effects.size()
 	return result
 

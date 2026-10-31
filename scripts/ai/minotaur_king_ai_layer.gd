@@ -35,6 +35,10 @@ func collect_ability_threats(model: ChessBoardModel, king: KingPiece, occupancy:
 	return result
 
 
+func has_ability_threat_effects() -> bool:
+	return true
+
+
 func describe_ability_action(_model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is MinotaurKing:
 		return []
@@ -69,6 +73,10 @@ func describe_action_reactions(_model: ChessBoardModel, action: ChessPrimaryActi
 	effect.certainty = AbilityEffect.Certainty.SIMULATION_REQUIRED
 	effect.metadata = {"area": "adjacent_after_damage"}
 	return [effect]
+
+
+func has_action_reaction_effects() -> bool:
+	return true
 
 
 func _charge_effect(king: ModelPiece, target: ModelPiece, coordinate: Vector2i) -> DupreAbilityEffect:

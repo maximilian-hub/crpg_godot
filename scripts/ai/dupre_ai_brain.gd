@@ -141,6 +141,13 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		last_profile.selected_status = &"verified_policy_reactions" if last_profile.selected_policy_reactions > 0 else &"verified"
 		last_profile.conditional_verification = last_profile.selected_policy_reactions > 0
 		last_profile.selected_candidate_reason = safe[0].get("candidate_reason", &"policy")
+	for record in records:
+		if record.action != selected_action:
+			continue
+		var selected_assessment: Dictionary = record.get("ability_assessment", {})
+		last_profile.selected_ability_effects = selected_assessment.get("effects", [])
+		last_profile.selected_ability_requires_verification = selected_assessment.get("requires_verification", false)
+		break
 
 	var plan := ChessAiPlan.new(selected_action)
 	plan.brain_id = &"dupre"
@@ -160,6 +167,8 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 			"replies_evaluated": record.reply_scores.size(),
 			"replies_available": record.replies.size(),
 			"selected": record.action == selected_action,
+			"ability_effects": record.get("ability_assessment", {}).get("effects", []),
+			"ability_requires_verification": record.get("ability_assessment", {}).get("requires_verification", false),
 		})
 	if not diagnostics.any(func(candidate: Dictionary): return bool(candidate.get("selected", false))):
 		for record in records:
@@ -170,11 +179,13 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 				"search_score": record.score, "status": String(record.get("phase", &"not_prepared")),
 				"reason": String(record.get("candidate_reason", &"policy")),
 				"replies_evaluated": record.reply_scores.size(), "replies_available": record.replies.size(), "selected": true,
+				"ability_effects": record.get("ability_assessment", {}).get("effects", []),
+				"ability_requires_verification": record.get("ability_assessment", {}).get("requires_verification", false),
 			})
 			break
 	if diagnostics.is_empty():
 		for entry in ranked.slice(0, mini(12, ranked.size())):
-			diagnostics.append({"action": ActionCodec.describe(entry.action), "policy_score": entry.policy, "status": "not_searched", "reason": "policy"})
+			diagnostics.append({"action": ActionCodec.describe(entry.action), "policy_score": entry.policy, "status": "not_searched", "reason": "policy", "ability_effects": entry.get("ability_assessment", {}).get("effects", [])})
 	plan.candidates = diagnostics
 	return plan
 
@@ -184,6 +195,7 @@ func _new_candidate_record(entry: Dictionary) -> Dictionary:
 		"action": entry.action,
 		"policy": entry.policy,
 		"candidate_reason": entry.get("candidate_reason", &"policy"),
+		"ability_assessment": entry.get("ability_assessment", {}),
 		"screen_status": ScreenStatus.INCOMPLETE,
 		"phase": &"not_prepared",
 		"screen_bound": INF,
@@ -310,6 +322,12 @@ func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
 	var eligible: Array[Dictionary] = records.filter(func(record: Dictionary): return record.screen_status not in [ScreenStatus.INVALID, ScreenStatus.PRUNED])
 	if eligible.is_empty():
 		return {}
+	# Speculative benefits never become safe merely because the clock expired.
+	var settled: Array[Dictionary] = eligible.filter(func(record: Dictionary):
+		return not bool(record.get("ability_assessment", {}).get("requires_verification", false))
+	)
+	if not settled.is_empty():
+		eligible = settled
 	# Partial minimizing scores are optimistic upper bounds. They can explain why
 	# verification stopped, but must never outrank another fallback as if exact.
 	eligible.sort_custom(func(a: Dictionary, b: Dictionary):
@@ -326,9 +344,11 @@ func _candidate_reason_priority(reason: StringName) -> int:
 		&"immediate_win": return 6
 		&"king_safety": return 5
 		&"king_attack": return 4
+		&"ability_effect": return 4
 		&"material_obligation": return 3
 		&"capture_king_attacker": return 3
 		&"king_ability": return 2
+		&"ability_verification": return 1
 		&"favorable_capture": return 2
 		&"major_piece_defense": return 1
 	return 0
@@ -624,6 +644,7 @@ func _begin_book_profile() -> void:
 	last_profile["opening_family"] = &""
 	last_profile["opening_book_moves_played"] = 0
 	last_profile["opening_exit_reason"] = &""
+	last_profile["opening_ability_override_reason"] = &""
 	last_profile["opening_book_load_usec"] = 0
 	last_profile["opening_book_data_bytes"] = 0
 	last_profile["opening_book_family_count"] = 0
@@ -664,6 +685,12 @@ func _begin_book_profile() -> void:
 	last_profile["ability_effect_collection_usec"] = 0
 	last_profile["ability_effect_cache_hits"] = 0
 	last_profile["ability_effect_count"] = 0
+	last_profile["ability_action_effect_collection_count"] = 0
+	last_profile["ability_action_effect_collection_usec"] = 0
+	last_profile["ability_effect_candidates"] = 0
+	last_profile["ability_verification_candidates"] = 0
+	last_profile["selected_ability_effects"] = []
+	last_profile["selected_ability_requires_verification"] = false
 	last_profile["obligation_response_count"] = 0
 	last_profile["exchange_analysis_calls"] = 0
 	last_profile["exchange_analysis_usec"] = 0
@@ -725,18 +752,24 @@ func _try_opening_book(actions: Array[ChessPrimaryAction]):
 		return null
 	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
 	var matches: Array[ChessPrimaryAction] = []
+	var unsafe_book_match := false
 	for descriptor in _current_book_descriptors():
 		for action in actions:
-			if (
-				_descriptor_matches_action(descriptor, action)
-				and player._is_acceptable_primary_action(action)
-				and not policy.creates_new_king_threat(action)
-				and policy.newly_exposed_undefended_value(action) <= 0.0
-				and policy.score(action) >= -2.0
-				and action not in matches
-			):
+			if not _descriptor_matches_action(descriptor, action) or not player._is_acceptable_primary_action(action):
+				continue
+			var assessment: Dictionary = policy.action_effect_assessment(action) if policy.action_may_have_effects(action) else {}
+			if (bool(assessment.get("requires_verification", false)) and bool(assessment.get("high_impact", false))) or policy.creates_new_ability_emergency(action):
+				unsafe_book_match = true
+				continue
+			if not policy.creates_new_king_threat(action) and policy.newly_exposed_undefended_value(action) <= 0.0 and policy.score(action) >= -2.0 and action not in matches:
 				matches.append(action)
 	if matches.is_empty():
+		if unsafe_book_match:
+			last_profile.opening_book_override = true
+			last_profile.opening_book_fallback = true
+			last_profile.opening_ability_override_reason = &"uncertain_or_new_ability_danger"
+			_populate_book_profile()
+			return null
 		opening_session.leave(&"no_legal_continuation")
 		last_profile.opening_book_fallback = true
 		_populate_book_profile()
@@ -768,6 +801,12 @@ func _has_mandatory_override(actions: Array[ChessPrimaryAction]) -> bool:
 	if king == null or player.king_safety_turns_remaining > 0: return true
 	if player._king_threat_count(king, king.coordinate, player._current_board_state()) > 0: return true
 	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
+	for obligation in policy.ability_obligations(1):
+		var threatened: ModelPiece = obligation.piece
+		if threatened.is_king or _material_value(threatened) >= 3.0:
+			last_profile.opening_ability_override_reason = &"certain_ability_threat"
+			_accumulate_ability_threat_profile(policy)
+			return true
 	for row in player.model.board:
 		for piece in row:
 			if piece == null or piece.color != player.controlled_color:
@@ -775,18 +814,22 @@ func _has_mandatory_override(actions: Array[ChessPrimaryAction]) -> bool:
 			if policy.is_valuable_piece_threatened(piece):
 				_accumulate_ability_threat_profile(policy)
 				return true
-			if not piece.is_king and _material_value(piece) >= 3.0:
-				var ability_threat: Dictionary = policy.ability_threat(piece, 1)
-				if bool(ability_threat.get("lethal", false)):
-					_accumulate_ability_threat_profile(policy)
-					return true
-	_accumulate_ability_threat_profile(policy)
 	for action in actions:
+		if not player._is_acceptable_primary_action(action):
+			continue
+		var assessment: Dictionary = policy.action_effect_assessment(action) if policy.action_may_have_effects(action) else {}
+		if bool(assessment.get("high_impact", false)):
+			last_profile.opening_ability_override_reason = &"high_impact_ability_action"
+			_accumulate_ability_threat_profile(policy)
+			return true
 		if (
 			action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY
 			and player._is_acceptable_primary_action(action)
 			and (_layer_action_is_forcing(player.model, action, player.controlled_color) or policy.score(action) >= 8.0)
-		): return true
+		):
+			_accumulate_ability_threat_profile(policy)
+			return true
+	_accumulate_ability_threat_profile(policy)
 	return false
 
 
@@ -889,7 +932,12 @@ func _rank_actions(actions: Array[ChessPrimaryAction], policy) -> Array[Dictiona
 		var action := actions[index]
 		if not player._is_acceptable_primary_action(action):
 			continue
-		ranked.append({"action": action, "policy": policy.score(action), "index": index})
+		ranked.append({
+			"action": action,
+			"policy": policy.score(action),
+			"index": index,
+			"ability_assessment": policy.action_effect_assessment(action) if policy.action_may_have_effects(action) else {},
+		})
 		await _cooperate()
 	ranked.sort_custom(func(a: Dictionary, b: Dictionary):
 		if not is_equal_approx(float(a.policy), float(b.policy)):
@@ -929,6 +977,36 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			var before := selected.size()
 			_append_unique(selected, selected_keys, entry, &"king_attack")
 			if selected.size() > before: retained_king_attacks += 1
+	var retained_effects := 0
+	var verification_effects := 0
+	for entry in ranked:
+		var assessment: Dictionary = entry.get("ability_assessment", {})
+		if assessment.is_empty() or not bool(assessment.get("high_impact", false)):
+			continue
+		var reason := &"ability_verification" if bool(assessment.get("requires_verification", false)) else &"ability_effect"
+		var before := selected.size()
+		_append_unique(selected, selected_keys, entry, reason)
+		if selected.size() > before:
+			retained_effects += 1
+			if reason == &"ability_verification":
+				verification_effects += 1
+	last_profile.ability_effect_candidates = retained_effects
+	last_profile.ability_verification_candidates = verification_effects
+	for obligation in policy.ability_obligations(1):
+		if not obligation.piece.is_king:
+			continue
+		king_danger = true
+		var best_loss := float(obligation.loss)
+		var responses: Array[Dictionary] = []
+		for entry in ranked:
+			var remaining_loss: float = float(policy.ability_loss_after(entry.action, obligation.piece, 1))
+			if remaining_loss < best_loss:
+				best_loss = remaining_loss
+				responses.assign([entry])
+			elif is_equal_approx(remaining_loss, best_loss) and remaining_loss < float(obligation.loss):
+				responses.append(entry)
+		for entry in responses:
+			_append_unique(selected, selected_keys, entry, &"king_safety")
 	var obligations := _material_obligations(policy)
 	last_profile.material_obligation_count = obligations.size()
 	for obligation in obligations:
@@ -939,8 +1017,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		for entry in ranked:
 			var risk: Dictionary
 			if bool(obligation.get("ability", false)):
-				var remaining: Dictionary = policy.ability_threat_after(entry.action, obligation.piece, 1)
-				risk = {"loss": obligation.loss if bool(remaining.get("lethal", false)) else 0.0, "confidence": DupreExchangeAnalyzer.Confidence.HIGH}
+				risk = {"loss": policy.ability_loss_after(entry.action, obligation.piece, 1), "confidence": DupreExchangeAnalyzer.Confidence.HIGH}
 			else:
 				risk = policy.material_risk_after(entry.action, obligation.piece)
 			if float(risk.loss) + 0.01 < float(obligation.loss):
@@ -1002,6 +1079,26 @@ func _is_direct_king_attack(action: ChessPrimaryAction) -> bool:
 
 func _material_obligations(policy) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	var ability_piece_ids := {}
+	for obligation in policy.ability_obligations(1):
+		var threatened: ModelPiece = obligation.piece
+		if threatened.is_king or _material_value(threatened) < 3.0:
+			continue
+		result.append({
+			"piece": threatened,
+			"loss": obligation.loss,
+			"confidence": DupreExchangeAnalyzer.Confidence.HIGH,
+			"sequence": [],
+			"ability": true,
+			"ability_id": obligation.ability_id,
+			"effect": obligation.effect,
+		})
+		ability_piece_ids[threatened.piece_id] = true
+		last_profile.ability_obligation_count += 1
+		if obligation.effect.ready_in_turn_entries == 0:
+			last_profile.ability_threat_current_count += 1
+		else:
+			last_profile.ability_threat_next_turn_count += 1
 	for coordinate in policy.tactical_map.occupancy:
 		var piece = policy.tactical_map.occupancy[coordinate]
 		if not piece is ModelPiece or piece.color != player.controlled_color or piece.is_king:
@@ -1009,14 +1106,7 @@ func _material_obligations(policy) -> Array[Dictionary]:
 		var value := _material_value(piece)
 		if value < 3.0:
 			continue
-		var ability_threat: Dictionary = policy.ability_threat(piece, 1)
-		if bool(ability_threat.get("lethal", false)):
-			result.append({"piece": piece, "loss": value, "confidence": DupreExchangeAnalyzer.Confidence.HIGH, "sequence": [], "ability": true, "ability_id": ability_threat.get("ability_id", &"")})
-			last_profile.ability_obligation_count += 1
-			if int(ability_threat.get("ready_in_turn_entries", 0)) == 0:
-				last_profile.ability_threat_current_count += 1
-			else:
-				last_profile.ability_threat_next_turn_count += 1
+		if ability_piece_ids.has(piece.piece_id):
 			continue
 		var risk: Dictionary = policy.material_risk(piece)
 		var threshold := 0.01 if value >= 5.0 else SEVERE_MATERIAL_LOSS
@@ -1056,6 +1146,8 @@ func _populate_policy_profile(policy) -> void:
 	last_profile.ability_effect_collection_usec += int(metrics.get("ability_effect_collection_usec", 0))
 	last_profile.ability_effect_cache_hits += int(metrics.get("ability_effect_cache_hits", 0))
 	last_profile.ability_effect_count += int(metrics.get("ability_effect_count", 0))
+	last_profile.ability_action_effect_collection_count += int(metrics.get("ability_action_effect_collections", 0))
+	last_profile.ability_action_effect_collection_usec += int(metrics.get("ability_action_effect_collection_usec", 0))
 	last_profile.tactical_map_direct_attack_calls = _tactical_map.direct_attack_calls
 	last_profile.tactical_map_build_usec = _tactical_map.build_usec + _tactical_map.query_usec
 	last_profile.tactical_projection_count = metrics.count
@@ -1073,6 +1165,11 @@ func _populate_policy_profile(policy) -> void:
 func _accumulate_ability_threat_profile(policy) -> void:
 	last_profile.ability_threat_query_count += int(policy.ability_threat_query_count)
 	last_profile.ability_threat_query_usec += int(policy.ability_threat_query_usec)
+	last_profile.ability_effect_collection_count += int(policy.ability_effect_collection_count)
+	last_profile.ability_effect_collection_usec += int(policy.ability_effect_collection_usec)
+	last_profile.ability_effect_cache_hits += int(policy.ability_effect_cache_hits)
+	last_profile.ability_action_effect_collection_count += int(policy.ability_action_effect_collection_count)
+	last_profile.ability_action_effect_collection_usec += int(policy.ability_action_effect_collection_usec)
 
 
 func _remember_action(action: ChessPrimaryAction, origin: Vector2i = Vector2i(-1, -1)) -> void:

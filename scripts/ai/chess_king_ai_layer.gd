@@ -54,12 +54,20 @@ func collect_ability_threats(_model: ChessBoardModel, _king: KingPiece, _occupan
 	return []
 
 
+func has_ability_threat_effects() -> bool:
+	return false
+
+
 func describe_ability_action(_model: ChessBoardModel, _action: ChessPrimaryAction, _occupancy: Dictionary) -> Array[DupreAbilityEffect]:
 	return []
 
 
 func describe_action_reactions(_model: ChessBoardModel, _action: ChessPrimaryAction, _occupancy: Dictionary) -> Array[DupreAbilityEffect]:
 	return []
+
+
+func has_action_reaction_effects() -> bool:
+	return false
 
 
 func active_ability_ready_in_turn_entries(model: ChessBoardModel, king: KingPiece) -> int:

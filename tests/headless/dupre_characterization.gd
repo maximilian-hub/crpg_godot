@@ -36,6 +36,7 @@ func _ready() -> void:
 	_test_necromancer_policy_support()
 	_test_arakne_ability_threat_horizon()
 	_test_ability_effect_contract()
+	_test_ability_effect_interpretation()
 	_test_necromancer_removable_summon_policy()
 	_test_necromancer_does_not_trade_queen_for_pawn()
 	await _test_material_obligation_candidates()
@@ -443,6 +444,7 @@ func _test_minotaur_rage_collateral() -> void:
 	var thought = await cpu.think()
 	_expect(thought != null and not (thought.piece_coordinate == rook.coordinate and thought.target == minotaur.coordinate), "authoritative verification rejects a nonlethal Minotaur attack whose Rage loses the Queen")
 	_expect(thought != null and thought.search_profile.selected_status == &"verified", "Rage collateral decision is based on completed tactical verification")
+	_expect(thought != null and thought.candidates.any(func(candidate: Dictionary): return bool(candidate.get("ability_requires_verification", false))), "Rage candidate diagnostics explain that its outcome required authoritative simulation")
 	_cleanup(cpu, model)
 	await get_tree().process_frame
 
@@ -590,6 +592,62 @@ func _test_ability_effect_contract() -> void:
 
 	for archer_id in [&"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge"]:
 		_expect(not ChessKingAiRegistry.supports_dupre(archer_id), "experimental Archer variant remains outside the Dupre ability framework: %s" % archer_id)
+
+
+func _test_ability_effect_interpretation() -> void:
+	var model := _new_empty_model()
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var queen := Queen.new("white", Vector2i(3, 4))
+	var minotaur := MinotaurKing.new("black", Vector2i(4, 4))
+	for piece in [ClassicKing.new("white", Vector2i(7, 7)), rook, queen, minotaur]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var policy := DuprePolicy.new(cpu)
+	var rage_attack: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece == rook and action.target == minotaur.coordinate:
+			rage_attack = action
+			break
+	var rage_assessment: Dictionary = policy.action_effect_assessment(rage_attack) if rage_attack != null else {}
+	_expect(bool(rage_assessment.get("requires_verification", false)) and bool(rage_assessment.get("high_impact", false)) and float(rage_assessment.get("certain_value", -1.0)) == 0.0, "Minotaur Rage requests authoritative verification without receiving speculative tactical credit")
+	var quiet_action: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action != rage_attack:
+			quiet_action = action
+			break
+	var fallback_records: Array[Dictionary] = [
+		{"action": rage_attack, "policy": 100.0, "candidate_reason": &"ability_verification", "screen_status": DupreAiBrain.ScreenStatus.INCOMPLETE, "ability_assessment": rage_assessment},
+		{"action": quiet_action, "policy": 0.0, "candidate_reason": &"policy", "screen_status": DupreAiBrain.ScreenStatus.INCOMPLETE, "ability_assessment": {}},
+	]
+	var fallback = cpu.brain._best_screened_fallback(fallback_records)
+	_expect(fallback.get("action") == quiet_action, "timeout fallback prefers a settled ordinary move over an optimistic simulation-required effect")
+	_cleanup(cpu, model)
+
+	model = _new_empty_model()
+	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
+	necromancer.set_cooldown(0)
+	for piece in [necromancer, Pawn.new("white", Vector2i(6, 0)), Rook.new("black", Vector2i(0, 7)), ClassicKing.new("black", Vector2i(0, 0))]: model.add_piece(piece, piece.coordinate)
+	cpu = _add_dupre(model)
+	policy = DuprePolicy.new(cpu)
+	var blocking_summon: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and action.target == Vector2i(6, 7):
+			blocking_summon = action
+			break
+	var block_assessment: Dictionary = policy.action_effect_assessment(blocking_summon) if blocking_summon != null else {}
+	_expect(bool(block_assessment.get("high_impact", false)) and bool(block_assessment.get("forcing", false)) and float(block_assessment.get("certain_value", 0.0)) >= 25.0, "a Bone Pawn that actually blocks a King attacker becomes a certain defensive ability effect")
+	_cleanup(cpu, model)
+
+	model = _new_empty_model()
+	var white_king := ClassicKing.new("white", Vector2i(2, 0))
+	var blocker := Pawn.new("white", Vector2i(2, 2))
+	var rhetorician := RhetoricianKing.new("black", Vector2i(4, 4))
+	rhetorician.set_cooldown(0)
+	for piece in [white_king, blocker, rhetorician, Rook.new("black", Vector2i(2, 7))]: model.add_piece(piece, piece.coordinate)
+	cpu = _add_dupre(model)
+	policy = DuprePolicy.new(cpu)
+	var obligations := policy.ability_obligations(0)
+	_expect(obligations.any(func(obligation: Dictionary): return obligation.piece == white_king and bool(obligation.effect.metadata.get("king_exposure", false))), "Compel recognizes moving a blocker away as a certain King-exposure emergency")
+	_cleanup(cpu, model)
 
 
 func _test_necromancer_removable_summon_policy() -> void:

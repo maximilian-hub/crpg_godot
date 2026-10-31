@@ -43,6 +43,10 @@ func collect_ability_threats(model: ChessBoardModel, king: KingPiece, occupancy:
 	return result
 
 
+func has_ability_threat_effects() -> bool:
+	return true
+
+
 func describe_ability_action(model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is ArakneKing:
 		return []
