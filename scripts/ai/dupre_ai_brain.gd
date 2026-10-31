@@ -562,8 +562,29 @@ func choose_reaction_target(model: ChessBoardModel, calling_piece: ModelPiece, a
 	return best_target
 
 
+func choose_movement_type_grant(model: ChessBoardModel, king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName]):
+	var layer = KingAiRegistry.layer_for(king.get_position_type_id())
+	if layer == null:
+		return null
+	var choice: StringName = layer.choose_movement_type_grant(model, king, target, options)
+	return choice if choice != &"" else null
+
+
 func _execute_dupre_descriptor(simulation: ChessBoardModel, descriptor: Dictionary) -> Dictionary:
+	var descriptor_piece: ModelPiece = simulation.find_piece_by_id(descriptor.piece_id)
+	var secondary_selection_expected: bool = int(descriptor.kind) == ChessPrimaryAction.Kind.ACTIVE_ABILITY and descriptor_piece is QuarterlyInitiativeKing
+	var secondary_resolver := func(king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName]):
+		var choice = choose_movement_type_grant(simulation, king, target, options)
+		if choice is StringName and choice in options:
+			simulation.call_deferred("submit_movement_type_grant", choice)
+	simulation.movement_type_selection_requested.connect(secondary_resolver)
 	var accepted := await super._execute_descriptor(simulation, descriptor)
+	if simulation.movement_type_selection_requested.is_connected(secondary_resolver):
+		simulation.movement_type_selection_requested.disconnect(secondary_resolver)
+	# The model's awaited action resumes inside the deferred signal submitter.
+	# Leave that call stack before callers are allowed to destroy the simulation.
+	if secondary_selection_expected:
+		await player.get_tree().process_frame
 	if not accepted:
 		return {"status": ExecutionStatus.INVALID, "policy_reactions": 0}
 	var reaction_count := 0
@@ -677,6 +698,7 @@ func _begin_book_profile() -> void:
 	last_profile["danger_class"] = &"quiet"
 	last_profile["material_obligation_count"] = 0
 	last_profile["ability_obligation_count"] = 0
+	last_profile["scheduled_hazard_obligation_count"] = 0
 	last_profile["ability_threat_current_count"] = 0
 	last_profile["ability_threat_next_turn_count"] = 0
 	last_profile["ability_threat_query_count"] = 0
@@ -805,6 +827,11 @@ func _has_mandatory_override(actions: Array[ChessPrimaryAction]) -> bool:
 		var threatened: ModelPiece = obligation.piece
 		if threatened.is_king or _material_value(threatened) >= 3.0:
 			last_profile.opening_ability_override_reason = &"certain_ability_threat"
+			_accumulate_ability_threat_profile(policy)
+			return true
+	for obligation in policy.scheduled_hazard_obligations(1):
+		if obligation.piece.is_king or _material_value(obligation.piece) >= 3.0:
+			last_profile.opening_ability_override_reason = &"imminent_scheduled_hazard"
 			_accumulate_ability_threat_profile(policy)
 			return true
 	for row in player.model.board:
@@ -1007,6 +1034,22 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 				responses.append(entry)
 		for entry in responses:
 			_append_unique(selected, selected_keys, entry, &"king_safety")
+	var hazard_obligations: Array = policy.scheduled_hazard_obligations(1)
+	last_profile.scheduled_hazard_obligation_count = hazard_obligations.size()
+	for obligation in hazard_obligations:
+		var best_hazard_loss := float(obligation.loss)
+		var hazard_responses: Array[Dictionary] = []
+		for entry in ranked:
+			var remaining_hazard_loss := float(policy.scheduled_hazard_loss_after(entry.action, obligation))
+			if remaining_hazard_loss < best_hazard_loss:
+				best_hazard_loss = remaining_hazard_loss
+				hazard_responses.assign([entry])
+			elif is_equal_approx(remaining_hazard_loss, best_hazard_loss) and remaining_hazard_loss < float(obligation.loss):
+				hazard_responses.append(entry)
+		for entry in hazard_responses:
+			_append_unique(selected, selected_keys, entry, &"scheduled_hazard")
+		if obligation.piece.is_king:
+			king_danger = true
 	var obligations := _material_obligations(policy)
 	last_profile.material_obligation_count = obligations.size()
 	for obligation in obligations:
@@ -1055,7 +1098,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		else:
 			last_profile.forcing_ability_deferred += 1
 	last_profile.forcing_ability_retained = retained_forcing
-	if king_danger or not obligations.is_empty():
+	if king_danger or not obligations.is_empty() or not hazard_obligations.is_empty():
 		last_profile.danger_class = &"critical"
 	elif retained_forcing > 0 or selected.size() > 0:
 		last_profile.danger_class = &"tactical"

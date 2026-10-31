@@ -220,6 +220,42 @@ func ability_obligations(horizon: int = 1) -> Array[Dictionary]:
 	return result
 
 
+## Pending autonomous hazards are board state rather than a fresh King threat.
+## Keep them separate so a mortar remains visible even if its source has died.
+func scheduled_hazard_obligations(max_rounds_remaining: int = 1) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for entity in model.autonomous_entities:
+		if entity.type_id != &"arc_mortar":
+			continue
+		var landing_turn := int(entity.custom_state.get("landing_turn", model.global_turn_number + CannonKing.ARC_MORTAR_DELAY_ROUNDS))
+		var rounds_remaining := maxi(1, landing_turn - model.global_turn_number)
+		if rounds_remaining > max_rounds_remaining:
+			continue
+		var area: Array = model.get_mortar_area(entity.coordinate)
+		for coordinate in area:
+			var piece = tactical_map.occupancy.get(coordinate)
+			if not piece is ModelPiece or piece.color != color:
+				continue
+			var loss := 100.0 if piece.is_king else _piece_value(piece)
+			if not piece.is_king and loss < 3.0:
+				continue
+			if piece.current_hp <= CannonKing.ARC_MORTAR_DAMAGE:
+				loss *= 1.5
+			result.append({"piece": piece, "loss": loss, "area": area, "entity_id": entity.entity_id, "rounds_remaining": rounds_remaining})
+	return result
+
+
+func scheduled_hazard_loss_after(action: ChessPrimaryAction, obligation: Dictionary) -> float:
+	var piece: ModelPiece = obligation.get("piece")
+	if piece == null:
+		return 0.0
+	var projected := projected_map(action)
+	var coordinate = projected.piece_coordinates.get(piece.piece_id)
+	if coordinate == null or coordinate not in obligation.get("area", []):
+		return 0.0
+	return float(obligation.get("loss", 0.0))
+
+
 func creates_new_ability_emergency(action: ChessPrimaryAction, horizon: int = 1) -> bool:
 	var enemy_king: ModelPiece = model.get_king(_other_color(color))
 	if not enemy_king is KingPiece:
@@ -297,7 +333,7 @@ func action_effect_assessment(action: ChessPrimaryAction) -> Dictionary:
 		if effect.certainty != DupreAbilityEffect.Certainty.CERTAIN:
 			result.uncertain = true
 			result.requires_verification = true
-			if effect.certainty == DupreAbilityEffect.Certainty.SIMULATION_REQUIRED or effect.lethal or effect.damage > 0:
+			if effect.certainty == DupreAbilityEffect.Certainty.SIMULATION_REQUIRED or effect.lethal or effect.damage > 0 or bool(effect.metadata.get("high_impact", false)):
 				result.high_impact = true
 			continue
 		if bool(effect.metadata.get("king_exposure", false)):
@@ -331,6 +367,10 @@ func action_effect_assessment(action: ChessPrimaryAction) -> Dictionary:
 			DupreAbilityEffect.Kind.STUN:
 				if bool(effect.metadata.get("self_stun", false)):
 					result.certain_value -= 6.0
+			DupreAbilityEffect.Kind.MOVEMENT_GRANT:
+				result.certain_value += effect.material_delta
+				result.high_impact = bool(effect.metadata.get("high_impact", false))
+				result.forcing = result.high_impact
 	_action_assessment_cache[key] = result
 	return result
 

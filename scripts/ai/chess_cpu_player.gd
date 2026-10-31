@@ -5,19 +5,13 @@ const ChessAiThoughtData = preload("res://scripts/ai/chess_ai_thought.gd")
 const RyckBrain = preload("res://scripts/ai/ryck_ai_brain.gd")
 const LeMayBrain = preload("res://scripts/ai/lemay_ai_brain.gd")
 const DupreBrain = preload("res://scripts/ai/dupre_ai_brain.gd")
+const QuarterlyPolicy = preload("res://scripts/ai/quarterly_initiative_ai_policy.gd")
 
 const RHETORICIAN_CLOSE_THREAT_REWARD := 12.0
 const RHETORICIAN_BACK_UP_PENALTY := 16.0
 const RHETORICIAN_PULL_THREAT_REWARD := 14.0
 const RHETORICIAN_PULL_ALLY_ATTACK_BONUS := 8.0
 const RHETORICIAN_KNIGHT_CAPTURE_BONUS := 5.0
-const QUARTERLY_FREE_CYCLE_REWARD := 24.0
-const QUARTERLY_OFF_CYCLE_COST := 12.0
-const QUARTERLY_MIN_HP_SACRIFICE_ROUND := 15
-const QUARTERLY_PAWN_UPGRADE_REWARD := 8.0
-const QUARTERLY_QUEEN_HYBRID_REWARD := 11.0
-const QUARTERLY_UNPROTECTED_TARGET_REWARD := 12.0
-const QUARTERLY_KING_TARGET_REWARD := 40.0
 const MORTAR_DISTANT_URGENCY := 2.0
 const MORTAR_NEAR_URGENCY := 8.0
 const MORTAR_IMMINENT_URGENCY := 40.0
@@ -265,14 +259,8 @@ func _is_acceptable_primary_action(action: ChessPrimaryAction) -> bool:
 		return not _is_doomed_bone_pawn_square(action.piece.color, action.target)
 	if action.piece is QuarterlyInitiativeKing:
 		var quarterly := action.piece as QuarterlyInitiativeKing
-		if model.global_turn_number % 4 != 0:
-			if model.global_turn_number < QUARTERLY_MIN_HP_SACRIFICE_ROUND or quarterly.current_hp <= 2:
-				return false
 		var recipient: ModelPiece = model.board[action.target.x][action.target.y]
-		if recipient == null:
-			return false
-		var options := _quarterly_options_for_current_cycle(recipient, [&"pawn", &"knight", &"bishop", &"rook"])
-		return _best_quarterly_grant(recipient, options).score > -INF
+		return QuarterlyPolicy.action_is_available(model, quarterly, recipient, [&"pawn", &"knight", &"bishop", &"rook"])
 	return true
 
 
@@ -342,103 +330,35 @@ func _arc_mortar_exposure(board: Dictionary) -> float:
 
 
 func _score_quarterly_action(recipient: ModelPiece) -> float:
-	var options := _quarterly_options_for_current_cycle(recipient, [&"pawn", &"knight", &"bishop", &"rook"])
-	var best := _best_quarterly_grant(recipient, options)
-	if float(best.score) == -INF:
-		return -INF
-	var cycle_score := QUARTERLY_FREE_CYCLE_REWARD if model.global_turn_number % 4 == 0 else -QUARTERLY_OFF_CYCLE_COST
-	return cycle_score + float(best.score)
+	return QuarterlyPolicy.action_score(model, recipient, [&"pawn", &"knight", &"bishop", &"rook"])
 
 
 func _quarterly_options_for_current_cycle(recipient: ModelPiece, options: Array) -> Array:
-	if model.global_turn_number % 4 == 0:
-		return options
-	return _quarterly_sacrifice_worthy_options(recipient, options)
+	return QuarterlyPolicy.eligible_options(model, recipient, options)
 
 
 func _quarterly_sacrifice_worthy_options(recipient: ModelPiece, options: Array) -> Array[StringName]:
 	var worthy: Array[StringName] = []
-	for raw_option in options:
-		var option := StringName(raw_option)
-		if _quarterly_grant_is_sacrifice_worthy(recipient, option):
-			worthy.append(option)
+	for option in options:
+		if QuarterlyPolicy.grant_is_sacrifice_worthy(model, recipient, StringName(option)):
+			worthy.append(StringName(option))
 	return worthy
 
 
 func _quarterly_grant_is_sacrifice_worthy(recipient: ModelPiece, movement_type: StringName) -> bool:
-	if _quarterly_grant_is_redundant(recipient, movement_type):
-		return false
-	var native_moves: Array = recipient.get_legal_moves()
-	var board := _current_board_state()
-	var qualifying_fork_targets := 0
-	for destination in model._get_moves_as(recipient, movement_type):
-		if destination in native_moves:
-			continue
-		var target: ModelPiece = model.board[destination.x][destination.y]
-		if target == null or target.color == recipient.color:
-			continue
-		if target.is_king:
-			return true
-		if target.type in ["queen", "rook"] or (target.type in ["bishop", "knight"] and not _piece_is_protected(target, board)):
-			qualifying_fork_targets += 1
-			if qualifying_fork_targets >= 2:
-				return true
-	return false
+	return QuarterlyPolicy.grant_is_sacrifice_worthy(model, recipient, movement_type)
 
 
 func _best_quarterly_grant(recipient: ModelPiece, options: Array) -> Dictionary:
-	var best_score := -INF
-	var best_options: Array[StringName] = []
-	for raw_option in options:
-		var option := StringName(raw_option)
-		var score := _score_quarterly_grant(recipient, option)
-		if score > best_score:
-			best_score = score
-			best_options.assign([option])
-		elif is_equal_approx(score, best_score):
-			best_options.append(option)
-	return {"score": best_score, "options": best_options}
+	return QuarterlyPolicy.best_grant(model, recipient, options)
 
 
 func _score_quarterly_grant(recipient: ModelPiece, movement_type: StringName) -> float:
-	if _quarterly_grant_is_redundant(recipient, movement_type):
-		return -INF
-	var score := 1.0
-	if recipient.type == "pawn":
-		score += QUARTERLY_PAWN_UPGRADE_REWARD
-	elif (recipient.type == "rook" and movement_type == &"bishop") or (recipient.type == "bishop" and movement_type == &"rook"):
-		score += QUARTERLY_QUEEN_HYBRID_REWARD
-
-	var native_moves: Array = recipient.get_legal_moves()
-	var board := _current_board_state()
-	for destination in model._get_moves_as(recipient, movement_type):
-		if destination in native_moves:
-			continue
-		var target: ModelPiece = model.board[destination.x][destination.y]
-		if target == null or target.color == recipient.color:
-			continue
-		if target.is_king:
-			score += QUARTERLY_KING_TARGET_REWARD
-		elif not _piece_is_protected(target, board):
-			score += QUARTERLY_UNPROTECTED_TARGET_REWARD + _get_piece_value(target)
-		else:
-			score += _get_piece_value(target) * 0.5
-	return score
+	return QuarterlyPolicy.score_grant(model, recipient, movement_type)
 
 
 func _quarterly_grant_is_redundant(recipient: ModelPiece, movement_type: StringName) -> bool:
-	if movement_type in recipient.granted_movement_types:
-		return true
-	match movement_type:
-		&"pawn":
-			return recipient.type == "pawn"
-		&"knight":
-			return recipient.type == "knight"
-		&"bishop":
-			return recipient.type in ["bishop", "queen"]
-		&"rook":
-			return recipient.type in ["rook", "queen"]
-	return true
+	return QuarterlyPolicy.is_redundant(recipient, movement_type)
 
 
 func _piece_is_protected(piece: ModelPiece, board: Dictionary) -> bool:
@@ -787,6 +707,11 @@ func _on_reaction_selection_requested(calling_piece: ModelPiece, _action_type: S
 func _on_movement_type_selection_requested(king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName]) -> void:
 	if execution_mode == ExecutionMode.DISABLED or king.color != controlled_color or options.is_empty():
 		return
+	if brain != null:
+		var brain_choice = brain.choose_movement_type_grant(model, king, target, options)
+		if brain_choice is StringName and brain_choice in options:
+			call_deferred("_submit_movement_type_choice", brain_choice)
+			return
 	var eligible_options := _quarterly_options_for_current_cycle(target, options)
 	var best := _best_quarterly_grant(target, eligible_options)
 	var best_options: Array = best.options

@@ -8,13 +8,17 @@ func _ready() -> void:
 	var minotaur := await _benchmark(&"minotaur")
 	var rhetorician := await _benchmark(&"rhetorician")
 	var necromancer := await _benchmark(&"necromancer")
+	var quarterly := await _benchmark(&"quarterly")
+	var cannon := await _benchmark(&"cannon")
 	print("DUPRE SPECIAL KING PERFORMANCE: ", JSON.stringify({
 		"classic": classic,
 		"minotaur": minotaur,
 		"rhetorician": rhetorician,
 		"necromancer": necromancer,
+		"quarterly": quarterly,
+		"cannon": cannon,
 	}))
-	for result in [classic, minotaur, rhetorician, necromancer]:
+	for result in [classic, minotaur, rhetorician, necromancer, quarterly, cannon]:
 		if not bool(result.get("produced_action", false)):
 			failures.append(String(result.label) + " produced no action")
 		if int(result.get("invalid_root_candidates", 0)) > 0:
@@ -32,6 +36,7 @@ func _ready() -> void:
 
 
 func _benchmark(kind: StringName) -> Dictionary:
+	print("DUPRE SPECIAL KING BENCHMARK START: ", kind)
 	var model := _position(kind)
 	add_child(model)
 	var cpu := ChessCpuPlayer.new()
@@ -48,6 +53,7 @@ func _benchmark(kind: StringName) -> Dictionary:
 	profile["label"] = kind
 	profile["elapsed_usec"] = elapsed
 	profile["produced_action"] = thought != null
+	print("DUPRE SPECIAL KING BENCHMARK END: ", kind, " (", elapsed, " usec)")
 	cpu.queue_free(); model.queue_free()
 	await get_tree().process_frame
 	return profile
@@ -72,6 +78,13 @@ func _position(kind: StringName) -> ChessBoardModel:
 			white_king.set_cooldown(0)
 		&"necromancer":
 			white_king = NecromancerKing.new("white", Vector2i(7, 4))
+			white_king.set_cooldown(0)
+		&"quarterly":
+			white_king = QuarterlyInitiativeKing.new("white", Vector2i(7, 4))
+			white_king.set_cooldown(0)
+			model.global_turn_number = 4
+		&"cannon":
+			white_king = CannonKing.new("white", Vector2i(7, 4))
 			white_king.set_cooldown(0)
 		_:
 			white_king = ClassicKing.new("white", Vector2i(7, 4))

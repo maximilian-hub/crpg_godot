@@ -2,7 +2,7 @@ extends RefCounted
 class_name DupreAbilityEffect
 
 enum Trigger { ACTIVE, REACTION, SCHEDULED }
-enum Kind { DAMAGE, FORCED_MOVEMENT, DISPLACEMENT, STUN, SUMMON, BLOCK }
+enum Kind { DAMAGE, FORCED_MOVEMENT, DISPLACEMENT, STUN, SUMMON, BLOCK, MOVEMENT_GRANT, AREA_HAZARD }
 enum Certainty { CERTAIN, CONDITIONAL, SIMULATION_REQUIRED }
 
 var source_piece_id := ""

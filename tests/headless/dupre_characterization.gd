@@ -45,6 +45,8 @@ func _ready() -> void:
 	await _test_game3_king_damage_outranks_summon()
 	_test_necromancer_reaction_policy()
 	await _test_necromancer_simulation_settles_reaction()
+	await _test_quarterly_simulation_secondary_choice()
+	_test_cannon_policy_and_hazard_support()
 	_test_brain_specific_king_support()
 	if failures.is_empty():
 		print("DUPRE CHARACTERIZATION: PASS (", checks, " checks)")
@@ -853,11 +855,74 @@ func _test_necromancer_simulation_settles_reaction() -> void:
 	await get_tree().process_frame
 
 
+func _test_quarterly_simulation_secondary_choice() -> void:
+	var model := _new_empty_model()
+	model.global_turn_number = 4
+	var quarterly := QuarterlyInitiativeKing.new("white", Vector2i(7, 7))
+	var rook := Rook.new("white", Vector2i(5, 5))
+	quarterly.set_cooldown(0)
+	for piece in [quarterly, rook, ClassicKing.new("black", Vector2i(0, 0))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain._begin_profile(1)
+	brain._begin_book_profile()
+	var action: ChessPrimaryAction
+	for candidate in model.get_legal_primary_actions("white"):
+		if candidate.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and candidate.target == rook.coordinate:
+			action = candidate
+			break
+	var simulation := await brain._make_model(model.capture_position())
+	var execution := await brain._execute_dupre_descriptor(simulation, brain._describe_action(action)) if simulation != null and action != null else {"status": DupreAiBrain.ExecutionStatus.INVALID}
+	var simulated_rook: ModelPiece = simulation.find_piece_by_id(rook.piece_id) if simulation != null else null
+	_expect(execution.status == DupreAiBrain.ExecutionStatus.COMPLETED and simulated_rook != null and &"bishop" in simulated_rook.granted_movement_types, "Dupre simulations settle Quarterly's secondary selection with the intended movement grant")
+	_expect(cpu.brain.choose_movement_type_grant(model, quarterly, rook, [&"pawn", &"knight", &"bishop", &"rook"]) == &"bishop", "Dupre's live Quarterly selection matches its deterministic simulated selection")
+	if simulation != null: brain._free_model(simulation)
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_cannon_policy_and_hazard_support() -> void:
+	var model := _new_empty_model()
+	var cannon := CannonKing.new("white", Vector2i(7, 7))
+	cannon.set_cooldown(0)
+	var enemy_king := ClassicKing.new("black", Vector2i(2, 2))
+	var enemy_rook := Rook.new("black", Vector2i(2, 3))
+	var friendly_queen := Queen.new("white", Vector2i(5, 5))
+	for piece in [cannon, enemy_king, enemy_rook, friendly_queen]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var layer = ChessKingAiRegistry.layer_for(&"cannon_king")
+	var valuable_shot: ChessPrimaryAction
+	var friendly_shot: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY: continue
+		if action.target == Vector2i(2, 2): valuable_shot = action
+		if action.target == Vector2i(5, 5): friendly_shot = action
+	_expect(valuable_shot != null and friendly_shot != null and layer.action_policy_bonus(model, valuable_shot, "white") > layer.action_policy_bonus(model, friendly_shot, "white"), "Cannon policy prefers delayed King-and-Rook pressure over friendly-fire exposure")
+	var effects: Array[DupreAbilityEffect] = layer.describe_ability_action(model, valuable_shot, DupreTacticalMap.from_model(model).occupancy)
+	_expect(effects.size() == 1 and effects[0].kind == DupreAbilityEffect.Kind.AREA_HAZARD and effects[0].certainty == DupreAbilityEffect.Certainty.CONDITIONAL, "Arc Mortar is described as a conditional scheduled area hazard, not guaranteed damage")
+	var mortar := ChessAutonomousEntityState.new()
+	mortar.entity_id = "test_mortar"
+	mortar.type_id = &"arc_mortar"
+	mortar.owner_color = "black"
+	mortar.coordinate = Vector2i(5, 5)
+	mortar.custom_state["landing_turn"] = model.global_turn_number + 1
+	model.autonomous_entities.append(mortar)
+	var policy := DuprePolicy.new(cpu)
+	var obligations := policy.scheduled_hazard_obligations(1)
+	_expect(obligations.any(func(obligation): return obligation.piece == friendly_queen), "an imminent mortar retains evacuation of an exposed major piece as a tactical obligation")
+	_cleanup(cpu, model)
+
+
 func _test_brain_specific_king_support() -> void:
 	var model := _new_empty_model()
 	for piece in [MinotaurKing.new("white", Vector2i(7, 7)), RhetoricianKing.new("black", Vector2i(0, 0))]: model.add_piece(piece, piece.coordinate)
 	_expect(DupreAiBrain.unsupported_king_ids(model).is_empty(), "Dupre supports enhanced Minotaur and Rhetorician layers on either side")
 	_expect(LeMayAiBrain.unsupported_king_ids(model).size() == 2, "enabling enhanced Dupre layers does not silently broaden LeMay support")
+	model.free()
+	model = _new_empty_model()
+	for piece in [QuarterlyInitiativeKing.new("white", Vector2i(7, 7)), CannonKing.new("black", Vector2i(0, 0))]: model.add_piece(piece, piece.coordinate)
+	_expect(DupreAiBrain.unsupported_king_ids(model).is_empty(), "Dupre supports Quarterly Initiative and Cannon Kings on either side")
+	_expect(LeMayAiBrain.unsupported_king_ids(model).size() == 2, "Quarterly and Cannon support remains scoped to Dupre")
 	model.free()
 
 

@@ -70,6 +70,10 @@ func has_action_reaction_effects() -> bool:
 	return false
 
 
+func choose_movement_type_grant(_model: ChessBoardModel, _king: QuarterlyInitiativeKing, _target: ModelPiece, _options: Array[StringName]) -> StringName:
+	return &""
+
+
 func active_ability_ready_in_turn_entries(model: ChessBoardModel, king: KingPiece) -> int:
 	if model.active_ability_cooldowns_disabled or king.is_active_ability_ready():
 		return 0
