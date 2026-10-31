@@ -5,6 +5,7 @@ var failures: Array[String] = []
 
 func _ready() -> void:
 	var classic := await _benchmark(&"classic")
+	var arakne := await _benchmark(&"arakne")
 	var minotaur := await _benchmark(&"minotaur")
 	var rhetorician := await _benchmark(&"rhetorician")
 	var necromancer := await _benchmark(&"necromancer")
@@ -12,13 +13,14 @@ func _ready() -> void:
 	var cannon := await _benchmark(&"cannon")
 	print("DUPRE SPECIAL KING PERFORMANCE: ", JSON.stringify({
 		"classic": classic,
+		"arakne": arakne,
 		"minotaur": minotaur,
 		"rhetorician": rhetorician,
 		"necromancer": necromancer,
 		"quarterly": quarterly,
 		"cannon": cannon,
 	}))
-	for result in [classic, minotaur, rhetorician, necromancer, quarterly, cannon]:
+	for result in [classic, arakne, minotaur, rhetorician, necromancer, quarterly, cannon]:
 		if not bool(result.get("produced_action", false)):
 			failures.append(String(result.label) + " produced no action")
 		if int(result.get("invalid_root_candidates", 0)) > 0:
@@ -27,6 +29,10 @@ func _ready() -> void:
 			failures.append(String(result.label) + " exceeded the configured search budget by more than scheduling tolerance")
 	if int(minotaur.get("exact_root_candidates", 0)) < 1 or bool(minotaur.get("fallback_used", true)):
 		failures.append("crowded Minotaur benchmark did not establish an exact candidate before timeout")
+	if int(quarterly.get("quiescence_ability_action_count", -1)) != 0:
+		failures.append("Quarterly positional grant leaked into tactical quiescence")
+	if int(cannon.get("quiescence_ability_action_count", -1)) != 0:
+		failures.append("Cannon scheduled hazard leaked into tactical quiescence")
 	if failures.is_empty():
 		print("DUPRE SPECIAL KING PERFORMANCE: PASS")
 		get_tree().quit(0)
@@ -70,6 +76,9 @@ func _position(kind: StringName) -> ChessBoardModel:
 	for _row in range(8): model.board.append([null, null, null, null, null, null, null, null])
 	var white_king: KingPiece
 	match kind:
+		&"arakne":
+			white_king = ArakneKing.new("white", Vector2i(7, 4))
+			white_king.set_cooldown(0)
 		&"minotaur":
 			white_king = MinotaurKing.new("white", Vector2i(7, 4))
 			white_king.set_cooldown(0)

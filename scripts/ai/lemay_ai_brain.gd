@@ -23,6 +23,9 @@ var max_reply_leaves := DEFAULT_MAX_REPLY_LEAVES
 var think_budget_msec := DEFAULT_THINK_BUDGET_MSEC
 var compute_slice_usec := DEFAULT_COMPUTE_SLICE_USEC
 var alpha_beta_enabled := true
+## Investigation switch. Production keeps the defensive copy until the source
+## position's immutability has been characterized across every supported King.
+var copy_position_before_load := true
 var last_profile: Dictionary = {}
 
 var _search_started_usec := 0
@@ -316,12 +319,19 @@ func _make_model(position: ChessPosition) -> ChessBoardModel:
 	var started := Time.get_ticks_usec()
 	var simulation := ChessBoardModel.new()
 	simulation.diagnostic_logging_enabled = false
+	simulation.startup_mode = ChessBoardModel.StartupMode.EMPTY
 	player.add_child(simulation)
 	last_profile.model_construction_count += 1
+	last_profile.simulation_startup_piece_count += simulation.owned_piece_registration_count
 	_record_phase(&"model_construction_usec", started)
 	simulation.forced_pass_delay_seconds = 0.0
 	started = Time.get_ticks_usec()
-	var loaded := simulation.load_position(position.copy())
+	var copy_started := Time.get_ticks_usec()
+	var load_source: ChessPosition = position.copy() if copy_position_before_load else position
+	last_profile.position_copy_count += int(copy_position_before_load)
+	_record_phase(&"position_copy_usec", copy_started)
+	started = Time.get_ticks_usec()
+	var loaded := simulation.load_position(load_source)
 	last_profile.position_load_count += 1
 	_record_phase(&"position_load_usec", started)
 	await _cooperate()
@@ -333,6 +343,12 @@ func _make_model(position: ChessPosition) -> ChessBoardModel:
 
 func _free_model(simulation: ChessBoardModel) -> void:
 	var started := Time.get_ticks_usec()
+	var registered := simulation.owned_piece_registration_count
+	var disposed := simulation.dispose_owned_state()
+	last_profile.simulation_piece_registration_count += registered
+	last_profile.simulation_piece_disposal_count += disposed
+	_record_phase(&"simulation_cleanup_usec", started)
+	started = Time.get_ticks_usec()
 	simulation.free()
 	last_profile.model_destruction_count += 1
 	_record_phase(&"model_destruction_usec", started)
@@ -348,6 +364,10 @@ func _begin_profile(root_action_count: int) -> void:
 		"model_construction_count": 0,
 		"model_destruction_count": 0,
 		"position_load_count": 0,
+		"position_copy_count": 0,
+		"simulation_startup_piece_count": 0,
+		"simulation_piece_registration_count": 0,
+		"simulation_piece_disposal_count": 0,
 		"legal_action_generation_count": 0,
 		"evaluation_count": 0,
 		"exact_root_candidates": 0,
@@ -362,6 +382,8 @@ func _begin_profile(root_action_count: int) -> void:
 		"model_construction_usec": 0,
 		"model_destruction_usec": 0,
 		"position_load_usec": 0,
+		"position_copy_usec": 0,
+		"simulation_cleanup_usec": 0,
 		"position_capture_usec": 0,
 		"action_execution_usec": 0,
 		"legal_action_generation_usec": 0,
@@ -371,6 +393,7 @@ func _begin_profile(root_action_count: int) -> void:
 		"maximum_model_construction_usec": 0,
 		"maximum_model_destruction_usec": 0,
 		"maximum_position_load_usec": 0,
+		"maximum_position_copy_usec": 0,
 		"maximum_position_capture_usec": 0,
 		"maximum_action_execution_usec": 0,
 		"maximum_legal_action_generation_usec": 0,

@@ -2,6 +2,8 @@
 extends Node
 class_name ChessBoardModel
 
+enum StartupMode { DEFAULT_BATTLE, EMPTY }
+
 const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_ability_presentation_context.gd")
 const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
 const ArcherKing := preload("res://scripts/pieces/archer_king.gd")
@@ -15,6 +17,15 @@ const ActionCodec := preload("res://scripts/state/chess_action_codec.gd")
 
 const BOARD_TYPE = "default"
 var board: Array = []
+## DEFAULT_BATTLE preserves the live-game contract. Disposable search models set
+## this before entering the SceneTree, then install an explicit ChessPosition.
+var startup_mode := StartupMode.DEFAULT_BATTLE
+## ModelPiece Nodes are not SceneTree children, so the model must retain and
+## release them explicitly. Destroyed pieces remain owned until replacement or
+## disposal because presentation and reactions may still refer to them.
+var _owned_pieces: Dictionary = {}
+var owned_piece_registration_count := 0
+var owned_piece_disposal_count := 0
 var last_move: Dictionary = {}		# from, to, piecename
 var last_destroyed_piece: ModelPiece		
 var current_turn: String = "white"	# can be white or black
@@ -130,7 +141,13 @@ var custom_size = 16
 func _ready():
 	_lunacy_rng.randomize()
 	_archer_volley_rng.randomize()
-	initialize_battle()
+	if startup_mode == StartupMode.DEFAULT_BATTLE:
+		initialize_battle()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		dispose_owned_state()
 
 func initialize_battle() -> bool:
 	if is_initialized:
@@ -200,16 +217,14 @@ func load_position(position: ChessPosition) -> bool:
 	for state in position.pieces:
 		var piece := ChessPieceCatalog.create_piece(state.type_id, state.color, state.coordinate)
 		if piece == null:
+			for partial: ModelPiece in created:
+				if is_instance_valid(partial): partial.free()
 			return false
 		piece.restore_piece_state(state)
 		_reserve_state_id(piece.piece_id)
 		replacement[state.coordinate.x][state.coordinate.y] = piece
 		created.append(piece)
-	for row in board:
-		for old_piece in row:
-			if old_piece != null:
-				unregister_piece(old_piece)
-				old_piece.free()
+	_dispose_owned_pieces()
 	board = replacement
 	tile_effects.clear()
 	for effect in position.tile_effects: tile_effects.append(effect.copy())
@@ -346,6 +361,10 @@ func inject_dependencies(piece: ModelPiece):
 	if piece.piece_id.is_empty():
 		piece.piece_id = _allocate_state_id("piece")
 	piece.model = self
+	var instance_id := piece.get_instance_id()
+	if not _owned_pieces.has(instance_id):
+		_owned_pieces[instance_id] = piece
+		owned_piece_registration_count += 1
 
 	var turn_callback := Callable(piece, "_on_turn_changed")
 	var death_callback := Callable(piece, "_on_piece_destroyed")
@@ -382,6 +401,44 @@ func unregister_piece(piece: ModelPiece) -> void:
 		disconnect("turn_changed", turn_callback)
 	if is_connected("piece_destroyed", death_callback):
 		disconnect("piece_destroyed", death_callback)
+
+
+func _dispose_owned_pieces() -> int:
+	var disposed := 0
+	for raw_piece in _owned_pieces.values():
+		if not is_instance_valid(raw_piece):
+			continue
+		var piece := raw_piece as ModelPiece
+		unregister_piece(piece)
+		piece.model = null
+		piece.free()
+		disposed += 1
+	_owned_pieces.clear()
+	owned_piece_disposal_count += disposed
+	return disposed
+
+
+## Releases every Node owned by this authoritative state. Safe to call more than
+## once; _notification provides a backstop for callers that only free the model.
+func dispose_owned_state() -> int:
+	selection_queue.clear()
+	pending_reaction.clear()
+	pending_movement_type_grant.clear()
+	last_move.clear()
+	last_destroyed_piece = null
+	var disposed := _dispose_owned_pieces()
+	board.clear()
+	tile_effects.clear()
+	autonomous_entities.clear()
+	action_in_progress = false
+	action_owner_color = ""
+	autonomous_phase_in_progress = false
+	forced_pass_in_progress = false
+	turn_entry_consequence_in_progress = false
+	_resolving_socratic_turn = false
+	_archer_charge_started_this_action = false
+	_archer_acted_this_action = false
+	return disposed
 
 func announce_ability_started(piece: KingPiece, ability_name: String) -> void:
 	var completion := CompletionGate.new()

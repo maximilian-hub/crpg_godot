@@ -9,6 +9,11 @@ func supports(king_type: StringName) -> bool:
 	return king_type == &"quarterly_initiative_king"
 
 
+func should_describe_for_quiescence(_model: ChessBoardModel, _action: ChessPrimaryAction, _tactical_map: DupreTacticalMap) -> bool:
+	# Movement grants remain policy/search actions, but do not settle an exchange.
+	return false
+
+
 func choose_movement_type_grant(model: ChessBoardModel, _king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName]) -> StringName:
 	return QuarterlyPolicy.deterministic_choice(model, target, options)
 

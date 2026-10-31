@@ -62,6 +62,12 @@ func describe_ability_action(_model: ChessBoardModel, _action: ChessPrimaryActio
 	return []
 
 
+## Cheap gate before quiescence asks for detailed ability effects. Layers whose
+## actions are inherently delayed or positional can avoid unnecessary analysis.
+func should_describe_for_quiescence(_model: ChessBoardModel, _action: ChessPrimaryAction, _tactical_map: DupreTacticalMap) -> bool:
+	return true
+
+
 func describe_action_reactions(_model: ChessBoardModel, _action: ChessPrimaryAction, _occupancy: Dictionary) -> Array[DupreAbilityEffect]:
 	return []
 

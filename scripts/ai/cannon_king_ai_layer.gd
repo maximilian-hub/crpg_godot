@@ -8,6 +8,11 @@ func supports(king_type: StringName) -> bool:
 	return king_type == &"cannon_king"
 
 
+func should_describe_for_quiescence(_model: ChessBoardModel, _action: ChessPrimaryAction, _tactical_map: DupreTacticalMap) -> bool:
+	# Mortars are scheduled pressure, never an immediate leaf-resolution action.
+	return false
+
+
 func action_policy_bonus(model: ChessBoardModel, action: ChessPrimaryAction, perspective: String, _tactical_map = null) -> float:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is CannonKing:
 		return 0.0

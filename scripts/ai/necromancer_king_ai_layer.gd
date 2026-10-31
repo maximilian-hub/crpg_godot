@@ -10,6 +10,12 @@ func supports(king_type: StringName) -> bool:
 	return king_type == &"necromancer_king"
 
 
+func should_describe_for_quiescence(_model: ChessBoardModel, action: ChessPrimaryAction, tactical_map: DupreTacticalMap) -> bool:
+	# Only inspect summons while the Necromancer is under direct attack; ordinary
+	# development and future pawn pressure belong to policy/static evaluation.
+	return not tactical_map.king_attackers(action.piece.color).is_empty()
+
+
 func describe_ability_action(model: ChessBoardModel, action: ChessPrimaryAction, occupancy: Dictionary) -> Array[DupreAbilityEffect]:
 	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is NecromancerKing:
 		return []
@@ -65,6 +71,7 @@ func _describe_summon(model: ChessBoardModel, necromancer: ModelPiece, target: V
 		block.kind = AbilityEffect.Kind.BLOCK
 		block.metadata = {"king_attackers_removed": before.king_attackers(necromancer.color).size() - after.king_attackers(necromancer.color).size()}
 		result.append(block)
+	pawn.free()
 	return result
 
 
@@ -147,7 +154,9 @@ func placement_score(model: ChessBoardModel, necromancer: ModelPiece, target: Ve
 	var advance := float(model.get_back_rank(necromancer.color) - target.x) if necromancer.color == "white" else float(target.x - model.get_back_rank(necromancer.color))
 	var center := 3.5 - absf(float(target.y) - 3.5)
 	score += advance * 0.08 + center * 0.04
-	return score * own_sign
+	var result := score * own_sign
+	pawn.free()
+	return result
 
 
 func _placement_is_forcing(model: ChessBoardModel, necromancer: ModelPiece, target: Vector2i, perspective: String) -> bool:
@@ -166,18 +175,23 @@ func _placement_is_forcing(model: ChessBoardModel, necromancer: ModelPiece, targ
 		var enemy_layer = ChessKingAiRegistry.layer_for(enemy_king.get_position_type_id())
 		if enemy_layer != null:
 			if _piece_has_lethal_effect(enemy_layer.collect_ability_threats(model, enemy_king, projected.occupancy, 0), pawn, target):
+				pawn.free()
 				return false
 	if projected.attack_count(target, model.get_other_color(necromancer.color)) > 0 and projected.attack_count(target, necromancer.color) == 0:
+		pawn.free()
 		return false
 	var attack_position := ChessAttackPosition.from_occupancy(projected.board_size, projected.occupancy)
 	for coordinate in occupancy:
 		var piece = occupancy[coordinate]
 		if piece is ModelPiece and piece.color != necromancer.color and (piece.is_king or _piece_value(piece) >= 5.0):
 			if pawn.can_directly_attack_square(target, coordinate, attack_position):
+				pawn.free()
 				return true
 		if piece is ModelPiece and piece.color == necromancer.color and not piece.is_king and _piece_value(piece) >= 5.0:
 			if tactical.attack_count(coordinate, model.get_other_color(piece.color)) > 0 and projected.attack_count(coordinate, model.get_other_color(piece.color)) == 0:
+				pawn.free()
 				return true
+	pawn.free()
 	return false
 
 

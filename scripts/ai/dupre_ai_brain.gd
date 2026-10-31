@@ -5,6 +5,7 @@ const DuprePolicy = preload("res://scripts/ai/dupre_move_policy.gd")
 const TacticalMap = preload("res://scripts/ai/dupre_tactical_map.gd")
 const OpeningBook = preload("res://scripts/ai/dupre_opening_book.gd")
 const OpeningSession = preload("res://scripts/ai/dupre_opening_session.gd")
+const QuiescencePolicy = preload("res://scripts/ai/dupre_quiescence_policy.gd")
 const DEFAULT_CANDIDATE_LIMIT := 6
 const DEFAULT_MAX_BOOK_MOVES := 7
 const TACTICAL_SAFETY_MARGIN := 5.0
@@ -15,10 +16,15 @@ const SEVERE_MATERIAL_LOSS := 3.0
 
 enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID, PRUNED }
 enum ExecutionStatus { COMPLETED, INCOMPLETE, INVALID }
+enum QuiescenceMode { CURRENT, DISABLED, IMMEDIATE_ONLY, TACTICAL }
+enum CompletionSchedule { BREADTH_FIRST, ESTABLISH_INCUMBENT }
 
 var candidate_limit := DEFAULT_CANDIDATE_LIMIT
 var max_book_moves := DEFAULT_MAX_BOOK_MOVES
 var quiescence_enabled := true
+var quiescence_mode := QuiescenceMode.TACTICAL
+var reduced_quiescence_evaluation := false
+var completion_schedule := CompletionSchedule.BREADTH_FIRST
 var previous_own_actions: Dictionary = {}
 var opening_session = OpeningSession.new()
 var _pending_book_action: Dictionary = {}
@@ -59,12 +65,16 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 	if book_plan != null:
 		return book_plan
 	var policy := DuprePolicy.new(player, previous_own_actions, _tactical_map)
+	var phase_started := Time.get_ticks_usec()
 	var ranked := await _rank_actions(actions, policy)
+	last_profile.policy_ranking_usec += Time.get_ticks_usec() - phase_started
 	if ranked.is_empty():
 		_populate_policy_profile(policy)
 		_finish_profile()
 		return null
+	phase_started = Time.get_ticks_usec()
 	var candidates := _select_candidates(ranked, policy)
+	last_profile.candidate_selection_usec += Time.get_ticks_usec() - phase_started
 	_populate_policy_profile(policy)
 	last_profile["policy_candidate_count"] = candidates.size()
 	last_profile["unverified_selection"] = false
@@ -94,6 +104,23 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 			last_profile.screening_usec += Time.get_ticks_usec() - screen_started
 		if not advanced: break
 		last_profile.breadth_screen_rounds += 1
+	# Experimentally establish one exact candidate after every root has received
+	# equal forcing-reply coverage. Default behavior remains breadth-first.
+	if completion_schedule == CompletionSchedule.ESTABLISH_INCUMBENT and not _budget_exhausted():
+		var incumbent_candidates: Array = records.filter(func(record: Dictionary): return record.screen_status == ScreenStatus.READY)
+		incumbent_candidates.sort_custom(func(a: Dictionary, b: Dictionary):
+			if not is_equal_approx(float(a.policy), float(b.policy)): return float(a.policy) > float(b.policy)
+			return int(a.replies.size() - a.reply_scores.size()) < int(b.replies.size() - b.reply_scores.size())
+		)
+		if not incumbent_candidates.is_empty():
+			var incumbent: Dictionary = incumbent_candidates[0]
+			while incumbent.screen_status == ScreenStatus.READY and not _budget_exhausted():
+				var verification_started := Time.get_ticks_usec()
+				var advanced_incumbent := await _advance_candidate_reply(incumbent, false, -INF)
+				last_profile.exhaustive_verification_usec += Time.get_ticks_usec() - verification_started
+				if not advanced_incumbent: break
+			last_profile.incumbent_completion_attempted = true
+			last_profile.incumbent_completion_succeeded = incumbent.screen_status == ScreenStatus.EXACT
 	# Then complete remaining replies with the same round-robin fairness.
 	while not _budget_exhausted():
 		var advanced := false
@@ -355,6 +382,7 @@ func _candidate_reason_priority(reason: StringName) -> int:
 
 
 func _ordered_screen_replies(model: ChessBoardModel, actions: Array[ChessPrimaryAction]) -> Array[Dictionary]:
+	var ordering_started := Time.get_ticks_usec()
 	var result: Array[Dictionary] = []
 	for index in range(actions.size()):
 		var action := actions[index]
@@ -374,6 +402,7 @@ func _ordered_screen_replies(model: ChessBoardModel, actions: Array[ChessPrimary
 			return float(a.priority) > float(b.priority)
 		return int(a.index) < int(b.index)
 	)
+	last_profile.reply_ordering_usec += Time.get_ticks_usec() - ordering_started
 	return result
 
 
@@ -436,18 +465,56 @@ func _material_value(piece: ModelPiece) -> float:
 func _evaluate_model(model: ChessBoardModel, cached_actions: Dictionary = {}) -> float:
 	_last_evaluation_complete = true
 	var static_result := await _evaluate_dupre_static(model, cached_actions, _evaluation_context_forcing)
-	if not quiescence_enabled or model.battle_over or model.current_turn != player.controlled_color:
+	if not quiescence_enabled or quiescence_mode == QuiescenceMode.DISABLED or model.battle_over or model.current_turn != player.controlled_color:
 		return static_result.score
-	var forcing: Array[ChessPrimaryAction] = []
-	for action in static_result.own_actions:
-		if _reply_class(model, action) >= 2:
-			forcing.append(action)
+	var forcing: Array[Dictionary] = []
+	var classification_started := Time.get_ticks_usec()
+	for index in range(static_result.own_actions.size()):
+		var action: ChessPrimaryAction = static_result.own_actions[index]
+		var classification: Dictionary
+		if quiescence_mode == QuiescenceMode.CURRENT:
+			var legacy_forcing := _reply_class(model, action) >= 2
+			classification = {
+				"category": QuiescencePolicy.Category.TACTICAL if legacy_forcing else QuiescencePolicy.Category.QUIET,
+				"priority": _reply_priority(model, action),
+				"reason": &"legacy_forcing" if legacy_forcing else &"legacy_quiet",
+			}
+		elif quiescence_mode == QuiescenceMode.IMMEDIATE_ONLY:
+			var immediate := _is_immediate_quiescence_action(model, action)
+			classification = {
+				"category": QuiescencePolicy.Category.TACTICAL if immediate else QuiescencePolicy.Category.QUIET,
+				"priority": _reply_priority(model, action),
+				"reason": &"experimental_immediate" if immediate else &"experimental_quiet",
+			}
+		else:
+			classification = QuiescencePolicy.classify(model, action, static_result.tactical_map)
+		_record_quiescence_classification(classification)
+		if int(classification.category) > QuiescencePolicy.Category.QUIET:
+			forcing.append({
+				"action": action,
+				"category": classification.category,
+				"priority": classification.priority,
+				"reason": classification.reason,
+				"index": index,
+			})
+			last_profile.quiescence_forcing_action_count += 1
+			if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
+				last_profile.quiescence_ability_action_count += 1
+			elif model.board[action.target.x][action.target.y] != null:
+				last_profile.quiescence_capture_action_count += 1
+	last_profile.quiescence_classification_usec += Time.get_ticks_usec() - classification_started
+	forcing.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.category) != int(b.category): return int(a.category) > int(b.category)
+		if not is_equal_approx(float(a.priority), float(b.priority)): return float(a.priority) > float(b.priority)
+		return int(a.index) < int(b.index)
+	)
 	var unstable := not forcing.is_empty() or (_evaluation_context_forcing and _has_hanging_major(static_result.tactical_map))
 	if not unstable:
 		return static_result.score
 	var best := float(static_result.score)
 	var position: ChessPosition = model.capture_position()
-	for action in forcing:
+	for entry in forcing:
+		var action: ChessPrimaryAction = entry.action
 		if _dupre_budget_exhausted():
 			_last_evaluation_complete = false
 			last_profile.quiescence_incomplete_count = int(last_profile.get("quiescence_incomplete_count", 0)) + 1
@@ -464,22 +531,58 @@ func _evaluate_model(model: ChessBoardModel, cached_actions: Dictionary = {}) ->
 			_last_evaluation_complete = false
 			last_profile.quiescence_incomplete_count = int(last_profile.get("quiescence_incomplete_count", 0)) + 1
 			return best
-		var result := await _evaluate_dupre_static(continuation, {}, true)
+		var result := await _evaluate_dupre_static(continuation, {}, true, not reduced_quiescence_evaluation)
 		best = maxf(best, float(result.score))
 		last_profile.quiescence_node_count = int(last_profile.get("quiescence_node_count", 0)) + 1
+		if last_profile.quiescence_extension_order.size() < 64:
+			last_profile.quiescence_extension_order.append({
+				"reason": entry.reason,
+				"category": entry.category,
+				"action": ActionCodec.describe(action),
+			})
 		_free_model(continuation)
 		await _cooperate()
 	return best
 
 
-func _evaluate_dupre_static(model: ChessBoardModel, cached_actions: Dictionary = {}, tactical_detail := true) -> Dictionary:
+func _record_quiescence_classification(classification: Dictionary) -> void:
+	match int(classification.category):
+		QuiescencePolicy.Category.CRITICAL:
+			last_profile.quiescence_critical_classification_count += 1
+		QuiescencePolicy.Category.TACTICAL:
+			last_profile.quiescence_tactical_classification_count += 1
+		_:
+			last_profile.quiescence_quiet_classification_count += 1
+	var reason := StringName(classification.reason)
+	var reasons: Dictionary = last_profile.quiescence_classification_reasons
+	reasons[reason] = int(reasons.get(reason, 0)) + 1
+
+
+func _is_immediate_quiescence_action(model: ChessBoardModel, action: ChessPrimaryAction) -> bool:
+	var target: ModelPiece = model.board[action.target.x][action.target.y]
+	if action.kind == ChessPrimaryAction.Kind.MOVE:
+		return target != null and target.color != action.piece.color
+	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY or not action.piece is KingPiece:
+		return false
+	var layer = KingAiRegistry.layer_for(action.piece.get_position_type_id())
+	if layer == null:
+		return false
+	for effect in layer.describe_ability_action(model, action, TacticalMap.from_model(model).occupancy):
+		if effect.certainty == DupreAbilityEffect.Certainty.CERTAIN and (effect.damage > 0 or effect.kind == DupreAbilityEffect.Kind.FORCED_MOVEMENT):
+			return true
+	return false
+
+
+func _evaluate_dupre_static(model: ChessBoardModel, cached_actions: Dictionary = {}, tactical_detail := true, generate_actions := true) -> Dictionary:
 	var started := Time.get_ticks_usec()
 	var yielded_usec := 0
+	var component_usec := 0
 	if model.battle_over:
 		var terminal := _evaluate_terminal(model)
 		_record_evaluation(started)
 		return {"score": terminal, "own_actions": [], "enemy_actions": [], "tactical_map": TacticalMap.from_model(model)}
 	var enemy := model.get_other_color(player.controlled_color)
+	var component_started := Time.get_ticks_usec()
 	var score := 0.0
 	for row in model.board:
 		for piece in row:
@@ -493,16 +596,28 @@ func _evaluate_dupre_static(model: ChessBoardModel, cached_actions: Dictionary =
 				var hp_ratio := float(piece.current_hp) / float(maxi(1, piece.max_hp))
 				value -= value * 0.3 * (1.0 - hp_ratio)
 				score += sign_value * value
+	var material_usec := Time.get_ticks_usec() - component_started
+	last_profile.evaluation_material_usec += material_usec
+	component_usec += material_usec
 	yielded_usec += await _cooperate()
 	var own_actions: Array = cached_actions.get(player.controlled_color, [])
-	if not cached_actions.has(player.controlled_color):
+	if generate_actions and not cached_actions.has(player.controlled_color):
+		component_started = Time.get_ticks_usec()
 		own_actions = _collect_actions_for(model, player.controlled_color)
+		var own_generation_usec := Time.get_ticks_usec() - component_started
+		last_profile.evaluation_legal_generation_usec += own_generation_usec
+		component_usec += own_generation_usec
 		yielded_usec += await _cooperate()
 	var enemy_actions: Array = cached_actions.get(enemy, [])
-	if not cached_actions.has(enemy):
+	if generate_actions and not cached_actions.has(enemy):
+		component_started = Time.get_ticks_usec()
 		enemy_actions = _collect_actions_for(model, enemy)
+		var enemy_generation_usec := Time.get_ticks_usec() - component_started
+		last_profile.evaluation_legal_generation_usec += enemy_generation_usec
+		component_usec += enemy_generation_usec
 		yielded_usec += await _cooperate()
 	score += float(own_actions.size() - enemy_actions.size()) * 0.1
+	component_started = Time.get_ticks_usec()
 	var tactical := TacticalMap.from_model(model)
 	if tactical_detail:
 		for coordinate in tactical.occupancy:
@@ -517,8 +632,12 @@ func _evaluate_dupre_static(model: ChessBoardModel, cached_actions: Dictionary =
 				score += -penalty if piece.color == player.controlled_color else penalty
 		score -= float(tactical.king_attackers(player.controlled_color).size()) * 25.0
 		score += float(tactical.king_attackers(enemy).size()) * 25.0
-	if _has_lethal_action(model, enemy_actions, player.controlled_color): score -= 500.0
-	if _has_lethal_action(model, own_actions, enemy): score += 500.0
+	if generate_actions and _has_lethal_action(model, enemy_actions, player.controlled_color): score -= 500.0
+	if generate_actions and _has_lethal_action(model, own_actions, enemy): score += 500.0
+	var tactical_usec := Time.get_ticks_usec() - component_started
+	last_profile.evaluation_tactical_usec += tactical_usec
+	component_usec += tactical_usec
+	component_started = Time.get_ticks_usec()
 	var evaluated_layers := {}
 	for color in [player.controlled_color, enemy]:
 		var king: ModelPiece = model.get_king(color)
@@ -527,6 +646,10 @@ func _evaluate_dupre_static(model: ChessBoardModel, cached_actions: Dictionary =
 			if layer != null:
 				evaluated_layers[king.get_position_type_id()] = true
 				score += float(layer.evaluation_bonus(model, player.controlled_color))
+	var layer_usec := Time.get_ticks_usec() - component_started
+	last_profile.evaluation_layer_usec += layer_usec
+	component_usec += layer_usec
+	last_profile.evaluation_other_usec += maxi(0, Time.get_ticks_usec() - started - yielded_usec - component_usec)
 	_record_evaluation(started, yielded_usec)
 	return {"score": score, "own_actions": own_actions, "enemy_actions": enemy_actions, "tactical_map": tactical}
 
@@ -709,6 +832,25 @@ func _begin_book_profile() -> void:
 	last_profile["ability_effect_count"] = 0
 	last_profile["ability_action_effect_collection_count"] = 0
 	last_profile["ability_action_effect_collection_usec"] = 0
+	last_profile["policy_ranking_usec"] = 0
+	last_profile["candidate_selection_usec"] = 0
+	last_profile["reply_ordering_usec"] = 0
+	last_profile["quiescence_forcing_action_count"] = 0
+	last_profile["quiescence_ability_action_count"] = 0
+	last_profile["quiescence_capture_action_count"] = 0
+	last_profile["quiescence_classification_usec"] = 0
+	last_profile["quiescence_critical_classification_count"] = 0
+	last_profile["quiescence_tactical_classification_count"] = 0
+	last_profile["quiescence_quiet_classification_count"] = 0
+	last_profile["quiescence_classification_reasons"] = {}
+	last_profile["quiescence_extension_order"] = []
+	last_profile["incumbent_completion_attempted"] = false
+	last_profile["incumbent_completion_succeeded"] = false
+	last_profile["evaluation_material_usec"] = 0
+	last_profile["evaluation_legal_generation_usec"] = 0
+	last_profile["evaluation_tactical_usec"] = 0
+	last_profile["evaluation_layer_usec"] = 0
+	last_profile["evaluation_other_usec"] = 0
 	last_profile["ability_effect_candidates"] = 0
 	last_profile["ability_verification_candidates"] = 0
 	last_profile["selected_ability_effects"] = []

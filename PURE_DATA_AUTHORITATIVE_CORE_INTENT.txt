@@ -1,0 +1,117 @@
+CHESS RPG — PURE-DATA AUTHORITATIVE CORE INTENT
+================================================
+
+Status
+------
+
+We intend to move Chess RPG toward a pure-data authoritative rules core.
+
+This is a confirmed long-term architectural direction, not authorization for a
+large immediate rewrite. The migration should be incremental, measurable, and
+reversible until the new core has demonstrated rule parity and useful performance.
+
+
+Why We Want This
+----------------
+
+Chess RPG is expected to contain more than one hundred mechanically distinct
+kings. The same increasingly complex rules must support live play, AI search,
+sandbox play, automated tests, saved games, and replays.
+
+A pure-data core should eventually provide:
+
+- One authoritative implementation of the game rules.
+- Substantially cheaper speculative AI simulations.
+- Deterministic state transitions and reproducible RNG behavior.
+- Fast snapshots, state hashing, caching, and safe simulation reuse.
+- Strong differential, replay, fuzz, and regression testing.
+- A clean separation between rules and visual presentation.
+- The option to run isolated AI simulations on bounded worker threads.
+- A scalable foundation for desktop and mobile releases.
+
+Pure data is not assumed to be automatically fast. Legal-action generation,
+evaluation, search policy, and state copying must still be profiled and improved.
+The first implementation must prove its value with measurements.
+
+
+Definition of the Intended Core
+-------------------------------
+
+The core should resolve a submitted action synchronously from an explicit game
+state and produce:
+
+- The resulting authoritative game state.
+- An ordered stream of semantic gameplay events for presentation.
+- An explicit pending-choice request when human or AI input is required.
+- Updated deterministic random-generator state.
+
+The core must not depend on the active SceneTree, visual Nodes, animation timing,
+deferred calls, or presentation completion signals.
+
+Presentation may take as long as it needs to animate the resulting events, but
+presentation must not decide or modify the authoritative outcome.
+
+
+Authority and Migration Rules
+-----------------------------
+
+- The new core must not become a separate approximate rules engine for the AI.
+- The intended end state is that live play and AI simulation use the same rules.
+- During migration, the existing ChessBoardModel remains authoritative until a
+  migrated rules slice has demonstrated parity.
+- Old and new implementations should be compared through differential tests.
+- Rule disagreements must be fixed rather than hidden behind AI-specific logic.
+- Native action identity must be preserved, including path-dependent actions.
+- Reactions, summons, delayed effects, secondary choices, hazards, and RNG state
+  must be represented explicitly rather than omitted for convenience.
+- Special kings should be migrated incrementally, not through a big-bang rewrite.
+- Worker-thread search should be attempted only after the core is deterministic,
+  isolated, and correct when run single-threaded.
+
+
+Approved Milestone Order
+------------------------
+
+A. Harden the current simulation lifecycle:
+   avoid throwaway default-board construction, provide explicit simulation
+   disposal, measure object creation and cleanup, and preserve decision behavior.
+
+B. Redesign Dupre's quiescence search:
+   extend genuinely forcing tactical positions without allowing ordinary ability
+   actions to consume most of the search budget.
+
+C. Build a pure-data Classic King vertical slice:
+   state, legal actions, synchronous resolution, semantic events, choices, and RNG.
+
+D. Differentially validate the new slice against ChessBoardModel using curated
+   positions, replays, and randomized legal action sequences.
+
+E. Benchmark Classic Dupre using the new core while retaining a safe fallback for
+   unmigrated mechanics.
+
+F. Make the validated core authoritative for live Classic games through a
+   presentation adapter.
+
+G. Migrate special mechanics in deliberate architectural order, beginning with
+   representative challenges such as Arakne paths, Necromancer reactions and
+   summons, Quarterly choices, and Cannon delayed effects.
+
+H. Add bounded background search with conservative desktop/mobile worker limits,
+   cancellation tied to position revision, and isolated per-worker RNG and state.
+
+
+Near-Term Commitment
+--------------------
+
+Milestone A established explicit simulation lifecycle ownership, cleanup
+instrumentation, and characterization coverage without changing authoritative
+rules.
+
+Milestone B replaces Dupre's broad immediate-action quiescence extension with
+a conservative tactical policy: captures, direct king damage, lethal material
+damage, consequential forced movement or stuns, and emergency king blocks.
+Delayed hazards and merely positional abilities remain outside quiescence.
+
+The next architectural milestone is Milestone C: extract and validate the
+smallest useful pure-data rule slice while retaining ChessBoardModel as the
+authoritative compatibility oracle.

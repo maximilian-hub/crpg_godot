@@ -42,6 +42,10 @@ func _benchmark(label: StringName, white_king_type: StringName, brain_kind: Ches
 		failures.append("%s benchmark produced no thought" % label)
 	if profile.position_load_count != profile.model_construction_count:
 		failures.append("%s benchmark did not keep a one-load-per-model invariant" % label)
+	if int(profile.get("simulation_startup_piece_count", -1)) != 0:
+		failures.append("%s benchmark constructed throwaway startup pieces" % label)
+	if int(profile.get("simulation_piece_registration_count", -1)) != int(profile.get("simulation_piece_disposal_count", -2)):
+		failures.append("%s benchmark did not dispose every registered simulation piece" % label)
 	if profile.legal_action_generation_count > profile.root_action_count + profile.evaluated_reply_count * 2:
 		failures.append("%s benchmark regenerated legal actions during evaluation" % label)
 	if profile.selected_status not in [&"exact", &"fallback", &"verified", &"policy_fallback", &"screened_fallback", &"breadth_fallback", &"book_fast_path"]:
