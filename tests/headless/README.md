@@ -11,6 +11,8 @@ godot --headless --path . tests/headless/dupre_characterization.tscn
 godot --headless --path . tests/headless/dupre_match_characterization.tscn
 godot --headless --path . tests/headless/dupre_opening_book_characterization.tscn
 godot --headless --path . tests/headless/dupre_opening_performance.tscn
+godot --headless --path . tests/headless/classic_core_characterization.tscn
+godot --headless --path . tests/headless/classic_core_performance.tscn
 ```
 
 It covers explicit/idempotent initialization, validated move and ability
@@ -42,3 +44,8 @@ controlled games against Ryck and LeMay.
 The opening-book suites cover seeded family selection, branches, deviations,
 RPG-action tolerance, emergency overrides, execution-counted limits, lifecycle
 resets, both colors, and the zero-simulation opening fast path.
+
+The Classic core suites characterize the isolated pure-data rules slice,
+including import boundaries, legal-action parity, immutable synchronous
+resolution, semantic event order, HP combat, castling, en passant, four-way
+promotion, forced passes, RNG preservation, and comparative microbenchmarks.

@@ -251,6 +251,13 @@ func _test_player_hand_promotion_presentation() -> void:
 	var pawn := Pawn.new("white", Vector2i(1, 0))
 	var black_king := ClassicKing.new("black", Vector2i(7, 7))
 	_reset_battle(model, controller, [pawn, black_king])
+	var promotion_ui := {"options": [], "buttons": 0}
+	model.promotion_selection_requested.connect(func(_pawn, options):
+		promotion_ui.options = options.duplicate()
+		var panel := context.game.get_node_or_null("LunacyLayer/LunacyUI/PromotionPanel") as PanelContainer
+		if panel != null and panel.get_child_count() == 1: promotion_ui.buttons = panel.get_child(0).get_child_count()
+		model.call_deferred("submit_promotion_selection", &"queen")
+	, CONNECT_ONE_SHOT)
 	rig.approach_duration = 0.01
 	rig.grasp_hold_duration = 0.01
 	rig.carry_duration = 0.01
@@ -267,6 +274,7 @@ func _test_player_hand_promotion_presentation() -> void:
 	var queen: ModelPiece = model.board[0][0]
 	var queen_view := adapter.get_piece_view(queen) as Node2D
 	_expect(queen is Queen and is_instance_valid(queen_view) and queen_view.visible, "promotion leaves a visible Queen on the destination square")
+	_expect(promotion_ui.options == [&"queen", &"rook", &"bishop", &"knight"] and promotion_ui.buttons == 4, "promotion presents all four choices in the shared selection UI")
 	_expect(grabbed_types == ["pawn", "queen"], "promotion carries the pawn directly offscreen before grabbing its Queen replacement")
 	_expect(released_types == ["pawn", "queen"], "promotion releases the pawn offscreen and releases the Queen on the board")
 	_expect(not rig.visible and not rig.is_animating, "the promotion exchange finishes before the hand becomes idle")

@@ -58,6 +58,7 @@ var _opening_start_released := false
 var _lunacy_displays: Dictionary = {}
 var _quiver_displays: Dictionary = {}
 var _movement_grant_panel: PanelContainer
+var _promotion_panel: PanelContainer
 var _performance_cycle_panel: PanelContainer
 var _performance_cycle_label: Label
 
@@ -110,6 +111,8 @@ func _ready() -> void:
 		model.turn_changed.connect(_on_performance_turn_changed)
 	if not model.movement_type_selection_requested.is_connected(_on_movement_type_selection_requested):
 		model.movement_type_selection_requested.connect(_on_movement_type_selection_requested)
+	if not model.promotion_selection_requested.is_connected(_on_promotion_selection_requested):
+		model.promotion_selection_requested.connect(_on_promotion_selection_requested)
 	_refresh_lunacy_displays()
 	_refresh_quiver_displays()
 	_refresh_performance_cycle_display()
@@ -199,6 +202,10 @@ func _on_result_confirmed() -> void:
 	battle_exit_requested.emit(completed_player_result)
 
 func _on_board_rebuilt(_board: Array) -> void:
+	if is_instance_valid(_movement_grant_panel): _movement_grant_panel.queue_free()
+	if is_instance_valid(_promotion_panel): _promotion_panel.queue_free()
+	_movement_grant_panel = null
+	_promotion_panel = null
 	_refresh_lunacy_displays()
 	_refresh_quiver_displays()
 	_refresh_performance_cycle_display()
@@ -459,6 +466,41 @@ func _submit_movement_type_grant(movement_type: StringName) -> void:
 	if is_instance_valid(_movement_grant_panel):
 		_movement_grant_panel.queue_free()
 	_movement_grant_panel = null
+
+
+func _on_promotion_selection_requested(pawn: ModelPiece, options: Array[StringName]) -> void:
+	if not controller.is_player_controlled(pawn.color):
+		return
+	if is_instance_valid(_promotion_panel):
+		_promotion_panel.queue_free()
+	_promotion_panel = PanelContainer.new()
+	_promotion_panel.name = "PromotionPanel"
+	get_node("LunacyLayer/LunacyUI").add_child(_promotion_panel)
+	_promotion_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_promotion_panel.offset_left = -110.0
+	_promotion_panel.offset_top = -75.0
+	_promotion_panel.offset_right = 110.0
+	_promotion_panel.offset_bottom = 75.0
+	_promotion_panel.z_index = 100
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	_promotion_panel.add_child(grid)
+	for option in options:
+		var button := Button.new()
+		button.text = String(option).capitalize()
+		button.custom_minimum_size = Vector2(96.0, 64.0)
+		button.pressed.connect(_submit_promotion_selection.bind(option))
+		grid.add_child(button)
+
+
+func _submit_promotion_selection(piece_type: StringName) -> void:
+	if not model.submit_promotion_selection(piece_type):
+		return
+	if is_instance_valid(_promotion_panel):
+		_promotion_panel.queue_free()
+	_promotion_panel = null
 
 func _refresh_lunacy_displays() -> void:
 	if model == null:

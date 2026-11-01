@@ -53,6 +53,8 @@ signal piece_attack_committed(attacker: ModelPiece, defender: ModelPiece, from: 
 signal archer_attack_committed(attacker: ArcherKing, defender: ModelPiece, from: Vector2i, to: Vector2i, presentation)
 signal piece_promotion_committed(old_piece: ModelPiece, new_piece: ModelPiece, completion: CompletionGate)
 signal piece_transformed(old_piece: ModelPiece, new_piece: ModelPiece)
+signal promotion_selection_requested(pawn: ModelPiece, options: Array[StringName])
+signal promotion_selection_resolved(piece_type: StringName)
 signal piece_damaged(piece: ModelPiece, amount: int, current_hp: int, max_hp: int)
 signal piece_stunned(piece: ModelPiece, duration: int)
 signal piece_recovered(piece: ModelPiece)
@@ -99,6 +101,7 @@ var _archer_volley_rng := RandomNumberGenerator.new()
 var global_turn_number := 1
 var pending_movement_type_grant: Dictionary = {}
 signal movement_type_selection_resolved(movement_type: StringName)
+var pending_promotion: Dictionary = {}
 
 # Runtime policy used by developer surfaces such as the board sandbox. This is
 # deliberately not part of ChessPosition, so test conveniences never leak into
@@ -158,7 +161,7 @@ func initialize_battle() -> bool:
 	return true
 
 func is_settled() -> bool:
-	return not action_in_progress and not autonomous_phase_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and selection_queue.is_empty()
+	return not action_in_progress and not autonomous_phase_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and selection_queue.is_empty() and pending_movement_type_grant.is_empty() and pending_promotion.is_empty()
 
 
 ## Unlimited-range piece-occlusion map. Consumers may apply their own range or
@@ -263,6 +266,8 @@ func load_position(position: ChessPosition) -> bool:
 			last_move = {"from": position.last_move.from, "to": target, "piece": moved_piece}
 	selection_queue.clear()
 	pending_reaction.clear()
+	pending_movement_type_grant.clear()
+	pending_promotion.clear()
 	selection_sequence = 0
 	action_in_progress = false
 	action_owner_color = ""
@@ -424,6 +429,7 @@ func dispose_owned_state() -> int:
 	selection_queue.clear()
 	pending_reaction.clear()
 	pending_movement_type_grant.clear()
+	pending_promotion.clear()
 	last_move.clear()
 	last_destroyed_piece = null
 	var disposed := _dispose_owned_pieces()
@@ -534,6 +540,27 @@ func submit_movement_type_grant(movement_type: StringName) -> bool:
 		return false
 	pending_movement_type_grant.clear()
 	movement_type_selection_resolved.emit(movement_type)
+	return true
+
+
+func request_promotion_selection(pawn: ModelPiece) -> StringName:
+	if not pending_promotion.is_empty() or not is_piece_active(pawn) or pawn.type != "pawn":
+		return &""
+	var options: Array[StringName] = [&"queen", &"rook", &"bishop", &"knight"]
+	pending_promotion = {"pawn": pawn, "options": options}
+	promotion_selection_requested.emit(pawn, options)
+	var selected: StringName = await promotion_selection_resolved
+	return selected
+
+
+func submit_promotion_selection(piece_type: StringName) -> bool:
+	if pending_promotion.is_empty():
+		return false
+	var options: Array = pending_promotion.get("options", [])
+	if piece_type not in options:
+		return false
+	pending_promotion.clear()
+	promotion_selection_resolved.emit(piece_type)
 	return true
 
 ## Returns every primary command that color may legally submit right now.
@@ -1107,8 +1134,10 @@ func promotion_check(piece: ModelPiece) -> void:
 	var black_back_rank = get_back_rank("black")
 
 	var promotion_rank = white_back_rank if piece.color == "black" else black_back_rank
-	if piece.coordinate.x == promotion_rank: # TODO: Implement player choice for promotion (Queen, Rook, Bishop, Knight)
-		await transform_piece(piece, "queen", true)
+	if piece.coordinate.x == promotion_rank:
+		var selected := await request_promotion_selection(piece)
+		if selected in [&"queen", &"rook", &"bishop", &"knight"] and is_piece_active(piece):
+			await transform_piece(piece, selected, true)
 
 func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
 	last_move = {
@@ -1524,30 +1553,27 @@ func _remove_autonomous_entities_referencing(piece_id: String) -> void:
 		autonomous_entity_removed.emit(entity, &"source_destroyed" if entity.source_piece_id == piece_id else &"target_destroyed", completion)
 		completion.close()
 
-func transform_piece(piece: ModelPiece, transformed_type: String, present_promotion := false) -> void:
+func transform_piece(piece: ModelPiece, transformed_type: StringName, present_promotion := false) -> void:
 	if not is_instance_valid(piece):
 		printerr("transform_piece: Invalid piece instance provided.")
 		return
 		
-	if transformed_type == "queen":
-		var r = piece.coordinate.x
-		var c = piece.coordinate.y
-		
-		unregister_piece(piece)
-		var transformed_piece = Queen.new(piece.color, Vector2i(r,c))
-		inject_dependencies(transformed_piece)
-		board[r][c] = transformed_piece # Overwrite the old piece reference in the model
-		if present_promotion:
-			var completion := CompletionGate.new()
-			piece_promotion_committed.emit(piece, transformed_piece, completion)
-			completion.close()
-			await completion.wait_until_released()
-		piece_transformed.emit(piece, transformed_piece)
-		
-		# Optional: Disconnect signals from the old piece if necessary,
-		# though it should get garbage collected eventually.
-		# disconnect("turn_changed", piece._on_turn_changed) 
-		# disconnect("piece_destroyed", piece._on_piece_destroyed)
+	if transformed_type not in [&"queen", &"rook", &"bishop", &"knight"]:
+		return
+	var r = piece.coordinate.x
+	var c = piece.coordinate.y
+	var transformed_piece := ChessPieceCatalog.create_piece(transformed_type, piece.color, Vector2i(r, c))
+	if transformed_piece == null:
+		return
+	unregister_piece(piece)
+	inject_dependencies(transformed_piece)
+	board[r][c] = transformed_piece
+	if present_promotion:
+		var completion := CompletionGate.new()
+		piece_promotion_committed.emit(piece, transformed_piece, completion)
+		completion.close()
+		await completion.wait_until_released()
+	piece_transformed.emit(piece, transformed_piece)
 		
 
 ## True only while a piece is alive and still occupies its recorded square.

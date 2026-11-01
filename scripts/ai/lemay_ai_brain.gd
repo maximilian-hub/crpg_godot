@@ -223,6 +223,10 @@ func _execute_descriptor(simulation: ChessBoardModel, descriptor: Dictionary) ->
 	var started := Time.get_ticks_usec()
 	var piece := simulation.find_piece_by_id(descriptor.piece_id)
 	var accepted := false
+	var promotion_resolver := func(_pawn: ModelPiece, options: Array[StringName]):
+		if &"queen" in options:
+			simulation.call_deferred("submit_promotion_selection", &"queen")
+	simulation.promotion_selection_requested.connect(promotion_resolver)
 	if piece != null:
 		if descriptor.kind == ChessPrimaryAction.Kind.MOVE:
 			var path: Array[Vector2i] = []
@@ -230,6 +234,8 @@ func _execute_descriptor(simulation: ChessBoardModel, descriptor: Dictionary) ->
 			accepted = await simulation.submit_move_path(piece, path) if path.size() > 1 else await simulation.submit_move(piece, descriptor.target)
 		elif piece is KingPiece:
 			accepted = await simulation.submit_active_ability(piece as KingPiece, descriptor.target)
+	if simulation.promotion_selection_requested.is_connected(promotion_resolver):
+		simulation.promotion_selection_requested.disconnect(promotion_resolver)
 	_record_phase(&"action_execution_usec", started)
 	return accepted
 

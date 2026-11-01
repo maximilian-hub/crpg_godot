@@ -57,6 +57,7 @@ func _ready() -> void:
 	model.battle_finished.connect(_on_battle_finished)
 	model.piece_damaged.connect(_on_piece_damaged)
 	model.movement_type_selection_requested.connect(_on_movement_type_selection_requested)
+	model.promotion_selection_requested.connect(_on_promotion_selection_requested)
 
 
 func configure(enabled: bool, color: String) -> void:
@@ -721,6 +722,18 @@ func _on_movement_type_selection_requested(king: QuarterlyInitiativeKing, target
 
 func _submit_movement_type_choice(choice: StringName) -> void:
 	model.submit_movement_type_grant(choice)
+
+
+func _on_promotion_selection_requested(pawn: ModelPiece, options: Array[StringName]) -> void:
+	if execution_mode == ExecutionMode.DISABLED or pawn.color != controlled_color or &"queen" not in options:
+		return
+	# Preserve every current brain's former automatic-Queen behavior. Tactical
+	# underpromotion belongs to a later AI milestone.
+	call_deferred("_submit_promotion_choice", &"queen")
+
+
+func _submit_promotion_choice(choice: StringName) -> void:
+	model.submit_promotion_selection(choice)
 
 
 func _on_piece_damaged(piece: ModelPiece, _amount: int, current_hp: int, _max_hp: int) -> void:

@@ -112,6 +112,12 @@ a conservative tactical policy: captures, direct king damage, lethal material
 damage, consequential forced movement or stuns, and emergency king blocks.
 Delayed hazards and merely positional abilities remain outside quiescence.
 
-The next architectural milestone is Milestone C: extract and validate the
-smallest useful pure-data rule slice while retaining ChessBoardModel as the
-authoritative compatibility oracle.
+Milestone C established a Node-free, synchronous Classic King vertical slice
+with immutable state transitions, deterministic legal actions, ordered semantic
+events, explicit promotion choices, and opaque RNG-state preservation. The live
+model now supports Queen, Rook, Bishop, and Knight promotion; existing CPU brains
+retain Queen as their default.
+
+ChessBoardModel remains authoritative. The next architectural milestone is
+Milestone D: broad differential validation using curated replays and randomized
+legal action sequences, with reproducible mismatch reporting and minimization.

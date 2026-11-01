@@ -1031,8 +1031,10 @@ func _test_special_moves() -> void:
 	var promotion_model := _new_empty_model()
 	var promoting_pawn := Pawn.new("white", Vector2i(1, 0))
 	promotion_model.add_piece(promoting_pawn, promoting_pawn.coordinate)
+	promotion_model.promotion_selection_requested.connect(func(_pawn, _options): promotion_model.call_deferred("submit_promotion_selection", &"queen"))
 	_expect(await promotion_model.submit_move(promoting_pawn, Vector2i(0, 0)), "headless promotion move is accepted")
 	_expect(promotion_model.board[0][0] is Queen, "promotion replaces the pawn with a Queen")
+	await get_tree().process_frame
 	promotion_model.free()
 
 func _test_minotaur_charge_landing() -> void:
