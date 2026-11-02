@@ -11,6 +11,7 @@ const CannonRules := preload("res://scripts/core/pure/cannon_core_rules.gd")
 const RhetoricianRules := preload("res://scripts/core/pure/rhetorician_core_rules.gd")
 const WraithRules := preload("res://scripts/core/pure/wraith_core_rules.gd")
 const WraithPolicy := preload("res://scripts/ai/wraith_ai_policy.gd")
+const EndgamePolicy := preload("res://scripts/ai/dupre_endgame_policy.gd")
 const RHETORICIAN_LUNACY_VALUE := 2.0
 const RHETORICIAN_SOCRATIC_TURN_VALUE := 8.0
 
@@ -89,19 +90,29 @@ static func evaluate_static(state: ChessCoreState, perspective: String, tactical
 		return {"score": terminal_score(state, perspective), "own_actions": [], "enemy_actions": []}
 	var enemy := _other_color(perspective)
 	var score := 0.0
+	var non_pawn_material := 0.0
+	var total_material := 0.0
+	var material_balance := 0.0
 	for piece in state.pieces:
 		var sign_value := 1.0 if piece.color == perspective else -1.0
 		if piece.is_king():
 			score += sign_value * float(piece.current_hp) * 50.0
 		else:
 			var value := _material_value(piece) * 10.0
+			var raw_material := _material_value(piece)
+			total_material += raw_material
+			material_balance += raw_material if piece.color == perspective else -raw_material
+			if piece.type_id not in [&"pawn", &"bone_pawn"]: non_pawn_material += raw_material
 			var hp_ratio := float(piece.current_hp) / float(maxi(1, piece.max_hp))
 			value -= value * 0.3 * (1.0 - hp_ratio)
 			score += sign_value * value
 		var grant_bonus := float(piece.granted_movement_types.size()) * 0.6
 		score += grant_bonus if piece.color == perspective else -grant_bonus
-	var own_actions: Array[ChessCoreAction] = ClassicChessCore.analysis_actions(state, perspective) if generate_actions else []
-	var enemy_actions: Array[ChessCoreAction] = ClassicChessCore.analysis_actions(state, enemy) if generate_actions else []
+	var own_actions: Array[ChessCoreAction] = []
+	var enemy_actions: Array[ChessCoreAction] = []
+	if generate_actions:
+		own_actions = ClassicChessCore.analysis_actions(state, perspective)
+		enemy_actions = ClassicChessCore.analysis_actions(state, enemy)
 	score += float(own_actions.size() - enemy_actions.size()) * 0.1
 	if tactical_detail:
 		for piece in state.pieces:
@@ -117,7 +128,9 @@ static func evaluate_static(state: ChessCoreState, perspective: String, tactical
 	score += _arc_mortar_evaluation_bonus(state, perspective)
 	score += _rhetorician_evaluation_bonus(state, perspective)
 	score += _wraith_evaluation_bonus(state, perspective)
-	return {"score": score, "own_actions": own_actions, "enemy_actions": enemy_actions}
+	var endgame := EndgamePolicy.analyze_core(state, perspective) if non_pawn_material < EndgamePolicy.ENDGAME_BLEND_START else EndgamePolicy.middlegame_analysis(material_balance, total_material, non_pawn_material)
+	score += float(endgame.score)
+	return {"score": score, "own_actions": own_actions, "enemy_actions": enemy_actions, "endgame": endgame}
 
 
 static func classify_quiescence(state: ChessCoreState, action: ChessCoreAction) -> Dictionary:

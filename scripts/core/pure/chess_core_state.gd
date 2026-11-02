@@ -26,13 +26,21 @@ var reaction_queue: Array[ChessCoreReaction] = []
 var next_reaction_sequence := 0
 var resolution_context := {}
 var active_ability_cooldowns_disabled := false
+## Optional, non-authoritative instrumentation shared by descendants of one
+## isolated search root. It is never serialized or consulted by game rules.
+var performance_metrics: ChessCorePerformanceMetrics
+## Non-authoritative, per-state analysis memoization. Copies intentionally begin
+## empty because every copied state may be mutated into a different position.
+var analysis_cache := {}
 ## Transient lifecycle marker used while an automatic Socratic move is being
 ## resolved. It is never exported as settled position state.
 var socratic_resolution_color := ""
 
 
 func copy() -> ChessCoreState:
+	var copy_started := Time.get_ticks_usec()
 	var result := ChessCoreState.new()
+	result.performance_metrics = performance_metrics
 	result.board_size = board_size
 	result.board_type = board_type
 	for piece in pieces:
@@ -65,6 +73,8 @@ func copy() -> ChessCoreState:
 	result.resolution_context = resolution_context.duplicate(true)
 	result.active_ability_cooldowns_disabled = active_ability_cooldowns_disabled
 	result.socratic_resolution_color = socratic_resolution_color
+	if performance_metrics != null:
+		performance_metrics.record_state_copy(Time.get_ticks_usec() - copy_started)
 	return result
 
 

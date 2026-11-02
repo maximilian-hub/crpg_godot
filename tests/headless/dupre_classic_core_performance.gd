@@ -11,6 +11,7 @@ const SAMPLES := 3
 @export var cannon_benchmark := false
 @export var rhetorician_benchmark := false
 @export var wraith_benchmark := false
+@export var endgame_benchmark := false
 
 var failures: Array[String] = []
 
@@ -39,12 +40,12 @@ func _ready() -> void:
 	if int(model_work.model_constructions) <= 0: failures.append("model baseline constructed no simulation models")
 	if int(core_work.work_units) != int(model_work.work_units): failures.append("fixed-work backends did not examine equal work")
 	if String(core_work.action) != String(model_work.action): failures.append("fixed-work backends selected different actions")
-	var throughput_floor := 1.5 if arakne_benchmark or necromancer_benchmark or minotaur_benchmark or quarterly_benchmark or cannon_benchmark or rhetorician_benchmark or wraith_benchmark else 2.0
+	var throughput_floor := 1.5 if endgame_benchmark or arakne_benchmark or necromancer_benchmark or minotaur_benchmark or quarterly_benchmark or cannon_benchmark or rhetorician_benchmark or wraith_benchmark else 2.0
 	if float(core_work.work_per_second) < float(model_work.work_per_second) * throughput_floor: failures.append("pure-core fixed-work throughput was below the %.1fx rollout floor" % throughput_floor)
 	if int(core_time.work_units) <= int(model_time.work_units): failures.append("pure-core fixed-time search completed no additional work")
 	if int(core_work.maximum_uninterrupted_usec) > int(model_work.maximum_uninterrupted_usec) * 1.2 + 1000: failures.append("pure-core uninterrupted interval regressed by more than 20% plus 1ms tolerance")
 	if int(core_work.core_runtime_failures) != 0 or int(core_time.core_runtime_failures) != 0: failures.append("pure-core benchmark encountered invalid transitions")
-	var label := "DUPRE WRAITH CORE PERFORMANCE" if wraith_benchmark else ("DUPRE RHETORICIAN CORE PERFORMANCE" if rhetorician_benchmark else ("DUPRE CANNON CORE PERFORMANCE" if cannon_benchmark else ("DUPRE QUARTERLY CORE PERFORMANCE" if quarterly_benchmark else ("DUPRE MINOTAUR CORE PERFORMANCE" if minotaur_benchmark else ("DUPRE NECROMANCER CORE PERFORMANCE" if necromancer_benchmark else ("DUPRE ARAKNE CORE PERFORMANCE" if arakne_benchmark else "DUPRE CLASSIC CORE PERFORMANCE"))))))
+	var label := "DUPRE ENDGAME CORE PERFORMANCE" if endgame_benchmark else ("DUPRE WRAITH CORE PERFORMANCE" if wraith_benchmark else ("DUPRE RHETORICIAN CORE PERFORMANCE" if rhetorician_benchmark else ("DUPRE CANNON CORE PERFORMANCE" if cannon_benchmark else ("DUPRE QUARTERLY CORE PERFORMANCE" if quarterly_benchmark else ("DUPRE MINOTAUR CORE PERFORMANCE" if minotaur_benchmark else ("DUPRE NECROMANCER CORE PERFORMANCE" if necromancer_benchmark else ("DUPRE ARAKNE CORE PERFORMANCE" if arakne_benchmark else "DUPRE CLASSIC CORE PERFORMANCE")))))))
 	print(label, ": ", JSON.stringify(summary))
 	if failures.is_empty():
 		print(label, ": PASS")
@@ -94,6 +95,16 @@ func _run(position: ChessPosition, backend: int, leaves: int, budget_msec: int, 
 		"evaluated_replies": int(profile.get("evaluated_reply_count", 0)),
 		"quiescence_nodes": int(profile.get("quiescence_node_count", 0)),
 		"maximum_uninterrupted_usec": int(profile.get("maximum_uninterrupted_usec", 0)),
+		"state_copy_count": int(profile.get("state_copy_count", 0)),
+		"state_copy_usec": int(profile.get("state_copy_usec", 0)),
+		"maximum_state_copy_usec": int(profile.get("maximum_state_copy_usec", 0)),
+		"silent_event_count": int(profile.get("silent_event_count", 0)),
+		"resolution_by_action_kind": profile.get("resolution_by_action_kind", {}),
+		"resolution_by_king_type": profile.get("resolution_by_king_type", {}),
+		"endgame_evaluation_count": int(profile.get("endgame_evaluation_count", 0)),
+		"endgame_evaluation_usec": int(profile.get("endgame_evaluation_usec", 0)),
+		"endgame_policy_usec": int(profile.get("endgame_policy_usec", 0)),
+		"endgame_weight": float(profile.get("endgame_weight", 0.0)),
 	}
 	cpu.queue_free(); model.queue_free(); await get_tree().process_frame
 	return result
@@ -123,6 +134,13 @@ func _benchmark_position() -> ChessPosition:
 		black_king, Queen.new("black", black_queen_coordinate), Rook.new("black", Vector2i(0, 7)),
 		Bishop.new("black", Vector2i(2, 6)), Knight.new("black", Vector2i(2, 2)), Pawn.new("black", Vector2i(3, 5)), Pawn.new("black", Vector2i(1, 1)),
 	]
+	if endgame_benchmark:
+		pieces = [
+			ClassicKing.new("white", Vector2i(6, 4)), Rook.new("white", Vector2i(6, 2)),
+			Pawn.new("white", Vector2i(3, 2)), Pawn.new("white", Vector2i(5, 6)),
+			ClassicKing.new("black", Vector2i(1, 4)), Rook.new("black", Vector2i(1, 7)),
+			Pawn.new("black", Vector2i(4, 5)), Pawn.new("black", Vector2i(2, 1)),
+		]
 	var model := ChessBoardModel.new(); model.startup_mode = ChessBoardModel.StartupMode.EMPTY; model.diagnostic_logging_enabled = false
 	add_child(model)
 	for _row in range(8): model.board.append([null, null, null, null, null, null, null, null])

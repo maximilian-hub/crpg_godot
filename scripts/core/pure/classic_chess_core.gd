@@ -291,6 +291,21 @@ static func attackers(state: ChessCoreState, target: Vector2i, color := "") -> A
 
 
 static func resolve_action(source: ChessCoreState, submitted: ChessCoreAction, emit_events := true) -> ChessCoreStepResult:
+	var resolution_started := Time.get_ticks_usec()
+	var result := _resolve_action_unprofiled(source, submitted, emit_events)
+	if source != null and source.performance_metrics != null and submitted != null:
+		var king_type: StringName = &""
+		var source_piece := source.piece_by_id(submitted.piece_id)
+		if source_piece != null:
+			for candidate in source.pieces:
+				if candidate.color == source_piece.color and candidate.is_king():
+					king_type = candidate.type_id
+					break
+		source.performance_metrics.record_resolution(submitted.kind, king_type, Time.get_ticks_usec() - resolution_started, result.events.size(), emit_events)
+	return result
+
+
+static func _resolve_action_unprofiled(source: ChessCoreState, submitted: ChessCoreAction, emit_events := true) -> ChessCoreStepResult:
 	if source == null or submitted == null:
 		return ChessCoreStepResult.rejected(source, "State and action are required.")
 	# Validate the submitted command directly. Enumerating every legal action here

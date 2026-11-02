@@ -156,11 +156,24 @@ Non-Negotiable Constraints
 Recommended Next Steps
 ----------------------
 
-1. Profile representative Dupre games.
-   Record state-copy time, legal-action generation, resolution, evaluation,
-   copied object counts, completed replies, deadline fallbacks, and maximum
-   uninterrupted main-thread intervals. Break results down by king and action
-   type so optimization follows evidence.
+Completed foundation: Dupre now records isolated pure-core state-copy and
+resolution costs per search, including action-kind and king-type buckets, silent
+event counts, and maximum copy duration. Its existing search profile continues
+to report legal generation, evaluation, completed replies, deadline fallbacks,
+and uninterrupted intervals. These metrics are intentionally non-authoritative
+and never enter serialized game state.
+
+Dupre also has a shared, phase-tapered endgame evaluator used by both root policy
+and pure-core leaf evaluation. It recognizes passed-pawn progress and urgency,
+king activity, rook support behind passers, and whether simplification helps the
+materially leading side. It does not alter rules or add search depth, and its
+influence is zero in material-rich middlegames.
+
+1. Profile full representative matches and optimize measured hotspots.
+   The next useful sample is not another synthetic architecture migration: run
+   fixed-seed Classic and mixed-king matches, compare endgame and middlegame
+   profiles, and identify whether state copying, resolution, legal generation,
+   tactical maps, or policy projection now dominates actual turns.
 
 2. Optimize the GDScript core before porting it.
    Reuse per-state legal actions and tactical summaries, avoid unnecessary
@@ -169,9 +182,10 @@ Recommended Next Steps
    silent simulations when search does not consume those events.
 
 3. Spend recovered time on Dupre's judgment.
-   Improve forcing-reply ordering, repetition awareness, tactical candidate
-   selection, and conservative quiescence. Prefer better selection over blindly
-   increasing search depth everywhere.
+   Extend the new endgame foundation only from gameplay evidence: promotion
+   races, opposition, rook endgames, repetition awareness, and king-specific
+   endgame ability timing are the likely next candidates. Improve forcing-reply
+   ordering and conservative quiescence before blindly increasing depth.
 
 4. Prototype bounded worker search.
    Copy one settled position on the main thread, use isolated state and RNG per

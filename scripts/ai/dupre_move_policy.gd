@@ -2,6 +2,7 @@ extends RefCounted
 class_name DupreMovePolicy
 
 const ExchangeAnalyzer = preload("res://scripts/ai/dupre_exchange_analyzer.gd")
+const EndgamePolicy = preload("res://scripts/ai/dupre_endgame_policy.gd")
 
 const REVERSAL_PENALTY := 4.0
 const BACK_RANK_ROOK_SHUFFLE_PENALTY := 1.25
@@ -24,6 +25,11 @@ var _exchange_results: Dictionary = {}
 var _ability_effect_cache: Dictionary = {}
 var _action_effect_cache: Dictionary = {}
 var _action_assessment_cache: Dictionary = {}
+var _endgame_assessments: Dictionary = {}
+var _endgame_snapshot: Dictionary
+var _endgame_analysis: Dictionary
+var endgame_analysis_usec := 0
+var endgame_cache_hits := 0
 var ability_threat_query_count := 0
 var ability_threat_query_usec := 0
 var ability_effect_collection_count := 0
@@ -40,6 +46,9 @@ func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_t
 	previous_own_actions = p_previous_own_action
 	tactical_map = p_tactical_map if p_tactical_map != null else DupreTacticalMap.from_model(model)
 	exchange_analyzer = ExchangeAnalyzer.new(model)
+	_endgame_snapshot = EndgamePolicy.snapshot_from_model(model)
+	_endgame_analysis = EndgamePolicy.analyze(_endgame_snapshot, color)
+	endgame_analysis_usec += int(_endgame_analysis.get("analysis_usec", 0))
 
 
 func score(action: ChessPrimaryAction) -> float:
@@ -91,6 +100,14 @@ func score(action: ChessPrimaryAction) -> float:
 		result -= REVERSAL_PENALTY
 
 	var projected := projected_map(action)
+	if float(_endgame_analysis.endgame_weight) > 0.0:
+		var endgame_assessment := EndgamePolicy.transition_bonus(
+			_endgame_snapshot, EndgamePolicy.snapshot_from_tactical_map(projected), color
+		)
+		_endgame_assessments[_action_key(action)] = endgame_assessment
+		endgame_analysis_usec += int(endgame_assessment.before.get("analysis_usec", 0))
+		endgame_analysis_usec += int(endgame_assessment.after.get("analysis_usec", 0))
+		result += float(endgame_assessment.score)
 	var piece_value := _piece_value(action.piece)
 	var projected_piece_coordinate := destination if _projected_piece_is(projected, destination, action.piece) else origin
 	var was_attacked := tactical_map.attack_count(origin, _other_color(color)) > 0
@@ -494,7 +511,17 @@ func projection_metrics() -> Dictionary:
 		"ability_effect_count": _cached_effect_count(),
 		"ability_action_effect_collections": ability_action_effect_collection_count,
 		"ability_action_effect_collection_usec": ability_action_effect_collection_usec,
+		"endgame": {
+			"analysis": _endgame_analysis,
+			"analysis_usec": endgame_analysis_usec,
+			"cache_hits": endgame_cache_hits,
+			"assessed_actions": _endgame_assessments.size(),
+		},
 	}
+
+
+func endgame_action_assessment(action: ChessPrimaryAction) -> Dictionary:
+	return _endgame_assessments.get(_action_key(action), {})
 
 
 func _cached_effect_count() -> int:

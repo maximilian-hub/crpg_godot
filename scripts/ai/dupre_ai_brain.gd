@@ -36,6 +36,7 @@ var _last_evaluation_complete := true
 var _evaluation_context_forcing := false
 var _active_simulation_backend := SimulationBackend.MODEL
 var _core_root_state: ChessCoreState
+var _core_metrics: ChessCorePerformanceMetrics
 
 
 static func unsupported_king_ids(model: ChessBoardModel) -> Array[StringName]:
@@ -51,6 +52,7 @@ static func unsupported_king_ids(model: ChessBoardModel) -> Array[StringName]:
 
 
 func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
+	_core_metrics = null
 	_begin_profile(actions.size())
 	_begin_book_profile()
 	last_profile["king_support"] = _king_support_profile(player.model)
@@ -634,6 +636,7 @@ func _evaluate_core_state(state: ChessCoreState) -> float:
 	_last_evaluation_complete = true
 	var started := Time.get_ticks_usec()
 	var static_result := ClassicCoreBackend.evaluate_static(state, player.controlled_color, _evaluation_context_forcing, true)
+	_record_endgame_evaluation(static_result.get("endgame", {}))
 	last_profile.core_evaluation_count += 1
 	last_profile.core_legal_generation_count += 2
 	last_profile.legal_action_generation_count += 2
@@ -815,9 +818,12 @@ func _evaluate_dupre_static(model: ChessBoardModel, cached_actions: Dictionary =
 	var layer_usec := Time.get_ticks_usec() - component_started
 	last_profile.evaluation_layer_usec += layer_usec
 	component_usec += layer_usec
+	var endgame := DupreEndgamePolicy.analyze_model(model, player.controlled_color)
+	score += float(endgame.score)
+	_record_endgame_evaluation(endgame)
 	last_profile.evaluation_other_usec += maxi(0, Time.get_ticks_usec() - started - yielded_usec - component_usec)
 	_record_evaluation(started, yielded_usec)
-	return {"score": score, "own_actions": own_actions, "enemy_actions": enemy_actions, "tactical_map": tactical}
+	return {"score": score, "own_actions": own_actions, "enemy_actions": enemy_actions, "tactical_map": tactical, "endgame": endgame}
 
 
 func _has_hanging_major(tactical: DupreTacticalMap) -> bool:
@@ -909,6 +915,7 @@ func _record_first_completion() -> void:
 
 func _configure_simulation_backend(position: ChessPosition) -> void:
 	_core_root_state = null
+	_core_metrics = null
 	_active_simulation_backend = SimulationBackend.MODEL
 	last_profile.simulation_backend_requested = SimulationBackend.keys()[simulation_backend].to_lower()
 	last_profile.simulation_backend = &"model"
@@ -923,9 +930,24 @@ func _configure_simulation_backend(position: ChessPosition) -> void:
 		last_profile.simulation_backend_fallback_detail = String(imported.get("error", ""))
 		return
 	_core_root_state = imported.state
+	_core_metrics = ChessCorePerformanceMetrics.new()
+	_core_root_state.performance_metrics = _core_metrics
 	_active_simulation_backend = SimulationBackend.CLASSIC_CORE
 	last_profile.simulation_backend = &"classic_core"
 	last_profile.simulation_backend_fallback_reason = &""
+
+
+func _finish_profile() -> void:
+	_sync_core_metrics_profile()
+	super._finish_profile()
+
+
+func _sync_core_metrics_profile() -> void:
+	if _core_metrics == null:
+		return
+	var metrics := _core_metrics.snapshot()
+	for key in metrics:
+		last_profile[key] = metrics[key]
 
 
 func reset_session(_reason: StringName = &"reset") -> void:
@@ -979,6 +1001,23 @@ func _begin_book_profile() -> void:
 	last_profile["core_legal_generation_count"] = 0
 	last_profile["core_evaluation_count"] = 0
 	last_profile["core_runtime_failure_count"] = 0
+	last_profile["state_copy_count"] = 0
+	last_profile["state_copy_usec"] = 0
+	last_profile["average_state_copy_usec"] = 0.0
+	last_profile["maximum_state_copy_usec"] = 0
+	last_profile["silent_event_count"] = 0
+	last_profile["resolution_by_action_kind"] = {}
+	last_profile["resolution_by_king_type"] = {}
+	last_profile["endgame_weight"] = 0.0
+	last_profile["endgame_phase"] = &"middlegame"
+	last_profile["endgame_material_balance"] = 0.0
+	last_profile["endgame_friendly_passed_pawns"] = 0
+	last_profile["endgame_enemy_passed_pawns"] = 0
+	last_profile["endgame_policy_usec"] = 0
+	last_profile["endgame_evaluation_usec"] = 0
+	last_profile["endgame_evaluation_count"] = 0
+	last_profile["endgame_cache_hits"] = 0
+	last_profile["endgame_policy_candidate_count"] = 0
 	last_profile["opening_book_hit"] = false
 	last_profile["opening_book_fallback"] = false
 	last_profile["opening_book_override"] = false
@@ -1299,11 +1338,13 @@ func _rank_actions(actions: Array[ChessPrimaryAction], policy) -> Array[Dictiona
 		var action := actions[index]
 		if not player._is_acceptable_primary_action(action):
 			continue
+		var policy_score: float = policy.score(action)
 		ranked.append({
 			"action": action,
-			"policy": policy.score(action),
+			"policy": policy_score,
 			"index": index,
 			"ability_assessment": policy.action_effect_assessment(action) if policy.action_may_have_effects(action) else {},
+			"endgame_assessment": policy.endgame_action_assessment(action),
 		})
 		await _cooperate()
 	ranked.sort_custom(func(a: Dictionary, b: Dictionary):
@@ -1562,6 +1603,23 @@ func _populate_policy_profile(policy) -> void:
 	last_profile.exchange_high_confidence = int(exchange.get("high", 0))
 	last_profile.exchange_medium_confidence = int(exchange.get("medium", 0))
 	last_profile.exchange_low_confidence = int(exchange.get("low", 0))
+	var endgame: Dictionary = metrics.get("endgame", {})
+	var analysis: Dictionary = endgame.get("analysis", {})
+	last_profile.endgame_policy_usec += int(endgame.get("analysis_usec", 0))
+	last_profile.endgame_cache_hits += int(endgame.get("cache_hits", 0))
+	last_profile.endgame_policy_candidate_count += int(endgame.get("assessed_actions", 0))
+	last_profile.endgame_weight = float(analysis.get("endgame_weight", 0.0))
+	last_profile.endgame_phase = analysis.get("phase", &"middlegame")
+	last_profile.endgame_material_balance = float(analysis.get("material_balance", 0.0))
+	last_profile.endgame_friendly_passed_pawns = int(analysis.get("friendly_passed_pawns", 0))
+	last_profile.endgame_enemy_passed_pawns = int(analysis.get("enemy_passed_pawns", 0))
+
+
+func _record_endgame_evaluation(analysis: Dictionary) -> void:
+	if analysis.is_empty(): return
+	last_profile.endgame_evaluation_count += 1
+	last_profile.endgame_evaluation_usec += int(analysis.get("analysis_usec", 0))
+	if bool(analysis.get("cache_hit", false)): last_profile.endgame_cache_hits += 1
 
 
 func _accumulate_ability_threat_profile(policy) -> void:

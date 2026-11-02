@@ -581,9 +581,12 @@ func get_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 
 ## Rule-only action enumeration used while the public command surface is locked.
 func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
+	var actions: Array[ChessPrimaryAction] = []
 	if color != current_turn or battle_over:
-		return []
-	return _classic_core_bridge.legal_actions(color) if _classic_core_bridge != null and _classic_core_bridge.active else []
+		return actions
+	if _classic_core_bridge != null and _classic_core_bridge.active:
+		actions.assign(_classic_core_bridge.legal_actions(color))
+	return actions
 
 
 func has_legal_primary_action(color: String) -> bool:
