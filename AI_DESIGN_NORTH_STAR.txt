@@ -1,48 +1,126 @@
-CHESS RPG · AI DESIGN NORTH STAR
+CHESS RPG — AI DESIGN NORTH STAR
+================================
 
-A world of chess players, not chess engines
--The opponent should feel like a person with established chess knowledge, recognizable habits, imperfect judgment, and an individual playing style.
+Purpose
+-------
 
-Opening familiarity
--Opening moves are selected quickly and confidently from a broad repertoire of recognizable traditional chess lines, with future Chess RPG–specific theory mixed in.
-
-Separation of thinking and acting
--The AI computes as quickly as possible. A separate character-direction system controls hesitation, confidence, physical animation, and dramatic pacing.
-
-Flexible opening knowledge
--Books remain useful across unusual kings and minor board deviations. A configurable move limit ends book use, and king-specific behavior may override it.
-
-Distinct personalities
--Characters eventually will express different strategic preferences, piece affinities, risk tolerances, and playing strengths through reusable parameters.
-
-Future-proof mechanics
--Future abilities, hazards, baubles(planned gem-slot items that can slightly modify a king piece), and future player skills should enter through shared game-rule interfaces rather than requiring redesigns of the opponent AI.
+This document defines how an opponent should feel. Technical rules ownership
+and the performance roadmap live in PURE_DATA_AUTHORITATIVE_CORE_INTENT.txt.
 
 
+A World of Chess Players, Not Chess Engines
+-------------------------------------------
 
-OPENING NORTH STAR
-  Familiar chess, confidently played
-  Dupre should feel like an experienced resident of a world where chess is common knowledge. He begins games with a broad repertoire of recognizable chess openings, playing familiar continuations immediately and confidently.
-  He commits to an opening family, adapts when opponents deviate, and tolerates unusual Chess RPG mechanics without instantly forgetting his opening knowledge.
-  His knowledge is imperfect: an opening may be strategically questionable against a particular king. He is not required to play optimally, but he should still respond to obvious immediate danger.
-  After a configurable number of his own book moves, he transitions to his normal decision-making system.
-  The AI selects moves as quickly as possible. Character direction—not AI search—controls physical hesitation, animation, and dramatic timing.
-  Dupre should capable of having this opening behaviour overridden, like if he's using a king that wants to use its ability on Turn 1.
+An opponent should feel like a person with established chess knowledge,
+recognizable habits, imperfect judgment, and an individual playing style.
+Playing strength matters, but purposeful and legible behavior matters too.
 
-  The concrete design decisions
-  Aspect:	V1 decision
-  Opening repertoire:	Many recognizable traditional openings
-  Selection	Uniform: random choice among eligible opening families
-  Commitment:	Choose one family per match
-  Length:	Configurable maximum number of Dupre's book moves
-  Opponent: deviations	Try compatible continuations, then normal Dupre
-  Minor RPG actions:	Do not automatically invalidate opening context
-  Tactical emergencies:	Override book preferences
-  King-specific rules:	May override or disable book recommendations
-  Book performance:	Fast-path decisions, not full search by default
-  Character timing:	Controlled entirely outside the AI
-  Future personalities:	Supported by extensibility points; not built yet
-  Future Chess RPG theory:	Can coexist with traditional opening knowledge
-  
-  One nuance I'd include: the maximum book length is a ceiling, not a promise. Dupre might leave his book on move two because the position demands it, or continue until move six if everything remains familiar.
-  And selecting an opening family should not mean predetermining an exact move sequence regardless of the opponent's choices. The family can contain multiple branches.
+The AI computes as quickly as possible. Character direction—not search—controls
+hesitation, confidence, physical animation, and dramatic timing.
+
+
+Dupre's Playing Model
+---------------------
+
+Dupre combines three kinds of intelligence:
+
+* Opening knowledge for quick, recognizable traditional play.
+* A purposeful policy for development, activity, king safety, material safety,
+  repetition avoidance, and sensible use of king abilities.
+* Selective authoritative tactical search for immediate wins, defenses,
+  captures, king damage, forced movement, and costly blunders.
+
+Tactical uncertainty must remain explicit. An incompletely verified move is not
+silently treated as proven safe.
+
+
+Opening Principles
+------------------
+
+* Choose one compatible opening family per match rather than rerolling each turn.
+* Select eligible families uniformly unless a future personality says otherwise.
+* Follow branches in response to the opponent; do not predetermine a line.
+* Treat the configured book length as a ceiling, not a promise.
+* Permit compatible continuations after modest deviations or unrelated RPG
+  actions, but leave the book when the position no longer supports the theory.
+* Let immediate wins, urgent defenses, and king-specific priorities override
+  book recommendations.
+* Keep book decisions fast. Presentation timing belongs outside the AI.
+* Allow traditional theory to remain available even when an unusual RPG king
+  makes it strategically imperfect.
+
+
+Scaling to Many Kings
+---------------------
+
+The authoritative core defines what every action does. Generic AI policy should
+understand common consequences—damage, captures, summons, displacement, stun,
+delayed hazards, protection, and king danger—without bespoke matchup code.
+
+King-specific AI extensions are appropriate for strategic intent that cannot be
+inferred from the generic consequences. They should remain optional additions,
+not a requirement to reimplement each king's rules for every opponent.
+
+Future abilities, hazards, equipment, baubles, and player skills should enter
+through shared action/state interfaces. A roster of more than one hundred kings
+must not require a separate handcrafted evaluator for every pairing.
+
+
+Opponent Knowledge and Discovery
+--------------------------------
+
+NPC opponents should not automatically possess perfect knowledge of every king.
+In the setting, most players specialize in one king or a small collection. An
+ordinary farmer, butcher, or goblin should not immediately understand an obscure
+king recovered from a distant ruin merely because the authoritative simulator
+knows its rules.
+
+Future AI should separate the true rules from the opponent's belief about those
+rules. A useful knowledge progression is:
+
+* Unknown: anticipate ordinary Classic-like behavior and visible universal game
+  information, but not undisclosed special mechanics.
+* Observed: recognize demonstrated mechanics well enough to avoid repeating an
+  immediately obvious mistake, without gaining complete tactical mastery.
+* Familiar: include the king's full known capabilities in tactical forecasting
+  and strategic counterplay.
+
+Observed knowledge is deliberately weaker than Familiar knowledge. Seeing a
+Minotaur Charge or Retaliating Rage once may teach an NPC not to feed another
+piece into the same obvious consequence. It should not instantly grant the move
+ordering, setup recognition, timing, and counterplay of someone who has studied
+or reflected on that king. Familiarity may be awarded between matches, allowing
+an NPC to become meaningfully more effective in a rematch.
+
+This distinction supports both immersion and gameplay: an unfamiliar king gives
+the player a temporary discovery advantage, while repeated opponents learn and
+encourage the player to rotate kings.
+
+The learning policy must remain configurable. Content or game modes must be able
+to disable mid-match observation entirely, prevent knowledge persistence,
+promote directly from Unknown to Familiar, or assign starting familiarity from
+an NPC's lore and experience. A simple initial implementation may use only
+Unknown and Familiar, but it must not make the intermediate Observed state
+architecturally mandatory.
+
+Ignorance affects prediction, never legality or perception. An NPC still obeys
+the authoritative rules, understands its own king, sees current HP and visible
+board state, and responds to consequences that have already occurred. Knowledge
+filters belong in AI policy, threat interpretation, and opponent-reply modeling;
+they must never modify the authoritative core position.
+
+Persisted knowledge should eventually be keyed by NPC identity and opposing king
+type, independently from the player's KingDex. The KingDex represents player
+discovery; NPC knowledge represents that character's personal experience.
+
+
+Future Personalities
+--------------------
+
+Characters may eventually vary through reusable preferences: opening-family
+weights, aggression, risk tolerance, piece affinity, ability appetite,
+repetition tolerance, tactical depth, and willingness to accept uncertainty.
+
+Personality should shape choices among reasonable moves. It should not require
+characters to ignore immediate victory, obvious catastrophic danger, or the
+authoritative rules of the game.

@@ -1,245 +1,202 @@
-CHESS RPG — PURE-DATA AUTHORITATIVE CORE INTENT
-================================================
+CHESS RPG — PURE-DATA AUTHORITATIVE CORE
+=========================================
 
-Status
-------
+Purpose
+-------
 
-The pure-data rules core is now the sole authoritative engine for live play and
-AI simulation. ChessBoardModel has been reduced to a live Godot facade: it owns
-signals, completion gates, position replacement, and ModelPiece projections,
-but it no longer resolves movement, combat, abilities, reactions, RNG, delayed
-effects, or turns.
-
-There is no runtime legacy-authority fallback. Unsupported position data is
-rejected at the position boundary instead of being interpreted by a second
-rules implementation.
+This document records the current rules architecture, where to find its
+implementation, the constraints that must remain true, and the recommended
+performance roadmap. It is a reference document, not a migration changelog.
 
 
-Why We Want This
-----------------
+Current Status
+--------------
 
-Chess RPG is expected to contain more than one hundred mechanically distinct
-kings. The same increasingly complex rules must support live play, AI search,
-sandbox play, automated tests, saved games, and replays.
+The pure-data core is the sole authoritative rules engine for live play and AI
+simulation. It owns legal actions, movement, combat, abilities, reactions,
+choices, delayed effects, turn resolution, battle completion, and deterministic
+random state.
 
-A pure-data core should eventually provide:
+ChessBoardModel is now a live Godot facade. It owns signals, animation and
+completion gates, position replacement, and ModelPiece projections required by
+the controller and presentation. It does not contain an alternative rules
+engine, and there is no legacy-authority fallback.
 
-- One authoritative implementation of the game rules.
-- Substantially cheaper speculative AI simulations.
-- Deterministic state transitions and reproducible RNG behavior.
-- Fast snapshots, state hashing, caching, and safe simulation reuse.
-- Strong differential, replay, fuzz, and regression testing.
-- A clean separation between rules and visual presentation.
-- The option to run isolated AI simulations on bounded worker threads.
-- A scalable foundation for desktop and mobile releases.
-
-Pure data is not assumed to be automatically fast. Legal-action generation,
-evaluation, search policy, and state copying must still be profiled and improved.
-The first implementation must prove its value with measurements.
+An unsupported or structurally invalid position is rejected at the core import
+boundary instead of being interpreted by a second implementation.
 
 
-Definition of the Intended Core
--------------------------------
-
-The core should resolve a submitted action synchronously from an explicit game
-state and produce:
-
-- The resulting authoritative game state.
-- An ordered stream of semantic gameplay events for presentation.
-- An explicit pending-choice request when human or AI input is required.
-- Updated deterministic random-generator state.
-
-The core must not depend on the active SceneTree, visual Nodes, animation timing,
-deferred calls, or presentation completion signals.
-
-Presentation may take as long as it needs to animate the resulting events, but
-presentation must not decide or modify the authoritative outcome.
-
-
-Authority and Migration Rules
------------------------------
-
-- The new core must not become a separate approximate rules engine for the AI.
-- The intended end state is that live play and AI simulation use the same rules.
-- During migration, the existing ChessBoardModel remains authoritative until a
-  migrated rules slice has demonstrated parity.
-- Old and new implementations should be compared through differential tests.
-- Rule disagreements must be fixed rather than hidden behind AI-specific logic.
-- Native action identity must be preserved, including path-dependent actions.
-- Reactions, summons, delayed effects, secondary choices, hazards, and RNG state
-  must be represented explicitly rather than omitted for convenience.
-- Special kings should be migrated incrementally, not through a big-bang rewrite.
-- Worker-thread search should be attempted only after the core is deterministic,
-  isolated, and correct when run single-threaded.
-
-
-Approved Milestone Order
-------------------------
-
-A. Harden the current simulation lifecycle:
-   avoid throwaway default-board construction, provide explicit simulation
-   disposal, measure object creation and cleanup, and preserve decision behavior.
-
-B. Redesign Dupre's quiescence search:
-   extend genuinely forcing tactical positions without allowing ordinary ability
-   actions to consume most of the search budget.
-
-C. Build a pure-data Classic King vertical slice:
-   state, legal actions, synchronous resolution, semantic events, choices, and RNG.
-
-D. Differentially validate the new slice against ChessBoardModel using curated
-   positions, replays, and randomized legal action sequences.
-
-E. Benchmark Classic Dupre using the new core while retaining a safe fallback for
-   unmigrated mechanics.
-
-F. Make the validated core authoritative for live Classic games through a
-   presentation adapter.
-
-G. Migrate special mechanics in deliberate architectural order, beginning with
-   representative challenges such as Arakne paths, Necromancer reactions and
-   summons, Quarterly choices, and Cannon delayed effects.
-
-H. Add bounded background search with conservative desktop/mobile worker limits,
-   cancellation tied to position revision, and isolated per-worker RNG and state.
-
-
-Near-Term Commitment
+Where the Rules Live
 --------------------
 
-Authority-removal milestone completed: ClassicChessCore now owns every live
-command and the full migrated roster, including Archer variants. The bridge
-projects semantic events into the existing presentation contracts, and the
-sandbox authority control is retained only as a disabled status display. Piece
-classes retain identity and authored presentation metadata; their legal move
-and ability queries delegate to the core-backed facade. The legacy mutation and
-resolution entry points were removed rather than retained as compatibility
-fallbacks.
+The authoritative implementation is under:
 
-Milestone A established explicit simulation lifecycle ownership, cleanup
-instrumentation, and characterization coverage without changing authoritative
-rules.
+    scripts/core/pure/
 
-Milestone B replaces Dupre's broad immediate-action quiescence extension with
-a conservative tactical policy: captures, direct king damage, lethal material
-damage, consequential forced movement or stuns, and emergency king blocks.
-Delayed hazards and merely positional abilities remain outside quiescence.
+Start with these files:
 
-Milestone C established a Node-free, synchronous Classic King vertical slice
-with immutable state transitions, deterministic legal actions, ordered semantic
-events, explicit promotion choices, and opaque RNG-state preservation. The live
-model now supports Queen, Rook, Bishop, and Knight promotion; existing CPU brains
-retain Queen as their default.
+* classic_chess_core.gd
+  The main rules coordinator. It imports and exports positions, enumerates legal
+  actions, defines ordinary Pawn/Knight/Bishop/Rook/Queen/King movement, handles
+  castling, en passant and promotion, resolves submitted actions and choices,
+  applies damage and destruction, orders reactions, advances turns, and emits
+  semantic events.
 
-Milestone D established broad differential validation against ChessBoardModel.
-The fixed-seed gate and configurable soak profiles compare legal actions,
-settled positions, choices, forced passes, terminal results, RNG snapshots, and
-normalized semantic events after every action. Failures produce deterministic
-replay artifacts plus bounded action-history and starting-position minimization.
-The first broad soak covered more than nineteen thousand accumulated legal
-actions and exposed one promotion movement-history mismatch, which was corrected
-in the pure core.
+* chess_core_state.gd
+  The complete mutable simulation state: pieces, occupancy indexes, effects,
+  autonomous entities, turn state, pending choices, reactions, IDs, and RNG.
 
-Milestone E integrated the validated Classic slice as Dupre's simulation backend.
-Compatible Classic positions use pure-data search automatically; unsupported
-pieces, modifiers, effects, cooldowns, choices, board types, or RPG state retain
-the ChessBoardModel path. Forced-backend characterization compares exact root
-moves and scores, while a fixed-work gate requires at least twice the model
-backend's throughput before automatic use. The initial gate measured 2.08x
-fixed-work throughput and roughly 2.66x as much tactical work in the same 1.2
-second budget, with no temporary simulation Nodes in the pure path.
+* chess_core_piece.gd
+  Pure piece data used by the rules core. These are not Nodes and have no visual
+  behavior.
 
-Milestone F established an opt-in live Classic authority path in the board
-sandbox. ClassicChessCore owns legal commands and committed outcomes while a
-live bridge preserves ChessBoardModel as the public facade and ModelPiece
-projection consumed by controllers, CPUs, saves, replays, and presentation.
-Quiet movement, damage, capture, castling, en passant, promotion, King defeat,
-and forced passes use the existing completion-gate animations without allowing
-presentation to alter the core result. Compatible position replacement
-resynchronizes the core; unsupported state reports a reason and stays on model
-authority. Runtime transition failures do not silently execute legacy rules.
-Production battles continue to default to ChessBoardModel while this path soaks
-in the sandbox.
+* chess_core_action.gd, chess_core_choice.gd, chess_core_reaction.gd,
+  chess_core_event.gd, and chess_core_step_result.gd
+  The typed inputs and outputs of a rules transition.
 
-Milestone G1 migrated Arakne as the first complete special-King slice. The pure
-core now preserves exact Skitter path identity, resolves both landings in order,
-supports castling and King attack geometry, and resolves Spike Burst damage,
-lethality, battle completion, and cooldown scheduling. Ability-rule configuration
-and the initial cooldown hold are explicit schema-4 position state. Dupre may use
-the pure backend for Classic/Arakne and mixed positions, and the sandbox live
-authority preserves the existing staged input and presentation contracts. Other
-special Kings, modifiers, reactions, summons, hazards, and autonomous entities
-still fall back before play. Production authority remains ChessBoardModel.
+* chess_core_king_rules.gd
+  The registry connecting king type IDs to their special-rule modules.
 
-Milestone G2 migrated Necromancer and Bone Pawns. The pure core now owns active
-summons, Bone Pawn movement and terminal-rank expiration, deterministic piece-ID
-allocation, and ordered Raise Dead opportunities. A typed secondary-choice seam
-pauses actions for coordinate selection, recomputes later targets after earlier
-reactions, and resumes the turn only after the queue drains. Dupre settles those
-choices without temporary model Nodes, while the sandbox live bridge preserves
-the existing human/CPU reaction API, aura, corpse marker, and summon-portal
-presentation. Wraith reactions, modifiers, hazards, and other unmigrated
-mechanics still fall back before play; production authority remains ChessBoardModel.
+King-specific rules are divided into:
 
-Milestone G3 migrated Minotaur Charge and Retaliating Rage. The pure core now
-owns orthogonal Charge targeting, its distinct wall-stun, physical-capture, and
-durable-collision landings, plus deterministic high-priority automatic Rage
-cascades. Rage composes with destruction, King defeat, and lower-priority Raise
-Dead choices before an action settles. Dupre uses the pure backend for mixed
-Classic/Arakne/Necromancer/Minotaur positions, and the sandbox bridge preserves
-Charge movement/impact, stun, Rage announcements, affected-square presentation,
-and reaction lifecycle signals. Production authority remains ChessBoardModel.
+* arakne_core_rules.gd — Skitter paths and Spike Burst.
+* necromancer_core_rules.gd — Bone Pawn summoning; shared core resolution owns
+  Raise Dead and Bone Pawn lifecycle.
+* minotaur_core_rules.gd — Charge and Retaliating Rage policy data.
+* quarterly_initiative_core_rules.gd — Efficiency, Performance Cycle, and
+  movement grants.
+* cannon_core_rules.gd — Arc Mortar targeting and area rules.
+* rhetorician_core_rules.gd — attack prevention, compelled movement, Lunacy,
+  and Socratic behavior.
+* wraith_core_rules.gd — Cursed Marks, Lingering Malice, summons, replacement,
+  and pursuit.
+* archer_core_rules.gd — all Archer variants, ranged attacks, Draw, Quiver,
+  Charge, Volley, arrow effects, and Archer RNG behavior.
 
-Milestone G4 migrated Quarterly Initiative King and permanent movement grants.
-The pure core now owns Efficiency's friendly-piece combat, Performance Cycle's
-round-based HP cost, Stakeholder Pandering's typed movement choice, and granted
-Pawn/Knight/Bishop/Rook movement throughout legal generation and attack geometry.
-Dupre settles grant choices with the same shared policy weights used by the model
-backend, and compatible modified positions no longer require temporary Nodes.
-The sandbox bridge preserves self-damage, selection, grant badges, cooldown, and
-ability presentation. Production authority remains ChessBoardModel.
+Some cross-mechanic resolution necessarily remains in classic_chess_core.gd.
+For example, destruction can queue Necromancer or Minotaur reactions, and turn
+entry can resolve Mortars, Wraiths, cooldowns, or Socratic actions. The small
+king modules describe their local geometry and effects; the coordinator composes
+those effects through one shared action lifecycle.
 
-Milestone G5 migrated Cannon King and Arc Mortar as the first delayed autonomous
-entity. The pure state now owns validated autonomous-entity data, deterministic
-shared state IDs, Cannon's conditional cooldown, and owner-turn entry impacts.
-Mortar damage uses the same destruction and reaction queues as ordinary damage,
-including Raise Dead and Retaliating Rage. Unsupported entities and tile effects
-continue to fall back to ChessBoardModel rather than being approximated.
 
-Milestone G5.5 hardened delayed-effect composition before further King
-migrations. A deterministic differential gate now compares model and core state,
-legal actions, choices, and semantic events through Mortar, Rage, Raise Dead,
-overlapping impacts, forced passes, and terminal battles. It also established
-replayable failure artifacts and fixed the authoritative model's forced-pass
-turn-entry context so Mortar-created reactions cannot remain stranded.
+Live and AI Integration
+-----------------------
 
-Milestone G6 migrated Rhetorician King. The pure core now owns Can Words
-Prevent Harm?, Can Logic Move Them?, Lunacy accumulation, serialized Lunacy RNG,
-and the two interleaved automatic Socratic turns. Socratic movement preserves
-native action and path identity and composes with promotion, destruction,
-Raise Dead, forced passes, and terminal outcomes. Dupre automatically uses the
-pure backend for compatible Rhetorician positions, while the opt-in sandbox
-bridge presents compelled and Socratic movement through the existing facade.
+* scripts/core/classic_core_live_bridge.gd
+  Submits live commands to the core and translates semantic events into existing
+  Godot signals and completion gates. Presentation may delay an animation, but
+  it cannot alter the already-resolved outcome.
 
-Milestone G7 migrated Wraith King. The pure state now owns validated Cursed
-Marks and targeted Wraith entities, including two-slot replacement, three-round
-pursuit, tracked-piece damage, invalid-target cleanup, and deterministic shared
-state IDs. Lingering Malice uses the existing ordered reaction/choice lifecycle
-and composes with Raise Dead and Rage without recursive bonus movement. Dupre's
-model and pure backends share Wraith pressure weights, compatible Wraith games
-automatically use pure simulation, and the opt-in sandbox bridge projects marks,
-summons, movement, damage, and removal through the existing presentation facade.
-Unmigrated tile effects such as Archer arrows still fall back to the model, and
-production authority remains ChessBoardModel.
+* scripts/core/chess_model.gd
+  The live facade and ModelPiece projection. Its query and submit methods
+  delegate to the core-backed bridge.
 
-Milestone G8 consolidated the migrated roster behind one deterministic
-cross-King conformance gate. Every ordered pairing runs model and pure rules in
-lockstep, compares native action/path identity, choices, serialized state and
-RNG, and emits replayable failure artifacts plus mechanic coverage and phase
-timings. The first gate exposed and fixed immediate Wraith cleanup when either
-its source or target dies, and continuation of turn completion when an
-autonomous Wraith queues Minotaur Rage. Settled positions now receive codec and
-live-authority resynchronization coverage; pending pure choices are copy-tested
-without broadening the settled-only ChessPosition save schema. Production
-authority remains ChessBoardModel, Archer remains outside the pure slice, and
-native-code work remains deferred until profiling identifies a stable hotspot.
+* scripts/pieces/
+  ModelPiece presentation identities and authored metadata. These files may
+  provide names, textures, cooldown labels, or custom projected state, but are
+  not the authoritative source of legal movement, damage, or abilities.
+
+* scripts/ai/dupre_classic_core_backend.gd
+  Dupre's direct pure-data simulation adapter. It avoids temporary scene-tree
+  models while preserving the same authoritative transitions as live play.
+
+* scripts/state/chess_position*.gd
+  The stable serialized position boundary used by saves, records, tests, and
+  core import/export.
+
+
+Supported Roster and State
+--------------------------
+
+The core currently supports ordinary chess pieces, Bone Pawns, Classic King,
+Arakne, Necromancer, Minotaur, Quarterly Initiative King, Cannon, Rhetorician,
+Wraith, and all current Archer variants.
+
+It also represents granted movement types, cooldown state, Cursed Marks,
+Archer arrows, Arc Mortars, Wraith entities, reactions, secondary choices,
+forced passes, promotions, Lunacy, Socratic turns, and the RNG streams used by
+current mechanics.
+
+
+Measured Baseline
+-----------------
+
+The first fixed-work Dupre benchmark measured approximately 2.08x the simulation
+throughput of temporary ChessBoardModel simulation and approximately 2.66x as
+much tactical work within the same 1.2-second search budget.
+
+A later 1,959-action mixed-king soak measured average action resolution at about
+1.81 ms in the direct core versus 4.61 ms through the Node-based facade, about a
+2.55x difference. Legal-action generation measured about 1.44 ms versus 1.84 ms,
+about a 1.28x difference. These are development baselines, not permanent
+guarantees; rerun comparable benchmarks after meaningful rules or search work.
+
+The architectural gain is equally important: Dupre no longer constructs,
+connects, and disposes a temporary graph of ChessBoardModel and ModelPiece Nodes
+for every speculative branch.
+
+
+Non-Negotiable Constraints
+--------------------------
+
+* Live play and AI simulation use the same rules.
+* The core remains independent of SceneTree, animation timing, signals, and
+  presentation completion gates.
+* Native action identity is preserved, including path-dependent actions.
+* Random state is explicit, isolated, serializable, and reproducible.
+* Reactions, summons, delayed effects, hazards, and secondary choices remain
+  explicit core state rather than AI approximations.
+* Presentation consumes outcomes; it does not decide them.
+* New king mechanics are implemented in the core first and projected through
+  the facade, never duplicated in ModelPiece subclasses.
+* Performance work must preserve deterministic replay and conformance tests.
+
+
+Recommended Next Steps
+----------------------
+
+1. Profile representative Dupre games.
+   Record state-copy time, legal-action generation, resolution, evaluation,
+   copied object counts, completed replies, deadline fallbacks, and maximum
+   uninterrupted main-thread intervals. Break results down by king and action
+   type so optimization follows evidence.
+
+2. Optimize the GDScript core before porting it.
+   Reuse per-state legal actions and tactical summaries, avoid unnecessary
+   copies of immutable/transient data, reduce hot Dictionary and Variant use,
+   avoid repeated board scans, and suppress semantic-event construction during
+   silent simulations when search does not consume those events.
+
+3. Spend recovered time on Dupre's judgment.
+   Improve forcing-reply ordering, repetition awareness, tactical candidate
+   selection, and conservative quiescence. Prefer better selection over blindly
+   increasing search depth everywhere.
+
+4. Prototype bounded worker search.
+   Copy one settled position on the main thread, use isolated state and RNG per
+   worker, return data only, cancel on position-revision changes, and retain
+   conservative desktop/mobile worker limits. No worker may touch Nodes.
+
+5. Run one narrow native experiment after profiling.
+   Port only a stable measured hotspot—such as state copying, attack-map
+   construction, or legal movement generation—to a GDExtension. Compare fixed
+   work against optimized GDScript before considering a broader native port.
+
+Do not rewrite the entire core in C++ merely because native code may be faster.
+The GDScript core is currently easier to evolve as king mechanics change. Native
+code should earn its maintenance cost through a focused, reproducible benchmark.
+
+
+Validation Pointers
+-------------------
+
+The principal characterization and conformance suites are under tests/headless/.
+Useful entry points include classic_core_characterization.tscn,
+classic_core_live_authority_characterization.tscn,
+classic_core_live_presentation_characterization.tscn,
+cross_king_core_soak.tscn, and the king-specific core suites.
+
+The cross-king soak compares legal action and path identity, choices, serialized
+state, RNG, lifecycle settlement, and mixed-mechanic behavior. Any native,
+threaded, or state-copy optimization must continue to pass these gates.

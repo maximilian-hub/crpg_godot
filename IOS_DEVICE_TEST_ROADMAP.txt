@@ -1,5 +1,8 @@
 CRPG iPHONE 7 DEVICE-TEST ROADMAP
-Last updated: October 4, 2026
+Last reviewed: November 2, 2026
+
+This is an operational checklist, not durable design intent. Reverify Apple,
+Godot, Xcode, signing, and store-submission requirements before following it.
 
 CURRENT STATUS
 
@@ -16,7 +19,7 @@ PHASE 1: PREPARE THE IPHONE
 
 [ ] Open Settings > General > iPhone Storage.
 [ ] Free at least 3 GB; 5 GB or more is preferable.
-[ ] Update the phone to the latest iOS 15 release offered (currently iOS 15.8.7).
+[ ] Update the phone to the latest compatible iOS release the device offers.
 [ ] Restart the iPhone.
 [ ] Restart the Mac.
 [ ] Connect the phone directly by USB without a hub.
@@ -136,8 +139,8 @@ PHASE 7: DEVICE SMOKE TEST
 
 APP STORE NOTE
 
-This roadmap reaches a locally installed test build. It does not complete an App
-Store release. As of April 28, 2026, App Store uploads require Xcode 26 or newer
-and the iOS 26 SDK. This Mac currently runs macOS 12.6.5 and cannot use that
-toolchain. Final App Store submission will require a newer supported Mac/macOS
+This roadmap reaches a locally installed test build; it does not complete an App
+Store release. Apple's accepted Xcode and SDK versions change over time. Verify
+the current submission requirements before release. If this Mac cannot run the
+required toolchain, final submission will require a newer supported Mac/macOS
 environment or a hosted macOS build service.
