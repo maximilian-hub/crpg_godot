@@ -40,22 +40,7 @@ func _init(_color: String, _coordinate: Vector2i):
 	set_cooldown(0)
 	
 func get_legal_moves() -> Array:
-	var row = coordinate.x
-	var moves := get_native_direct_move_destinations()
-
-	if not has_moved:
-		for castle_target in [Vector2i(row, 2), Vector2i(row, 6)]:
-			if model.can_castle_move(self, coordinate, castle_target):
-				moves.append(castle_target)
-
-	return moves
-
-
-func can_natively_attack_square(origin: Vector2i, target: Vector2i, position: ChessAttackPosition) -> bool:
-	if not position.is_in_bounds(target):
-		return false
-	var delta := target - origin
-	return delta != Vector2i.ZERO and absi(delta.x) <= 1 and absi(delta.y) <= 1
+	return super.get_legal_moves()
 
 
 ## Sets the current cooldown and emits the appropriate signal.
@@ -98,33 +83,8 @@ func announce_cooldown_state() -> void:
 		cooldown_ready.emit(self)
 
 ## Decrements the cooldown at the beginning of this King's turn.
-func decrement_cooldown():
-	if current_cooldown > 0:
-		set_cooldown(current_cooldown - 1)
-
-
 func mark_initial_turn_entered() -> void:
 	initial_cooldown_turn_pending = false
-
-## A newly scheduled recharge emits its motes on the first turn entry; existing
-## cooldowns begin absorbing a mote on each later turn entry.
-func _on_turn_changed(current_turn: String):
-	super._on_turn_changed(current_turn)
-	if model != null and model.active_live_authority == ChessBoardModel.LiveAuthority.CLASSIC_CORE:
-		return
-	if current_turn != color:
-		return
-	if model != null and model.active_ability_cooldowns_disabled:
-		set_cooldown(0)
-		return
-	if cooldown_reset_pending:
-		initial_cooldown_turn_pending = false
-		set_cooldown(base_cooldown)
-		return
-	if initial_cooldown_turn_pending:
-		initial_cooldown_turn_pending = false
-		return
-	decrement_cooldown()
 
 # --- Virtual Methods (to be overridden by subclasses) ---
 
@@ -142,13 +102,4 @@ func has_active_ability() -> bool:
 
 ## Calculate and return valid target squares for the active ability.
 func get_active_ability_targets() -> Array:
-	# Subclasses MUST implement this to define ability targeting.
-	printerr("get_active_ability_targets() not implemented for ", self.type)
-	return []
-
-## Called by the Controller when a valid target square is selected for the active ability.
-## Subclasses MUST implement the core logic of their ability here.
-func active_target_selected(target):
-	# Subclasses MUST implement this to execute their ability.
-	printerr("active_target_selected() not implemented for ", self.type)
-	pass
+	return model.get_active_ability_targets(self) if model != null else []

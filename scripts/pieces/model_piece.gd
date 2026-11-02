@@ -2,8 +2,6 @@
 extends Node
 class_name ModelPiece
 
-const DirectAttackRules := preload("res://scripts/core/chess_direct_attack_rules.gd")
-
 signal movement_type_granted(movement_type: StringName)
 
 # Base class for all pieces.
@@ -82,75 +80,30 @@ func restore_custom_state(_state: Dictionary) -> void:
 	
 	
 func get_legal_moves() -> Array:
-	return []
+	return model.get_legal_moves(self) if model != null else []
 
 ## Side-effect-free direct-attack contract used by both live rules and AI
 ## projections. Active abilities are deliberately outside this interface.
 func can_directly_attack_square(origin: Vector2i, target: Vector2i, position: ChessAttackPosition) -> bool:
-	if can_natively_attack_square(origin, target, position):
-		return true
-	for movement_type in granted_movement_types:
-		if DirectAttackRules.movement_type_attacks_square(movement_type, color, origin, target, position):
-			return true
-	return false
-
-
-func can_natively_attack_square(origin: Vector2i, target: Vector2i, position: ChessAttackPosition) -> bool:
-	match get_position_type_id():
-		&"pawn", &"bone_pawn":
-			return DirectAttackRules.movement_type_attacks_square(&"pawn", color, origin, target, position)
-		&"knight":
-			return DirectAttackRules.movement_type_attacks_square(&"knight", color, origin, target, position)
-		&"bishop":
-			return DirectAttackRules.movement_type_attacks_square(&"bishop", color, origin, target, position)
-		&"rook":
-			return DirectAttackRules.movement_type_attacks_square(&"rook", color, origin, target, position)
-		&"queen":
-			return DirectAttackRules.queen_attacks_square(origin, target, position)
-	return false
+	return ClassicChessCore.directly_attacks_in_occupancy(
+		position.get_core_piece(self, origin), origin, target, position.get_core_occupancy()
+	)
 
 
 func get_live_attack_position() -> ChessAttackPosition:
 	return ChessAttackPosition.from_board(model.board)
 
 
-func get_native_direct_move_destinations() -> Array:
-	var destinations: Array = []
-	var position := get_live_attack_position()
-	for row_index in range(position.board_size.x):
-		for column_index in range(position.board_size.y):
-			var target := Vector2i(row_index, column_index)
-			if not can_natively_attack_square(coordinate, target, position):
-				continue
-			var occupant = position.get_occupant(target)
-			if occupant == null or position.get_color(target) != color:
-				destinations.append(target)
-	return destinations
-
 ## Ordered landing paths for legal movement actions. Most pieces have one
-## landing; multi-step pieces override this without flattening route identity.
+## landing; path-dependent pieces are supplied by the authoritative core.
 func get_legal_move_paths() -> Array:
-	var paths: Array = []
-	for destination in get_legal_moves():
-		paths.append([destination])
-	return paths
+	return model.get_legal_move_paths(self) if model != null else []
 
 func grant_movement_type(movement_type: StringName) -> void:
 	if movement_type in [&"pawn", &"knight", &"bishop", &"rook"] and movement_type not in granted_movement_types:
 		granted_movement_types.append(movement_type)
 		movement_type_granted.emit(movement_type)
 
-func take_damage(damage: int = 1):
-	if has_method("incoming_damage_multiplier"):
-		damage *= int(call("incoming_damage_multiplier"))
-	current_hp -= damage
-	# Damage presentation belongs to the hit regardless of whether the piece
-	# survives it. Emit while the model and its PieceView are still registered so
-	# listeners can present the impact before destruction begins.
-	model.piece_damaged.emit(self, damage, current_hp, max_hp)
-	if current_hp <= 0:
-		model.destroy_piece(self, true)
-		
 func is_enemy(other: ModelPiece) -> bool:
 	return color != other.color
 
@@ -162,39 +115,3 @@ func print_piece():
 	print("max hp:", max_hp)
 	print("current hp:", current_hp)
 	print("~~~~~~~~~~~~~~~~~~~~")
-
-func _on_turn_changed(current_turn: String):
-	if model != null and model.active_live_authority == ChessBoardModel.LiveAuthority.CLASSIC_CORE:
-		return
-	if current_turn == color and stunned:
-		decrement_stun_timer()
-
-func _on_piece_destroyed(piece: ModelPiece):
-	pass
-
-func active_target_selected(coord: Vector2i):
-	pass # override
-
-func stun(duration: int = 2):
-	stunned = true
-	stun_timer = duration
-	model.piece_stunned.emit(self, duration)
-
-func decrement_stun_timer():
-	if stun_timer <= 0:
-		stun_timer = 0
-		return
-	stun_timer -= 1
-	if stun_timer == 0 and stunned:
-		unstun()
-
-func unstun():
-	stunned = false
-	model.piece_recovered.emit(self)
-
-func get_selection_targets(action_type: String, event_data) -> Array:
-	return []
-
-## Override for queued reactions that do not require a target selection.
-func resolve_automatic_reaction(action_type: String, event_data) -> void:
-	pass

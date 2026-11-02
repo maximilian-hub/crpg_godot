@@ -7,6 +7,10 @@ const SAMPLES := 3
 @export var arakne_benchmark := false
 @export var necromancer_benchmark := false
 @export var minotaur_benchmark := false
+@export var quarterly_benchmark := false
+@export var cannon_benchmark := false
+@export var rhetorician_benchmark := false
+@export var wraith_benchmark := false
 
 var failures: Array[String] = []
 
@@ -35,12 +39,12 @@ func _ready() -> void:
 	if int(model_work.model_constructions) <= 0: failures.append("model baseline constructed no simulation models")
 	if int(core_work.work_units) != int(model_work.work_units): failures.append("fixed-work backends did not examine equal work")
 	if String(core_work.action) != String(model_work.action): failures.append("fixed-work backends selected different actions")
-	var throughput_floor := 1.5 if arakne_benchmark or necromancer_benchmark or minotaur_benchmark else 2.0
+	var throughput_floor := 1.5 if arakne_benchmark or necromancer_benchmark or minotaur_benchmark or quarterly_benchmark or cannon_benchmark or rhetorician_benchmark or wraith_benchmark else 2.0
 	if float(core_work.work_per_second) < float(model_work.work_per_second) * throughput_floor: failures.append("pure-core fixed-work throughput was below the %.1fx rollout floor" % throughput_floor)
 	if int(core_time.work_units) <= int(model_time.work_units): failures.append("pure-core fixed-time search completed no additional work")
 	if int(core_work.maximum_uninterrupted_usec) > int(model_work.maximum_uninterrupted_usec) * 1.2 + 1000: failures.append("pure-core uninterrupted interval regressed by more than 20% plus 1ms tolerance")
 	if int(core_work.core_runtime_failures) != 0 or int(core_time.core_runtime_failures) != 0: failures.append("pure-core benchmark encountered invalid transitions")
-	var label := "DUPRE MINOTAUR CORE PERFORMANCE" if minotaur_benchmark else ("DUPRE NECROMANCER CORE PERFORMANCE" if necromancer_benchmark else ("DUPRE ARAKNE CORE PERFORMANCE" if arakne_benchmark else "DUPRE CLASSIC CORE PERFORMANCE"))
+	var label := "DUPRE WRAITH CORE PERFORMANCE" if wraith_benchmark else ("DUPRE RHETORICIAN CORE PERFORMANCE" if rhetorician_benchmark else ("DUPRE CANNON CORE PERFORMANCE" if cannon_benchmark else ("DUPRE QUARTERLY CORE PERFORMANCE" if quarterly_benchmark else ("DUPRE MINOTAUR CORE PERFORMANCE" if minotaur_benchmark else ("DUPRE NECROMANCER CORE PERFORMANCE" if necromancer_benchmark else ("DUPRE ARAKNE CORE PERFORMANCE" if arakne_benchmark else "DUPRE CLASSIC CORE PERFORMANCE"))))))
 	print(label, ": ", JSON.stringify(summary))
 	if failures.is_empty():
 		print(label, ": PASS")
@@ -107,9 +111,9 @@ func _thought_key(thought) -> String:
 
 
 func _benchmark_position() -> ChessPosition:
-	var white_king: KingPiece = MinotaurKing.new("white", Vector2i(7, 4)) if minotaur_benchmark else (NecromancerKing.new("white", Vector2i(7, 4)) if necromancer_benchmark else (ArakneKing.new("white", Vector2i(4, 4)) if arakne_benchmark else ClassicKing.new("white", Vector2i(7, 4))))
-	var black_king: KingPiece = MinotaurKing.new("black", Vector2i(0, 4)) if minotaur_benchmark else (NecromancerKing.new("black", Vector2i(0, 4)) if necromancer_benchmark else (ArakneKing.new("black", Vector2i(0, 4)) if arakne_benchmark else ClassicKing.new("black", Vector2i(0, 4))))
-	if arakne_benchmark or necromancer_benchmark or minotaur_benchmark:
+	var white_king: KingPiece = WraithKing.new("white", Vector2i(7, 4)) if wraith_benchmark else (RhetoricianKing.new("white", Vector2i(7, 4)) if rhetorician_benchmark else (CannonKing.new("white", Vector2i(7, 4)) if cannon_benchmark else (QuarterlyInitiativeKing.new("white", Vector2i(7, 4)) if quarterly_benchmark else (MinotaurKing.new("white", Vector2i(7, 4)) if minotaur_benchmark else (NecromancerKing.new("white", Vector2i(7, 4)) if necromancer_benchmark else (ArakneKing.new("white", Vector2i(4, 4)) if arakne_benchmark else ClassicKing.new("white", Vector2i(7, 4))))))))
+	var black_king: KingPiece = WraithKing.new("black", Vector2i(0, 4)) if wraith_benchmark else (RhetoricianKing.new("black", Vector2i(0, 4)) if rhetorician_benchmark else (CannonKing.new("black", Vector2i(0, 4)) if cannon_benchmark else (QuarterlyInitiativeKing.new("black", Vector2i(0, 4)) if quarterly_benchmark else (MinotaurKing.new("black", Vector2i(0, 4)) if minotaur_benchmark else (NecromancerKing.new("black", Vector2i(0, 4)) if necromancer_benchmark else (ArakneKing.new("black", Vector2i(0, 4)) if arakne_benchmark else ClassicKing.new("black", Vector2i(0, 4))))))))
+	if arakne_benchmark or necromancer_benchmark or minotaur_benchmark or quarterly_benchmark or cannon_benchmark or rhetorician_benchmark or wraith_benchmark:
 		white_king.set_cooldown(0); white_king.initial_cooldown_turn_pending = false
 		black_king.set_cooldown(0); black_king.initial_cooldown_turn_pending = false
 	var black_queen_coordinate := Vector2i(4, 5) if arakne_benchmark else Vector2i(1, 3)
@@ -124,4 +128,6 @@ func _benchmark_position() -> ChessPosition:
 	for _row in range(8): model.board.append([null, null, null, null, null, null, null, null])
 	model.is_initialized = true; model.current_turn = "white"
 	for piece in pieces: model.add_piece(piece, piece.coordinate)
-	var result := model.capture_position(); model.queue_free(); return result
+	var result := model.capture_position()
+	if quarterly_benchmark: result.global_turn_number = 4
+	model.queue_free(); return result

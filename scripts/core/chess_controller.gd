@@ -71,24 +71,23 @@ func _on_square_clicked(coord: Vector2i):
 			select_piece(piece)
 		return
 
-	if piece == selected_piece and piece is KingPiece and piece.is_active_ability_ready() and piece.has_active_ability():
+	if piece == selected_piece and piece is KingPiece and not _get_primary_targets(ChessPrimaryAction.Kind.ACTIVE_ABILITY, piece).is_empty():
 		await select_active_ability(piece.color)
 		return
 
 	if coord in legal_moves:
 		if temp_selected_piece is ArakneKing and piece == null:
-			var arakne := temp_selected_piece as ArakneKing
-			if arakne.can_begin_skitter(coord):
-				var destinations := arakne.get_skitter_destinations(coord)
-				if not destinations.is_empty():
-					skitter_intermediate = coord
-					skitter_destinations.assign(destinations)
-					# The chosen first step remains a valid "stop here" target during
-					# Skitter staging, so keep it visible beside the second-step options.
-					legal_moves.assign([coord])
-					legal_moves.append_array(destinations)
-					selection_targets_changed.emit(legal_moves)
-					return
+			var destinations: Array[Vector2i] = []
+			for action in model.get_legal_primary_actions(model.current_turn):
+				if action.kind == ChessPrimaryAction.Kind.MOVE and action.piece == temp_selected_piece and action.path.size() == 2 and action.path[0] == coord and action.path[1] not in destinations:
+					destinations.append(action.path[1])
+			if not destinations.is_empty():
+				skitter_intermediate = coord
+				skitter_destinations.assign(destinations)
+				legal_moves.assign([coord])
+				legal_moves.append_array(destinations)
+				selection_targets_changed.emit(legal_moves)
+				return
 		deselect_piece()
 		ordinary_move_submission_started.emit(temp_selected_piece, coord)
 		var accepted := await model.submit_move(temp_selected_piece, coord)
@@ -140,7 +139,7 @@ func select_piece(piece: ModelPiece):
 		selection_targets_changed.emit(legal_moves)
 		piece_selected.emit(piece)
 		if piece is ArcherKing:
-			contextual_archer_draw_changed.emit(piece, (piece as ArcherKing).can_begin_charge())
+			contextual_archer_draw_changed.emit(piece, _has_primary_action(ChessPrimaryAction.Kind.ARCHER_CHARGE, piece))
 
 func deselect_piece():
 	if selected_piece is ArcherKing:
@@ -152,7 +151,7 @@ func deselect_piece():
 
 func submit_selected_archer_charge() -> void:
 	var archer := selected_piece as ArcherKing
-	if not is_instance_valid(archer) or not archer.can_begin_charge():
+	if not is_instance_valid(archer) or not _has_primary_action(ChessPrimaryAction.Kind.ARCHER_CHARGE, archer):
 		return
 	deselect_piece()
 	await model.submit_archer_charge(archer)
@@ -225,12 +224,11 @@ func select_active_ability(color: String):
 	if active_king.stunned:
 		active_king = null
 		return
-	if not active_king.is_active_ability_ready():
-		active_king = null
-		return
-
 	var preparing_king := active_king
 	var preparing_targets := _get_primary_targets(ChessPrimaryAction.Kind.ACTIVE_ABILITY, preparing_king)
+	if preparing_targets.is_empty():
+		active_king = null
+		return
 	is_input_locked = true
 	var completion := CompletionGate.new()
 	ability_targeting_preparing.emit(preparing_king, preparing_king.get_active_ability_name(), preparing_targets, completion)
@@ -266,13 +264,18 @@ func is_player_controlled(color: String) -> bool:
 	return color in player_controlled_colors
 
 func _get_primary_targets(kind: ChessPrimaryAction.Kind, piece: ModelPiece) -> Array:
-	if kind == ChessPrimaryAction.Kind.MOVE and piece is ArakneKing:
-		return piece.get_legal_moves()
 	var targets: Array = []
 	for action in model.get_legal_primary_actions(model.current_turn):
 		if action.kind == kind and action.piece == piece:
-			targets.append(action.target)
+			var target = action.path[0] if kind == ChessPrimaryAction.Kind.MOVE and piece is ArakneKing and action.path.size() == 2 else action.target
+			if target not in targets: targets.append(target)
 	return targets
+
+
+func _has_primary_action(kind: ChessPrimaryAction.Kind, piece: ModelPiece) -> bool:
+	for action in model.get_legal_primary_actions(model.current_turn):
+		if action.kind == kind and action.piece == piece: return true
+	return false
 
 func deselect_active_ability(play_powerdown_sound: bool):
 	if active_ability_selected and active_king != null:

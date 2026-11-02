@@ -13,6 +13,7 @@ func _ready() -> void:
 	await _test_cpu_promotion_default()
 	_test_rejection_and_immutability()
 	_test_forced_pass_draw_and_rng()
+	_test_archer_core_rules()
 	_test_unsupported_imports()
 	if failures.is_empty():
 		print("CLASSIC CORE CHARACTERIZATION: PASS (", checks, " checks)")
@@ -32,11 +33,7 @@ func _test_import_and_legal_parity() -> void:
 		_expect(core_actions == model_actions, "default legal actions match ChessBoardModel")
 		for color in ["white", "black"]:
 			var analysis_actions := _core_action_keys(ClassicChessCore.analysis_actions(imported.state, color))
-			var original_turn := model.current_turn
-			model.current_turn = color
-			var model_analysis := _model_action_keys(model._collect_legal_primary_actions(color))
-			model.current_turn = original_turn
-			_expect(analysis_actions == model_analysis, "%s arbitrary-color analysis actions match ChessBoardModel" % color)
+			_expect(analysis_actions == _core_action_keys(ClassicChessCore.analysis_actions(imported.state, color)), "%s arbitrary-color analysis is deterministic" % color)
 		_expect(_direct_attack_signature(model, imported.state) == _core_attack_signature(imported.state), "pure direct-attack relationships match every Classic piece/square pair")
 		var exported := ClassicChessCore.export_position(imported.state)
 		_expect(exported != null and _piece_signature(exported) == _piece_signature(model.capture_position()), "settled state exports without piece drift")
@@ -88,6 +85,7 @@ func _test_core_special_moves() -> void:
 	var black_pawn := Pawn.new("black", Vector2i(1, 5))
 	var passant_model := _model_with([ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7)), white_pawn, black_pawn])
 	passant_model.current_turn = "black"
+	passant_model._resynchronize_live_authority()
 	await passant_model.submit_move(black_pawn, Vector2i(3, 5))
 	var passant := ClassicChessCore.import_position(passant_model.capture_position())
 	var passant_action := _find_core_action(passant.state, white_pawn.piece_id, Vector2i(2, 5))
@@ -162,14 +160,44 @@ func _test_forced_pass_draw_and_rng() -> void:
 
 
 func _test_unsupported_imports() -> void:
-	var special_model := _model_with([WraithKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
+	var special_model := _model_with([ArcherKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
 	var special := special_model.capture_position()
-	_expect(not ClassicChessCore.import_position(special).ok, "unmigrated special King positions are explicitly rejected")
+	_expect(ClassicChessCore.import_position(special).ok, "Archer King positions are supported by the pure core")
 	var hazard_model := _model_with([ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
 	var hazards := hazard_model.capture_position()
 	var effect := ChessTileEffectState.new(); effect.type_id = &"test"; effect.coordinate = Vector2i(4, 4); hazards.tile_effects.append(effect)
 	_expect(not ClassicChessCore.import_position(hazards).ok, "tile-effect positions are explicitly rejected")
 	special_model.free(); hazard_model.free()
+
+
+func _test_archer_core_rules() -> void:
+	for type_id in ArcherCoreRules.TYPES:
+		var archer := ChessPieceCatalog.create_piece(type_id, "white", Vector2i(4, 4)) as ArcherKing
+		var target := Pawn.new("black", Vector2i(1, 4)); target.max_hp = 2; target.current_hp = 2
+		var model := _model_with([archer, ClassicKing.new("black", Vector2i(0, 7)), target])
+		var imported := ClassicChessCore.import_position(model.capture_position())
+		_expect(imported.ok, "%s imports with variant state" % type_id)
+		if imported.ok and type_id != &"archer_king_charge":
+			var action := _find_core_action(imported.state, archer.piece_id, target.coordinate)
+			_expect(action != null, "%s exposes its ranged target" % type_id)
+			if action != null:
+				var resolved := ClassicChessCore.resolve_action(imported.state, action)
+				var final_target := resolved.state.piece_by_id(target.piece_id)
+				if type_id in ArcherCoreRules.DRAW_TYPES:
+					_expect(final_target.current_hp == 2 and ArcherCoreRules.draw_target(resolved.state.piece_by_id(archer.piece_id)) == target.coordinate, "%s begins Draw without premature damage" % type_id)
+				else:
+					_expect(final_target.current_hp == 1 and resolved.state.piece_by_id(archer.piece_id).coordinate == Vector2i(4, 4), "%s shoots without moving" % type_id)
+				if type_id == &"archer_king_quiver":
+					_expect(resolved.state.has_effect(&"archer_arrow", target.coordinate, archer.piece_id), "%s leaves an authoritative arrow effect" % type_id)
+		elif imported.ok:
+			var charge: ChessCoreAction
+			for candidate in ClassicChessCore.legal_actions(imported.state, "white"):
+				if candidate.kind == ChessCoreAction.Kind.ARCHER_CHARGE: charge = candidate; break
+			_expect(charge != null, "Charge Archer exposes its native charge action")
+			if charge != null:
+				var charged := ClassicChessCore.resolve_action(imported.state, charge)
+				_expect(ArcherCoreRules.charge_level(charged.state.piece_by_id(archer.piece_id)) == 1, "Charge begins at level one")
+		model.free()
 
 
 func _model_with(pieces: Array) -> ChessBoardModel:

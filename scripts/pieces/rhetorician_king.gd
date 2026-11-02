@@ -18,27 +18,3 @@ func _init(color: String, coord: Vector2i):
 
 func has_active_ability() -> bool:
 	return true
-
-func get_active_ability_targets() -> Array:
-	var targets: Array = []
-	if model == null:
-		return targets
-	for row in model.board:
-		for piece in row:
-			if piece == null or piece.color == color:
-				continue
-			var delta: Vector2i = piece.coordinate - coordinate
-			var distance := maxi(absi(delta.x), absi(delta.y))
-			# An adjacent piece has no distinct square closer to the King.
-			if distance == 2:
-				targets.append(piece.coordinate)
-	return targets
-
-func active_target_selected(target: Vector2i) -> void:
-	if model == null or not model.is_in_bounds(target.x, target.y):
-		return
-	var target_piece: ModelPiece = model.board[target.x][target.y]
-	if target_piece == null or target_piece.color == color:
-		return
-	schedule_cooldown()
-	await model.compel_piece_toward(target_piece, self)

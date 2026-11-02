@@ -12,6 +12,11 @@ func _ready() -> void:
 	await _test_necromancer_core_routing()
 	await _compare_minotaur_search()
 	await _test_minotaur_core_routing()
+	await _compare_quarterly_search()
+	await _test_quarterly_core_routing()
+	await _test_cannon_core_routing()
+	await _compare_rhetorician_search()
+	await _test_rhetorician_core_routing()
 	await _test_forced_core_rejection_fallback()
 	if failures.is_empty():
 		print("DUPRE CLASSIC CORE CHARACTERIZATION: PASS (", checks, " checks)")
@@ -55,6 +60,27 @@ func _test_minotaur_core_routing() -> void:
 	_expect(String(result.profile.simulation_backend) == "classic_core" and int(result.profile.model_construction_count) == 0, "AUTO routes migrated Minotaur state through the pure backend")
 
 
+func _test_quarterly_core_routing() -> void:
+	var model := _model_from_position(_quarterly_position())
+	var result := await _think_on_model(model, DupreAiBrain.SimulationBackend.AUTO)
+	_expect(result.thought != null, "AUTO produces a Quarterly decision")
+	_expect(String(result.profile.simulation_backend) == "classic_core" and int(result.profile.model_construction_count) == 0, "AUTO routes migrated Quarterly state through the pure backend")
+
+
+func _test_cannon_core_routing() -> void:
+	var model := _model_from_position(_cannon_position())
+	var result := await _think_on_model(model, DupreAiBrain.SimulationBackend.AUTO)
+	_expect(result.thought != null, "AUTO produces a Cannon decision")
+	_expect(String(result.profile.simulation_backend) == "classic_core" and int(result.profile.model_construction_count) == 0, "AUTO routes migrated Cannon state through the pure backend")
+
+
+func _test_rhetorician_core_routing() -> void:
+	var model := _model_from_position(_rhetorician_position())
+	var result := await _think_on_model(model, DupreAiBrain.SimulationBackend.AUTO)
+	_expect(result.thought != null, "AUTO produces a Rhetorician decision")
+	_expect(String(result.profile.simulation_backend) == "classic_core" and int(result.profile.model_construction_count) == 0, "AUTO routes migrated Rhetorician state through the pure backend")
+
+
 func _compare_arakne_search() -> void:
 	var position := _arakne_position()
 	var model_result := await _think(position, DupreAiBrain.SimulationBackend.MODEL)
@@ -90,9 +116,34 @@ func _compare_minotaur_search() -> void:
 	_expect(String(core_result.profile.simulation_backend) == "classic_core" and int(core_result.profile.model_construction_count) == 0, "Minotaur core search constructs no simulation Nodes")
 
 
+func _compare_quarterly_search() -> void:
+	var position := _quarterly_position()
+	var model_result := await _think(position, DupreAiBrain.SimulationBackend.MODEL)
+	var core_result := await _think(position, DupreAiBrain.SimulationBackend.CLASSIC_CORE)
+	_expect(model_result.thought != null and core_result.thought != null, "Quarterly produces decisions through both backends")
+	if model_result.thought == null or core_result.thought == null: return
+	_expect(model_result.action == core_result.action, "Quarterly exact best action matches")
+	_expect(is_equal_approx(float(model_result.thought.score), float(core_result.thought.score)), "Quarterly selected score matches")
+	_expect(int(model_result.profile.invalid_root_candidates) == 0 and int(core_result.profile.invalid_root_candidates) == 0, "Quarterly has no invalid secondary choices")
+	_expect(String(core_result.profile.simulation_backend) == "classic_core" and int(core_result.profile.model_construction_count) == 0, "Quarterly core search constructs no simulation Nodes")
+
+
+func _compare_rhetorician_search() -> void:
+	var position := _rhetorician_position()
+	var model_result := await _think(position, DupreAiBrain.SimulationBackend.MODEL)
+	var core_result := await _think(position, DupreAiBrain.SimulationBackend.CLASSIC_CORE)
+	_expect(model_result.thought != null and core_result.thought != null, "Rhetorician produces decisions through both backends")
+	if model_result.thought == null or core_result.thought == null: return
+	_expect(model_result.action == core_result.action, "Rhetorician exact best action matches")
+	_expect(is_equal_approx(float(model_result.thought.score), float(core_result.thought.score)), "Rhetorician selected score matches")
+	_expect(int(core_result.profile.invalid_root_candidates) == 0, "Rhetorician core search has no invalid candidates")
+	_expect(String(core_result.profile.simulation_backend) == "classic_core" and int(core_result.profile.model_construction_count) == 0, "Rhetorician core search constructs no simulation Nodes")
+	_expect(model_result.before == model_result.after and core_result.before == core_result.after, "Rhetorician speculative search preserves live RNG and position state")
+
+
 func _test_forced_core_rejection_fallback() -> void:
 	var modified := _position(&"quiet")
-	modified.pieces[0].granted_movement_types.append(&"rook")
+	modified.pieces[0].granted_movement_types.append(&"teleport")
 	var result := await _think(modified, DupreAiBrain.SimulationBackend.CLASSIC_CORE)
 	_expect(result.thought != null, "forced core mode safely produces a decision for unsupported modified state")
 	_expect(String(result.profile.simulation_backend) == "model" and String(result.profile.simulation_backend_fallback_reason) == "unsupported_position", "forced core mode falls back before search when import rejects the position")
@@ -176,6 +227,24 @@ func _necromancer_position() -> ChessPosition:
 func _minotaur_position() -> ChessPosition:
 	var minotaur := MinotaurKing.new("white", Vector2i(7, 4)); minotaur.set_cooldown(0); minotaur.initial_cooldown_turn_pending = false
 	return _position_from_pieces([minotaur, ClassicKing.new("black", Vector2i(0, 4)), Rook.new("white", Vector2i(6, 0)), Rook.new("black", Vector2i(4, 4)), Bishop.new("black", Vector2i(2, 2))])
+
+
+func _quarterly_position() -> ChessPosition:
+	var quarterly := QuarterlyInitiativeKing.new("white", Vector2i(7, 4)); quarterly.set_cooldown(0); quarterly.initial_cooldown_turn_pending = false
+	var rook := Rook.new("white", Vector2i(6, 0)); rook.grant_movement_type(&"knight")
+	var position := _position_from_pieces([quarterly, ClassicKing.new("black", Vector2i(0, 4)), rook, Bishop.new("white", Vector2i(5, 2)), Rook.new("black", Vector2i(1, 7)), Bishop.new("black", Vector2i(2, 2))])
+	position.global_turn_number = 4
+	return position
+
+
+func _cannon_position() -> ChessPosition:
+	var cannon := CannonKing.new("white", Vector2i(7, 4)); cannon.set_cooldown(0); cannon.initial_cooldown_turn_pending = false
+	return _position_from_pieces([cannon, ClassicKing.new("black", Vector2i(0, 4)), Rook.new("white", Vector2i(6, 0)), Rook.new("black", Vector2i(3, 3)), Bishop.new("black", Vector2i(3, 4))])
+
+
+func _rhetorician_position() -> ChessPosition:
+	var rhetorician := RhetoricianKing.new("white", Vector2i(4, 4)); rhetorician.set_cooldown(0); rhetorician.initial_cooldown_turn_pending = false
+	return _position_from_pieces([rhetorician, ClassicKing.new("black", Vector2i(0, 7)), Rook.new("white", Vector2i(6, 0)), Pawn.new("black", Vector2i(2, 2)), Queen.new("black", Vector2i(3, 3)), Rook.new("black", Vector2i(1, 4))])
 
 
 func _position_from_pieces(pieces: Array) -> ChessPosition:

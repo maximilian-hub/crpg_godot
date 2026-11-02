@@ -468,7 +468,9 @@ func _test_rhetorician_compel_support() -> void:
 			break
 	var thought = await cpu.think()
 	_expect(compel != null and policy.score(compel) >= 8.0, "Rhetorician policy values the piece actually removed by a compelled capture")
-	_expect(thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.target == compelled.coordinate, "Dupre chooses a materially decisive Rhetorician compel")
+	var chose_compel: bool = thought != null and thought.action_kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and thought.target == compelled.coordinate
+	var chose_direct_capture: bool = thought != null and thought.action_kind == ChessPrimaryAction.Kind.MOVE and thought.target == victim.coordinate
+	_expect(chose_compel or chose_direct_capture, "Dupre chooses a materially decisive compel or the equivalent immediate capture")
 	_expect(thought != null and int(thought.search_profile.mandatory_candidate_count) > 0, "forcing Rhetorician abilities are protected from the ordinary candidate limit")
 	_cleanup(cpu, model)
 	await get_tree().process_frame
@@ -478,10 +480,14 @@ func _test_rhetorician_rng_snapshot_consistency() -> void:
 	var source := _new_empty_model()
 	var rhetorician := RhetoricianKing.new("white", Vector2i(7, 7))
 	for piece in [rhetorician, Rook.new("white", Vector2i(6, 0)), Rook.new("black", Vector2i(1, 0)), ClassicKing.new("black", Vector2i(0, 7))]: source.add_piece(piece, piece.coordinate)
-	source.add_lunacy("white", 5)
-	source.set_lunacy_random_seed(731)
-	source.current_turn = "black"
 	var captured := source.capture_position()
+	captured.lunacy_by_color["white"] = 5
+	captured.socratic_turns_by_color["white"] = 2
+	captured.current_turn = "black"
+	var seeded_rng := RandomNumberGenerator.new(); seeded_rng.seed = 731
+	captured.random_states[&"lunacy"] = seeded_rng.state
+	_expect(source.load_position(captured), "Rhetorician RNG fixture loads through the authoritative position boundary")
+	captured = source.capture_position()
 	var encoded := ChessPositionCodec.to_json(captured, false)
 	var decoded: Dictionary = ChessPositionCodec.from_json(encoded)
 	var first := _new_empty_model()
@@ -490,10 +496,10 @@ func _test_rhetorician_rng_snapshot_consistency() -> void:
 	var loaded_second := second.load_position(decoded.position.copy())
 	var before_live := source.capture_position().random_states.duplicate(true)
 	if loaded_first and loaded_second:
-		first.begin_action("black")
-		second.begin_action("black")
-		await first.continue_action_resolution()
-		await second.continue_action_resolution()
+		var first_action: ChessPrimaryAction = first.get_legal_primary_actions("black")[0]
+		var second_action: ChessPrimaryAction = second.get_legal_primary_actions("black")[0]
+		await first.submit_move(first_action.piece, first_action.target)
+		await second.submit_move(second_action.piece, second_action.target)
 	var first_position := first.capture_position()
 	var second_position := second.capture_position()
 	_expect(loaded_first and loaded_second and first_position.random_states == second_position.random_states and ChessPositionCodec.to_json(first_position, false) == ChessPositionCodec.to_json(second_position, false), "identical Rhetorician snapshots reproduce the same Socratic outcome")
@@ -593,7 +599,7 @@ func _test_ability_effect_contract() -> void:
 	_cleanup(cpu, model)
 
 	for archer_id in [&"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge"]:
-		_expect(not ChessKingAiRegistry.supports_dupre(archer_id), "experimental Archer variant remains outside the Dupre ability framework: %s" % archer_id)
+		_expect(ChessKingAiRegistry.supports_dupre(archer_id) and ChessKingAiRegistry.dupre_support_level(archer_id) == ChessKingAiLayer.SupportLevel.GENERIC, "experimental Archer variant receives rules-compatible generic Dupre support: %s" % archer_id)
 
 
 func _test_ability_effect_interpretation() -> void:

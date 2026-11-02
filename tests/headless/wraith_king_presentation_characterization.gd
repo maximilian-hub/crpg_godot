@@ -24,8 +24,16 @@ func _ready() -> void:
 	await get_tree().process_frame
 	var king := model.get_king("white") as WraithKing
 	var target := model.board[0][0] as ModelPiece
-	model.add_tile_effect(&"cursed_mark", Vector2i(2, 2), "white", king.piece_id)
-	await model.summon_wraith(king, target)
+	var marked_position := model.capture_position().copy()
+	var mark := ChessTileEffectState.new()
+	mark.effect_id = "effect_fixture"; mark.type_id = &"cursed_mark"; mark.coordinate = Vector2i(2, 2)
+	mark.owner_color = "white"; mark.source_piece_id = king.piece_id
+	marked_position.tile_effects.append(mark)
+	_check(model.load_position(marked_position), "Cursed Mark presentation fixture loads through the authoritative position boundary")
+	await get_tree().process_frame
+	king = model.get_king("white") as WraithKing
+	target = model.board[0][0] as ModelPiece
+	_check(await model.submit_active_ability(king, target.coordinate), "authoritative Summon Wraith action completes")
 	var adapter := game.get_node("ChessPresentationAdapter") as ChessPresentationAdapter
 	var entity := model.autonomous_entities[0]
 	var sprite := adapter.autonomous_entity_views.get(entity.entity_id) as Sprite2D
@@ -38,18 +46,35 @@ func _ready() -> void:
 	_check(is_equal_approx(resting_offset.y, -float(sprite.texture.get_height()) * 0.5), "Wraith artwork rests its base on the entity's board coordinate")
 	await get_tree().create_timer(0.15).timeout
 	_check(not sprite.offset.is_equal_approx(resting_offset), "summoned Wraith continuously floats around its grounded resting offset")
-	await model.summon_wraith(king, model.get_king("black"))
+	model.set_active_ability_cooldowns_disabled(true)
+	var repeat_summon_position := model.capture_position().copy()
+	repeat_summon_position.current_turn = "white"
+	_check(model.load_position(repeat_summon_position), "second-summon fixture reloads through the authoritative position boundary")
+	await get_tree().process_frame
+	king = model.get_king("white") as WraithKing
+	entity = model.autonomous_entities[0]
+	sprite = adapter.autonomous_entity_views.get(entity.entity_id) as Sprite2D
+	_check(await model.submit_active_ability(king, model.get_king("black").coordinate), "authoritative second summon fills the Wraith replacement limit")
 	adapter._on_ability_targeting_started(king, king.get_active_ability_name(), king.get_active_ability_targets())
 	await get_tree().create_timer(0.20).timeout
 	_check(sprite.self_modulate.g < 0.9 and sprite.self_modulate.b < 0.9, "the oldest Wraith pulses red while a replacement summon is being targeted")
 	adapter._on_ability_targeting_ended(king, king.get_active_ability_name(), "cancelled")
 	_check(sprite.self_modulate.is_equal_approx(Color.WHITE), "ending ability targeting clears the Wraith replacement warning")
-	model.global_turn_number = 4
-	await model.run_autonomous_phase("white")
+	var scheduled_position := model.capture_position().copy()
+	scheduled_position.global_turn_number = 4
+	scheduled_position.current_turn = "white"
+	_check(model.load_position(scheduled_position), "scheduled Wraith presentation fixture reloads through the authoritative position boundary")
+	await get_tree().process_frame
+	king = model.get_king("white") as WraithKing
+	_check(await model.submit_move(king, Vector2i(4, 5)), "authoritative owner move resolves scheduled Wraith movement")
+	entity = model.autonomous_entities[0]
+	sprite = adapter.autonomous_entity_views.get(entity.entity_id) as Sprite2D
 	var view := game.get_node("CanvasLayer/ChessBoard") as ChessBoardView
 	_check(sprite.position.is_equal_approx(view.grid_to_screen(3, 3)), "floating Wraith movement settles on the projected destination square")
 	_check(is_equal_approx(sprite.modulate.a, 0.5) and is_zero_approx(sprite.rotation), "floating Wraith movement restores its resting opacity and rotation")
-	model.remove_tile_effect(&"cursed_mark", Vector2i(2, 2), king.piece_id)
+	var unmarked_position := model.capture_position().copy()
+	unmarked_position.tile_effects.clear()
+	_check(model.load_position(unmarked_position), "tile-effect removal fixture reloads through the authoritative position boundary")
 	await get_tree().process_frame
 	_check(adapter.tile_effect_views.is_empty() and not is_instance_valid(mark_view), "Cursed Mark placeholder disappears when the mark is consumed")
 	game.queue_free()

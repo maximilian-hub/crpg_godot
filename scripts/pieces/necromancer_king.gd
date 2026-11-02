@@ -1,65 +1,16 @@
-#~~~~~~~~ NEW FILE: necromancer_king.gd ~~~~~~~~
 extends KingPiece
 class_name NecromancerKing
 
-const BonePawn = preload("res://scripts/pieces/bone_pawn.gd")
-
 func _init(color: String, coord: Vector2i):
 	super._init(color, coord)
-	self.type = "necromancer_king"
-	self.max_hp = 2
-	self.current_hp = self.max_hp
-	self.base_cooldown = 2
-	self.active_ability_name = "Summon Bone Pawn"
-	self.active_ability_id = &"summon_bone_pawn"
-	self.passive_ability_name = "Raise Dead"
+	type = "necromancer_king"
+	max_hp = 2
+	current_hp = max_hp
+	base_cooldown = 2
+	active_ability_name = "Summon Bone Pawn"
+	active_ability_id = &"summon_bone_pawn"
+	passive_ability_name = "Raise Dead"
 	reset_cooldown()
-
-func get_active_ability_targets() -> Array:
-	return model.get_empty_squares_to_furthest_rank(self.color)
 
 func has_active_ability() -> bool:
 	return true
-
-## Executes Summon Bone Pawn, but does not end the turn.
-## The Model's action resolver finishes the action after all reactions resolve.
-func active_target_selected(target: Vector2i):
-	await summon_bone_pawn(target)
-	schedule_cooldown()
-
-func summon_bone_pawn(target: Vector2i):
-	var new_pawn := BonePawn.new(self.color, target)
-	if model.add_piece(new_pawn, target):
-		await model.announce_piece_summoned(new_pawn)
-		if new_pawn._on_dead_row():
-			model.destroy_piece(new_pawn, true)
-
-func _on_piece_destroyed(destroyed_piece: ModelPiece):
-	# The pure live authority owns reaction generation. Projection destruction
-	# still emits the public signal, but must not enqueue a second legacy reaction.
-	if model != null and model.active_live_authority == ChessBoardModel.LiveAuthority.CLASSIC_CORE:
-		return
-	for base_type in model.MAJOR_MINOR_BASE_TYPES:
-		if destroyed_piece.type.contains(base_type):
-			raise_dead(destroyed_piece.coordinate)
-			return
-
-func raise_dead(death_square: Vector2i):
-	model.queue_selection_opportunity(self, "raise_dead", death_square)
-
-func get_selection_targets(action_type: String, event_data) -> Array:
-	if action_type == "raise_dead":
-		var death_square: Vector2i = event_data
-		var targets := model.get_empty_adjacent_squares(death_square)
-		if (
-			model.is_in_bounds(death_square.x, death_square.y)
-			and model.board[death_square.x][death_square.y] == null
-		):
-			targets.append(death_square)
-		return targets
-	return []
-
-
-## Called by the action resolver after this Necromancer's reaction target is chosen.
-func _on_special_target_selected(coord: Vector2i):
-	await summon_bone_pawn(coord)

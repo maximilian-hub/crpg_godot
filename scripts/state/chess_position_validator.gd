@@ -58,8 +58,10 @@ static func validate(position: ChessPosition) -> ChessPositionValidation:
 		if entity_ids.has(entity.entity_id): report.structural_errors.append("Duplicate autonomous entity id: %s" % entity.entity_id)
 		entity_ids[entity.entity_id] = true
 		if entity.owner_color not in ["white", "black"]: report.structural_errors.append("Invalid autonomous entity owner color.")
-		if not piece_ids.has(entity.source_piece_id): report.structural_errors.append("Autonomous entity source does not exist: %s" % entity.source_piece_id)
-		if not piece_ids.has(entity.target_piece_id): report.structural_errors.append("Autonomous entity target does not exist: %s" % entity.target_piece_id)
+		# Delayed hazards such as Arc Mortar intentionally have no persistent
+		# source or target identity and survive their creator's destruction.
+		if not entity.source_piece_id.is_empty() and not piece_ids.has(entity.source_piece_id): report.structural_errors.append("Autonomous entity source does not exist: %s" % entity.source_piece_id)
+		if not entity.target_piece_id.is_empty() and not piece_ids.has(entity.target_piece_id): report.structural_errors.append("Autonomous entity target does not exist: %s" % entity.target_piece_id)
 	for color in ["white", "black"]:
 		if kings[color] != 1:
 			report.playability_errors.append("%s must have exactly one king (found %s)." % [color.capitalize(), kings[color]])

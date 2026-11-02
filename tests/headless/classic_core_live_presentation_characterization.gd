@@ -24,6 +24,7 @@ func _ready() -> void:
 	await _test_arakne_presentation()
 	await _test_necromancer_presentation()
 	await _test_minotaur_presentation()
+	await _test_quarterly_presentation()
 	if failures.is_empty():
 		print("CLASSIC CORE LIVE PRESENTATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -129,8 +130,18 @@ func _test_minotaur_presentation() -> void:
 	_expect(not adapter.piece_views.has(live_victim) and model.board[3][3] == null and model.is_settled(), "Rage presentation removes destroyed adjacent-piece visuals and settles")
 
 
+func _test_quarterly_presentation() -> void:
+	var source := QuarterlyInitiativeKing.new("white", Vector2i(7, 7)); source.set_cooldown(0); source.initial_cooldown_turn_pending = false
+	_load([source, Rook.new("white", Vector2i(5, 5)), ClassicKing.new("black", Vector2i(0, 0))])
+	var quarterly := model.board[7][7] as QuarterlyInitiativeKing
+	var rook := model.board[5][5] as Rook
+	var view := adapter.get_piece_view(rook)
+	model.movement_type_selection_requested.connect(func(_king, _target, _options): model.call_deferred("submit_movement_type_grant", &"bishop"), CONNECT_ONE_SHOT)
+	_expect(await model.submit_active_ability(quarterly, rook.coordinate), "presented core Stakeholder Pandering completes")
+	_expect(&"bishop" in rook.granted_movement_types and adapter.get_piece_view(rook) == view and quarterly.current_hp == 3, "Quarterly grant preserves recipient view identity, movement badge state, and HP presentation")
+
+
 func _load(pieces: Array) -> void:
-	model.set_live_authority(ChessBoardModel.LiveAuthority.MODEL)
 	var position := ChessPosition.new()
 	position.current_turn = "white"
 	for piece in pieces: position.pieces.append(piece.capture_piece_state())

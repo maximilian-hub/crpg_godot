@@ -6,6 +6,8 @@ const LineOfSight := preload("res://scripts/core/chess_line_of_sight.gd")
 var board_size := Vector2i.ZERO
 var occupancy: Dictionary = {}
 var _visibility_cache: Dictionary = {}
+var _core_occupancy_cache: Dictionary = {}
+var _core_piece_cache: Dictionary = {}
 
 
 static func from_board(board: Array) -> ChessAttackPosition:
@@ -44,6 +46,32 @@ func get_color(coordinate: Vector2i) -> String:
 	if occupant is Dictionary:
 		return String(occupant.get("color", ""))
 	return ""
+
+
+func get_core_occupancy() -> Dictionary:
+	if not _core_occupancy_cache.is_empty() or occupancy.is_empty():
+		return _core_occupancy_cache
+	for coordinate in occupancy:
+		var occupant = occupancy[coordinate]
+		if occupant is ChessCorePiece:
+			_core_occupancy_cache[coordinate] = occupant
+		elif occupant is ModelPiece:
+			var core_piece := ChessCorePiece.from_piece_state(occupant.capture_piece_state())
+			core_piece.coordinate = coordinate
+			_core_occupancy_cache[coordinate] = core_piece
+			_core_piece_cache[occupant.get_instance_id()] = core_piece
+	return _core_occupancy_cache
+
+
+func get_core_piece(piece: ModelPiece, origin: Vector2i) -> ChessCorePiece:
+	get_core_occupancy()
+	var key := piece.get_instance_id()
+	var result: ChessCorePiece = _core_piece_cache.get(key)
+	if result == null:
+		result = ChessCorePiece.from_piece_state(piece.capture_piece_state())
+		_core_piece_cache[key] = result
+	result.coordinate = origin
+	return result
 
 
 func to_board_array() -> Array:

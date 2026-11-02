@@ -67,64 +67,100 @@ static func deterministic_choice(model: ChessBoardModel, recipient: ModelPiece, 
 static func grant_is_sacrifice_worthy(model: ChessBoardModel, recipient: ModelPiece, movement_type: StringName) -> bool:
 	if is_redundant(recipient, movement_type):
 		return false
-	var native_moves: Array = recipient.get_legal_moves()
-	var tactical := DupreTacticalMap.from_model(model)
+	return grant_analysis_is_sacrifice_worthy(_model_grant_targets(model, recipient, movement_type))
+
+
+static func score_grant(model: ChessBoardModel, recipient: ModelPiece, movement_type: StringName) -> float:
+	if is_redundant(recipient, movement_type):
+		return -INF
+	return score_grant_analysis(StringName(recipient.type), movement_type, _model_grant_targets(model, recipient, movement_type))
+
+
+static func is_redundant(recipient: ModelPiece, movement_type: StringName) -> bool:
+	return is_redundant_values(StringName(recipient.type), recipient.granted_movement_types, movement_type)
+
+
+static func is_redundant_values(recipient_type: StringName, existing_grants: Array, movement_type: StringName) -> bool:
+	if movement_type in existing_grants:
+		return true
+	match movement_type:
+		&"pawn": return recipient_type == &"pawn"
+		&"knight": return recipient_type == &"knight"
+		&"bishop": return recipient_type in [&"bishop", &"queen"]
+		&"rook": return recipient_type in [&"rook", &"queen"]
+	return true
+
+
+## Shared policy kernel. Position-specific adapters provide only newly attacked
+## enemy targets, keeping model and pure-core weights and tie-breaking identical.
+static func score_grant_analysis(recipient_type: StringName, movement_type: StringName, targets: Array) -> float:
+	var score := 1.0
+	if recipient_type == &"pawn":
+		score += PAWN_UPGRADE_REWARD
+	elif (recipient_type == &"rook" and movement_type == &"bishop") or (recipient_type == &"bishop" and movement_type == &"rook"):
+		score += QUEEN_HYBRID_REWARD
+	for target in targets:
+		if bool(target.get("is_king", false)):
+			score += KING_TARGET_REWARD
+		elif not bool(target.get("protected", false)):
+			score += UNPROTECTED_TARGET_REWARD + _type_value(StringName(target.get("type_id", &"pawn")))
+		else:
+			score += _type_value(StringName(target.get("type_id", &"pawn"))) * 0.5
+	return score
+
+
+static func grant_analysis_is_sacrifice_worthy(targets: Array) -> bool:
 	var qualifying_fork_targets := 0
-	for destination in model._get_moves_as(recipient, movement_type):
-		if destination in native_moves:
-			continue
-		var target: ModelPiece = model.board[destination.x][destination.y]
-		if target == null or target.color == recipient.color:
-			continue
-		if target.is_king:
+	for target in targets:
+		if bool(target.get("is_king", false)):
 			return true
-		if target.type in ["queen", "rook"] or (target.type in ["bishop", "knight"] and tactical.attack_count(target.coordinate, target.color) == 0):
+		var type_id := StringName(target.get("type_id", &""))
+		if type_id in [&"queen", &"rook"] or (type_id in [&"bishop", &"knight"] and not bool(target.get("protected", false))):
 			qualifying_fork_targets += 1
 			if qualifying_fork_targets >= 2:
 				return true
 	return false
 
 
-static func score_grant(model: ChessBoardModel, recipient: ModelPiece, movement_type: StringName) -> float:
-	if is_redundant(recipient, movement_type):
-		return -INF
-	var score := 1.0
-	if recipient.type == "pawn":
-		score += PAWN_UPGRADE_REWARD
-	elif (recipient.type == "rook" and movement_type == &"bishop") or (recipient.type == "bishop" and movement_type == &"rook"):
-		score += QUEEN_HYBRID_REWARD
-	var native_moves: Array = recipient.get_legal_moves()
+static func _model_grant_targets(model: ChessBoardModel, recipient: ModelPiece, movement_type: StringName) -> Array:
+	var result := []
+	if model._classic_core_bridge == null or not model._classic_core_bridge.active:
+		return result
+	var original: ChessCoreState = model._classic_core_bridge.state
+	var projected := original.copy()
+	var core_recipient := projected.piece_by_id(recipient.piece_id)
+	if core_recipient == null: return result
+	var native_moves: Array[Vector2i] = []
+	for action in ClassicChessCore.analysis_actions(original, recipient.color):
+		if action.kind == ChessCoreAction.Kind.MOVE and action.piece_id == recipient.piece_id and action.target not in native_moves:
+			native_moves.append(action.target)
+	if movement_type not in core_recipient.granted_movement_types:
+		core_recipient.granted_movement_types.append(movement_type)
 	var tactical := DupreTacticalMap.from_model(model)
-	for destination in model._get_moves_as(recipient, movement_type):
+	for action in ClassicChessCore.analysis_actions(projected, recipient.color):
+		if action.kind != ChessCoreAction.Kind.MOVE or action.piece_id != recipient.piece_id: continue
+		var destination: Vector2i = action.target
 		if destination in native_moves:
 			continue
 		var target: ModelPiece = model.board[destination.x][destination.y]
 		if target == null or target.color == recipient.color:
 			continue
-		if target.is_king:
-			score += KING_TARGET_REWARD
-		elif tactical.attack_count(target.coordinate, target.color) == 0:
-			score += UNPROTECTED_TARGET_REWARD + _piece_value(target)
-		else:
-			score += _piece_value(target) * 0.5
-	return score
-
-
-static func is_redundant(recipient: ModelPiece, movement_type: StringName) -> bool:
-	if movement_type in recipient.granted_movement_types:
-		return true
-	match movement_type:
-		&"pawn": return recipient.type == "pawn"
-		&"knight": return recipient.type == "knight"
-		&"bishop": return recipient.type in ["bishop", "queen"]
-		&"rook": return recipient.type in ["rook", "queen"]
-	return true
+		result.append({
+			"type_id": target.get_position_type_id(),
+			"is_king": target.is_king,
+			"protected": tactical.attack_count(target.coordinate, target.color) > 0,
+		})
+	return result
 
 
 static func _piece_value(piece: ModelPiece) -> float:
 	if piece.is_king: return 100.0
-	match piece.type:
-		"queen": return 9.0
-		"rook": return 5.0
-		"bishop", "knight": return 3.0
+	return _type_value(piece.get_position_type_id())
+
+
+static func _type_value(type_id: StringName) -> float:
+	match type_id:
+		&"queen": return 9.0
+		&"rook": return 5.0
+		&"bishop", &"knight": return 3.0
 	return 1.0

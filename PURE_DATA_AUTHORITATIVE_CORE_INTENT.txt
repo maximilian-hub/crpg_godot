@@ -4,11 +4,15 @@ CHESS RPG — PURE-DATA AUTHORITATIVE CORE INTENT
 Status
 ------
 
-We intend to move Chess RPG toward a pure-data authoritative rules core.
+The pure-data rules core is now the sole authoritative engine for live play and
+AI simulation. ChessBoardModel has been reduced to a live Godot facade: it owns
+signals, completion gates, position replacement, and ModelPiece projections,
+but it no longer resolves movement, combat, abilities, reactions, RNG, delayed
+effects, or turns.
 
-This is a confirmed long-term architectural direction, not authorization for a
-large immediate rewrite. The migration should be incremental, measurable, and
-reversible until the new core has demonstrated rule parity and useful performance.
+There is no runtime legacy-authority fallback. Unsupported position data is
+rejected at the position boundary instead of being interpreted by a second
+rules implementation.
 
 
 Why We Want This
@@ -103,6 +107,15 @@ H. Add bounded background search with conservative desktop/mobile worker limits,
 Near-Term Commitment
 --------------------
 
+Authority-removal milestone completed: ClassicChessCore now owns every live
+command and the full migrated roster, including Archer variants. The bridge
+projects semantic events into the existing presentation contracts, and the
+sandbox authority control is retained only as a disabled status display. Piece
+classes retain identity and authored presentation metadata; their legal move
+and ability queries delegate to the core-backed facade. The legacy mutation and
+resolution entry points were removed rather than retained as compatibility
+fallbacks.
+
 Milestone A established explicit simulation lifecycle ownership, cleanup
 instrumentation, and characterization coverage without changing authoritative
 rules.
@@ -176,3 +189,57 @@ Dead choices before an action settles. Dupre uses the pure backend for mixed
 Classic/Arakne/Necromancer/Minotaur positions, and the sandbox bridge preserves
 Charge movement/impact, stun, Rage announcements, affected-square presentation,
 and reaction lifecycle signals. Production authority remains ChessBoardModel.
+
+Milestone G4 migrated Quarterly Initiative King and permanent movement grants.
+The pure core now owns Efficiency's friendly-piece combat, Performance Cycle's
+round-based HP cost, Stakeholder Pandering's typed movement choice, and granted
+Pawn/Knight/Bishop/Rook movement throughout legal generation and attack geometry.
+Dupre settles grant choices with the same shared policy weights used by the model
+backend, and compatible modified positions no longer require temporary Nodes.
+The sandbox bridge preserves self-damage, selection, grant badges, cooldown, and
+ability presentation. Production authority remains ChessBoardModel.
+
+Milestone G5 migrated Cannon King and Arc Mortar as the first delayed autonomous
+entity. The pure state now owns validated autonomous-entity data, deterministic
+shared state IDs, Cannon's conditional cooldown, and owner-turn entry impacts.
+Mortar damage uses the same destruction and reaction queues as ordinary damage,
+including Raise Dead and Retaliating Rage. Unsupported entities and tile effects
+continue to fall back to ChessBoardModel rather than being approximated.
+
+Milestone G5.5 hardened delayed-effect composition before further King
+migrations. A deterministic differential gate now compares model and core state,
+legal actions, choices, and semantic events through Mortar, Rage, Raise Dead,
+overlapping impacts, forced passes, and terminal battles. It also established
+replayable failure artifacts and fixed the authoritative model's forced-pass
+turn-entry context so Mortar-created reactions cannot remain stranded.
+
+Milestone G6 migrated Rhetorician King. The pure core now owns Can Words
+Prevent Harm?, Can Logic Move Them?, Lunacy accumulation, serialized Lunacy RNG,
+and the two interleaved automatic Socratic turns. Socratic movement preserves
+native action and path identity and composes with promotion, destruction,
+Raise Dead, forced passes, and terminal outcomes. Dupre automatically uses the
+pure backend for compatible Rhetorician positions, while the opt-in sandbox
+bridge presents compelled and Socratic movement through the existing facade.
+
+Milestone G7 migrated Wraith King. The pure state now owns validated Cursed
+Marks and targeted Wraith entities, including two-slot replacement, three-round
+pursuit, tracked-piece damage, invalid-target cleanup, and deterministic shared
+state IDs. Lingering Malice uses the existing ordered reaction/choice lifecycle
+and composes with Raise Dead and Rage without recursive bonus movement. Dupre's
+model and pure backends share Wraith pressure weights, compatible Wraith games
+automatically use pure simulation, and the opt-in sandbox bridge projects marks,
+summons, movement, damage, and removal through the existing presentation facade.
+Unmigrated tile effects such as Archer arrows still fall back to the model, and
+production authority remains ChessBoardModel.
+
+Milestone G8 consolidated the migrated roster behind one deterministic
+cross-King conformance gate. Every ordered pairing runs model and pure rules in
+lockstep, compares native action/path identity, choices, serialized state and
+RNG, and emits replayable failure artifacts plus mechanic coverage and phase
+timings. The first gate exposed and fixed immediate Wraith cleanup when either
+its source or target dies, and continuation of turn completion when an
+autonomous Wraith queues Minotaur Rage. Settled positions now receive codec and
+live-authority resynchronization coverage; pending pure choices are copy-tested
+without broadening the settled-only ChessPosition save schema. Production
+authority remains ChessBoardModel, Archer remains outside the pure slice, and
+native-code work remains deferred until profiling identifies a stable hotspot.

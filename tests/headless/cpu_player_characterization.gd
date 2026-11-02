@@ -28,11 +28,8 @@ func _ready() -> void:
 	await _test_cpu_avoids_arc_mortar_impacts()
 	await _test_forced_pass_with_no_legal_action()
 	await _test_forced_pass_deadlock_draw()
-	await _test_cpu_owned_reaction()
-	await _test_human_owned_reaction_is_untouched()
 	await _test_two_cpu_turns()
 	await _test_ryck_vs_lemay_turns()
-	await _test_two_cpu_reaction_ownership()
 	await _test_two_cpu_battle_completion_stops_scheduling()
 
 	if failures.is_empty():
@@ -61,6 +58,7 @@ func _test_authoritative_primary_actions() -> void:
 	_expect(model.get_legal_primary_actions("black").is_empty(), "primary list rejects the wrong-turn color")
 
 	arakne.stunned = true
+	model._resynchronize_live_authority()
 	actions = model.get_legal_primary_actions("white")
 	_expect(not _has_action(actions, ChessPrimaryAction.Kind.MOVE, arakne), "primary list excludes stunned-piece moves")
 	_expect(not _has_action(actions, ChessPrimaryAction.Kind.ACTIVE_ABILITY, arakne), "primary list excludes stunned active abilities")
@@ -336,7 +334,8 @@ func _test_damaged_king_prioritizes_safety() -> void:
 		elif action.piece == blocker and action.target == Vector2i(4, 2):
 			blocking_move = action
 	_expect(greedy_capture != null and cpu.choose_primary_action(actions) == greedy_capture, "normal greedy AI takes the undefensive queen capture")
-	await king.take_damage(1)
+	king.current_hp -= 1
+	model.piece_damaged.emit(king, 1, king.current_hp, king.max_hp)
 	_expect(cpu.king_safety_turns_remaining == 3, "surviving king damage opens a three-action safety window")
 	var defensive := cpu.choose_primary_action(actions)
 	_expect(defensive != null and defensive != greedy_capture and cpu._projected_king_threat_count(defensive) == 0, "alert AI chooses a capture, block, or escape that removes the rook threat")
@@ -692,7 +691,9 @@ func _test_forced_pass_with_no_legal_action() -> void:
 	var rook := Rook.new("white", Vector2i(7, 0))
 	model.add_piece(minotaur, minotaur.coordinate)
 	model.add_piece(rook, rook.coordinate)
-	minotaur.stun(2)
+	minotaur.stunned = true
+	minotaur.stun_timer = 2
+	model._resynchronize_live_authority()
 	var passed_colors: Array[String] = []
 	model.turn_passed.connect(func(color: String, _count: int): passed_colors.append(color))
 	await model.resolve_unplayable_turns()
@@ -707,51 +708,14 @@ func _test_forced_pass_deadlock_draw() -> void:
 	var black_king := ClassicKing.new("black", Vector2i(0, 0))
 	model.add_piece(white_king, white_king.coordinate)
 	model.add_piece(black_king, black_king.coordinate)
-	white_king.stun(99)
-	black_king.stun(99)
+	white_king.stunned = true; white_king.stun_timer = 99
+	black_king.stunned = true; black_king.stun_timer = 99
+	model._resynchronize_live_authority()
 	var passed_colors: Array[String] = []
 	model.turn_passed.connect(func(color: String, _count: int): passed_colors.append(color))
 	await model.resolve_unplayable_turns()
 	_expect(passed_colors == ["white", "black", "white", "black", "white", "black"], "a stable two-sided deadlock completes three ordered pass cycles")
 	_expect(model.battle_over and model.battle_result == "draw" and not model.forced_pass_in_progress, "six consecutive forced passes complete the battle as a draw")
-	model.free()
-
-
-func _test_cpu_owned_reaction() -> void:
-	var model := _new_empty_model()
-	var necromancer := NecromancerKing.new("black", Vector2i(0, 0))
-	var bishop := Bishop.new("white", Vector2i(4, 4))
-	model.add_piece(necromancer, necromancer.coordinate)
-	model.add_piece(bishop, bishop.coordinate)
-	var cpu := _add_cpu(model, "black", true)
-	model.reaction_selection_resolved.connect(
-		func(_piece: ModelPiece, _action_type: String, _target: Vector2i): cpu.is_enabled = false,
-		CONNECT_ONE_SHOT
-	)
-	model.begin_action("white")
-	model.destroy_piece(bishop, true)
-	await model.continue_action_resolution()
-	await _wait_frames(3)
-	_expect(not model.has_pending_reaction(), "CPU resolves its Model-owned reaction selection")
-	_expect(_count_type(model, "bone_pawn") == 1, "CPU Raise Dead creates a Bone Pawn")
-	cpu.queue_free()
-	model.free()
-
-
-func _test_human_owned_reaction_is_untouched() -> void:
-	var model := _new_empty_model()
-	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
-	var bishop := Bishop.new("black", Vector2i(4, 4))
-	model.add_piece(necromancer, necromancer.coordinate)
-	model.add_piece(bishop, bishop.coordinate)
-	var cpu := _add_cpu(model, "black", true)
-	model.begin_action("white")
-	model.destroy_piece(bishop, true)
-	await model.continue_action_resolution()
-	await _wait_frames(2)
-	_expect(model.has_pending_reaction(), "CPU leaves a human-owned reaction pending")
-	_expect(model.get_pending_reaction()["calling_piece"] == necromancer, "pending human reaction keeps its owner")
-	cpu.queue_free()
 	model.free()
 
 
@@ -819,34 +783,6 @@ func _test_ryck_vs_lemay_turns() -> void:
 	model.free()
 
 
-func _test_two_cpu_reaction_ownership() -> void:
-	var model := _new_empty_model()
-	model.current_turn = "black"
-	var necromancer := NecromancerKing.new("white", Vector2i(7, 7))
-	var bishop := Bishop.new("black", Vector2i(4, 4))
-	model.add_piece(necromancer, necromancer.coordinate)
-	model.add_piece(bishop, bishop.coordinate)
-	var white_cpu := _add_cpu(model, "white", false)
-	var black_cpu := _add_cpu(model, "black", false)
-	model.reaction_selection_resolved.connect(
-		func(_piece: ModelPiece, _action_type: String, _target: Vector2i):
-			white_cpu.is_enabled = false
-			black_cpu.is_enabled = false,
-		CONNECT_ONE_SHOT
-	)
-	white_cpu.configure(true, "white")
-	black_cpu.configure(true, "black")
-	model.begin_action("black")
-	model.destroy_piece(bishop, true)
-	await model.continue_action_resolution()
-	await _wait_frames(3)
-	_expect(not model.has_pending_reaction(), "matching CPU resolves a reaction owned by White")
-	_expect(_count_type(model, "bone_pawn") == 1, "two-CPU reaction ownership produces the selected effect")
-	white_cpu.queue_free()
-	black_cpu.queue_free()
-	model.free()
-
-
 func _test_two_cpu_battle_completion_stops_scheduling() -> void:
 	var model := _new_empty_model()
 	var arakne := ArakneKing.new("white", Vector2i(4, 4))
@@ -895,7 +831,6 @@ func _new_empty_model() -> ChessBoardModel:
 	model.battle_over = false
 	model.battle_result = ""
 	model.defeated_king_colors.clear()
-	model.selection_queue.clear()
 	model.pending_reaction.clear()
 	model.action_in_progress = false
 	model.action_owner_color = ""

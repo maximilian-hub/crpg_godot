@@ -8,9 +8,11 @@ const RhetoricianLayer = preload("res://scripts/ai/rhetorician_king_ai_layer.gd"
 const NecromancerLayer = preload("res://scripts/ai/necromancer_king_ai_layer.gd")
 const QuarterlyLayer = preload("res://scripts/ai/quarterly_initiative_king_ai_layer.gd")
 const CannonLayer = preload("res://scripts/ai/cannon_king_ai_layer.gd")
+const WraithLayer = preload("res://scripts/ai/wraith_king_ai_layer.gd")
+const ArcherLayer = preload("res://scripts/ai/archer_king_ai_layer.gd")
 
 static var _legacy_layers: Array = [ClassicLayer.new(), ArakneLayer.new()]
-static var _dupre_layers: Array = _legacy_layers + [MinotaurLayer.new(), RhetoricianLayer.new(), NecromancerLayer.new(), QuarterlyLayer.new(), CannonLayer.new()]
+static var _dupre_layers: Array = _legacy_layers + [MinotaurLayer.new(), RhetoricianLayer.new(), NecromancerLayer.new(), QuarterlyLayer.new(), CannonLayer.new(), WraithLayer.new(), ArcherLayer.new()]
 
 
 static func layer_for(king_type: StringName):

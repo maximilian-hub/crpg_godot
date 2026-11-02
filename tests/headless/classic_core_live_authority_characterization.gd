@@ -14,7 +14,9 @@ func _ready() -> void:
 	await _test_arakne_live_authority()
 	await _test_necromancer_live_authority()
 	await _test_minotaur_live_authority()
-	_test_fallback_and_switching()
+	await _test_quarterly_live_authority()
+	await _test_archer_live_authority()
+	_test_mandatory_authority()
 	if failures.is_empty():
 		print("CLASSIC CORE LIVE AUTHORITY: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -86,13 +88,23 @@ func _test_promotion_and_battle() -> void:
 	model.queue_free(); await get_tree().process_frame
 
 
-func _test_fallback_and_switching() -> void:
-	var model := _model([WraithKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
-	_expect(not model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE), "unsupported special King refuses core activation")
+func _test_mandatory_authority() -> void:
+	var model := _model([ArcherKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
+	_expect(model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE), "Archer position activates mandatory core authority")
 	var diagnostics := model.get_live_authority_diagnostics()
-	_expect(diagnostics.active == "model" and not String(diagnostics.fallback_reason).is_empty(), "unsupported activation exposes model fallback reason")
-	_expect(model.set_live_authority(ChessBoardModel.LiveAuthority.MODEL), "settled model authority can be restored explicitly")
+	_expect(diagnostics.active == "classic_core" and String(diagnostics.fallback_reason).is_empty(), "Archer activation has no legacy fallback")
+	_expect(not model.set_live_authority(999), "no alternate live authority can be restored")
 	model.queue_free()
+
+
+func _test_archer_live_authority() -> void:
+	var archer := ArcherKingQuiver.new("white", Vector2i(4, 4)); archer.current_cooldown = 0; archer.initial_cooldown_turn_pending = false
+	var target := Pawn.new("black", Vector2i(1, 4)); target.max_hp = 2; target.current_hp = 2
+	var model := _model([archer, ClassicKing.new("black", Vector2i(0, 7)), target])
+	_expect(await model.submit_move(archer, target.coordinate), "live core accepts a Quiver Sharpshooter attack")
+	_expect(target.current_hp == 1 and archer.coordinate == Vector2i(4, 4) and model.has_tile_effect(&"archer_arrow", target.coordinate, archer.piece_id), "live Quiver shot projects damage and its arrow without moving")
+	_expect(model.get_live_authority_diagnostics().projection_mismatches == 0, "Archer live projection matches authoritative state")
+	model.queue_free(); await get_tree().process_frame
 
 
 func _test_forced_passes() -> void:
@@ -148,7 +160,6 @@ func _test_minotaur_live_authority() -> void:
 	_expect(model.board[4][0] == minotaur and minotaur.stunned and minotaur.stun_timer == 2 and minotaur.cooldown_reset_pending, "wall Charge projects movement, stun, and cooldown")
 	_expect(model.get_live_authority_diagnostics().projection_mismatches == 0, "wall Charge projection matches authoritative state")
 	model.queue_free(); await get_tree().process_frame
-
 	var rook := Rook.new("white", Vector2i(4, 0))
 	var victim := Bishop.new("white", Vector2i(3, 3))
 	var defender := MinotaurKing.new("black", Vector2i(4, 4))
@@ -179,6 +190,28 @@ func _test_minotaur_live_authority() -> void:
 	_expect(await model.submit_reaction_selection(target), "mixed live reaction chain accepts Raise Dead after Rage")
 	_expect(model.board[target.x][target.y] is BonePawn and model.is_settled() and model.get_live_authority_diagnostics().projection_mismatches == 0, "mixed Rage and Raise Dead projection settles identically")
 	_expect(mixed_finished == {"rage": 1, "raise": 1}, "mixed live reaction lifecycle reports each automatic and selected reaction exactly once")
+	model.queue_free(); await get_tree().process_frame
+
+
+func _test_quarterly_live_authority() -> void:
+	var quarterly := QuarterlyInitiativeKing.new("white", Vector2i(7, 7)); quarterly.set_cooldown(0); quarterly.initial_cooldown_turn_pending = false
+	var rook := Rook.new("white", Vector2i(5, 5))
+	var model := _model([quarterly, rook, ClassicKing.new("black", Vector2i(0, 0))])
+	var signals := {"choice": 0, "grant": 0, "damage": 0}
+	model.movement_type_selection_requested.connect(func(_king, _target, _options):
+		signals.choice += 1
+		model.call_deferred("submit_movement_type_grant", &"bishop")
+	)
+	rook.movement_type_granted.connect(func(_type): signals.grant += 1)
+	model.piece_damaged.connect(func(piece, _amount, _current, _maximum):
+		if piece == quarterly: signals.damage += 1
+	)
+	_expect(model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE), "Quarterly position activates pure authority")
+	_expect(await model.submit_active_ability(quarterly, rook.coordinate), "live core settles Stakeholder Pandering through the existing choice API")
+	_expect(quarterly.current_hp == 3 and &"bishop" in rook.granted_movement_types and quarterly.cooldown_reset_pending, "paid grant projects HP, movement, and cooldown state")
+	_expect(signals == {"choice": 1, "grant": 1, "damage": 1}, "Quarterly live authority emits each choice, grant, and damage signal once")
+	_expect(Vector2i(0, 0) in model.get_legal_moves(rook), "granted Bishop movement is immediately authoritative")
+	_expect(model.is_settled() and model.get_live_authority_diagnostics().projection_mismatches == 0, "Quarterly live projection settles identically")
 	model.queue_free(); await get_tree().process_frame
 
 

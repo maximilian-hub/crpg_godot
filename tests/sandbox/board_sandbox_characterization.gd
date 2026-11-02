@@ -37,7 +37,7 @@ func _ready() -> void:
 	sandbox._on_brain_selected("black", ChessCpuPlayer.BrainKind.LEMAY)
 	_check(sandbox.ai_brains.white == ChessCpuPlayer.BrainKind.RYCK and sandbox.ai_brains.black == ChessCpuPlayer.BrainKind.LEMAY, "Black can select LeMay without changing White's Ryck brain", failures)
 	_check(sandbox.game.white_cpu_player.brain_kind == ChessCpuPlayer.BrainKind.RYCK and sandbox.game.black_cpu_player.brain_kind == ChessCpuPlayer.BrainKind.LEMAY, "per-army brain assignments reach the matching CPU clients", failures)
-	_check(sandbox.ai_brain_options.black.is_item_disabled(1) and sandbox.ai_brain_options.black.is_item_disabled(2) and sandbox._brain_configuration_error(ChessCpuPlayer.ExecutionMode.AUTO).contains("necromancer_king"), "sandbox blocks LeMay and Dupre with a visible reason when the authored Kings are unsupported", failures)
+	_check(sandbox.ai_brain_options.black.is_item_disabled(1) and not sandbox.ai_brain_options.black.is_item_disabled(2), "sandbox blocks unsupported LeMay while allowing Dupre's migrated Necromancer", failures)
 	sandbox._on_brain_selected("black", ChessCpuPlayer.BrainKind.DUPRE)
 	_check(sandbox.ai_brains.black == ChessCpuPlayer.BrainKind.DUPRE and sandbox.game.black_cpu_player.brain_kind == ChessCpuPlayer.BrainKind.DUPRE, "Black can independently select the experimental Dupre brain", failures)
 	sandbox._on_brain_selected("black", ChessCpuPlayer.BrainKind.RYCK)

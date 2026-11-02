@@ -14,6 +14,8 @@ var stun_timer := 0
 var current_cooldown := 0
 var cooldown_reset_pending := false
 var initial_cooldown_turn_pending := false
+var granted_movement_types: Array[StringName] = []
+var custom_state := {}
 
 
 static func from_piece_state(source: ChessPieceState) -> ChessCorePiece:
@@ -31,6 +33,8 @@ static func from_piece_state(source: ChessPieceState) -> ChessCorePiece:
 	result.current_cooldown = source.current_cooldown
 	result.cooldown_reset_pending = source.cooldown_reset_pending
 	result.initial_cooldown_turn_pending = source.initial_cooldown_turn_pending
+	result.granted_movement_types.assign(source.granted_movement_types)
+	result.custom_state = source.custom_state.duplicate(true)
 	return result
 
 
@@ -49,6 +53,8 @@ func copy() -> ChessCorePiece:
 	result.current_cooldown = current_cooldown
 	result.cooldown_reset_pending = cooldown_reset_pending
 	result.initial_cooldown_turn_pending = initial_cooldown_turn_pending
+	result.granted_movement_types.assign(granted_movement_types)
+	result.custom_state = custom_state.duplicate(true)
 	return result
 
 
@@ -67,8 +73,10 @@ func to_piece_state() -> ChessPieceState:
 	result.current_cooldown = current_cooldown
 	result.cooldown_reset_pending = cooldown_reset_pending
 	result.initial_cooldown_turn_pending = initial_cooldown_turn_pending
+	result.granted_movement_types.assign(granted_movement_types)
+	result.custom_state = custom_state.duplicate(true)
 	return result
 
 
 func is_king() -> bool:
-	return type_id in [&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king"]
+	return type_id in [&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king", &"quarterly_initiative_king", &"cannon_king", &"rhetorician_king", &"wraith_king", &"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge"]

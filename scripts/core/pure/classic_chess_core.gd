@@ -1,9 +1,24 @@
 extends RefCounted
 class_name ClassicChessCore
 
-const SUPPORTED_TYPES: Array[StringName] = [&"pawn", &"bone_pawn", &"knight", &"bishop", &"rook", &"queen", &"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king"]
+const RhetoricianCoreRules := preload("res://scripts/core/pure/rhetorician_core_rules.gd")
+const WraithCoreRules := preload("res://scripts/core/pure/wraith_core_rules.gd")
+const ArcherCoreRules := preload("res://scripts/core/pure/archer_core_rules.gd")
+const SUPPORTED_TYPES: Array[StringName] = [&"pawn", &"bone_pawn", &"knight", &"bishop", &"rook", &"queen", &"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king", &"quarterly_initiative_king", &"cannon_king", &"rhetorician_king", &"wraith_king", &"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge"]
 const PROMOTION_OPTIONS: Array[StringName] = [&"queen", &"rook", &"bishop", &"knight"]
+const MOVEMENT_GRANT_OPTIONS: Array[StringName] = [&"pawn", &"knight", &"bishop", &"rook"]
 const MAX_CONSECUTIVE_FORCED_PASSES := 6
+
+
+static func randomized_random_states() -> Dictionary:
+	var lunacy := RandomNumberGenerator.new(); lunacy.randomize()
+	var volley := RandomNumberGenerator.new(); volley.randomize()
+	return {&"lunacy": lunacy.state, &"archer_volley": volley.state}
+
+
+static func seeded_random_state(seed: int) -> int:
+	var rng := RandomNumberGenerator.new(); rng.seed = seed
+	return rng.state
 
 
 static func import_position(position: ChessPosition) -> Dictionary:
@@ -11,10 +26,13 @@ static func import_position(position: ChessPosition) -> Dictionary:
 		return {"ok": false, "error": "Position is null."}
 	if position.board_size != Vector2i(8, 8) or position.board_type != &"default":
 		return {"ok": false, "error": "Only the default 8x8 board is supported."}
-	if not position.tile_effects.is_empty() or not position.autonomous_entities.is_empty():
-		return {"ok": false, "error": "Tile effects and autonomous entities are outside the Classic slice."}
-	if int(position.lunacy_by_color.get("white", 0)) != 0 or int(position.lunacy_by_color.get("black", 0)) != 0 or int(position.socratic_turns_by_color.get("white", 0)) != 0 or int(position.socratic_turns_by_color.get("black", 0)) != 0:
-		return {"ok": false, "error": "Rhetorician state is outside the Classic slice."}
+	for color in ["white", "black"]:
+		var lunacy := int(position.lunacy_by_color.get(color, 0))
+		var socratic_turns := int(position.socratic_turns_by_color.get(color, 0))
+		if lunacy < 0 or lunacy > RhetoricianCoreRules.LUNACY_THRESHOLD or socratic_turns < 0 or socratic_turns > RhetoricianCoreRules.SOCRATIC_TURN_COUNT:
+			return {"ok": false, "error": "Invalid Rhetorician state."}
+		if socratic_turns > 0 and not position.random_states.has(&"lunacy"):
+			return {"ok": false, "error": "Active Socratic state requires a serialized Lunacy RNG."}
 	var state := ChessCoreState.new()
 	state.board_size = position.board_size
 	state.board_type = position.board_type
@@ -23,6 +41,8 @@ static func import_position(position: ChessPosition) -> Dictionary:
 	state.battle_result = position.battle_result
 	state.defeated_king_colors.assign(position.defeated_king_colors)
 	state.random_states = position.random_states.duplicate(true)
+	state.lunacy_by_color = position.lunacy_by_color.duplicate(true)
+	state.socratic_turns_by_color = position.socratic_turns_by_color.duplicate(true)
 	state.global_turn_number = position.global_turn_number
 	state.active_ability_cooldowns_disabled = position.active_ability_cooldowns_disabled
 	var occupied := {}
@@ -30,17 +50,63 @@ static func import_position(position: ChessPosition) -> Dictionary:
 		var type_id := ChessPieceCatalog.normalize_type_id(source.type_id)
 		if type_id not in SUPPORTED_TYPES:
 			return {"ok": false, "error": "Unsupported Classic piece type: %s" % source.type_id}
-		if not source.granted_movement_types.is_empty() or not source.custom_state.is_empty():
-			return {"ok": false, "error": "RPG piece modifiers are outside the Classic slice."}
+		if type_id in ArcherCoreRules.TYPES:
+			if not ArcherCoreRules.validate_custom_state(source):
+				return {"ok": false, "error": "Invalid Archer custom state."}
+		elif type_id == &"cannon_king":
+			if source.custom_state.keys().any(func(key): return String(key) != "scheduled_arc_cooldown"):
+				return {"ok": false, "error": "Unsupported Cannon custom state."}
+		elif not source.custom_state.is_empty():
+			return {"ok": false, "error": "Custom piece state is outside the Classic slice."}
+		for movement_type in source.granted_movement_types:
+			if movement_type not in MOVEMENT_GRANT_OPTIONS:
+				return {"ok": false, "error": "Unsupported granted movement type: %s" % movement_type}
 		if not ChessCoreKingRules.is_supported_king(type_id) and (source.current_cooldown != 0 or source.cooldown_reset_pending or source.initial_cooldown_turn_pending):
 			return {"ok": false, "error": "Active-ability cooldown state is outside the Classic slice."}
 		if source.coordinate.x < 0 or source.coordinate.y < 0 or source.coordinate.x >= 8 or source.coordinate.y >= 8 or occupied.has(source.coordinate):
 			return {"ok": false, "error": "Piece coordinates are invalid or overlapping."}
 		var piece := ChessCorePiece.from_piece_state(source)
+		if type_id in ArcherCoreRules.TYPES:
+			ArcherCoreRules.normalize_custom_state(piece)
 		if piece.piece_id.is_empty(): piece.piece_id = state.allocate_piece_id()
 		_reserve_id(state, piece.piece_id)
 		state.add_piece(piece)
 		occupied[piece.coordinate] = true
+	for source_effect in position.tile_effects:
+		if source_effect.type_id not in [&"cursed_mark", &"archer_arrow"]:
+			return {"ok": false, "error": "Unsupported tile effect: %s" % source_effect.type_id}
+		if source_effect.owner_color not in ["white", "black"] or not _in_bounds(source_effect.coordinate) or not source_effect.custom_state.is_empty():
+			return {"ok": false, "error": "Invalid Cursed Mark state."}
+		var effect_source := state.piece_by_id(source_effect.source_piece_id)
+		if source_effect.type_id == &"cursed_mark" and (effect_source == null or effect_source.type_id != &"wraith_king" or effect_source.color != source_effect.owner_color):
+			return {"ok": false, "error": "Cursed Mark source is not its owning Wraith King."}
+		if source_effect.type_id == &"archer_arrow" and (effect_source == null or effect_source.type_id not in ArcherCoreRules.QUIVER_TYPES or effect_source.color != source_effect.owner_color):
+			return {"ok": false, "error": "Archer Arrow source is not its owning Quiver Archer."}
+		var effect := ChessCoreTileEffect.from_effect_state(source_effect)
+		if effect.effect_id.is_empty(): effect.effect_id = state.allocate_state_id("effect")
+		if state.effects_by_id.has(effect.effect_id): return {"ok": false, "error": "Duplicate tile-effect id."}
+		_reserve_id(state, effect.effect_id)
+		state.add_effect(effect)
+	for source_entity in position.autonomous_entities:
+		if source_entity.type_id not in [&"arc_mortar", &"wraith"]:
+			return {"ok": false, "error": "Unsupported autonomous entity: %s" % source_entity.type_id}
+		if source_entity.owner_color not in ["white", "black"] or not _in_bounds(source_entity.coordinate):
+			return {"ok": false, "error": "Autonomous entity owner or coordinate is invalid."}
+		if source_entity.type_id == &"arc_mortar":
+			if source_entity.coordinate.x >= 7 or source_entity.coordinate.y >= 7 or source_entity.custom_state.keys().any(func(key): return String(key) != "landing_turn"):
+				return {"ok": false, "error": "Unsupported Arc Mortar state."}
+		else:
+			if source_entity.custom_state.keys().any(func(key): return String(key) != "next_move_turn"):
+				return {"ok": false, "error": "Unsupported Wraith custom state."}
+			var wraith_source := state.piece_by_id(source_entity.source_piece_id)
+			var wraith_target := state.piece_by_id(source_entity.target_piece_id)
+			if wraith_source == null or wraith_source.type_id != &"wraith_king" or wraith_source.color != source_entity.owner_color or wraith_target == null or wraith_target.color == source_entity.owner_color:
+				return {"ok": false, "error": "Wraith source or target is invalid."}
+		var entity := ChessCoreAutonomousEntity.from_entity_state(source_entity)
+		if entity.entity_id.is_empty(): entity.entity_id = state.allocate_state_id("entity")
+		if state.entities_by_id.has(entity.entity_id): return {"ok": false, "error": "Duplicate autonomous-entity id."}
+		_reserve_id(state, entity.entity_id)
+		state.add_entity(entity)
 	if position.last_move != null and position.last_move.is_present:
 		var moved_id := ""
 		var candidate := state.occupant(position.last_move.to)
@@ -67,9 +133,13 @@ static func export_position(state: ChessCoreState) -> ChessPosition:
 	result.battle_result = state.battle_result
 	result.defeated_king_colors.assign(state.defeated_king_colors)
 	result.random_states = state.random_states.duplicate(true)
+	result.lunacy_by_color = state.lunacy_by_color.duplicate(true)
+	result.socratic_turns_by_color = state.socratic_turns_by_color.duplicate(true)
 	result.global_turn_number = state.global_turn_number
 	result.active_ability_cooldowns_disabled = state.active_ability_cooldowns_disabled
 	for piece in state.pieces: result.pieces.append(piece.to_piece_state())
+	for effect in state.tile_effects: result.tile_effects.append(effect.to_effect_state())
+	for entity in state.autonomous_entities: result.autonomous_entities.append(entity.to_entity_state())
 	if not state.last_move.is_empty():
 		result.last_move.is_present = true
 		result.last_move.from = state.last_move.get("from", Vector2i.ZERO)
@@ -101,8 +171,13 @@ static func analysis_actions(state: ChessCoreState, color: String) -> Array[Ches
 	for piece: ChessCorePiece in ordered:
 		if piece.color != color or piece.stunned or piece.current_hp <= 0:
 			continue
+		var movement_paths := _legal_paths(state, piece)
+		for movement_type in piece.granted_movement_types:
+			for destination in _moves_as(state, piece, movement_type):
+				movement_paths.append([destination])
+		movement_paths = movement_paths.filter(func(path): return not path.is_empty() and not _rhetorician_attack_blocked(state, piece, path.back()))
 		if piece.type_id == &"arakne_king":
-			for path in _legal_paths(state, piece):
+			for path in movement_paths:
 				var action := ChessCoreAction.new()
 				action.piece_id = piece.piece_id
 				action.color = piece.color
@@ -111,7 +186,8 @@ static func analysis_actions(state: ChessCoreState, color: String) -> Array[Ches
 				action.path.assign(path)
 				result.append(action)
 		else:
-			for target in _legal_destinations(state, piece):
+			for path in movement_paths:
+				var target: Vector2i = path.back()
 				var action := ChessCoreAction.new()
 				action.piece_id = piece.piece_id
 				action.color = piece.color
@@ -129,6 +205,14 @@ static func analysis_actions(state: ChessCoreState, color: String) -> Array[Ches
 				action.from = piece.coordinate
 				action.target = target
 				result.append(action)
+		if ArcherCoreRules.uses_charge(piece) and ArcherCoreRules.charge_level(piece) == 0 and not ArcherCoreRules.is_suppressed(state, piece):
+			var charge := ChessCoreAction.new()
+			charge.kind = ChessCoreAction.Kind.ARCHER_CHARGE
+			charge.piece_id = piece.piece_id
+			charge.color = piece.color
+			charge.from = piece.coordinate
+			charge.target = piece.coordinate
+			result.append(charge)
 	return result
 
 
@@ -138,6 +222,10 @@ static func analysis_actions(state: ChessCoreState, color: String) -> Array[Ches
 static func directly_attacks_square(state: ChessCoreState, piece: ChessCorePiece, target: Vector2i) -> bool:
 	if state == null or piece == null or piece.stunned or piece.current_hp <= 0 or not _in_bounds(target) or target == piece.coordinate:
 		return false
+	if _rhetorician_attack_blocked(state, piece, target):
+		return false
+	if piece.type_id in ArcherCoreRules.TYPES:
+		return ArcherCoreRules.can_ranged_attack(state, piece, target)
 	return directly_attacks_in_occupancy(piece, piece.coordinate, target, state.occupancy)
 
 
@@ -147,15 +235,43 @@ static func directly_attacks_square(state: ChessCoreState, piece: ChessCorePiece
 static func directly_attacks_in_occupancy(piece: ChessCorePiece, origin: Vector2i, target: Vector2i, occupancy: Dictionary) -> bool:
 	if piece == null or piece.stunned or piece.current_hp <= 0 or not _in_bounds(target) or target == origin:
 		return false
+	var defender = occupancy.get(target)
+	if defender is ChessCorePiece and defender.type_id == &"rhetorician_king" and defender.color != piece.color and maxi(absi(origin.x - target.x), absi(origin.y - target.y)) == 1:
+		return false
+	if piece.type_id in ArcherCoreRules.TYPES:
+		var projected := ChessCoreState.new()
+		projected.occupancy = occupancy
+		return ArcherCoreRules.can_ranged_attack(projected, piece, target)
+	return geometrically_attacks_in_occupancy(piece, origin, target, occupancy)
+
+
+## Raw piece geometry used by AI relationship maps and Rhetorician Lunacy.
+## Command legality applies Can Words Prevent Harm? separately.
+static func geometrically_attacks_in_occupancy(piece: ChessCorePiece, origin: Vector2i, target: Vector2i, occupancy: Dictionary) -> bool:
+	if piece == null or piece.stunned or piece.current_hp <= 0 or not _in_bounds(target) or target == origin:
+		return false
+	if _movement_type_attacks(piece.type_id, piece.color, origin, target, occupancy):
+		return true
+	for movement_type in piece.granted_movement_types:
+		if _movement_type_attacks(movement_type, piece.color, origin, target, occupancy):
+			return true
+	return false
+
+
+static func _movement_type_attacks(type_id: StringName, color: String, origin: Vector2i, target: Vector2i, occupancy: Dictionary) -> bool:
 	var delta := target - origin
-	match piece.type_id:
+	match type_id:
 		&"pawn", &"bone_pawn":
-			var direction := -1 if piece.color == "white" else 1
+			var direction := -1 if color == "white" else 1
 			return delta.x == direction and absi(delta.y) == 1
 		&"knight":
 			return Vector2i(absi(delta.x), absi(delta.y)) in [Vector2i(1, 2), Vector2i(2, 1)]
-		&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king":
+		&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king", &"quarterly_initiative_king", &"cannon_king", &"rhetorician_king", &"wraith_king":
 			return absi(delta.x) <= 1 and absi(delta.y) <= 1
+		&"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge":
+			# Archer threats require variant state and suppression, so callers with a
+			# full state use directly_attacks_square().
+			return false
 		&"bishop":
 			return absi(delta.x) == absi(delta.y) and _occupancy_ray_is_clear(occupancy, origin, target)
 		&"rook":
@@ -193,9 +309,15 @@ static func resolve_action(source: ChessCoreState, submitted: ChessCoreAction, e
 		return ChessCoreStepResult.rejected(source, "Action is not legal in this state.")
 	if submitted.kind == ChessCoreAction.Kind.ACTIVE_ABILITY:
 		return _resolve_active_ability(source, submitted, emit_events)
+	if submitted.kind == ChessCoreAction.Kind.ARCHER_CHARGE:
+		return _resolve_archer_charge(source, submitted, emit_events)
 	var legal_move := false
 	if submitted.kind == ChessCoreAction.Kind.MOVE and not submitted.path.is_empty() and submitted.target == submitted.path.back():
-		legal_move = submitted.path in _legal_paths(source, piece) if piece.type_id == &"arakne_king" else (submitted.path == [submitted.target] and submitted.target in _legal_destinations(source, piece))
+		var legal_paths := _legal_paths(source, piece)
+		for movement_type in piece.granted_movement_types:
+			for destination in _moves_as(source, piece, movement_type):
+				if not _rhetorician_attack_blocked(source, piece, destination): legal_paths.append([destination])
+		legal_move = submitted.path in legal_paths
 	if not legal_move:
 		return ChessCoreStepResult.rejected(source, "Action is not legal in this state.")
 	var state := source.copy()
@@ -203,12 +325,12 @@ static func resolve_action(source: ChessCoreState, submitted: ChessCoreAction, e
 	result.state = state
 	_append_event(result.events, emit_events, &"action_started", {"color": state.current_turn})
 	state.consecutive_forced_passes = 0
-	state.resolution_context = {"action_owner": state.current_turn}
+	state.resolution_context = {"action_owner": state.current_turn, "primary_piece_id": submitted.piece_id, "wraith_bonus_used": false}
 	piece = state.piece_by_id(submitted.piece_id)
 	var origin := piece.coordinate
 	var target_piece := state.occupant(submitted.target)
 	var is_en_passant := piece.type_id == &"pawn" and target_piece == null and origin.y != submitted.target.y and _en_passant_victim(state, piece, submitted.target) != null
-	var is_castle := piece.is_king() and submitted.path.size() == 1 and absi(submitted.target.y - origin.y) == 2
+	var is_castle := piece.is_king() and submitted.path.size() == 1 and _can_castle(state, piece, submitted.target)
 	if is_castle:
 		_resolve_castle(state, piece, submitted.target, result.events, emit_events)
 	elif submitted.path.size() == 2 and piece.type_id == &"arakne_king":
@@ -224,16 +346,22 @@ static func resolve_action(source: ChessCoreState, submitted: ChessCoreAction, e
 	elif is_en_passant:
 		var victim := _en_passant_victim(state, piece, submitted.target)
 		_commit_capture(state, piece, victim, submitted.target, victim.coordinate, result.events, emit_events)
+	elif piece.type_id in ArcherCoreRules.TYPES and target_piece != null:
+		_resolve_archer_attack(state, piece, target_piece, result.events, emit_events)
 	elif target_piece != null:
 		if target_piece.current_hp <= piece.attack_power:
 			_commit_capture(state, piece, target_piece, submitted.target, submitted.target, result.events, emit_events)
 		else:
 			_deal_damage(state, target_piece, piece.attack_power, result.events, emit_events)
 	else:
+		if piece.type_id in ArcherCoreRules.TYPES and ArcherCoreRules.charge_level(piece) > 0:
+			_cancel_archer_draw(piece, result.events, emit_events, "Draw Cancelled")
 		state.move_piece(piece, submitted.target)
 		piece.has_moved = true
 		_append_event(result.events, emit_events, &"piece_moved", {"piece_id": piece.piece_id, "from": origin, "to": submitted.target})
 		_append_event(result.events, emit_events, &"piece_landed", {"piece_id": piece.piece_id, "from": origin, "to": submitted.target})
+		_collect_archer_arrows(state, piece, submitted.target, result.events, emit_events)
+		_wraith_on_landed(state, piece, result.events, emit_events)
 	state.last_move = {"piece_id": piece.piece_id, "piece_type": piece.type_id, "piece_color": piece.color, "from": origin, "to": submitted.target}
 	if piece.type_id == &"bone_pawn" and state.piece_by_id(piece.piece_id) != null and _is_terminal_rank(piece):
 		_destroy_piece(state, piece, piece.coordinate, result.events, emit_events)
@@ -256,6 +384,94 @@ static func resolve_action(source: ChessCoreState, submitted: ChessCoreAction, e
 	return result
 
 
+static func _resolve_archer_charge(source: ChessCoreState, submitted: ChessCoreAction, emit_events: bool) -> ChessCoreStepResult:
+	var piece := source.piece_by_id(submitted.piece_id)
+	if piece == null or piece.type_id != ArcherCoreRules.CHARGE_TYPE or submitted.color != piece.color or submitted.from != piece.coordinate or submitted.target != piece.coordinate or not submitted.path.is_empty() or piece.color != source.current_turn or piece.stunned or ArcherCoreRules.charge_level(piece) != 0 or ArcherCoreRules.is_suppressed(source, piece):
+		return ChessCoreStepResult.rejected(source, "Archer charge is not legal in this state.")
+	var state := source.copy()
+	var result := ChessCoreStepResult.new()
+	result.state = state
+	piece = state.piece_by_id(submitted.piece_id)
+	state.resolution_context = {"action_owner": state.current_turn, "primary_piece_id": piece.piece_id, "archer_charge_started": true, "wraith_bonus_used": false}
+	state.consecutive_forced_passes = 0
+	piece.custom_state["charge_level"] = 1
+	_append_event(result.events, emit_events, &"action_started", {"color": state.current_turn})
+	_append_event(result.events, emit_events, &"archer_state_changed", {"piece_id": piece.piece_id, "state": &"drawing", "message": "Drawing Bow"})
+	_complete_or_pause(state, result, emit_events)
+	return result
+
+
+static func _resolve_archer_attack(state: ChessCoreState, archer: ChessCorePiece, defender: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	if ArcherCoreRules.uses_draw(archer) and ArcherCoreRules.draw_target(archer) == Vector2i(-1, -1):
+		archer.custom_state["draw_target"] = [defender.coordinate.x, defender.coordinate.y]
+		archer.custom_state["draw_target_piece_id"] = defender.piece_id
+		archer.custom_state["draw_turns_waited"] = 0
+		_append_event(events, emit_events, &"archer_state_changed", {"piece_id": archer.piece_id, "state": &"drawing", "message": "Drawing Bow"})
+		return
+	_append_event(events, emit_events, &"archer_attack_committed", {"attacker_id": archer.piece_id, "defender_id": defender.piece_id, "from": archer.coordinate, "to": defender.coordinate})
+	if ArcherCoreRules.uses_quiver(archer):
+		archer.custom_state["arrows"] = maxi(0, ArcherCoreRules.arrows(archer) - 1)
+		_drop_archer_arrow(state, archer, defender.coordinate, events, emit_events)
+		_append_event(events, emit_events, &"archer_state_changed", {"piece_id": archer.piece_id, "state": &"quiver", "message": "Arrow Fired — %d Remaining" % ArcherCoreRules.arrows(archer)})
+	if ArcherCoreRules.uses_charge(archer):
+		_cancel_archer_draw(archer, events, emit_events, "")
+	_deal_damage(state, defender, 1, events, emit_events)
+
+
+static func _resolve_archer_volley(state: ChessCoreState, archer: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	var enemy_color := "black" if archer.color == "white" else "white"
+	var rear_rank := 7 if enemy_color == "white" else 0
+	var furthest_rank := rear_rank
+	for piece in state.pieces:
+		if piece.color != enemy_color: continue
+		furthest_rank = mini(furthest_rank, piece.coordinate.x) if enemy_color == "white" else maxi(furthest_rank, piece.coordinate.x)
+	var candidates: Array[Vector2i] = []
+	for row in range(mini(rear_rank, furthest_rank), maxi(rear_rank, furthest_rank) + 1):
+		for column in range(8): candidates.append(Vector2i(row, column))
+	var rng := RandomNumberGenerator.new()
+	rng.state = int(state.random_states.get(&"archer_volley", 0))
+	var targets: Array[Vector2i] = []
+	while not candidates.is_empty() and targets.size() < ArcherCoreRules.VOLLEY_SQUARE_COUNT:
+		targets.append(candidates.pop_at(rng.randi_range(0, candidates.size() - 1)))
+	state.random_states[&"archer_volley"] = rng.state
+	_append_event(events, emit_events, &"archer_volley_committed", {"piece_id": archer.piece_id, "targets": targets.duplicate()})
+	for coordinate in targets:
+		var occupant := state.occupant(coordinate)
+		if occupant != null: _deal_damage(state, occupant, 1, events, emit_events)
+
+
+static func _drop_archer_arrow(state: ChessCoreState, archer: ChessCorePiece, coordinate: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	var effect := ChessCoreTileEffect.new()
+	effect.effect_id = state.allocate_state_id("effect")
+	effect.type_id = &"archer_arrow"
+	effect.coordinate = coordinate
+	effect.owner_color = archer.color
+	effect.source_piece_id = archer.piece_id
+	state.add_effect(effect)
+	_append_event(events, emit_events, &"tile_effect_added", {"effect_id": effect.effect_id, "type_id": effect.type_id, "coordinate": coordinate, "owner_color": effect.owner_color, "source_piece_id": effect.source_piece_id})
+	_append_event(events, emit_events, &"archer_arrow_dropped", {"effect_id": effect.effect_id, "piece_id": archer.piece_id, "coordinate": coordinate})
+
+
+static func _collect_archer_arrows(state: ChessCoreState, collector: ChessCorePiece, coordinate: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	for effect in state.tile_effects.duplicate():
+		if effect.type_id != &"archer_arrow" or effect.coordinate != coordinate or effect.owner_color != collector.color: continue
+		var archer := state.piece_by_id(effect.source_piece_id)
+		if archer == null or not ArcherCoreRules.uses_quiver(archer) or ArcherCoreRules.arrows(archer) >= 2: continue
+		archer.custom_state["arrows"] = ArcherCoreRules.arrows(archer) + 1
+		state.remove_effect(effect)
+		_append_event(events, emit_events, &"tile_effect_removed", {"effect_id": effect.effect_id, "type_id": effect.type_id, "coordinate": coordinate, "source_piece_id": effect.source_piece_id})
+		_append_event(events, emit_events, &"archer_arrow_collected", {"collector_id": collector.piece_id, "piece_id": archer.piece_id, "effect_id": effect.effect_id})
+		_append_event(events, emit_events, &"archer_state_changed", {"piece_id": archer.piece_id, "state": &"quiver", "message": "Arrow Recovered — %d/2" % ArcherCoreRules.arrows(archer)})
+
+
+static func _cancel_archer_draw(archer: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool, message: String) -> void:
+	archer.custom_state["draw_target"] = [-1, -1]
+	archer.custom_state["draw_target_piece_id"] = ""
+	archer.custom_state["draw_turns_waited"] = 0
+	archer.custom_state["charge_level"] = 0
+	_append_event(events, emit_events, &"archer_state_changed", {"piece_id": archer.piece_id, "state": &"idle", "message": message})
+
+
 static func _resolve_active_ability(source: ChessCoreState, submitted: ChessCoreAction, emit_events: bool) -> ChessCoreStepResult:
 	var source_piece := source.piece_by_id(submitted.piece_id)
 	var rules = ChessCoreKingRules.for_type(source_piece.type_id) if source_piece != null else null
@@ -266,7 +482,7 @@ static func _resolve_active_ability(source: ChessCoreState, submitted: ChessCore
 	result.state = state
 	_append_event(result.events, emit_events, &"action_started", {"color": state.current_turn})
 	state.consecutive_forced_passes = 0
-	state.resolution_context = {"action_owner": state.current_turn}
+	state.resolution_context = {"action_owner": state.current_turn, "wraith_bonus_used": false}
 	var piece := state.piece_by_id(submitted.piece_id)
 	var target := state.occupant(submitted.target)
 	var effect: Dictionary = rules.active_effect(state, piece, target)
@@ -276,7 +492,43 @@ static func _resolve_active_ability(source: ChessCoreState, submitted: ChessCore
 		"target": submitted.target,
 		"target_piece_id": target.piece_id if target != null else "",
 	})
-	if effect.has("summon_type"):
+	if effect.get("movement_grant", false):
+		var hp_cost := int(effect.get("hp_cost", 0))
+		if hp_cost > 0: _deal_damage(state, piece, hp_cost, result.events, emit_events)
+		if not state.defeated_king_colors.is_empty():
+			_complete_battle(state, result.events, emit_events)
+			result.status = ChessCoreStepResult.Status.COMPLETED
+			return result
+		var choice := ChessCoreChoice.new()
+		choice.kind = &"movement_type_grant"
+		choice.piece_id = piece.piece_id
+		choice.target_piece_id = String(effect.get("target_piece_id", ""))
+		choice.options.assign(effect.get("options", []))
+		state.pending_choice = choice
+		result.choice = choice.copy()
+		_append_event(result.events, emit_events, &"choice_requested", {"kind": choice.kind, "piece_id": piece.piece_id, "target_piece_id": choice.target_piece_id, "options": choice.options.duplicate()})
+		result.status = ChessCoreStepResult.Status.PENDING_CHOICE
+		return result
+	if effect.get("compel", false):
+		_resolve_compel(state, piece, target, effect.get("destination", Vector2i(-1, -1)), result.events, emit_events)
+		if target != null and state.piece_by_id(target.piece_id) != null and target.type_id == &"pawn" and _is_terminal_rank(target):
+			var choice := ChessCoreChoice.new()
+			choice.kind = &"promotion"
+			choice.piece_id = target.piece_id
+			choice.options.assign(PROMOTION_OPTIONS)
+			state.pending_choice = choice
+			state.resolution_context["deferred_ability_cooldown_piece_id"] = piece.piece_id
+			result.choice = choice.copy()
+			_append_event(result.events, emit_events, &"choice_requested", {"kind": &"promotion", "piece_id": target.piece_id, "options": Array(PROMOTION_OPTIONS)})
+			result.status = ChessCoreStepResult.Status.PENDING_CHOICE
+			return result
+	elif effect.get("arc_mortar", false):
+		_launch_arc_mortar(state, piece, submitted.target, result.events, emit_events)
+	elif effect.get("summon_wraith", false):
+		_summon_wraith(state, piece, target, result.events, emit_events)
+	elif effect.get("archer_volley", false):
+		_resolve_archer_volley(state, piece, result.events, emit_events)
+	elif effect.has("summon_type"):
 		_summon_bone_pawn(state, piece.color, submitted.target, result.events, emit_events)
 	elif effect.get("charge", false):
 		_resolve_charge(state, piece, submitted.target, target, int(effect.get("damage", 2)), result.events, emit_events)
@@ -298,6 +550,10 @@ static func resolve_choice(source: ChessCoreState, option, emit_events := true) 
 		return ChessCoreStepResult.rejected(source, "Choice is invalid.")
 	if source.pending_choice.kind == &"raise_dead":
 		return _resolve_raise_dead_choice(source, option, emit_events)
+	if source.pending_choice.kind == &"movement_type_grant":
+		return _resolve_movement_type_grant_choice(source, option, emit_events)
+	if source.pending_choice.kind == &"lingering_malice":
+		return _resolve_lingering_malice_choice(source, option, emit_events)
 	if source.pending_choice.kind != &"promotion":
 		return ChessCoreStepResult.rejected(source, "The pending choice kind is unsupported.")
 	var state := source.copy()
@@ -321,6 +577,10 @@ static func resolve_choice(source: ChessCoreState, option, emit_events := true) 
 	state.add_piece(promoted)
 	state.pending_choice = null
 	_append_event(result.events, emit_events, &"piece_promoted", {"old_piece_id": old_id, "new_piece_id": promoted.piece_id, "piece_type": option, "coordinate": coordinate})
+	var deferred_cooldown_id := String(state.resolution_context.get("deferred_ability_cooldown_piece_id", ""))
+	if not deferred_cooldown_id.is_empty():
+		state.resolution_context.erase("deferred_ability_cooldown_piece_id")
+		_schedule_cooldown(state, state.piece_by_id(deferred_cooldown_id), result.events, emit_events)
 	_complete_or_pause(state, result, emit_events)
 	return result
 
@@ -331,7 +591,18 @@ static func resolve_forced_passes(source: ChessCoreState, emit_events := true) -
 	var result := ChessCoreStepResult.new()
 	result.state = source.copy()
 	_resolve_forced_passes(result.state, result.events, emit_events)
-	result.status = ChessCoreStepResult.Status.COMPLETED
+	if bool(result.state.resolution_context.get("socratic_ready", false)):
+		var nested := _begin_socratic_resolution(result.state, emit_events)
+		result.events.append_array(nested.events)
+		result.state = nested.state
+		result.choice = nested.choice
+		result.status = nested.status
+		return result
+	if result.state.pending_choice != null:
+		result.choice = result.state.pending_choice.copy()
+		result.status = ChessCoreStepResult.Status.PENDING_CHOICE
+	else:
+		result.status = ChessCoreStepResult.Status.COMPLETED
 	return result
 
 
@@ -343,13 +614,28 @@ static func _legal_destinations(state: ChessCoreState, piece: ChessCorePiece) ->
 		&"bishop": return _ray_moves(state, piece, [Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(1, -1)])
 		&"rook": return _ray_moves(state, piece, [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(0, -1)])
 		&"queen": return _ray_moves(state, piece, [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(1, -1)])
-		&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king":
+		&"archer_king", &"archer_king_draw", &"archer_king_quiver", &"archer_king_combination", &"archer_king_charge":
+			var moves: Array[Vector2i] = []
+			if ArcherCoreRules.uses_draw(piece) and ArcherCoreRules.draw_target(piece) != Vector2i(-1, -1):
+				return moves
+			for row in range(8):
+				for column in range(8):
+					var target := Vector2i(row, column)
+					var occupant := state.occupant(target)
+					var distance := maxi(absi(target.x - piece.coordinate.x), absi(target.y - piece.coordinate.y))
+					if distance == 1 and occupant == null:
+						moves.append(target)
+					elif ArcherCoreRules.can_ranged_attack(state, piece, target):
+						moves.append(target)
+			return moves
+		&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king", &"quarterly_initiative_king", &"cannon_king", &"rhetorician_king", &"wraith_king":
 			var moves: Array[Vector2i] = []
 			for row in range(8):
 				for column in range(8):
 					var target := Vector2i(row, column)
 					var delta := target - piece.coordinate
-					if target != piece.coordinate and absi(delta.x) <= 1 and absi(delta.y) <= 1 and _available(state, target, piece.color): moves.append(target)
+					var quarterly_efficiency := piece.type_id == &"quarterly_initiative_king" and state.occupant(target) != null and state.occupant(target).color == piece.color
+					if target != piece.coordinate and absi(delta.x) <= 1 and absi(delta.y) <= 1 and (_available(state, target, piece.color) or quarterly_efficiency): moves.append(target)
 			if not piece.has_moved:
 				for target in [Vector2i(7 if piece.color == "white" else 0, 2), Vector2i(7 if piece.color == "white" else 0, 6)]:
 					if _can_castle(state, piece, target): moves.append(target)
@@ -357,14 +643,33 @@ static func _legal_destinations(state: ChessCoreState, piece: ChessCorePiece) ->
 	return []
 
 
+static func _moves_as(state: ChessCoreState, piece: ChessCorePiece, movement_type: StringName) -> Array[Vector2i]:
+	match movement_type:
+		&"pawn": return _pawn_moves(state, piece)
+		&"knight": return _jump_moves(state, piece, [Vector2i(2, 1), Vector2i(2, -1), Vector2i(-2, 1), Vector2i(-2, -1), Vector2i(1, 2), Vector2i(-1, 2), Vector2i(1, -2), Vector2i(-1, -2)])
+		&"bishop": return _ray_moves(state, piece, [Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(1, -1)])
+		&"rook": return _ray_moves(state, piece, [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(0, -1)])
+	return []
+
+
 static func _legal_paths(state: ChessCoreState, piece: ChessCorePiece) -> Array[Array]:
-	var destinations := _legal_destinations(state, piece)
+	var destinations := _legal_destinations(state, piece).filter(func(destination): return not _rhetorician_attack_blocked(state, piece, destination))
 	if piece.type_id == &"arakne_king":
 		return ArakneCoreRules.movement_paths(state, piece, destinations)
 	var result: Array[Array] = []
 	for destination in destinations:
 		result.append([destination])
 	return result
+
+
+static func _rhetorician_attack_blocked(state: ChessCoreState, attacker: ChessCorePiece, destination: Vector2i) -> bool:
+	var defender := state.occupant(destination)
+	return (
+		defender != null
+		and defender.type_id == &"rhetorician_king"
+		and defender.color != attacker.color
+		and maxi(absi(attacker.coordinate.x - destination.x), absi(attacker.coordinate.y - destination.y)) == 1
+	)
 
 
 static func _pawn_moves(state: ChessCoreState, piece: ChessCorePiece) -> Array[Vector2i]:
@@ -484,6 +789,61 @@ static func _commit_capture(state: ChessCoreState, attacker: ChessCorePiece, def
 	_append_event(events, emit_events, &"piece_captured", {"attacker_id": attacker.piece_id, "defender_id": defender.piece_id, "from": origin, "to": target, "captured_at": captured_at})
 	_append_event(events, emit_events, &"piece_destroyed", {"piece_id": defender.piece_id, "coordinate": captured_at})
 	_append_event(events, emit_events, &"piece_landed", {"piece_id": attacker.piece_id, "from": origin, "to": target})
+	_collect_archer_arrows(state, attacker, target, events, emit_events)
+	if attacker.type_id == &"wraith_king" and state.piece_by_id(attacker.piece_id) != null:
+		_add_cursed_mark(state, captured_at, attacker, events, emit_events)
+		_wraith_on_landed(state, attacker, events, emit_events)
+
+
+static func _add_cursed_mark(state: ChessCoreState, coordinate: Vector2i, wraith: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	var effect := ChessCoreTileEffect.new()
+	effect.effect_id = state.allocate_state_id("effect")
+	effect.type_id = &"cursed_mark"
+	effect.coordinate = coordinate
+	effect.owner_color = wraith.color
+	effect.source_piece_id = wraith.piece_id
+	state.add_effect(effect)
+	_append_event(events, emit_events, &"tile_effect_added", {"effect_id": effect.effect_id, "type_id": effect.type_id, "coordinate": coordinate, "owner_color": effect.owner_color, "source_piece_id": effect.source_piece_id})
+
+
+static func _wraith_on_landed(state: ChessCoreState, wraith: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	if wraith == null or wraith.type_id != &"wraith_king" or bool(state.resolution_context.get("wraith_bonus_used", false)) or not state.has_effect(&"cursed_mark", wraith.coordinate, wraith.piece_id):
+		return
+	state.resolution_context["wraith_bonus_used"] = true
+	state.next_reaction_sequence += 1
+	var reaction := ChessCoreReaction.new()
+	reaction.calling_piece_id = wraith.piece_id
+	reaction.action_type = &"lingering_malice"
+	reaction.priority = 0
+	reaction.sequence = state.next_reaction_sequence
+	reaction.event_coordinate = wraith.coordinate
+	state.reaction_queue.append(reaction)
+	_append_event(events, emit_events, &"reaction_queued", {"piece_id": wraith.piece_id, "action_type": reaction.action_type, "event_coordinate": reaction.event_coordinate, "sequence": reaction.sequence})
+
+
+static func _remove_cursed_mark(state: ChessCoreState, coordinate: Vector2i, source_piece_id: String, events: Array[ChessCoreEvent], emit_events: bool) -> bool:
+	for effect in state.tile_effects.duplicate():
+		if effect.type_id == &"cursed_mark" and effect.coordinate == coordinate and effect.source_piece_id == source_piece_id:
+			state.remove_effect(effect)
+			_append_event(events, emit_events, &"tile_effect_removed", {"effect_id": effect.effect_id, "type_id": effect.type_id, "coordinate": coordinate, "source_piece_id": source_piece_id})
+			return true
+	return false
+
+
+static func _resolve_compel(state: ChessCoreState, rhetorician: ChessCorePiece, compelled: ChessCorePiece, destination: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	if compelled == null or state.piece_by_id(compelled.piece_id) == null or not _in_bounds(destination) or destination == rhetorician.coordinate:
+		return
+	var origin := compelled.coordinate
+	var occupant := state.occupant(destination)
+	if occupant == null:
+		state.move_piece(compelled, destination)
+		compelled.has_moved = true
+		_append_event(events, emit_events, &"piece_moved", {"piece_id": compelled.piece_id, "from": origin, "to": destination, "self_propelled": true})
+		_append_event(events, emit_events, &"piece_landed", {"piece_id": compelled.piece_id, "from": origin, "to": destination, "self_propelled": true})
+	else:
+		_commit_capture(state, compelled, occupant, destination, destination, events, emit_events)
+	if compelled.type_id == &"bone_pawn" and state.piece_by_id(compelled.piece_id) != null and _is_terminal_rank(compelled):
+		_destroy_piece(state, compelled, compelled.coordinate, events, emit_events)
 
 
 static func _resolve_charge(state: ChessCoreState, minotaur: ChessCorePiece, target_coordinate: Vector2i, target: ChessCorePiece, damage: int, events: Array[ChessCoreEvent], emit_events: bool) -> void:
@@ -512,6 +872,8 @@ static func _resolve_charge(state: ChessCoreState, minotaur: ChessCorePiece, tar
 static func _deal_damage(state: ChessCoreState, target: ChessCorePiece, damage: int, events: Array[ChessCoreEvent], emit_events: bool) -> void:
 	if target == null or damage <= 0 or state.piece_by_id(target.piece_id) == null:
 		return
+	if target.type_id in ArcherCoreRules.TYPES and ArcherCoreRules.is_drawing(target):
+		damage *= 2
 	target.current_hp -= damage
 	_append_event(events, emit_events, &"piece_damaged", {"piece_id": target.piece_id, "amount": damage, "current_hp": target.current_hp, "max_hp": target.max_hp})
 	if target.current_hp <= 0:
@@ -525,6 +887,13 @@ static func _destroy_piece(state: ChessCoreState, piece: ChessCorePiece, coordin
 	if piece.is_king() and piece.color not in state.defeated_king_colors:
 		state.defeated_king_colors.append(piece.color)
 	_queue_raise_dead(state, piece, coordinate, events, emit_events)
+	for entity in state.autonomous_entities.duplicate():
+		if entity.source_piece_id != piece.piece_id and entity.target_piece_id != piece.piece_id: continue
+		state.remove_entity(entity)
+		_append_event(events, emit_events, &"autonomous_entity_removed", {
+			"entity_id": entity.entity_id,
+			"reason": &"source_destroyed" if entity.source_piece_id == piece.piece_id else &"target_destroyed",
+		})
 	state.remove_piece(piece)
 	if append_destroy_event: _append_event(events, emit_events, &"piece_destroyed", {"piece_id": piece.piece_id, "coordinate": coordinate})
 
@@ -577,10 +946,42 @@ static func _is_terminal_rank(piece: ChessCorePiece) -> bool:
 static func _complete_or_pause(state: ChessCoreState, result: ChessCoreStepResult, emit_events: bool) -> void:
 	if not _prepare_next_reaction(state, result.events, emit_events):
 		if state.battle_over:
+			# The model consumes the forced Socratic turn after its selected move
+			# returns, even when that move ends the battle.
+			if not state.socratic_resolution_color.is_empty():
+				_complete_socratic_resolution(state, result.events, emit_events)
+			state.resolution_context.clear()
 			result.status = ChessCoreStepResult.Status.COMPLETED
 			return
-		state.resolution_context.clear()
 		_finish_action(state, result.events, emit_events)
+		if state.pending_choice != null:
+			result.choice = state.pending_choice.copy()
+			result.status = ChessCoreStepResult.Status.PENDING_CHOICE
+			return
+		if _prepare_next_reaction(state, result.events, emit_events):
+			result.choice = state.pending_choice.copy()
+			result.status = ChessCoreStepResult.Status.PENDING_CHOICE
+			return
+		# Action completion itself can create an automatic reaction (for example a
+		# due Wraith damaging a Minotaur). Once that queue drains, resume the
+		# interrupted completion lifecycle instead of clearing its turn context.
+		if bool(state.resolution_context.get("completion_interrupted", false)):
+			state.resolution_context.erase("completion_interrupted")
+			_complete_or_pause(state, result, emit_events)
+			return
+		if not state.socratic_resolution_color.is_empty():
+			_complete_socratic_resolution(state, result.events, emit_events)
+			state.resolution_context.clear()
+			result.status = ChessCoreStepResult.Status.COMPLETED
+			return
+		if bool(state.resolution_context.get("socratic_ready", false)):
+			var nested := _begin_socratic_resolution(state, emit_events)
+			result.events.append_array(nested.events)
+			result.state = nested.state
+			result.choice = nested.choice
+			result.status = nested.status
+			return
+		state.resolution_context.clear()
 		result.status = ChessCoreStepResult.Status.COMPLETED
 		return
 	result.choice = state.pending_choice.copy()
@@ -603,6 +1004,22 @@ static func _prepare_next_reaction(state: ChessCoreState, events: Array[ChessCor
 				_complete_battle(state, events, emit_events)
 				return false
 			continue
+		if reaction.action_type == &"lingering_malice":
+			var lingering_targets := _lingering_malice_targets(state, caller, reaction.event_coordinate)
+			if lingering_targets.is_empty():
+				_append_event(events, emit_events, &"reaction_finished", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "event_coordinate": reaction.event_coordinate, "sequence": reaction.sequence, "resolved": false})
+				continue
+			var lingering_choice := ChessCoreChoice.new()
+			lingering_choice.kind = &"lingering_malice"
+			lingering_choice.piece_id = caller.piece_id
+			lingering_choice.action_type = reaction.action_type
+			lingering_choice.sequence = reaction.sequence
+			lingering_choice.event_coordinate = reaction.event_coordinate
+			lingering_choice.options.assign(lingering_targets)
+			state.pending_choice = lingering_choice
+			_append_event(events, emit_events, &"reaction_selection_preparing", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "targets": lingering_targets.duplicate(), "sequence": reaction.sequence})
+			_append_event(events, emit_events, &"reaction_selection_requested", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "targets": lingering_targets.duplicate(), "sequence": reaction.sequence})
+			return true
 		if reaction.action_type != &"raise_dead":
 			_append_event(events, emit_events, &"reaction_finished", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "event_coordinate": reaction.event_coordinate, "sequence": reaction.sequence, "resolved": false})
 			continue
@@ -622,6 +1039,52 @@ static func _prepare_next_reaction(state: ChessCoreState, events: Array[ChessCor
 		_append_event(events, emit_events, &"reaction_selection_requested", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "targets": targets.duplicate(), "sequence": reaction.sequence})
 		return true
 	return false
+
+
+static func _lingering_malice_targets(state: ChessCoreState, wraith: ChessCorePiece, event_coordinate: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if wraith == null or wraith.type_id != &"wraith_king" or wraith.coordinate != event_coordinate or not state.has_effect(&"cursed_mark", event_coordinate, wraith.piece_id):
+		return result
+	result.append(wraith.coordinate)
+	for offset: Vector2i in [Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(1, 1)]:
+		var target := wraith.coordinate + offset
+		var occupant := state.occupant(target) if _in_bounds(target) else null
+		if _in_bounds(target) and (occupant == null or occupant.color != wraith.color): result.append(target)
+	return result
+
+
+static func _resolve_lingering_malice_choice(source: ChessCoreState, option, emit_events: bool) -> ChessCoreStepResult:
+	if not option is Vector2i: return ChessCoreStepResult.rejected(source, "Lingering Malice requires a coordinate.")
+	var state := source.copy()
+	var result := ChessCoreStepResult.new()
+	result.state = state
+	var choice := state.pending_choice
+	var wraith := state.piece_by_id(choice.piece_id)
+	if wraith == null or wraith.type_id != &"wraith_king" or option not in _lingering_malice_targets(state, wraith, choice.event_coordinate):
+		return ChessCoreStepResult.rejected(source, "The Lingering Malice choice is no longer legal.")
+	state.pending_choice = null
+	_append_event(result.events, emit_events, &"reaction_selection_committed", {"piece_id": wraith.piece_id, "action_type": choice.action_type, "target": option, "sequence": choice.sequence})
+	_remove_cursed_mark(state, wraith.coordinate, wraith.piece_id, result.events, emit_events)
+	if option != wraith.coordinate:
+		var origin := wraith.coordinate
+		var occupant := state.occupant(option)
+		if occupant == null:
+			state.move_piece(wraith, option)
+			wraith.has_moved = true
+			_append_event(result.events, emit_events, &"piece_moved", {"piece_id": wraith.piece_id, "from": origin, "to": option})
+			_append_event(result.events, emit_events, &"piece_landed", {"piece_id": wraith.piece_id, "from": origin, "to": option})
+		elif occupant.current_hp <= wraith.attack_power:
+			_commit_capture(state, wraith, occupant, option, option, result.events, emit_events)
+		else:
+			_deal_damage(state, occupant, wraith.attack_power, result.events, emit_events)
+	_append_event(result.events, emit_events, &"reaction_selection_resolved", {"piece_id": wraith.piece_id, "action_type": choice.action_type, "target": option, "sequence": choice.sequence})
+	_append_event(result.events, emit_events, &"reaction_finished", {"piece_id": wraith.piece_id, "action_type": choice.action_type, "event_coordinate": choice.event_coordinate, "sequence": choice.sequence, "resolved": true})
+	if not state.defeated_king_colors.is_empty():
+		_complete_battle(state, result.events, emit_events)
+		result.status = ChessCoreStepResult.Status.COMPLETED
+	else:
+		_complete_or_pause(state, result, emit_events)
+	return result
 
 
 static func _resolve_rage(state: ChessCoreState, minotaur: ChessCorePiece, reaction: ChessCoreReaction, events: Array[ChessCoreEvent], emit_events: bool) -> void:
@@ -662,6 +1125,28 @@ static func _resolve_raise_dead_choice(source: ChessCoreState, option, emit_even
 	return result
 
 
+static func _resolve_movement_type_grant_choice(source: ChessCoreState, option, emit_events: bool) -> ChessCoreStepResult:
+	if not option is StringName and not option is String:
+		return ChessCoreStepResult.rejected(source, "A movement grant requires a movement type.")
+	var movement_type := StringName(option)
+	var state := source.copy()
+	var result := ChessCoreStepResult.new()
+	result.state = state
+	var choice := state.pending_choice
+	var quarterly := state.piece_by_id(choice.piece_id)
+	var recipient := state.piece_by_id(choice.target_piece_id)
+	if quarterly == null or quarterly.type_id != &"quarterly_initiative_king" or recipient == null or recipient.color != quarterly.color or recipient == quarterly:
+		return ChessCoreStepResult.rejected(source, "The Quarterly grant participants are no longer active.")
+	state.pending_choice = null
+	if movement_type not in recipient.granted_movement_types:
+		recipient.granted_movement_types.append(movement_type)
+	_append_event(result.events, emit_events, &"choice_resolved", {"kind": &"movement_type_grant", "piece_id": quarterly.piece_id, "target_piece_id": recipient.piece_id, "option": movement_type})
+	_append_event(result.events, emit_events, &"movement_type_granted", {"piece_id": recipient.piece_id, "movement_type": movement_type})
+	_schedule_cooldown(state, quarterly, result.events, emit_events)
+	_complete_or_pause(state, result, emit_events)
+	return result
+
+
 static func _raise_dead_targets(state: ChessCoreState, death_square: Vector2i) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	for offset in [Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(1, 1)]:
@@ -672,8 +1157,35 @@ static func _raise_dead_targets(state: ChessCoreState, death_square: Vector2i) -
 
 
 static func _finish_action(state: ChessCoreState, events: Array[ChessCoreEvent], emit_events: bool) -> void:
-	var completed_color := state.current_turn
-	_switch_turn(state, events, emit_events)
+	var completed_color := String(state.resolution_context.get("action_owner", state.current_turn))
+	if not bool(state.resolution_context.get("wraith_phase_resolved", false)):
+		state.resolution_context["wraith_phase_resolved"] = true
+		_run_wraith_phase(state, completed_color, events, emit_events)
+		if not state.defeated_king_colors.is_empty():
+			_complete_battle(state, events, emit_events)
+			return
+		if not state.reaction_queue.is_empty():
+			state.resolution_context["completion_interrupted"] = true
+			return
+	if not bool(state.resolution_context.get("turn_switched", false)):
+		_advance_archer_charge_after_action(state, completed_color, events, emit_events)
+		_switch_turn(state, events, emit_events)
+		state.resolution_context["turn_switched"] = true
+		if _resolve_archer_turn_entry(state, state.current_turn, events, emit_events):
+			if not state.defeated_king_colors.is_empty():
+				_complete_battle(state, events, emit_events)
+				return
+			_switch_turn(state, events, emit_events)
+		_resolve_arc_mortars_at_turn_start(state, state.current_turn, events, emit_events)
+		if not state.defeated_king_colors.is_empty():
+			_complete_battle(state, events, emit_events)
+			return
+		if not state.reaction_queue.is_empty():
+			state.resolution_context["completion_interrupted"] = true
+			return
+	if state.socratic_resolution_color.is_empty() and int(state.socratic_turns_by_color.get(state.current_turn, 0)) > 0:
+		state.resolution_context["socratic_ready"] = true
+		return
 	_resolve_forced_passes(state, events, emit_events)
 	if not state.battle_over:
 		_append_event(events, emit_events, &"action_finished", {"color": completed_color})
@@ -691,6 +1203,139 @@ static func _switch_turn(state: ChessCoreState, events: Array[ChessCoreEvent], e
 			if piece.stun_timer == 0: piece.stunned = false
 		if ChessCoreKingRules.for_type(piece.type_id) != null or (piece.is_king() and piece.initial_cooldown_turn_pending):
 			_advance_cooldown(state, piece, events, emit_events)
+	_apply_lunacy_turn_start(state, state.current_turn, events, emit_events)
+
+
+static func _advance_archer_charge_after_action(state: ChessCoreState, completed_color: String, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	for piece in state.pieces:
+		if piece.color != completed_color or not ArcherCoreRules.uses_charge(piece): continue
+		var level := ArcherCoreRules.charge_level(piece)
+		if level <= 0 or level >= 3: return
+		if bool(state.resolution_context.get("archer_charge_started", false)) or String(state.resolution_context.get("primary_piece_id", "")) == piece.piece_id: return
+		piece.custom_state["charge_level"] = level + 1
+		_append_event(events, emit_events, &"archer_state_changed", {"piece_id": piece.piece_id, "state": &"drawing", "message": "Charge Level MAX" if level + 1 == 3 else "Charge Level 2"})
+		return
+
+
+static func _resolve_archer_turn_entry(state: ChessCoreState, color: String, events: Array[ChessCoreEvent], emit_events: bool) -> bool:
+	var archer: ChessCorePiece
+	for piece in state.pieces:
+		if piece.color == color and piece.type_id in ArcherCoreRules.TYPES:
+			archer = piece
+			break
+	if archer == null: return false
+	if ArcherCoreRules.is_suppressed(state, archer) and ArcherCoreRules.is_drawing(archer):
+		_cancel_archer_draw(archer, events, emit_events, "Draw Cancelled — Suppressed")
+		return false
+	var target_coordinate := ArcherCoreRules.draw_target(archer)
+	if target_coordinate == Vector2i(-1, -1):
+		_append_event(events, emit_events, &"archer_state_changed", {"piece_id": archer.piece_id, "state": &"drawing" if ArcherCoreRules.charge_level(archer) > 0 else &"idle", "message": ""})
+		return false
+	var target_id := String(archer.custom_state.get("draw_target_piece_id", ""))
+	var candidate := state.piece_by_id(target_id) if not target_id.is_empty() else state.occupant(target_coordinate)
+	var valid := candidate != null and candidate.color != archer.color and ArcherCoreRules.can_ranged_attack(state, archer, candidate.coordinate)
+	if not valid:
+		_cancel_archer_draw(archer, events, emit_events, "Shot Cancelled")
+		return false
+	archer.custom_state["draw_target"] = [candidate.coordinate.x, candidate.coordinate.y]
+	if ArcherCoreRules.uses_draw(archer) and int(archer.custom_state.get("draw_turns_waited", 0)) < 1:
+		archer.custom_state["draw_turns_waited"] = int(archer.custom_state.get("draw_turns_waited", 0)) + 1
+		_append_event(events, emit_events, &"archer_state_changed", {"piece_id": archer.piece_id, "state": &"drawing", "message": "Drawing Bow"})
+		return false
+	_cancel_archer_draw(archer, events, emit_events, "Loose!")
+	_append_event(events, emit_events, &"archer_attack_committed", {"attacker_id": archer.piece_id, "defender_id": candidate.piece_id, "from": archer.coordinate, "to": candidate.coordinate})
+	if ArcherCoreRules.uses_quiver(archer):
+		archer.custom_state["arrows"] = maxi(0, ArcherCoreRules.arrows(archer) - 1)
+		_drop_archer_arrow(state, archer, candidate.coordinate, events, emit_events)
+	_deal_damage(state, candidate, 1, events, emit_events)
+	return true
+
+
+static func _apply_lunacy_turn_start(state: ChessCoreState, color: String, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	var king: ChessCorePiece
+	for piece in state.pieces:
+		if piece.color == color and piece.type_id == &"rhetorician_king":
+			king = piece
+			break
+	if king == null or not _rhetorician_is_threatened(state, king):
+		return
+	_add_lunacy(state, color, 1, events, emit_events)
+
+
+static func _add_lunacy(state: ChessCoreState, color: String, amount: int, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	if color not in ["white", "black"] or amount <= 0 or int(state.socratic_turns_by_color.get(color, 0)) > 0:
+		return
+	var value := int(state.lunacy_by_color.get(color, 0)) + amount
+	state.lunacy_by_color[color] = value
+	if value >= RhetoricianCoreRules.LUNACY_THRESHOLD:
+		state.socratic_turns_by_color[color] = RhetoricianCoreRules.SOCRATIC_TURN_COUNT
+	_append_event(events, emit_events, &"lunacy_changed", {"color": color, "value": value, "socratic_turns_remaining": int(state.socratic_turns_by_color[color])})
+
+
+static func _rhetorician_is_threatened(state: ChessCoreState, king: ChessCorePiece) -> bool:
+	for enemy in state.pieces:
+		if enemy.color == king.color or enemy.stunned or enemy.current_hp <= 0:
+			continue
+		# Match ChessBoardModel: native movement geometry counts even when the
+		# adjacent-attack passive blocks the command. Granted movement and active
+		# abilities do not contribute to Lunacy.
+		if _movement_type_attacks(enemy.type_id, enemy.color, enemy.coordinate, king.coordinate, state.occupancy):
+			return true
+	return false
+
+
+static func _begin_socratic_resolution(source: ChessCoreState, emit_events: bool) -> ChessCoreStepResult:
+	var prepared := source.copy()
+	prepared.resolution_context.erase("socratic_ready")
+	var forced_color := prepared.current_turn
+	var moves: Array[ChessCoreAction] = []
+	for action in legal_actions(prepared, forced_color):
+		if action.kind == ChessCoreAction.Kind.MOVE:
+			moves.append(action)
+	var result := ChessCoreStepResult.new()
+	if moves.is_empty():
+		result.state = prepared
+		result.status = ChessCoreStepResult.Status.COMPLETED
+		prepared.socratic_resolution_color = forced_color
+		_append_event(result.events, emit_events, &"socratic_turn_skipped", {"color": forced_color})
+		_switch_turn(prepared, result.events, emit_events)
+		_complete_socratic_resolution(prepared, result.events, emit_events)
+		_resolve_forced_passes(prepared, result.events, emit_events)
+		if bool(prepared.resolution_context.get("socratic_ready", false)):
+			var continued := _begin_socratic_resolution(prepared, emit_events)
+			result.events.append_array(continued.events)
+			result.state = continued.state
+			result.choice = continued.choice
+			result.status = continued.status
+		else:
+			prepared.resolution_context.clear()
+		return result
+	var rng := RandomNumberGenerator.new()
+	rng.state = int(prepared.random_states.get(&"lunacy", 0))
+	var chosen: ChessCoreAction = moves[rng.randi_range(0, moves.size() - 1)]
+	prepared.random_states[&"lunacy"] = rng.state
+	prepared.socratic_resolution_color = forced_color
+	prepared.resolution_context.clear()
+	var selected_event := _event(&"socratic_action_selected", {
+		"color": forced_color, "piece_id": chosen.piece_id, "from": chosen.from,
+		"target": chosen.target, "path": chosen.path.duplicate(),
+	})
+	var nested := resolve_action(prepared, chosen, emit_events)
+	if emit_events:
+		nested.events.push_front(selected_event)
+	return nested
+
+
+static func _complete_socratic_resolution(state: ChessCoreState, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	var color := state.socratic_resolution_color
+	if color.is_empty():
+		return
+	state.socratic_resolution_color = ""
+	var remaining := maxi(0, int(state.socratic_turns_by_color.get(color, 0)) - 1)
+	state.socratic_turns_by_color[color] = remaining
+	if remaining == 0:
+		state.lunacy_by_color[color] = 0
+	_append_event(events, emit_events, &"lunacy_changed", {"color": color, "value": int(state.lunacy_by_color[color]), "socratic_turns_remaining": remaining})
 
 
 static func _ability_ready(state: ChessCoreState, piece: ChessCorePiece) -> bool:
@@ -705,7 +1350,7 @@ static func _schedule_cooldown(state: ChessCoreState, piece: ChessCorePiece, eve
 		return
 	piece.current_cooldown = 0
 	piece.cooldown_reset_pending = ChessCoreKingRules.base_cooldown(piece.type_id) > 0
-	_append_event(events, emit_events, &"cooldown_scheduled", {"piece_id": piece.piece_id})
+	_append_event(events, emit_events, &"cooldown_scheduled" if piece.cooldown_reset_pending else &"cooldown_ready", {"piece_id": piece.piece_id})
 
 
 static func _advance_cooldown(state: ChessCoreState, piece: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
@@ -720,7 +1365,7 @@ static func _advance_cooldown(state: ChessCoreState, piece: ChessCorePiece, even
 	if piece.cooldown_reset_pending:
 		piece.initial_cooldown_turn_pending = false
 		piece.cooldown_reset_pending = false
-		piece.current_cooldown = ChessCoreKingRules.base_cooldown(piece.type_id)
+		piece.current_cooldown = int(piece.custom_state.get("scheduled_arc_cooldown", ChessCoreKingRules.base_cooldown(piece.type_id))) if piece.type_id == &"cannon_king" else ChessCoreKingRules.base_cooldown(piece.type_id)
 		_append_event(events, emit_events, &"cooldown_changed", {"piece_id": piece.piece_id, "value": piece.current_cooldown})
 		return
 	if piece.initial_cooldown_turn_pending:
@@ -736,6 +1381,9 @@ static func _advance_cooldown(state: ChessCoreState, piece: ChessCorePiece, even
 
 static func _resolve_forced_passes(state: ChessCoreState, events: Array[ChessCoreEvent], emit_events := true) -> void:
 	while not state.battle_over and legal_actions(state, state.current_turn).is_empty():
+		var created_turn_entry_context := not state.resolution_context.has("action_owner")
+		if created_turn_entry_context:
+			state.resolution_context = {"action_owner": state.current_turn}
 		state.consecutive_forced_passes += 1
 		_append_event(events, emit_events, &"turn_passed", {"color": state.current_turn, "count": state.consecutive_forced_passes})
 		if state.consecutive_forced_passes >= MAX_CONSECUTIVE_FORCED_PASSES:
@@ -743,7 +1391,23 @@ static func _resolve_forced_passes(state: ChessCoreState, events: Array[ChessCor
 			state.battle_result = "draw"
 			_append_event(events, emit_events, &"battle_finished", {"result": "draw"})
 			return
+		state.resolution_context = {"action_owner": state.current_turn, "wraith_bonus_used": false, "wraith_phase_resolved": true}
+		_run_wraith_phase(state, state.current_turn, events, emit_events)
+		if not state.defeated_king_colors.is_empty():
+			_complete_battle(state, events, emit_events)
+			return
+		if _prepare_next_reaction(state, events, emit_events): return
 		_switch_turn(state, events, emit_events)
+		if created_turn_entry_context: state.resolution_context["turn_switched"] = true
+		_resolve_arc_mortars_at_turn_start(state, state.current_turn, events, emit_events)
+		if not state.defeated_king_colors.is_empty():
+			_complete_battle(state, events, emit_events)
+			return
+		if _prepare_next_reaction(state, events, emit_events): return
+		if state.socratic_resolution_color.is_empty() and int(state.socratic_turns_by_color.get(state.current_turn, 0)) > 0:
+			state.resolution_context["socratic_ready"] = true
+			return
+		if created_turn_entry_context: state.resolution_context.clear()
 	state.consecutive_forced_passes = 0
 
 
@@ -756,6 +1420,93 @@ static func _complete_battle(state: ChessCoreState, events: Array[ChessCoreEvent
 	var black_defeated := "black" in state.defeated_king_colors
 	state.battle_result = "draw" if white_defeated and black_defeated else ("black" if white_defeated else "white")
 	_append_event(events, emit_events, &"battle_finished", {"result": state.battle_result})
+
+
+static func _launch_arc_mortar(state: ChessCoreState, cannon: ChessCorePiece, anchor: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	var has_enemy := false
+	for coordinate in CannonCoreRules.area(anchor):
+		var occupant := state.occupant(coordinate)
+		if occupant != null and occupant.color != cannon.color:
+			has_enemy = true
+			break
+	cannon.custom_state["scheduled_arc_cooldown"] = CannonCoreRules.BASE_COOLDOWN if has_enemy else CannonCoreRules.BASE_COOLDOWN - 1
+	var entity := ChessCoreAutonomousEntity.new()
+	entity.entity_id = state.allocate_state_id("entity")
+	entity.type_id = &"arc_mortar"
+	entity.coordinate = anchor
+	entity.owner_color = cannon.color
+	entity.custom_state["landing_turn"] = state.global_turn_number + CannonCoreRules.DELAY_ROUNDS
+	state.add_entity(entity)
+	_append_event(events, emit_events, &"autonomous_entity_added", {"entity_id": entity.entity_id, "type_id": entity.type_id, "coordinate": anchor, "owner_color": entity.owner_color, "landing_turn": entity.custom_state.landing_turn})
+
+
+static func _summon_wraith(state: ChessCoreState, source: ChessCorePiece, target: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	if source == null or target == null or source.color == target.color: return
+	var owned := WraithCoreRules.entities_from_source(state, source.piece_id)
+	var replacement: ChessCoreAutonomousEntity = owned[0] if owned.size() >= WraithCoreRules.MAX_ACTIVE_WRAITHS else null
+	for existing in owned:
+		if existing.target_piece_id == target.piece_id and existing != replacement: return
+	if replacement != null:
+		state.remove_entity(replacement)
+		_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": replacement.entity_id, "reason": &"replaced"})
+	var entity := ChessCoreAutonomousEntity.new()
+	entity.entity_id = state.allocate_state_id("entity")
+	entity.type_id = &"wraith"
+	entity.coordinate = source.coordinate
+	entity.owner_color = source.color
+	entity.source_piece_id = source.piece_id
+	entity.target_piece_id = target.piece_id
+	entity.custom_state["next_move_turn"] = state.global_turn_number + WraithCoreRules.MOVE_INTERVAL_ROUNDS
+	state.add_entity(entity)
+	_append_event(events, emit_events, &"autonomous_entity_added", {
+		"entity_id": entity.entity_id, "type_id": entity.type_id, "coordinate": entity.coordinate,
+		"owner_color": entity.owner_color, "source_piece_id": entity.source_piece_id,
+		"target_piece_id": entity.target_piece_id, "next_move_turn": entity.custom_state.next_move_turn,
+	})
+
+
+static func _run_wraith_phase(state: ChessCoreState, owner_color: String, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	for entity in state.autonomous_entities.duplicate():
+		if entity.type_id != &"wraith" or entity.owner_color != owner_color or entity not in state.autonomous_entities: continue
+		var next_move_turn := int(entity.custom_state.get("next_move_turn", 0))
+		if next_move_turn <= 0:
+			entity.custom_state["next_move_turn"] = state.global_turn_number + WraithCoreRules.MOVE_INTERVAL_ROUNDS
+			continue
+		if state.global_turn_number < next_move_turn: continue
+		entity.custom_state["next_move_turn"] = state.global_turn_number + WraithCoreRules.MOVE_INTERVAL_ROUNDS
+		var source := state.piece_by_id(entity.source_piece_id)
+		var target := state.piece_by_id(entity.target_piece_id)
+		if source == null or target == null or source.current_hp <= 0 or target.current_hp <= 0:
+			state.remove_entity(entity)
+			_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": entity.entity_id, "reason": &"invalid_target"})
+			continue
+		var from: Vector2i = entity.coordinate
+		var delta: Vector2i = target.coordinate - entity.coordinate
+		var destination: Vector2i = entity.coordinate + Vector2i(signi(delta.x), signi(delta.y))
+		entity.coordinate = destination
+		_append_event(events, emit_events, &"autonomous_entity_moved", {"entity_id": entity.entity_id, "from": from, "to": destination})
+		if destination == target.coordinate and state.piece_by_id(target.piece_id) != null:
+			_deal_damage(state, target, WraithCoreRules.DAMAGE, events, emit_events)
+			state.remove_entity(entity)
+			_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": entity.entity_id, "reason": &"reached_target"})
+		if not state.defeated_king_colors.is_empty(): return
+
+
+static func _resolve_arc_mortars_at_turn_start(state: ChessCoreState, color: String, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+	for entity in state.autonomous_entities.duplicate():
+		if entity.type_id != &"arc_mortar" or entity.owner_color != color: continue
+		var landing_turn := int(entity.custom_state.get("landing_turn", 0))
+		if landing_turn <= 0:
+			entity.custom_state["landing_turn"] = state.global_turn_number + CannonCoreRules.DELAY_ROUNDS
+			continue
+		if state.global_turn_number < landing_turn: continue
+		var area := CannonCoreRules.area(entity.coordinate)
+		_append_event(events, emit_events, &"arc_mortar_impact", {"entity_id": entity.entity_id, "affected_coordinates": area.duplicate()})
+		for coordinate in area:
+			var target := state.occupant(coordinate)
+			if target != null: _deal_damage(state, target, CannonCoreRules.DAMAGE, events, emit_events)
+		state.remove_entity(entity)
+		_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": entity.entity_id, "reason": &"impact"})
 
 
 static func _append_event(events: Array[ChessCoreEvent], enabled: bool, kind: StringName, data: Dictionary) -> void:

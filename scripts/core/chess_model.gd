@@ -3,7 +3,7 @@ extends Node
 class_name ChessBoardModel
 
 enum StartupMode { DEFAULT_BATTLE, EMPTY }
-enum LiveAuthority { MODEL, CLASSIC_CORE }
+enum LiveAuthority { CLASSIC_CORE }
 
 const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_ability_presentation_context.gd")
 const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
@@ -21,8 +21,8 @@ var board: Array = []
 ## DEFAULT_BATTLE preserves the live-game contract. Disposable search models set
 ## this before entering the SceneTree, then install an explicit ChessPosition.
 var startup_mode := StartupMode.DEFAULT_BATTLE
-var requested_live_authority := LiveAuthority.MODEL
-var active_live_authority := LiveAuthority.MODEL
+var requested_live_authority := LiveAuthority.CLASSIC_CORE
+var active_live_authority := LiveAuthority.CLASSIC_CORE
 var live_authority_fallback_reason := ""
 var _classic_core_bridge: ClassicCoreLiveBridge
 ## ModelPiece Nodes are not SceneTree children, so the model must retain and
@@ -32,7 +32,6 @@ var _owned_pieces: Dictionary = {}
 var owned_piece_registration_count := 0
 var owned_piece_disposal_count := 0
 var last_move: Dictionary = {}		# from, to, piecename
-var last_destroyed_piece: ModelPiece		
 var current_turn: String = "white"	# can be white or black
 signal turn_changed(current_turn: String)
 signal piece_destroyed(piece: ModelPiece)
@@ -89,20 +88,15 @@ var battle_over: bool = false
 var battle_result: String = ""
 var defeated_king_colors: Array[String] = []
 
-var selection_queue: Array = [] # {calling_piece, action_type, priority, sequence, event_data}
-var selection_sequence: int = 0
 var pending_reaction: Dictionary = {}
 var is_initialized: bool = false
 var position_revision: int = 0
 var tile_effects: Array[ChessTileEffectState] = []
 var autonomous_entities: Array[ChessAutonomousEntityState] = []
 var _next_state_id := 1
-var autonomous_phase_in_progress := false
 var lunacy_by_color := {"white": 0, "black": 0}
 var socratic_turns_by_color := {"white": 0, "black": 0}
-var _resolving_socratic_turn := false
-var _lunacy_rng := RandomNumberGenerator.new()
-var _archer_volley_rng := RandomNumberGenerator.new()
+var _projected_random_states: Dictionary = {}
 var global_turn_number := 1
 var pending_movement_type_grant: Dictionary = {}
 signal movement_type_selection_resolved(movement_type: StringName)
@@ -114,8 +108,6 @@ var pending_promotion: Dictionary = {}
 var active_ability_cooldowns_disabled := false
 ## Disabled on disposable AI search models to avoid thousands of log writes.
 var diagnostic_logging_enabled := true
-var _archer_charge_started_this_action := false
-var _archer_acted_this_action := false
 
 
 func _diagnostic(message: String) -> void:
@@ -127,13 +119,10 @@ func _diagnostic(message: String) -> void:
 var action_in_progress: bool = false
 var action_owner_color: String = ""
 var forced_pass_in_progress := false
-var turn_entry_consequence_in_progress := false
 var consecutive_forced_passes := 0
 var forced_pass_delay_seconds := 0.5
 
 const MAX_CONSECUTIVE_FORCED_PASSES := 6
-
-const MAJOR_MINOR_BASE_TYPES = ["knight", "rook", "bishop", "queen"]
 
 const Pawn = preload("res://scripts/pieces/pawn.gd")
 const Knight = preload("res://scripts/pieces/knight.gd")
@@ -148,8 +137,7 @@ var custom_size = 16
 
 func _ready():
 	_classic_core_bridge = ClassicCoreLiveBridge.new(self)
-	_lunacy_rng.randomize()
-	_archer_volley_rng.randomize()
+	_projected_random_states = ClassicChessCore.randomized_random_states()
 	if startup_mode == StartupMode.DEFAULT_BATTLE:
 		initialize_battle()
 
@@ -163,11 +151,12 @@ func initialize_battle() -> bool:
 		return false
 	initialize_board()
 	is_initialized = true
+	_resynchronize_live_authority()
 	board_initialized.emit(board)
 	return true
 
 func is_settled() -> bool:
-	return not action_in_progress and not autonomous_phase_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and selection_queue.is_empty() and pending_movement_type_grant.is_empty() and pending_promotion.is_empty()
+	return not action_in_progress and not forced_pass_in_progress and pending_reaction.is_empty() and pending_movement_type_grant.is_empty() and pending_promotion.is_empty()
 
 
 ## Unlimited-range piece-occlusion map. Consumers may apply their own range or
@@ -193,10 +182,7 @@ func _capture_projected_position() -> ChessPosition:
 	position.defeated_king_colors.assign(defeated_king_colors)
 	position.lunacy_by_color = lunacy_by_color.duplicate(true)
 	position.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
-	position.random_states = {
-		&"lunacy": _lunacy_rng.state,
-		&"archer_volley": _archer_volley_rng.state,
-	}
+	position.random_states = _projected_random_states.duplicate(true)
 	position.global_turn_number = global_turn_number
 	position.active_ability_cooldowns_disabled = active_ability_cooldowns_disabled
 	for row in board:
@@ -205,13 +191,13 @@ func _capture_projected_position() -> ChessPosition:
 				position.pieces.append(piece.capture_piece_state())
 	for effect in tile_effects: position.tile_effects.append(effect.copy())
 	for entity in autonomous_entities: position.autonomous_entities.append(entity.copy())
-	if last_move.has("piece"):
+	if last_move.has("piece") or last_move.has("piece_type"):
 		var moved_piece: ModelPiece = last_move.get("piece")
 		position.last_move.is_present = true
 		position.last_move.from = last_move.get("from", Vector2i.ZERO)
 		position.last_move.to = last_move.get("to", Vector2i.ZERO)
-		position.last_move.piece_type_id = moved_piece.get_position_type_id() if is_instance_valid(moved_piece) else &""
-		position.last_move.piece_color = moved_piece.color if is_instance_valid(moved_piece) else ""
+		position.last_move.piece_type_id = StringName(last_move.get("piece_type", moved_piece.get_position_type_id() if is_instance_valid(moved_piece) else &""))
+		position.last_move.piece_color = String(last_move.get("piece_color", moved_piece.color if is_instance_valid(moved_piece) else ""))
 	return position
 
 func load_position(position: ChessPosition) -> bool:
@@ -224,6 +210,12 @@ func load_position(position: ChessPosition) -> bool:
 	var validation := ChessPositionValidator.validate(position)
 	if not validation.is_structurally_valid():
 		printerr("load_position: ", "; ".join(validation.structural_errors))
+		return false
+	# The pure core is the only rules authority. Reject unsupported rule state
+	# before replacing any live presentation objects.
+	var core_import := ClassicChessCore.import_position(position)
+	if not core_import.ok:
+		printerr("load_position: ", String(core_import.get("error", "Unsupported authoritative position.")))
 		return false
 	var replacement: Array = []
 	for row_index in range(position.board_size.x):
@@ -245,7 +237,7 @@ func load_position(position: ChessPosition) -> bool:
 		created.append(piece)
 	# From this point the replacement is committed. Stop exposing the previous
 	# core snapshot before any projection-rebuild signals can observe new pieces.
-	active_live_authority = LiveAuthority.MODEL
+	active_live_authority = LiveAuthority.CLASSIC_CORE
 	if _classic_core_bridge != null: _classic_core_bridge.deactivate()
 	_dispose_owned_pieces()
 	board = replacement
@@ -263,10 +255,7 @@ func load_position(position: ChessPosition) -> bool:
 	defeated_king_colors.assign(position.defeated_king_colors)
 	lunacy_by_color = position.lunacy_by_color.duplicate(true)
 	socratic_turns_by_color = position.socratic_turns_by_color.duplicate(true)
-	if position.random_states.has(&"lunacy"):
-		_lunacy_rng.state = int(position.random_states[&"lunacy"])
-	if position.random_states.has(&"archer_volley"):
-		_archer_volley_rng.state = int(position.random_states[&"archer_volley"])
+	_projected_random_states = position.random_states.duplicate(true)
 	global_turn_number = position.global_turn_number
 	active_ability_cooldowns_disabled = position.active_ability_cooldowns_disabled
 	# Dependency injection announces live cooldown state and may initialize a
@@ -280,22 +269,24 @@ func load_position(position: ChessPosition) -> bool:
 			restored_king.current_cooldown = restored_state.current_cooldown
 			restored_king.cooldown_reset_pending = restored_state.cooldown_reset_pending
 			restored_king.initial_cooldown_turn_pending = restored_state.initial_cooldown_turn_pending
-	last_destroyed_piece = null
 	last_move = {}
 	if position.last_move != null and position.last_move.is_present:
 		var moved_piece: ModelPiece = null
 		var target := position.last_move.to
 		if is_in_bounds(target.x, target.y):
 			var candidate: ModelPiece = board[target.x][target.y]
-			if candidate != null and candidate.color == position.last_move.piece_color and candidate.get_position_type_id() == ChessPieceCatalog.normalize_type_id(position.last_move.piece_type_id):
+			if candidate != null and candidate.color == position.last_move.piece_color:
 				moved_piece = candidate
-		if moved_piece != null:
-			last_move = {"from": position.last_move.from, "to": target, "piece": moved_piece}
-	selection_queue.clear()
+		last_move = {
+			"from": position.last_move.from,
+			"to": target,
+			"piece": moved_piece,
+			"piece_type": ChessPieceCatalog.normalize_type_id(position.last_move.piece_type_id),
+			"piece_color": position.last_move.piece_color,
+		}
 	pending_reaction.clear()
 	pending_movement_type_grant.clear()
 	pending_promotion.clear()
-	selection_sequence = 0
 	action_in_progress = false
 	action_owner_color = ""
 	forced_pass_in_progress = false
@@ -309,22 +300,20 @@ func load_position(position: ChessPosition) -> bool:
 
 func set_live_authority(authority: LiveAuthority) -> bool:
 	if not is_settled(): return false
-	requested_live_authority = authority
+	if authority != LiveAuthority.CLASSIC_CORE:
+		live_authority_fallback_reason = "Only pure-core authority exists."
+		return false
+	requested_live_authority = LiveAuthority.CLASSIC_CORE
 	return _resynchronize_live_authority()
 
 
 func _resynchronize_live_authority() -> bool:
 	if _classic_core_bridge == null: _classic_core_bridge = ClassicCoreLiveBridge.new(self)
-	if requested_live_authority != LiveAuthority.CLASSIC_CORE:
-		active_live_authority = LiveAuthority.MODEL
-		live_authority_fallback_reason = ""
-		_classic_core_bridge.deactivate()
-		return true
 	if _classic_core_bridge.synchronize_from_projection():
 		active_live_authority = LiveAuthority.CLASSIC_CORE
 		live_authority_fallback_reason = ""
 		return true
-	active_live_authority = LiveAuthority.MODEL
+	active_live_authority = LiveAuthority.CLASSIC_CORE
 	live_authority_fallback_reason = _classic_core_bridge.fallback_reason
 	return false
 
@@ -337,6 +326,8 @@ func get_live_authority_diagnostics() -> Dictionary:
 		"core_resolutions": _classic_core_bridge.resolution_count if _classic_core_bridge != null else 0,
 		"rejected_transitions": _classic_core_bridge.rejected_transition_count if _classic_core_bridge != null else 0,
 		"projection_mismatches": _classic_core_bridge.projection_mismatch_count if _classic_core_bridge != null else 0,
+		"last_rejection_context": _classic_core_bridge.last_rejection_context if _classic_core_bridge != null else "",
+		"last_projection_mismatch_context": _classic_core_bridge.last_projection_mismatch_context if _classic_core_bridge != null else "",
 	}
 
 func initialize_board():
@@ -431,14 +422,6 @@ func inject_dependencies(piece: ModelPiece):
 	if not _owned_pieces.has(instance_id):
 		_owned_pieces[instance_id] = piece
 		owned_piece_registration_count += 1
-
-	var turn_callback := Callable(piece, "_on_turn_changed")
-	var death_callback := Callable(piece, "_on_piece_destroyed")
-
-	if not is_connected("turn_changed", turn_callback):
-		connect("turn_changed", turn_callback)
-	if not is_connected("piece_destroyed", death_callback):
-		connect("piece_destroyed", death_callback)
 	if piece is KingPiece:
 		var king_piece: KingPiece = piece
 		if king_piece.color == current_turn:
@@ -461,14 +444,9 @@ func set_active_ability_cooldowns_disabled(disabled: bool) -> void:
 func unregister_piece(piece: ModelPiece) -> void:
 	if not is_instance_valid(piece):
 		return
-
-	var turn_callback := Callable(piece, "_on_turn_changed")
-	var death_callback := Callable(piece, "_on_piece_destroyed")
-
-	if is_connected("turn_changed", turn_callback):
-		disconnect("turn_changed", turn_callback)
-	if is_connected("piece_destroyed", death_callback):
-		disconnect("piece_destroyed", death_callback)
+	_owned_pieces.erase(piece.get_instance_id())
+	if piece.model == self:
+		piece.model = null
 
 
 func _dispose_owned_pieces() -> int:
@@ -489,24 +467,17 @@ func _dispose_owned_pieces() -> int:
 ## Releases every Node owned by this authoritative state. Safe to call more than
 ## once; _notification provides a backstop for callers that only free the model.
 func dispose_owned_state() -> int:
-	selection_queue.clear()
 	pending_reaction.clear()
 	pending_movement_type_grant.clear()
 	pending_promotion.clear()
 	last_move.clear()
-	last_destroyed_piece = null
 	var disposed := _dispose_owned_pieces()
 	board.clear()
 	tile_effects.clear()
 	autonomous_entities.clear()
 	action_in_progress = false
 	action_owner_color = ""
-	autonomous_phase_in_progress = false
 	forced_pass_in_progress = false
-	turn_entry_consequence_in_progress = false
-	_resolving_socratic_turn = false
-	_archer_charge_started_this_action = false
-	_archer_acted_this_action = false
 	return disposed
 
 func announce_ability_started(piece: KingPiece, ability_name: String) -> void:
@@ -515,26 +486,15 @@ func announce_ability_started(piece: KingPiece, ability_name: String) -> void:
 	completion.close()
 	await completion.wait_until_released()
 
-func announce_piece_attack(piece: ModelPiece, defender: ModelPiece, from: Vector2i, to: Vector2i, damage: int) -> void:
-	var completion := CompletionGate.new()
-	piece_attack_committed.emit(piece, defender, from, to, completion)
-	completion.close()
-	# Model damage remains authoritative and immediate. Presentation subscribers
-	# may hold the action open and reveal its visual feedback at contact.
-	await defender.take_damage(damage)
-	await completion.wait_until_released()
-
-func announce_archer_attack(attacker: ArcherKing, defender: ModelPiece, from: Vector2i, to: Vector2i) -> void:
-	var presentation := PieceArrivalContext.new([attacker], true, true)
-	archer_attack_committed.emit(attacker, defender, from, to, presentation)
-	presentation.close_claims()
-	await presentation.wait_for_impact()
-	await defender.take_damage(1)
-	await presentation.wait_for_aftermath()
-
 func announce_piece_summoned(piece: ModelPiece) -> void:
 	var completion := CompletionGate.new()
 	piece_summoned.emit(piece, completion)
+	completion.close()
+	await completion.wait_until_released()
+
+func _announce_piece_landed(piece: ModelPiece, from: Vector2i, to: Vector2i) -> void:
+	var completion := CompletionGate.new()
+	piece_landed.emit(piece, from, to, completion)
 	completion.close()
 	await completion.wait_until_released()
 
@@ -554,39 +514,21 @@ func add_piece(piece: ModelPiece, coord: Vector2i) -> bool:
 	board[coord.x][coord.y] = piece
 	inject_dependencies(piece)
 	piece_added.emit(piece)
+	if is_initialized and is_settled(): _resynchronize_live_authority()
 	return true
 
 
 func get_legal_moves(piece: ModelPiece) -> Array:
-	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
-		return _classic_core_bridge.legal_moves(piece)
-	if not is_instance_valid(piece): # Basic safety check
-		printerr("Attempted to get moves for invalid piece instance.")
-		return []
-	if piece.has_method("get_legal_moves"):
-		var moves: Array = []
-		for destination in piece.get_legal_moves():
-			if not is_rhetorician_attack_blocked(piece, destination):
-				moves.append(destination)
-		for granted_type in piece.granted_movement_types:
-			for destination in _get_moves_as(piece, granted_type):
-				if destination not in moves and not is_rhetorician_attack_blocked(piece, destination):
-					moves.append(destination)
-		return moves
-	printerr("Piece type %s does not have get_legal_moves method!" % piece.type)
-	return []
+	return _classic_core_bridge.legal_moves(piece) if is_instance_valid(piece) and _classic_core_bridge != null and _classic_core_bridge.active else []
 
-func _get_moves_as(piece: ModelPiece, movement_type: StringName) -> Array:
-	if movement_type not in [&"pawn", &"knight", &"bishop", &"rook"]:
-		return []
-	var proxy := ChessPieceCatalog.create_piece(movement_type, piece.color, piece.coordinate)
-	if proxy == null:
-		return []
-	proxy.model = self
-	proxy.has_moved = piece.has_moved
-	var result: Array = proxy.get_legal_moves()
-	proxy.free()
-	return result
+func get_legal_move_paths(piece: ModelPiece) -> Array:
+	return _classic_core_bridge.legal_move_paths(piece) if is_instance_valid(piece) and _classic_core_bridge != null and _classic_core_bridge.active else []
+
+func get_active_ability_targets(piece: KingPiece) -> Array:
+	return _classic_core_bridge.active_ability_targets(piece) if is_instance_valid(piece) and _classic_core_bridge != null and _classic_core_bridge.active else []
+
+func is_archer_suppressed(piece: ArcherKing) -> bool:
+	return _classic_core_bridge.is_archer_suppressed(piece) if is_instance_valid(piece) and _classic_core_bridge != null and _classic_core_bridge.active else false
 
 func request_movement_type_grant(king: QuarterlyInitiativeKing, target: ModelPiece) -> StringName:
 	if not pending_movement_type_grant.is_empty():
@@ -639,49 +581,15 @@ func get_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 
 ## Rule-only action enumeration used while the public command surface is locked.
 func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
-	var actions: Array[ChessPrimaryAction] = []
 	if color != current_turn or battle_over:
-		return actions
-	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
-		return _classic_core_bridge.legal_actions(color)
-
-	for row in board:
-		for piece in row:
-			if piece == null or piece.color != color or piece.stunned or not is_piece_active(piece):
-				continue
-
-			var legal_paths: Array = piece.get_legal_move_paths()
-			for movement_type in piece.granted_movement_types:
-				for destination in _get_moves_as(piece, movement_type):
-					legal_paths.append([destination])
-			for raw_path in legal_paths:
-				var path: Array[Vector2i] = []
-				path.assign(raw_path)
-				if not path.is_empty() and not is_rhetorician_attack_blocked(piece, path.back()):
-					actions.append(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, path.back(), path))
-
-			if piece is KingPiece:
-				var king := piece as KingPiece
-				if king.is_active_ability_ready() and king.has_active_ability():
-					for target in king.get_active_ability_targets():
-						actions.append(ChessPrimaryAction.new(
-							ChessPrimaryAction.Kind.ACTIVE_ABILITY,
-							king,
-							target
-						))
-			if piece is ArcherKing and (piece as ArcherKing).can_begin_charge():
-				actions.append(ChessPrimaryAction.new(ChessPrimaryAction.Kind.ARCHER_CHARGE, piece, piece.coordinate))
-
-	return actions
+		return []
+	return _classic_core_bridge.legal_actions(color) if _classic_core_bridge != null and _classic_core_bridge.active else []
 
 
 func has_legal_primary_action(color: String) -> bool:
 	return not _collect_legal_primary_actions(color).is_empty()
 
-### A player's move.
-## Handles special moves, normal moves, and ends the turn.
-## For simply moving a piece in the model, see actually_move_piece()
-## Abilities are not considered moves and are handled elsewhere.
+## Opens the presentation transaction for one already-validated core action.
 func begin_action(owner_color: String) -> bool:
 	if battle_over:
 		printerr("begin_action: The battle is already over.")
@@ -694,13 +602,10 @@ func begin_action(owner_color: String) -> bool:
 		return false
 
 	action_in_progress = true
-	_archer_acted_this_action = false
 	action_owner_color = owner_color
 	consecutive_forced_passes = 0
 	_diagnostic("ACTION START — " + action_owner_color)
 	action_started.emit(action_owner_color)
-	var king := get_king(owner_color)
-	if king is WraithKing: (king as WraithKing).begin_primary_action()
 	return true
 
 func cancel_action() -> void:
@@ -709,215 +614,27 @@ func cancel_action() -> void:
 	consecutive_forced_passes = 0
 	action_cancelled.emit()
 
-func finish_action() -> void:
-	if not action_in_progress:
-		printerr("finish_action: No action is in progress.")
-		return
-
-	if has_defeated_king():
-		complete_battle()
-		return
-
-	await run_autonomous_phase(action_owner_color)
-	if has_defeated_king():
-		complete_battle()
-		return
-	if not selection_queue.is_empty():
-		await continue_action_resolution()
-		return
-	_diagnostic("ACTION END — " + action_owner_color)
-	var completed_action_owner := action_owner_color
-	var completed_king := get_king(completed_action_owner)
-	if completed_king is ArcherKing:
-		var charge_archer := completed_king as ArcherKing
-		if charge_archer.uses_charge() and charge_archer.charge_level > 0 and not _archer_charge_started_this_action and not _archer_acted_this_action:
-			charge_archer.advance_charge()
-	_archer_charge_started_this_action = false
-	action_in_progress = false
-	action_owner_color = ""
-	switch_turn()
-	position_revision += 1
-	# Delayed effects land on the newly entered turn, but any reactions they
-	# create still need an action context for human and CPU selection.
-	turn_entry_consequence_in_progress = true
-	action_in_progress = true
-	action_owner_color = completed_action_owner
-	if await resolve_archer_turn_entry(current_turn):
-		switch_turn()
-		position_revision += 1
-	await resolve_arc_mortars_at_turn_start(current_turn)
-	if not selection_queue.is_empty():
-		await continue_action_resolution()
-		return
-	await _finish_turn_entry_consequences()
-
-func _finish_turn_entry_consequences() -> void:
-	turn_entry_consequence_in_progress = false
-	action_in_progress = false
-	action_owner_color = ""
-	if has_defeated_king():
-		complete_battle()
-		return
-	if not _resolving_socratic_turn and await _resolve_socratic_turn_if_needed():
-		return
-	await resolve_unplayable_turns()
-	if battle_over:
-		return
-	action_finished.emit()
-	settled_action_completed.emit()
-
-
-## Advances past colors that cannot submit any primary command. Turn-entry
-## signal handlers run before each action check, so stun and cooldown recovery
-## can preserve a turn as soon as either makes an action available.
 func resolve_unplayable_turns() -> bool:
-	if battle_over or action_in_progress or has_pending_reaction() or not selection_queue.is_empty() or forced_pass_in_progress:
+	if battle_over or action_in_progress or has_pending_reaction() or forced_pass_in_progress:
 		return false
-	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
-		return await _classic_core_bridge.resolve_unplayable_turns()
-	if has_legal_primary_action(current_turn):
-		consecutive_forced_passes = 0
-		return false
-
-	var passed_any := false
-	forced_pass_in_progress = true
-	forced_pass_sequence_started.emit()
-	while not battle_over and not has_legal_primary_action(current_turn):
-		passed_any = true
-		var skipped_color := current_turn
-		consecutive_forced_passes += 1
-		_diagnostic("TURN PASSED — %s has no legal actions (%d/%d)" % [skipped_color, consecutive_forced_passes, MAX_CONSECUTIVE_FORCED_PASSES])
-		turn_passed.emit(skipped_color, consecutive_forced_passes)
-		if forced_pass_delay_seconds > 0.0 and is_inside_tree():
-			await get_tree().create_timer(forced_pass_delay_seconds).timeout
-		if consecutive_forced_passes >= MAX_CONSECUTIVE_FORCED_PASSES:
-			forced_pass_in_progress = false
-			complete_draw()
-			forced_pass_sequence_finished.emit()
-			return true
-		await run_autonomous_phase(skipped_color)
-		if has_defeated_king():
-			forced_pass_in_progress = false
-			complete_battle()
-			forced_pass_sequence_finished.emit()
-			return true
-		switch_turn()
-		await resolve_arc_mortars_at_turn_start(current_turn)
-		if has_defeated_king():
-			forced_pass_in_progress = false
-			complete_battle()
-			forced_pass_sequence_finished.emit()
-			return true
-		position_revision += 1
-
-	consecutive_forced_passes = 0
-	forced_pass_in_progress = false
-	forced_pass_sequence_finished.emit()
-	return passed_any
+	return await _classic_core_bridge.resolve_unplayable_turns() if _classic_core_bridge != null else false
 
 func has_defeated_king() -> bool:
 	return not defeated_king_colors.is_empty()
 
-func complete_battle() -> void:
-	if battle_over:
-		return
-
-	var white_defeated := "white" in defeated_king_colors
-	var black_defeated := "black" in defeated_king_colors
-
-	if not white_defeated and not black_defeated:
-		printerr("complete_battle: Called without a defeated king.")
-		return
-
-	battle_over = true
-	selection_queue.clear()
-	pending_reaction.clear()
-	action_in_progress = false
-	action_owner_color = ""
-	forced_pass_in_progress = false
-
-	if white_defeated and black_defeated:
-		battle_result = "draw"
-	elif white_defeated:
-		battle_result = "black"
-	else:
-		battle_result = "white"
-
-	_diagnostic("BATTLE FINISHED — " + battle_result)
-	battle_finished.emit(battle_result)
-	position_revision += 1
-	settled_action_completed.emit()
-
-
-func complete_draw() -> void:
-	if battle_over:
-		return
-	battle_over = true
-	selection_queue.clear()
-	pending_reaction.clear()
-	action_in_progress = false
-	action_owner_color = ""
-	forced_pass_in_progress = false
-	battle_result = "draw"
-	_diagnostic("BATTLE FINISHED — draw (six consecutive forced passes)")
-	battle_finished.emit(battle_result)
-	position_revision += 1
-	settled_action_completed.emit()
-
-## Entry point for a player's normal move/capture/castle/en-passant action.
-func move_piece(piece: ModelPiece, to: Vector2i):
-	if not is_instance_valid(piece):
-		printerr("move_piece: Invalid piece instance passed.")
-		return
-	if not is_in_bounds(to.x, to.y):
-		printerr("move_piece: Target coordinate ", to, " is out of bounds.")
-		return
-	if not begin_action(piece.color):
-		return
-	if piece is ArcherKing:
-		_archer_acted_this_action = true
-
-	var from := piece.coordinate
-	if not is_in_bounds(from.x, from.y):
-		printerr("move_piece: Piece's current coordinate ", from, " is out of bounds.")
-		cancel_action()
-		return
-
-	var is_en_passant := move_is_en_passant(piece, from, to)
-	var is_castling := move_is_castling(piece, from, to)
-	var is_combat := move_is_combat(is_en_passant, to)
-
-	if is_en_passant:
-		var en_passant_committed := await handle_en_passant(piece, from, to)
-		if not en_passant_committed:
-			cancel_action()
-			return
-	elif is_combat:
-		await handle_combat(piece, to)
-	elif is_castling:
-		await handle_castling(piece, from, to)
-	else:
-		await actually_move_piece(piece, to)
-
-	update_last_move(piece, from, to)
-	await continue_action_resolution()
-
 func submit_move(piece: ModelPiece, to: Vector2i) -> bool:
 	if not is_piece_active(piece) or piece.color != current_turn or piece.stunned:
 		return false
-	if action_in_progress or battle_over or to not in get_legal_moves(piece):
+	if action_in_progress or battle_over:
 		return false
 	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, to)))
-	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
-		return await _classic_core_bridge.submit_move(piece, to)
-	await move_piece(piece, to)
-	return true
+	return await _classic_core_bridge.submit_move(piece, to) if _classic_core_bridge != null else false
 
 
 func submit_move_path(piece: ModelPiece, path: Array[Vector2i]) -> bool:
 	if not is_piece_active(piece) or piece.color != current_turn or piece.stunned:
 		return false
-	if action_in_progress or battle_over or path.size() != 2:
+	if action_in_progress or battle_over or path.is_empty():
 		return false
 	var legal := false
 	for action in get_legal_primary_actions(current_turn):
@@ -927,558 +644,39 @@ func submit_move_path(piece: ModelPiece, path: Array[Vector2i]) -> bool:
 	if not legal:
 		return false
 	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, path.back(), path)))
-	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
-		return await _classic_core_bridge.submit_move_path(piece, path)
-	await move_piece_path(piece, path)
-	return true
+	return await _classic_core_bridge.submit_move_path(piece, path) if _classic_core_bridge != null else false
 
-
-func move_piece_path(piece: ModelPiece, path: Array[Vector2i]) -> void:
-	if not piece is ArakneKing or path.size() != 2 or not begin_action(piece.color):
-		return
-	var arakne := piece as ArakneKing
-	var origin := arakne.coordinate
-	var intermediate := path[0]
-	var destination := path[1]
-	await actually_move_piece(arakne, intermediate)
-	var final_landing := intermediate
-	if (
-		is_piece_active(arakne)
-		and not battle_over
-		and not arakne.stunned
-		and arakne.coordinate == intermediate
-		and destination in arakne.get_skitter_destinations(intermediate)
-	):
-		skitter_step_started.emit(arakne, intermediate, destination)
-		await actually_move_piece(arakne, destination)
-		if arakne.coordinate == destination:
-			final_landing = destination
-	update_last_move(arakne, origin, final_landing)
-	await continue_action_resolution()
-
-## Entry point for a king's active ability.
-func perform_active_ability(king: KingPiece, target: Vector2i):
-	if not is_instance_valid(king):
-		printerr("perform_active_ability: Invalid king.")
-		return
-	if not begin_action(king.color):
-		return
-
-	var target_piece: ModelPiece = board[target.x][target.y] if is_in_bounds(target.x, target.y) else null
-	var presentation = TargetedAbilityContext.new(
-		king, king.get_active_ability_id(), king.get_active_ability_name(), target, target_piece
-	)
-	targeted_ability_committed.emit(presentation)
-	presentation.close_claims()
-	await presentation.wait_for_impact()
-	await king.active_target_selected(target)
-	presentation.report_effect()
-	await presentation.wait_for_aftermath()
-	await continue_action_resolution()
 
 func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
 	if not is_piece_active(king) or king.color != current_turn or king.stunned:
 		return false
-	if action_in_progress or battle_over or not king.is_active_ability_ready():
-		return false
-	if target not in king.get_active_ability_targets():
+	if action_in_progress or battle_over:
 		return false
 	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.ACTIVE_ABILITY, king, target)))
-	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
-		return await _classic_core_bridge.submit_active_ability(king, target)
-	await perform_active_ability(king, target)
-	return true
+	return await _classic_core_bridge.submit_active_ability(king, target) if _classic_core_bridge != null else false
 
 func submit_archer_charge(archer: ArcherKing) -> bool:
-	if not is_piece_active(archer) or archer.color != current_turn or archer.stunned or not archer.can_begin_charge():
+	if not is_piece_active(archer) or archer.color != current_turn or archer.stunned:
 		return false
-	if action_in_progress or battle_over or not begin_action(archer.color):
+	if action_in_progress or battle_over:
 		return false
 	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.ARCHER_CHARGE, archer, archer.coordinate)))
-	_archer_charge_started_this_action = true
-	archer.begin_charge()
-	await continue_action_resolution()
-	return true
+	return await _classic_core_bridge.submit_archer_charge(archer) if _classic_core_bridge != null else false
 
 
-
-## Moves a piece from one square to another.
-# Assumes empty destination square for normal moves.
-# Validation is handled in move_piece() or callers like handle_combat.
-func actually_move_piece(piece: ModelPiece, to: Vector2i, arrival_effect: Callable = Callable(), self_propelled := false): # <-- Added 'async'
-		# ... (existing safety checks) ...
-		if not is_instance_valid(piece):
-			printerr("actually_move_piece: Invalid piece instance provided.")
-			return
-
-		var from = piece.coordinate
-		if piece is ArcherKing and (piece as ArcherKing).uses_charge() and (piece as ArcherKing).charge_level > 0:
-			(piece as ArcherKing).cancel_draw("Draw Cancelled")
-		# ... (more checks: bounds, piece at 'from', 'to' empty etc.) ...
-
-		_diagnostic("actually moving piece, %s from %s to %s" % [piece.type, from, to])
-		board[from.x][from.y] = null
-		board[to.x][to.y] = piece
-		piece.coordinate = to # Update model coordinate *before* animation starts
-		piece.has_moved = true
-
-		var presentation := PieceArrivalContext.new([piece], false, self_propelled)
-		piece_move_committed.emit(piece, from, to, presentation)
-		presentation.close_claims()
-		await presentation.wait_for_arrival(piece)
-		if arrival_effect.is_valid():
-			arrival_effect.call()
-		await _announce_piece_landed(piece, from, to)
-		_collect_archer_arrows(piece, to)
-		if piece is WraithKing: (piece as WraithKing).on_landed_on_mark(to)
-		await presentation.wait_for_aftermath()
-		_diagnostic("Animation finished for piece: " + piece.type)
-		if not is_piece_active(piece) or piece.coordinate != to:
-			return
-
-		# Bone Pawns expire inside the action that moved them, before reactions drain.
-		if piece is BonePawn and piece._on_dead_row():
-			destroy_piece(piece, true)
-			return
-
-		# Normal pawn promotion also resolves before the action ends.
-		if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
-			await promotion_check(piece)
-
-## Commits a lethal capture while leaving presentation time to carry both views.
-func actually_capture_piece(piece: ModelPiece, captured_piece: ModelPiece, to: Vector2i, captured_at: Vector2i, self_propelled := false) -> void:
-	if not is_instance_valid(piece) or not is_instance_valid(captured_piece):
-		printerr("actually_capture_piece: Invalid attacker or defender.")
-		return
-
-	var from := piece.coordinate
-	board[from.x][from.y] = null
-	if captured_at != to and board[captured_at.x][captured_at.y] == captured_piece:
-		board[captured_at.x][captured_at.y] = null
-	board[to.x][to.y] = piece
-	piece.coordinate = to
-	piece.has_moved = true
-
-	var presentation := PieceArrivalContext.new([piece], true, self_propelled)
-	piece_capture_committed.emit(piece, captured_piece, from, to, captured_at, presentation)
-	presentation.close_claims()
-	await presentation.wait_for_impact()
-	destroy_piece(captured_piece, false)
-	await presentation.wait_for_arrival(piece)
-	await _announce_piece_landed(piece, from, to)
-	_collect_archer_arrows(piece, to)
-	if piece is WraithKing and is_piece_active(piece): (piece as WraithKing).on_direct_capture(captured_at)
-	await presentation.wait_for_aftermath()
-
-	if piece is BonePawn and piece._on_dead_row():
-		destroy_piece(piece, true)
-		return
-	if piece.type == "pawn" and is_instance_valid(piece) and board[to.x][to.y] == piece:
-		await promotion_check(piece)
-
-
-func _announce_piece_landed(piece: ModelPiece, from: Vector2i, to: Vector2i) -> void:
-	var landing_completion := CompletionGate.new()
-	piece_landed.emit(piece, from, to, landing_completion)
-	landing_completion.close()
-	await landing_completion.wait_until_released()
-
-func can_castle_through(king_row: int, king_col: int, rook_row: int, rook_col: int, color: String) -> bool:
-	var rook_piece = board[rook_row][rook_col]
-	if rook_piece == null or rook_piece.color != color or rook_piece.type != "rook":
-		return false
-
-	if rook_piece.has_moved:
-		return false
-
-	var start = min(king_col, rook_col) + 1
-	var end = max(king_col, rook_col)
-	for c in range(start, end):
-		if board[king_row][c] != null:
-			return false
-
-	return true
-
-func switch_turn():
-	if battle_over:
-		return
-
-	if current_turn == "white":
-		current_turn = "black"
-	else:
-		current_turn = "white"
-		global_turn_number += 1
-	
-	_diagnostic("switching turns.")
-	emit_signal("turn_changed", current_turn)
-	_apply_lunacy_turn_start(current_turn)
-
-func _apply_lunacy_turn_start(color: String) -> void:
-	var king := get_king(color)
-	if king is RhetoricianKing and is_rhetorician_threatened(king):
-		add_lunacy(color, 1)
-
-func add_lunacy(color: String, amount: int = 1) -> void:
-	if color not in ["white", "black"] or amount <= 0 or int(socratic_turns_by_color.get(color, 0)) > 0:
-		return
-	var value := int(lunacy_by_color.get(color, 0)) + amount
-	lunacy_by_color[color] = value
-	if value >= 5:
-		socratic_turns_by_color[color] = 2
-	lunacy_changed.emit(color, value, int(socratic_turns_by_color[color]))
-
-func is_rhetorician_attack_blocked(attacker: ModelPiece, destination: Vector2i) -> bool:
-	if not is_instance_valid(attacker) or not is_in_bounds(destination.x, destination.y):
-		return false
-	var defender: ModelPiece = board[destination.x][destination.y]
-	if not defender is RhetoricianKing or defender.color == attacker.color:
-		return false
-	var delta: Vector2i = attacker.coordinate - defender.coordinate
-	return maxi(absi(delta.x), absi(delta.y)) == 1
-
-func is_rhetorician_threatened(king: RhetoricianKing) -> bool:
-	if not is_piece_active(king):
-		return false
-	for row in board:
-		for enemy in row:
-			if enemy == null or enemy.color == king.color or enemy.stunned or not is_piece_active(enemy):
-				continue
-			# Threat is based on the piece's underlying targeting geometry. Do not
-			# filter through Can Words Prevent Harm?: an adjacent attacker still
-			# threatens the King even though the passive prevents the attack.
-			if king.coordinate in enemy.get_legal_moves():
-				return true
-	return false
-
-func compel_piece_toward(piece: ModelPiece, king: RhetoricianKing) -> void:
-	if not is_piece_active(piece) or not is_piece_active(king) or piece.color == king.color:
-		return
-	var delta: Vector2i = king.coordinate - piece.coordinate
-	var destination := piece.coordinate + Vector2i(signi(delta.x), signi(delta.y))
-	if destination == king.coordinate or not is_in_bounds(destination.x, destination.y):
-		return
-	var occupant: ModelPiece = board[destination.x][destination.y]
-	if occupant == null:
-		await actually_move_piece(piece, destination, Callable(), true)
-	else:
-		await actually_capture_piece(piece, occupant, destination, destination, true)
-	ability_effect_resolved.emit(king, king.get_active_ability_name(), [destination])
 
 func set_lunacy_random_seed(seed: int) -> void:
-	_lunacy_rng.seed = seed
-
-func _resolve_socratic_turn_if_needed() -> bool:
-	var forced_color := current_turn
-	if int(socratic_turns_by_color.get(forced_color, 0)) <= 0 or battle_over:
-		return false
-	var moves: Array[ChessPrimaryAction] = []
-	for action in _collect_legal_primary_actions(forced_color):
-		if action.kind == ChessPrimaryAction.Kind.MOVE:
-			moves.append(action)
-	_resolving_socratic_turn = true
-	if moves.is_empty():
-		switch_turn()
-		position_revision += 1
-	else:
-		var chosen: ChessPrimaryAction = moves[_lunacy_rng.randi_range(0, moves.size() - 1)]
-		if chosen.path.size() == 2:
-			await submit_move_path(chosen.piece, chosen.path)
-		else:
-			await submit_move(chosen.piece, chosen.target)
-	_resolving_socratic_turn = false
-	var remaining := maxi(0, int(socratic_turns_by_color.get(forced_color, 0)) - 1)
-	socratic_turns_by_color[forced_color] = remaining
-	if remaining == 0:
-		lunacy_by_color[forced_color] = 0
-	lunacy_changed.emit(forced_color, int(lunacy_by_color[forced_color]), remaining)
-	if moves.is_empty():
-		await resolve_unplayable_turns()
-		action_finished.emit()
-		settled_action_completed.emit()
-	return true
-		
-func promotion_check(piece: ModelPiece) -> void:
-	# A King capture ends the battle before any landing consequence can replace
-	# the winning piece. In particular, a Pawn on the terminal rank must remain
-	# the attacker shown in the final position rather than begin promotion after
-	# the King-death presentation.
-	if has_defeated_king() or piece.type != "pawn": return
-	
-	var board_height = board.size()
-	var white_back_rank = get_back_rank("white")
-	var black_back_rank = get_back_rank("black")
-
-	var promotion_rank = white_back_rank if piece.color == "black" else black_back_rank
-	if piece.coordinate.x == promotion_rank:
-		var selected := await request_promotion_selection(piece)
-		if selected in [&"queen", &"rook", &"bishop", &"knight"] and is_piece_active(piece):
-			await transform_piece(piece, selected, true)
-
-func update_last_move(piece: ModelPiece, from: Vector2i, to: Vector2i):
-	last_move = {
-		"from": from,
-		"to": to,
-		"piece": piece
-	}
-	
-func handle_castling(king: KingPiece, from: Vector2i, to: Vector2i):
-	var row := from.x
-	var rook_from := Vector2i(row, 7 if to.y == 6 else 0)
-	var rook_to := Vector2i(row, 5 if to.y == 6 else 3)
-	var rook: ModelPiece = board[rook_from.x][rook_from.y]
-	if not can_castle_move(king, from, to) or not is_instance_valid(rook):
-		printerr("handle_castling: Castling state changed before the move could be committed.")
-		return
-
-	# Castling is one atomic model transition. Its dedicated presentation event
-	# may perform the physical rook placement before moving the King without
-	# exposing either intermediate arrangement as authoritative board state.
-	board[from.x][from.y] = null
-	board[rook_from.x][rook_from.y] = null
-	board[rook_to.x][rook_to.y] = rook
-	board[to.x][to.y] = king
-	king.coordinate = to
-	rook.coordinate = rook_to
-	king.has_moved = true
-	rook.has_moved = true
-	var presentation := PieceArrivalContext.new([rook, king])
-	piece_castling_committed.emit(king, rook, from, to, rook_from, rook_to, presentation)
-	presentation.close_claims()
-	await presentation.wait_for_arrival(rook)
-	await _announce_piece_landed(rook, rook_from, rook_to)
-	await presentation.wait_for_arrival(king)
-	await _announce_piece_landed(king, from, to)
-	await presentation.wait_for_aftermath()
-
-func handle_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
-	var captured_row := from.x
-	var captured_col := to.y
-	var captured_piece: ModelPiece = board[captured_row][captured_col]
-	if not is_instance_valid(captured_piece) or captured_piece.type != "pawn" or captured_piece.color == piece.color:
-		printerr("handle_en_passant: Eligible pawn is no longer available to capture.")
-		return false
-
-	var captured_at := Vector2i(captured_row, captured_col)
-	await actually_capture_piece(piece, captured_piece, to, captured_at)
-	return true
-
-# Assumes a piece is moving to attack another piece.
-#func handle_combat(attacker: ModelPiece, to: Vector2i, piece_node: Node):
-	#var defender = board[to.x][to.y]
-	#
-	#if defender.current_hp == 1: # normal capture
-		#destroy_piece(defender)				# TODO: but! destroy piece needs to come first, or a bug happens where a piece is no longer selectable after it captures...
-		#actually_move_piece(attacker, to) 	# TODO: moving needs to come first for Raise Dead to target adjacent attacker squares. 
-		#promotion_check(attacker, piece_node, to)
-	#else: # doing damage, attacker doesn't move
-		#defender.take_damage()	
-
-
-#func handle_combat(attacker: ModelPiece, to: Vector2i):
-	#var defender = board[to.x][to.y]
-	#var damage = attacker.attack_power
-#
-	#if defender.current_hp <= damage: # predict defender's death
-		#var defender_instance = defender
-		#var defender_original_coord = defender.coordinate 
-#
-		#actually_move_piece(attacker, to)
-#
-#
-		#destroy_piece(defender_instance, false) # don't nullify the defender's square yet
-	#else: # Defender survives, takes damage, attacker stays put
-		#defender.take_damage(damage)
-		
-		
-func handle_combat(attacker: ModelPiece, to: Vector2i):
-		# --- Start of added checks ---
-		if not is_instance_valid(attacker):
-			printerr("handle_combat: Invalid attacker instance provided.")
-			return
-		if not is_in_bounds(to.x, to.y):
-			printerr("handle_combat: Target coordinate ", to, " is out of bounds.")
-			return
-			
-		var defender = board[to.x][to.y]
-		if not is_instance_valid(defender):
-			printerr("handle_combat: No defender found at target coordinate ", to)
-			return
-		if attacker.color == defender.color and not attacker is QuarterlyInitiativeKing:
-			printerr("handle_combat: Attacker ", attacker.type, " attempted to attack friendly piece ", defender.type, " at ", to)
-			return
-		if is_rhetorician_attack_blocked(attacker, to):
-			return
-		# --- End of added checks ---
-
-		var damage = attacker.attack_power
-
-		if attacker is ArcherKing:
-			var archer := attacker as ArcherKing
-			if archer.is_suppressed():
-				return
-			if archer.uses_draw_mechanic() and archer.draw_target == Vector2i(-1, -1):
-				archer.begin_draw(to)
-				return
-			await announce_archer_attack(archer, defender, archer.coordinate, to)
-			if archer.uses_quiver():
-				archer.arrows = maxi(0, archer.arrows - 1)
-				var arrow := _drop_archer_arrow(archer, to)
-				archer_arrow_dropped.emit(arrow)
-				announce_archer_state(archer, &"quiver", "Arrow Fired — %d Remaining" % archer.arrows)
-			if archer.uses_charge():
-				archer.cancel_draw("")
-		elif defender.current_hp <= damage: # predict defender's death
-			var defender_instance = defender # Keep a reference before the board changes
-			# var defender_original_coord = defender.coordinate # Not currently used, but could be useful
-
-			await actually_capture_piece(attacker, defender_instance, to, to)
-
-		else: # Defender survives, takes damage, attacker stays put
-			await announce_piece_attack(attacker, defender, attacker.coordinate, to, damage)
-
+	_projected_random_states[&"lunacy"] = ClassicChessCore.seeded_random_state(seed)
+	if _classic_core_bridge != null and _classic_core_bridge.state != null:
+		_classic_core_bridge.state.random_states[&"lunacy"] = _projected_random_states[&"lunacy"]
 func set_archer_volley_random_seed(seed: int) -> void:
-	_archer_volley_rng.seed = seed
+	_projected_random_states[&"archer_volley"] = ClassicChessCore.seeded_random_state(seed)
+	if _classic_core_bridge != null and _classic_core_bridge.state != null:
+		_classic_core_bridge.state.random_states[&"archer_volley"] = _projected_random_states[&"archer_volley"]
 
-func get_archer_volley_candidates(enemy_color: String) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	var rear_rank := get_back_rank(enemy_color)
-	var furthest_rank := rear_rank
-	for row in board:
-		for piece in row:
-			if piece == null or piece.color != enemy_color:
-				continue
-			furthest_rank = mini(furthest_rank, piece.coordinate.x) if enemy_color == "white" else maxi(furthest_rank, piece.coordinate.x)
-	var first := mini(rear_rank, furthest_rank)
-	var last := maxi(rear_rank, furthest_rank)
-	for row in range(first, last + 1):
-		for column in range(board[row].size()):
-			result.append(Vector2i(row, column))
-	return result
-
-func resolve_archer_volley(archer: ArcherKing) -> void:
-	if archer.is_suppressed():
-		return
-	var candidates := get_archer_volley_candidates("black" if archer.color == "white" else "white")
-	var targets: Array[Vector2i] = []
-	while not candidates.is_empty() and targets.size() < ArcherKing.VOLLEY_SQUARE_COUNT:
-		targets.append(candidates.pop_at(_archer_volley_rng.randi_range(0, candidates.size() - 1)))
-	var completion := CompletionGate.new()
-	archer_volley_committed.emit(archer, targets, completion)
-	completion.close()
-	await completion.wait_until_released()
-	for target in targets:
-		var occupant: ModelPiece = board[target.x][target.y]
-		if occupant != null:
-			await occupant.take_damage(1)
-
-func announce_archer_state(king: ArcherKing, state: StringName, message: String = "") -> void:
-	archer_state_changed.emit(king, state, message)
-
-func resolve_archer_turn_entry(color: String) -> bool:
-	var king := get_king(color)
-	if not king is ArcherKing:
-		return false
-	var archer := king as ArcherKing
-	if archer.is_suppressed() and archer.is_drawing():
-		archer.cancel_draw("Draw Cancelled — Suppressed")
-		return false
-	if archer.draw_target == Vector2i(-1, -1):
-		announce_archer_state(archer, &"drawing" if archer.charge_level > 0 else &"idle", "")
-		return false
-	var candidate: ModelPiece = find_piece_by_id(archer.draw_target_piece_id)
-	if candidate == null and archer.draw_target_piece_id.is_empty() and is_in_bounds(archer.draw_target.x, archer.draw_target.y):
-		candidate = board[archer.draw_target.x][archer.draw_target.y]
-	var valid := candidate != null and candidate.color != archer.color and is_piece_active(candidate)
-	var target := candidate.coordinate if valid else archer.draw_target
-	if valid:
-		archer.draw_target = target
-		valid = archer.can_natively_attack_square(archer.coordinate, target, archer.get_live_attack_position())
-	if not valid:
-		archer.cancel_draw("Shot Cancelled")
-		return false
-	if archer.uses_draw_mechanic() and archer.draw_turns_waited < 1:
-		archer.draw_turns_waited += 1
-		announce_archer_state(archer, &"drawing", "Drawing Bow")
-		return false
-	var defender: ModelPiece = board[target.x][target.y]
-	archer.draw_target = Vector2i(-1, -1)
-	archer.draw_target_piece_id = ""
-	archer.draw_turns_waited = 0
-	announce_archer_state(archer, &"idle", "Loose!")
-	await announce_archer_attack(archer, defender, archer.coordinate, target)
-	if archer.uses_quiver():
-		archer.arrows = maxi(0, archer.arrows - 1)
-		var arrow := _drop_archer_arrow(archer, target)
-		archer_arrow_dropped.emit(arrow)
-		announce_archer_state(archer, &"quiver", "Arrow Fired — %d Remaining" % archer.arrows)
-	return true
-
-func _collect_archer_arrows(piece: ModelPiece, coordinate: Vector2i) -> void:
-	for effect in tile_effects.duplicate():
-		if effect.type_id != &"archer_arrow" or effect.coordinate != coordinate or effect.owner_color != piece.color:
-			continue
-		var source: ModelPiece = find_piece_by_id(effect.source_piece_id)
-		if not source is ArcherKing or not (source as ArcherKing).uses_quiver():
-			continue
-		var archer := source as ArcherKing
-		if archer.arrows >= 2:
-			continue
-		archer.arrows += 1
-		tile_effects.erase(effect)
-		tile_effect_removed.emit(effect)
-		archer_arrow_collected.emit(piece, archer)
-		announce_archer_state(archer, &"quiver", "Arrow Recovered — %d/2" % archer.arrows)
-
-func _drop_archer_arrow(archer: ArcherKing, coordinate: Vector2i) -> ChessTileEffectState:
-	var effect := ChessTileEffectState.new()
-	effect.effect_id = _allocate_state_id("effect")
-	effect.type_id = &"archer_arrow"
-	effect.coordinate = coordinate
-	effect.owner_color = archer.color
-	effect.source_piece_id = archer.piece_id
-	tile_effects.append(effect)
-	tile_effect_added.emit(effect)
-	return effect
-		
-		
-		
 
 func is_in_bounds(row: int, col: int) -> bool:
 	return row >= 0 and row < board.size() and col >= 0 and col < board[row].size()
-	
-func move_is_castling(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
-	return piece is KingPiece and can_castle_move(piece as KingPiece, from, to)
-
-func can_castle_move(king: KingPiece, from: Vector2i, to: Vector2i) -> bool:
-	if not is_instance_valid(king) or king.has_moved:
-		return false
-	var home_row := get_back_rank(king.color)
-	if from != Vector2i(home_row, 4) or king.coordinate != from:
-		return false
-	if to.x != home_row or to.y not in [2, 6] or board[to.x][to.y] != null:
-		return false
-	var rook_col := 0 if to.y == 2 else 7
-	return can_castle_through(home_row, 4, home_row, rook_col, king.color)
-
-func move_is_en_passant(piece: ModelPiece, from: Vector2i, to: Vector2i) -> bool:
-	if piece.type != "pawn" or not is_in_bounds(to.x, to.y) or board[to.x][to.y] != null:
-		return false
-	var direction := -1 if piece.color == "white" else 1
-	if to.x != from.x + direction or absi(to.y - from.y) != 1:
-		return false
-	if not last_move.has("piece") or not last_move.has("from") or not last_move.has("to"):
-		return false
-	var previous_pawn: ModelPiece = last_move.get("piece")
-	if not is_instance_valid(previous_pawn) or previous_pawn.type != "pawn" or previous_pawn.color == piece.color:
-		return false
-	var previous_from: Vector2i = last_move.get("from")
-	var previous_to: Vector2i = last_move.get("to")
-	if absi(previous_to.x - previous_from.x) != 2 or previous_to != Vector2i(from.x, to.y):
-		return false
-	return board[from.x][to.y] == previous_pawn
-
-func move_is_combat(is_en_passant: bool, to: Vector2i) -> bool:
-	return not is_en_passant and board[to.x][to.y] != null
 	
 func get_adjacent_squares(coord: Vector2i) -> Array:
 	var offsets = [
@@ -1602,31 +800,13 @@ func destroy_piece(piece: ModelPiece, nullify_square: bool):
 		printerr("destroy_piece: Piece ", piece.type, " coordinate ", piece_coord, " is out of bounds.")
 		
 	
-	last_destroyed_piece = piece
-
-	if piece.is_king and piece.color not in defeated_king_colors:
-		defeated_king_colors.append(piece.color)
-		_diagnostic("KING DEFEATED — " + piece.color)
-
-	piece_destroyed.emit(piece) # Necromancer needs to react based on the piece object
-	_remove_autonomous_entities_referencing(piece.piece_id)
+	piece_destroyed.emit(piece)
 	
 	
 	# Only nullify if requested AND the piece is actually where we think it is
 	if nullify_square and is_in_bounds(piece_coord.x, piece_coord.y) and board[piece_coord.x][piece_coord.y] == piece:
 		board[piece_coord.x][piece_coord.y] = null
-	elif nullify_square:
-		printerr("destroy_piece: Requested to nullify square ", piece_coord, " but the piece wasn't found there in the model.")
-	
 	unregister_piece(piece)
-
-func _remove_autonomous_entities_referencing(piece_id: String) -> void:
-	for entity in autonomous_entities.duplicate():
-		if entity.source_piece_id != piece_id and entity.target_piece_id != piece_id: continue
-		autonomous_entities.erase(entity)
-		var completion := CompletionGate.new()
-		autonomous_entity_removed.emit(entity, &"source_destroyed" if entity.source_piece_id == piece_id else &"target_destroyed", completion)
-		completion.close()
 
 func transform_piece(piece: ModelPiece, transformed_type: StringName, present_promotion := false) -> void:
 	if not is_instance_valid(piece):
@@ -1659,106 +839,6 @@ func is_piece_active(piece: ModelPiece) -> bool:
 	var coord := piece.coordinate
 	return is_in_bounds(coord.x, coord.y) and board[coord.x][coord.y] == piece
 
-## Called by ModelPieces to add either an automatic reaction or a selection
-## opportunity to the same ordered queue.
-func queue_selection_opportunity(calling_piece: ModelPiece, action_type: String, event_data):
-	# Once a king has fallen, the current effect may finish, but no new reactions
-	# should be added before the battle is finalized.
-	if battle_over or has_defeated_king():
-		return
-
-	var priority_value := 0
-	if action_type == "retaliating_rage":
-		# Finish Minotaur exchanges before pausing for Raise Dead selections.
-		priority_value = 100
-	elif action_type == "raise_dead":
-		# current_turn stays equal to the primary action owner until the whole action ends.
-		# The non-acting player therefore receives first choice around a corpse.
-		priority_value = 1 if calling_piece.color != action_owner_color else 0
-
-	selection_sequence += 1
-	selection_queue.append({
-		"calling_piece": calling_piece,
-		"action_type": action_type,
-		"priority": priority_value,
-		"sequence": selection_sequence,
-		"event_data": event_data
-	})
-	reaction_queued.emit(calling_piece, action_type, event_data, selection_sequence)
-	_diagnostic("Queued reaction: %s for %s" % [action_type, calling_piece.color])
-
-## Drain automatic/choice reactions. A choice pauses this function; the chosen
-## square later calls resolve_reaction_selection(), which resumes this action.
-func continue_action_resolution() -> void:
-	if not action_in_progress:
-		printerr("continue_action_resolution: No action is in progress.")
-		return
-
-	if has_defeated_king():
-		complete_battle()
-		return
-
-	while not selection_queue.is_empty():
-		selection_queue.sort_custom(
-			func(a, b):
-				if a["priority"] == b["priority"]:
-					return a["sequence"] < b["sequence"]
-				return a["priority"] > b["priority"]
-		)
-
-		var opportunity: Dictionary = selection_queue.pop_front()
-		var calling_piece: ModelPiece = opportunity["calling_piece"]
-		if not is_piece_active(calling_piece):
-			reaction_finished.emit(calling_piece, opportunity["action_type"], opportunity["event_data"], opportunity["sequence"], false)
-			continue
-
-		var action_type: String = opportunity["action_type"]
-		var event_data = opportunity["event_data"]
-
-		# Automatic reactions resolve immediately, and may append more reactions.
-		# The loop re-sorts before each next reaction, so newly queued Rage effects
-		# continue the exchange before lower-priority selection reactions.
-		if action_type == "retaliating_rage":
-			await calling_piece.resolve_automatic_reaction(action_type, event_data)
-			reaction_finished.emit(calling_piece, action_type, event_data, opportunity["sequence"], true)
-
-			# Let the already-running effect finish, but do not begin another
-			# reaction after it defeats a king.
-			if has_defeated_king():
-				complete_battle()
-				return
-
-			continue
-
-		var targets: Array = calling_piece.get_selection_targets(action_type, event_data)
-
-		# Earlier reactions may have occupied every valid square. Skip cleanly.
-		if targets.is_empty():
-			reaction_finished.emit(calling_piece, action_type, event_data, opportunity["sequence"], false)
-			continue
-
-		var selection_completion := CompletionGate.new()
-		reaction_selection_preparing.emit(calling_piece, action_type, targets.duplicate(), selection_completion)
-		selection_completion.close()
-		await selection_completion.wait_until_released()
-		if not is_piece_active(calling_piece) or battle_over:
-			reaction_finished.emit(calling_piece, action_type, event_data, opportunity["sequence"], false)
-			continue
-		pending_reaction = {
-			"calling_piece": calling_piece,
-			"action_type": action_type,
-			"event_data": event_data,
-			"sequence": opportunity["sequence"],
-			"targets": targets.duplicate(),
-		}
-		reaction_selection_requested.emit(calling_piece, action_type, targets.duplicate())
-		return
-
-	if turn_entry_consequence_in_progress:
-		await _finish_turn_entry_consequences()
-	else:
-		await finish_action()
-
 func has_pending_reaction() -> bool:
 	return not pending_reaction.is_empty()
 
@@ -1766,31 +846,7 @@ func get_pending_reaction() -> Dictionary:
 	return pending_reaction.duplicate(true)
 
 func submit_reaction_selection(coord: Vector2i) -> bool:
-	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
-		return await _classic_core_bridge.submit_reaction_selection(coord)
-	if battle_over:
-		return false
-	if not action_in_progress:
-		return false
-	if pending_reaction.is_empty():
-		return false
-
-	var calling_piece: ModelPiece = pending_reaction["calling_piece"]
-	if not is_piece_active(calling_piece):
-		return false
-	if coord not in pending_reaction["targets"]:
-		return false
-
-	var action_type: String = pending_reaction["action_type"]
-	var event_data = pending_reaction["event_data"]
-	var sequence: int = pending_reaction["sequence"]
-	pending_reaction.clear()
-	reaction_selection_committed.emit(calling_piece, action_type, coord)
-	await calling_piece._on_special_target_selected(coord)
-	reaction_selection_resolved.emit(calling_piece, action_type, coord)
-	reaction_finished.emit(calling_piece, action_type, event_data, sequence, true)
-	await continue_action_resolution()
-	return true
+	return await _classic_core_bridge.submit_reaction_selection(coord) if _classic_core_bridge != null else false
 
 func get_other_color(color: String) -> String:
 	if color == "white": return "black"
@@ -1811,22 +867,8 @@ func find_piece_by_id(id: String) -> ModelPiece:
 			if piece != null and piece.piece_id == id: return piece
 	return null
 
-func add_tile_effect(type_id: StringName, coord: Vector2i, owner_color: String, source_piece_id: String, custom_state := {}) -> ChessTileEffectState:
-	remove_tile_effect(type_id, coord, source_piece_id)
-	var effect := ChessTileEffectState.new()
-	effect.effect_id = _allocate_state_id("effect"); effect.type_id = type_id; effect.coordinate = coord
-	effect.owner_color = owner_color; effect.source_piece_id = source_piece_id; effect.custom_state = custom_state.duplicate(true)
-	tile_effects.append(effect); tile_effect_added.emit(effect)
-	return effect
-
 func has_tile_effect(type_id: StringName, coord: Vector2i, source_piece_id := "") -> bool:
 	return tile_effects.any(func(effect): return effect.type_id == type_id and effect.coordinate == coord and (source_piece_id.is_empty() or effect.source_piece_id == source_piece_id))
-
-func remove_tile_effect(type_id: StringName, coord: Vector2i, source_piece_id := "") -> bool:
-	for effect in tile_effects.duplicate():
-		if effect.type_id == type_id and effect.coordinate == coord and (source_piece_id.is_empty() or effect.source_piece_id == source_piece_id):
-			tile_effects.erase(effect); tile_effect_removed.emit(effect); return true
-	return false
 
 func has_autonomous_entity_from_source(source_piece_id: String, type_id: StringName = &"") -> bool:
 	return autonomous_entities.any(func(entity): return entity.source_piece_id == source_piece_id and (type_id == &"" or entity.type_id == type_id))
@@ -1845,109 +887,4 @@ func get_wraith_replacement_candidate(source_piece_id: String) -> ChessAutonomou
 	return owned_wraiths[0]
 
 func get_mortar_area(anchor: Vector2i) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	for offset: Vector2i in [Vector2i.ZERO, Vector2i(0, 1), Vector2i(1, 0), Vector2i(1, 1)]:
-		var coord: Vector2i = anchor + offset
-		if is_in_bounds(coord.x, coord.y):
-			result.append(coord)
-	return result
-
-func launch_arc_mortar(source: CannonKing, anchor: Vector2i) -> void:
-	var area := get_mortar_area(anchor)
-	if area.size() != 4:
-		return
-	var entity := ChessAutonomousEntityState.new()
-	entity.entity_id = _allocate_state_id("entity")
-	entity.type_id = &"arc_mortar"
-	entity.coordinate = anchor
-	entity.owner_color = source.color
-	entity.custom_state["landing_turn"] = global_turn_number + CannonKing.ARC_MORTAR_DELAY_ROUNDS
-	autonomous_entities.append(entity)
-	var completion := CompletionGate.new()
-	autonomous_entity_added.emit(entity, completion)
-	completion.close()
-	await completion.wait_until_released()
-
-func resolve_arc_mortars_at_turn_start(color: String) -> void:
-	for entity in autonomous_entities.duplicate():
-		if entity.type_id != &"arc_mortar" or entity.owner_color != color:
-			continue
-		var landing_turn := int(entity.custom_state.get("landing_turn", 0))
-		if landing_turn <= 0:
-			# Legacy saved mortars had no schedule and landed on the next owner
-			# turn. Give restored warnings the complete new delay instead.
-			entity.custom_state["landing_turn"] = global_turn_number + CannonKing.ARC_MORTAR_DELAY_ROUNDS
-			continue
-		if global_turn_number < landing_turn:
-			continue
-		var area := get_mortar_area(entity.coordinate)
-		var completion := CompletionGate.new()
-		arc_mortar_impact.emit(entity, area, completion)
-		completion.close()
-		await completion.wait_until_released()
-		for coord in area:
-			if not is_in_bounds(coord.x, coord.y):
-				continue
-			var target: ModelPiece = board[coord.x][coord.y]
-			if target != null and is_piece_active(target):
-				await target.take_damage(CannonKing.ARC_MORTAR_DAMAGE)
-		await remove_autonomous_entity(entity, &"impact")
-
-func summon_wraith(source: WraithKing, target: ModelPiece) -> void:
-	if not is_piece_active(source) or not is_piece_active(target) or source.color == target.color:
-		return
-	var replacement := get_wraith_replacement_candidate(source.piece_id)
-	for existing in get_wraith_entities_from_source(source.piece_id):
-		if existing.target_piece_id == target.piece_id and existing != replacement:
-			return
-	if replacement != null:
-		await remove_autonomous_entity(replacement, &"replaced")
-	var entity := ChessAutonomousEntityState.new()
-	entity.entity_id = _allocate_state_id("entity"); entity.type_id = &"wraith"; entity.coordinate = source.coordinate
-	entity.owner_color = source.color; entity.source_piece_id = source.piece_id; entity.target_piece_id = target.piece_id
-	entity.custom_state["next_move_turn"] = global_turn_number + WraithKing.WRAITH_MOVE_INTERVAL_ROUNDS
-	autonomous_entities.append(entity)
-	source.active_availability_changed.emit(source, true, "")
-	var completion := CompletionGate.new(); autonomous_entity_added.emit(entity, completion); completion.close(); await completion.wait_until_released()
-
-func run_autonomous_phase(owner_color: String = "") -> void:
-	if autonomous_entities.is_empty() or battle_over: return
-	autonomous_phase_in_progress = true
-	for entity in autonomous_entities.duplicate():
-		if entity not in autonomous_entities: continue
-		if not owner_color.is_empty() and entity.owner_color != owner_color: continue
-		if entity.type_id == &"wraith" and _wraith_move_is_due(entity):
-			entity.custom_state["next_move_turn"] = global_turn_number + WraithKing.WRAITH_MOVE_INTERVAL_ROUNDS
-			await _advance_wraith(entity)
-		if has_defeated_king(): break
-	autonomous_phase_in_progress = false
-
-func _wraith_move_is_due(entity: ChessAutonomousEntityState) -> bool:
-	var next_move_turn := int(entity.custom_state.get("next_move_turn", 0))
-	if next_move_turn <= 0:
-		# Legacy saved Wraiths did not carry timing state. Give them a complete
-		# interval from the moment their old position is restored.
-		entity.custom_state["next_move_turn"] = global_turn_number + WraithKing.WRAITH_MOVE_INTERVAL_ROUNDS
-		return false
-	return global_turn_number >= next_move_turn
-
-func _advance_wraith(entity: ChessAutonomousEntityState) -> void:
-	var source := find_piece_by_id(entity.source_piece_id)
-	var target := find_piece_by_id(entity.target_piece_id)
-	if source == null or target == null or not is_piece_active(source) or not is_piece_active(target):
-		await remove_autonomous_entity(entity, &"invalid_target")
-		return
-	var delta := target.coordinate - entity.coordinate
-	var next := entity.coordinate + Vector2i(signi(delta.x), signi(delta.y))
-	var from := entity.coordinate; entity.coordinate = next
-	var completion := CompletionGate.new(); autonomous_entity_moved.emit(entity, from, next, completion); completion.close(); await completion.wait_until_released()
-	if next == target.coordinate and is_piece_active(target):
-		await target.take_damage(WraithKing.SUMMON_WRAITH_DAMAGE)
-		await remove_autonomous_entity(entity, &"reached_target")
-
-func remove_autonomous_entity(entity: ChessAutonomousEntityState, reason: StringName) -> void:
-	if entity not in autonomous_entities: return
-	autonomous_entities.erase(entity)
-	var source := find_piece_by_id(entity.source_piece_id)
-	if source is WraithKing: (source as WraithKing).active_availability_changed.emit(source, true, "")
-	var completion := CompletionGate.new(); autonomous_entity_removed.emit(entity, reason, completion); completion.close(); await completion.wait_until_released()
+	return CannonCoreRules.area(anchor)

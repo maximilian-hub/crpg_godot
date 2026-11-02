@@ -997,8 +997,10 @@ func reset() -> void:
 func _restore(position: ChessPosition) -> void:
 	if position == null or not _can_navigate_live_history():
 		return
+	var keep_cooldowns_disabled := model.active_ability_cooldowns_disabled
 	restoring_history = true
 	model.load_position(position)
+	model.set_active_ability_cooldowns_disabled(keep_cooldowns_disabled)
 	restoring_history = false
 	_refresh_control_states()
 
@@ -1082,12 +1084,8 @@ func _on_brain_selected(color: String, kind: ChessCpuPlayer.BrainKind) -> void:
 
 func _add_authority_selector(parent: Control) -> void:
 	var option := OptionButton.new()
-	option.add_item("Model", ChessBoardModel.LiveAuthority.MODEL)
-	option.add_item("Pure Core — Classic/Arakne/Necromancer/Minotaur (Experimental)", ChessBoardModel.LiveAuthority.CLASSIC_CORE)
-	option.item_selected.connect(func(index: int):
-		model.set_live_authority(option.get_item_id(index))
-		_refresh_control_states()
-	)
+	option.add_item("Pure Core — Authoritative", ChessBoardModel.LiveAuthority.CLASSIC_CORE)
+	option.disabled = true
 	authority_options.append(option)
 	_add_labeled_control_to(parent, "Rules Authority", option)
 	var status := Label.new()
@@ -1504,12 +1502,12 @@ func _refresh_control_states() -> void:
 		ai_brain_status_label.modulate = Color("e87568") if not brain_error.is_empty() else Color("9a96a3")
 	var authority_diagnostics := model.get_live_authority_diagnostics()
 	for option in authority_options:
-		option.disabled = replay_mode or not settled or ai_thinking
+		option.disabled = true
 		option.select(option.get_item_index(model.requested_live_authority))
 	for status in authority_status_labels:
 		var active_authority := String(authority_diagnostics.active)
 		var fallback := String(authority_diagnostics.fallback_reason)
-		status.text = "Active: %s" % ("Classic Core" if active_authority == "classic_core" else "Model")
+		status.text = "Active: Pure Core"
 		if not fallback.is_empty(): status.text += "\nFallback: " + fallback
 		status.modulate = Color("e87568") if not fallback.is_empty() else (COLOR_CYAN if active_authority == "classic_core" else Color("9a96a3"))
 	if speed_slider != null:

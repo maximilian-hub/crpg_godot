@@ -142,6 +142,7 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 			piece.granted_movement_types.append(StringName(movement_type))
 		var custom = raw.get("custom", {})
 		piece.custom_state = custom.duplicate(true) if custom is Dictionary else {}
+		_normalize_piece_custom_state(piece)
 		position.pieces.append(piece)
 	for raw in data.get("tile_effects", []):
 		if not raw is Dictionary: continue
@@ -164,6 +165,18 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	var validation := ChessPositionValidator.validate(position)
 	errors.append_array(validation.structural_errors)
 	return {"position": position if errors.is_empty() else null, "errors": errors}
+
+
+static func _normalize_piece_custom_state(piece: ChessPieceState) -> void:
+	var type_id := ChessPieceCatalog.normalize_type_id(piece.type_id)
+	if type_id in ArcherCoreRules.TYPES:
+		var target = piece.custom_state.get("draw_target", [-1, -1])
+		piece.custom_state["draw_target"] = [int(target[0]), int(target[1])] if target is Array and target.size() == 2 else [-1, -1]
+		piece.custom_state["draw_turns_waited"] = int(piece.custom_state.get("draw_turns_waited", 0))
+		piece.custom_state["charge_level"] = int(piece.custom_state.get("charge_level", 0))
+		piece.custom_state["arrows"] = int(piece.custom_state.get("arrows", 2))
+	elif type_id == &"cannon_king" and piece.custom_state.has("scheduled_arc_cooldown"):
+		piece.custom_state["scheduled_arc_cooldown"] = int(piece.custom_state.scheduled_arc_cooldown)
 
 static func _decode_coord(value, errors: Array[String], field: String) -> Vector2i:
 	if not value is Array or value.size() != 2:
