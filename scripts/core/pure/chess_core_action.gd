@@ -1,7 +1,7 @@
 extends RefCounted
 class_name ChessCoreAction
 
-enum Kind { MOVE }
+enum Kind { MOVE, ACTIVE_ABILITY }
 
 var kind := Kind.MOVE
 var piece_id := ""

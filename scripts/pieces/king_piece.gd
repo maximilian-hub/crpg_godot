@@ -110,6 +110,8 @@ func mark_initial_turn_entered() -> void:
 ## cooldowns begin absorbing a mote on each later turn entry.
 func _on_turn_changed(current_turn: String):
 	super._on_turn_changed(current_turn)
+	if model != null and model.active_live_authority == ChessBoardModel.LiveAuthority.CLASSIC_CORE:
+		return
 	if current_turn != color:
 		return
 	if model != null and model.active_ability_cooldowns_disabled:

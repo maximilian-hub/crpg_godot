@@ -35,6 +35,10 @@ func summon_bone_pawn(target: Vector2i):
 			model.destroy_piece(new_pawn, true)
 
 func _on_piece_destroyed(destroyed_piece: ModelPiece):
+	# The pure live authority owns reaction generation. Projection destruction
+	# still emits the public signal, but must not enqueue a second legacy reaction.
+	if model != null and model.active_live_authority == ChessBoardModel.LiveAuthority.CLASSIC_CORE:
+		return
 	for base_type in model.MAJOR_MINOR_BASE_TYPES:
 		if destroyed_piece.type.contains(base_type):
 			raise_dead(destroyed_piece.coordinate)

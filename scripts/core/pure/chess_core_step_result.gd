@@ -7,6 +7,7 @@ var status := Status.REJECTED
 var state: ChessCoreState
 var events: Array[ChessCoreEvent] = []
 var choice: ChessCoreChoice
+var resolved_reaction_colors: Array[String] = []
 var error := ""
 
 

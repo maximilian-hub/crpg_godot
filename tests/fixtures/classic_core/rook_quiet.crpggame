@@ -1,0 +1,54 @@
+{
+  "schema": "crpg_chess_record",
+  "version": 1,
+  "record_id": "classic-core-rook-quiet",
+  "created_utc": "2026-10-31T00:00:00Z",
+  "build": {"id": "dev", "engine": "4.5.2", "platform": "test"},
+  "report": {"flagged_frame": -1, "note": "Milestone D curated replay fixture"},
+  "provenance": {"source": "classic_core_differential"},
+  "frames": [
+    {
+      "index": 0,
+      "kind": "baseline",
+      "label": "Rook quiet-move baseline",
+      "position": {
+        "schema": "crpg_chess_position", "version": 3,
+        "board": {"rows": 8, "columns": 8, "type": "default"},
+        "current_turn": "white", "last_move": null, "global_turn_number": 1,
+        "battle": {"over": false, "result": "", "defeated_king_colors": []},
+        "lunacy": {"white": 0, "black": 0, "socratic_turns": {"white": 0, "black": 0}},
+        "random_states": {"lunacy": "101", "archer_volley": "202"},
+        "pieces": [
+          {"type":"classic_king","color":"black","id":"piece_2","coordinate":[0,7],"max_hp":1,"current_hp":1,"attack_power":1,"has_moved":false,"stunned":false,"stun_timer":0,"current_cooldown":0,"cooldown_reset_pending":false,"granted_movement_types":[],"custom":{}},
+          {"type":"rook","color":"white","id":"piece_3","coordinate":[4,4],"max_hp":1,"current_hp":1,"attack_power":1,"has_moved":false,"stunned":false,"stun_timer":0,"current_cooldown":0,"cooldown_reset_pending":false,"granted_movement_types":[],"custom":{}},
+          {"type":"classic_king","color":"white","id":"piece_1","coordinate":[7,7],"max_hp":1,"current_hp":1,"attack_power":1,"has_moved":false,"stunned":false,"stun_timer":0,"current_cooldown":0,"cooldown_reset_pending":false,"granted_movement_types":[],"custom":{}}
+        ],
+        "tile_effects": [], "autonomous_entities": []
+      },
+      "action": {}, "ai": {}, "context": {}
+    },
+    {
+      "index": 1,
+      "kind": "gameplay",
+      "label": "Rook → (4, 2)",
+      "position": {
+        "schema": "crpg_chess_position", "version": 3,
+        "board": {"rows": 8, "columns": 8, "type": "default"},
+        "current_turn": "black",
+        "last_move": {"from":[4,4],"to":[4,2],"piece_type":"rook","piece_color":"white"},
+        "global_turn_number": 1,
+        "battle": {"over": false, "result": "", "defeated_king_colors": []},
+        "lunacy": {"white": 0, "black": 0, "socratic_turns": {"white": 0, "black": 0}},
+        "random_states": {"lunacy": "101", "archer_volley": "202"},
+        "pieces": [
+          {"type":"classic_king","color":"black","id":"piece_2","coordinate":[0,7],"max_hp":1,"current_hp":1,"attack_power":1,"has_moved":false,"stunned":false,"stun_timer":0,"current_cooldown":0,"cooldown_reset_pending":false,"granted_movement_types":[],"custom":{}},
+          {"type":"rook","color":"white","id":"piece_3","coordinate":[4,2],"max_hp":1,"current_hp":1,"attack_power":1,"has_moved":true,"stunned":false,"stun_timer":0,"current_cooldown":0,"cooldown_reset_pending":false,"granted_movement_types":[],"custom":{}},
+          {"type":"classic_king","color":"white","id":"piece_1","coordinate":[7,7],"max_hp":1,"current_hp":1,"attack_power":1,"has_moved":false,"stunned":false,"stun_timer":0,"current_cooldown":0,"cooldown_reset_pending":false,"granted_movement_types":[],"custom":{}}
+        ],
+        "tile_effects": [], "autonomous_entities": []
+      },
+      "action": {"kind":0,"color":"white","piece_id":"piece_3","piece_type":"rook","from":[4,4],"target":[4,2],"path":[[4,2]]},
+      "ai": {}, "context": {}
+    }
+  ]
+}

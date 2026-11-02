@@ -30,6 +30,14 @@ func _test_import_and_legal_parity() -> void:
 		var core_actions := _core_action_keys(ClassicChessCore.legal_actions(imported.state, "white"))
 		var model_actions := _model_action_keys(model.get_legal_primary_actions("white"))
 		_expect(core_actions == model_actions, "default legal actions match ChessBoardModel")
+		for color in ["white", "black"]:
+			var analysis_actions := _core_action_keys(ClassicChessCore.analysis_actions(imported.state, color))
+			var original_turn := model.current_turn
+			model.current_turn = color
+			var model_analysis := _model_action_keys(model._collect_legal_primary_actions(color))
+			model.current_turn = original_turn
+			_expect(analysis_actions == model_analysis, "%s arbitrary-color analysis actions match ChessBoardModel" % color)
+		_expect(_direct_attack_signature(model, imported.state) == _core_attack_signature(imported.state), "pure direct-attack relationships match every Classic piece/square pair")
 		var exported := ClassicChessCore.export_position(imported.state)
 		_expect(exported != null and _piece_signature(exported) == _piece_signature(model.capture_position()), "settled state exports without piece drift")
 	model.free()
@@ -43,9 +51,12 @@ func _test_quiet_and_capture_parity() -> void:
 	var quiet_action := _find_core_action(quiet_import.state, quiet_model.board[4][4].piece_id, Vector2i(4, 2))
 	var before := _state_signature(quiet_import.state)
 	var quiet_result := ClassicChessCore.resolve_action(quiet_import.state, quiet_action)
+	var silent_result := ClassicChessCore.resolve_action(quiet_import.state, quiet_action, false)
 	_expect(quiet_result.status == ChessCoreStepResult.Status.COMPLETED, "quiet core move completes synchronously")
 	_expect(_state_signature(quiet_import.state) == before, "core action does not mutate its input")
 	_expect(_event_kinds(quiet_result.events) == [&"action_started", &"piece_moved", &"piece_landed", &"turn_changed", &"action_finished"], "quiet move emits presentation-independent events in authoritative order")
+	_expect(silent_result.events.is_empty(), "speculative resolution can suppress unconsumed semantic events")
+	_expect(_state_signature(silent_result.state) == _state_signature(quiet_result.state), "event suppression does not change authoritative resolution")
 	await quiet_model.submit_move(quiet_model.board[4][4], Vector2i(4, 2))
 	_expect(_piece_signature(ClassicChessCore.export_position(quiet_result.state)) == _piece_signature(quiet_model.capture_position()), "quiet move result matches ChessBoardModel")
 	quiet_model.free()
@@ -151,9 +162,9 @@ func _test_forced_pass_draw_and_rng() -> void:
 
 
 func _test_unsupported_imports() -> void:
-	var special_model := _model_with([ArakneKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
+	var special_model := _model_with([WraithKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
 	var special := special_model.capture_position()
-	_expect(not ClassicChessCore.import_position(special).ok, "special King positions are explicitly rejected")
+	_expect(not ClassicChessCore.import_position(special).ok, "unmigrated special King positions are explicitly rejected")
 	var hazard_model := _model_with([ClassicKing.new("white", Vector2i(7, 7)), ClassicKing.new("black", Vector2i(0, 7))])
 	var hazards := hazard_model.capture_position()
 	var effect := ChessTileEffectState.new(); effect.type_id = &"test"; effect.coordinate = Vector2i(4, 4); hazards.tile_effects.append(effect)
@@ -207,6 +218,33 @@ func _event_kinds(events: Array[ChessCoreEvent]) -> Array[StringName]:
 	var result: Array[StringName] = []
 	for event in events: result.append(event.kind)
 	return result
+
+
+func _direct_attack_signature(model: ChessBoardModel, state: ChessCoreState) -> Array[String]:
+	var occupancy := {}
+	for row in model.board:
+		for piece in row:
+			if piece != null: occupancy[piece.coordinate] = piece
+	var position := ChessAttackPosition.from_occupancy(Vector2i(8, 8), occupancy)
+	var result: Array[String] = []
+	for row in model.board:
+		for piece in row:
+			if piece == null: continue
+			for x in range(8):
+				for y in range(8):
+					var target := Vector2i(x, y)
+					if piece.can_directly_attack_square(piece.coordinate, target, position): result.append("%s|%s" % [piece.piece_id, target])
+	result.sort(); return result
+
+
+func _core_attack_signature(state: ChessCoreState) -> Array[String]:
+	var result: Array[String] = []
+	for piece in state.pieces:
+		for x in range(8):
+			for y in range(8):
+				var target := Vector2i(x, y)
+				if ClassicChessCore.directly_attacks_square(state, piece, target): result.append("%s|%s" % [piece.piece_id, target])
+	result.sort(); return result
 
 
 func _piece_signature(position: ChessPosition) -> String:

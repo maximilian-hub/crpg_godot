@@ -214,6 +214,7 @@ func _describe_action(action: ChessPrimaryAction) -> Dictionary:
 	return {
 		"kind": action.kind,
 		"piece_id": action.piece.piece_id,
+		"from": action.piece.coordinate,
 		"target": action.target,
 		"path": action.path.duplicate(),
 	}

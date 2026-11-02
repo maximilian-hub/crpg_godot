@@ -53,6 +53,7 @@ func capture_piece_state() -> ChessPieceState:
 	if self is KingPiece:
 		state.current_cooldown = (self as KingPiece).current_cooldown
 		state.cooldown_reset_pending = (self as KingPiece).cooldown_reset_pending
+		state.initial_cooldown_turn_pending = (self as KingPiece).initial_cooldown_turn_pending
 	state.custom_state = capture_custom_state()
 	return state
 
@@ -68,6 +69,7 @@ func restore_piece_state(state: ChessPieceState) -> void:
 	if self is KingPiece:
 		(self as KingPiece).current_cooldown = state.current_cooldown
 		(self as KingPiece).cooldown_reset_pending = state.cooldown_reset_pending
+		(self as KingPiece).initial_cooldown_turn_pending = state.initial_cooldown_turn_pending
 	restore_custom_state(state.custom_state)
 
 func capture_custom_state() -> Dictionary:
@@ -162,6 +164,8 @@ func print_piece():
 	print("~~~~~~~~~~~~~~~~~~~~")
 
 func _on_turn_changed(current_turn: String):
+	if model != null and model.active_live_authority == ChessBoardModel.LiveAuthority.CLASSIC_CORE:
+		return
 	if current_turn == color and stunned:
 		decrement_stun_timer()
 

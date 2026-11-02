@@ -6,7 +6,7 @@ static func validate(position: ChessPosition) -> ChessPositionValidation:
 	if position == null:
 		report.structural_errors.append("Position is null.")
 		return report
-	if position.schema_version != ChessPosition.CURRENT_SCHEMA_VERSION:
+	if position.schema_version not in [1, 2, 3, ChessPosition.CURRENT_SCHEMA_VERSION]:
 		report.structural_errors.append("Unsupported schema version: %s" % position.schema_version)
 	if position.board_size.x <= 0 or position.board_size.y <= 0:
 		report.structural_errors.append("Board dimensions must be positive.")

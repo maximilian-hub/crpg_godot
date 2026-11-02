@@ -1,7 +1,7 @@
 extends Resource
 class_name ChessPosition
 
-const CURRENT_SCHEMA_VERSION := 3
+const CURRENT_SCHEMA_VERSION := 4
 
 @export var schema_version: int = CURRENT_SCHEMA_VERSION
 @export var board_size := Vector2i(8, 8)
@@ -21,6 +21,7 @@ const CURRENT_SCHEMA_VERSION := 3
 ## rounds their full 64-bit state.
 @export var random_states := {}
 @export var global_turn_number := 1
+@export var active_ability_cooldowns_disabled := false
 
 func copy() -> ChessPosition:
 	var result := ChessPosition.new()
@@ -42,4 +43,5 @@ func copy() -> ChessPosition:
 	result.socratic_turns_by_color = socratic_turns_by_color.duplicate(true)
 	result.random_states = random_states.duplicate(true)
 	result.global_turn_number = global_turn_number
+	result.active_ability_cooldowns_disabled = active_ability_cooldowns_disabled
 	return result

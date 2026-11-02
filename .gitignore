@@ -21,3 +21,4 @@ __pycache__/
 
 #saved replays
 *.crpggame
+!tests/fixtures/**/*.crpggame

@@ -737,7 +737,7 @@ func _test_material_obligation_candidates() -> void:
 		ranked.append({"action": action, "policy": policy.score(action), "index": index})
 		index += 1
 	ranked.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
-	var candidates: Array[Dictionary] = brain._select_candidates(ranked, policy)
+	var candidates: Array[Dictionary] = await brain._select_candidates(ranked, policy)
 	var capture_reason: StringName = &""
 	for candidate in candidates:
 		if candidate.action.piece == queen and candidate.action.target == pawn.coordinate:
@@ -800,7 +800,7 @@ func _test_game3_imminent_spike_burst_obligation() -> void:
 		ranked.append({"action": action, "policy": policy.score(action), "index": index})
 		index += 1
 	ranked.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
-	var candidates := brain._select_candidates(ranked, policy)
+	var candidates := await brain._select_candidates(ranked, policy)
 	var saw_escape := false
 	for candidate in candidates:
 		if candidate.get("candidate_reason", &"") == &"material_obligation" and policy.ability_threat_after(candidate.action, knight, 1).is_empty():

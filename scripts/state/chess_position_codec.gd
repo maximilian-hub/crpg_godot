@@ -16,6 +16,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 			"stunned": piece.stunned, "stun_timer": piece.stun_timer,
 			"current_cooldown": piece.current_cooldown,
 			"cooldown_reset_pending": piece.cooldown_reset_pending,
+			"initial_cooldown_turn_pending": piece.initial_cooldown_turn_pending,
 			"granted_movement_types": Array(piece.granted_movement_types).map(func(value): return String(value)),
 			"custom": piece.custom_state.duplicate(true),
 		})
@@ -42,6 +43,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 		"board": {"rows": position.board_size.x, "columns": position.board_size.y, "type": String(position.board_type)},
 		"current_turn": position.current_turn, "last_move": last,
 		"global_turn_number": position.global_turn_number,
+		"rules": {"active_ability_cooldowns_disabled": position.active_ability_cooldowns_disabled},
 		"battle": {"over": position.battle_over, "result": position.battle_result, "defeated_king_colors": position.defeated_king_colors.duplicate()},
 		"lunacy": {"white": int(position.lunacy_by_color.get("white", 0)), "black": int(position.lunacy_by_color.get("black", 0)), "socratic_turns": position.socratic_turns_by_color.duplicate(true)},
 		"random_states": _encode_random_states(position.random_states),
@@ -65,17 +67,20 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	if data.get("schema", "") != "crpg_chess_position":
 		errors.append("Unknown position schema.")
 	var input_version := int(data.get("version", -1))
-	if input_version not in [1, 2, ChessPosition.CURRENT_SCHEMA_VERSION]:
+	if input_version not in [1, 2, 3, ChessPosition.CURRENT_SCHEMA_VERSION]:
 		errors.append("Unsupported position version.")
 	var board_data = data.get("board", {})
 	if not board_data is Dictionary:
 		errors.append("Board must be an object.")
 		board_data = {}
 	var position := ChessPosition.new()
-	position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION if input_version in [1, 2] else input_version
+	position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION if input_version in [1, 2, 3] else input_version
 	position.board_size = Vector2i(int(board_data.get("rows", 0)), int(board_data.get("columns", 0)))
 	position.board_type = StringName(board_data.get("type", "default"))
 	position.current_turn = String(data.get("current_turn", ""))
+	var rules = data.get("rules", {})
+	if rules is Dictionary:
+		position.active_ability_cooldowns_disabled = bool(rules.get("active_ability_cooldowns_disabled", false))
 	if data.has("global_turn_number"):
 		position.global_turn_number = maxi(1, int(data.get("global_turn_number", 1)))
 	else:
@@ -132,6 +137,7 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 		piece.stun_timer = int(raw.get("stun_timer", 0))
 		piece.current_cooldown = int(raw.get("current_cooldown", 0))
 		piece.cooldown_reset_pending = bool(raw.get("cooldown_reset_pending", false))
+		piece.initial_cooldown_turn_pending = bool(raw.get("initial_cooldown_turn_pending", false))
 		for movement_type in raw.get("granted_movement_types", []):
 			piece.granted_movement_types.append(StringName(movement_type))
 		var custom = raw.get("custom", {})

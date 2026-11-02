@@ -11,6 +11,9 @@ var attack_power := 1
 var has_moved := false
 var stunned := false
 var stun_timer := 0
+var current_cooldown := 0
+var cooldown_reset_pending := false
+var initial_cooldown_turn_pending := false
 
 
 static func from_piece_state(source: ChessPieceState) -> ChessCorePiece:
@@ -25,6 +28,9 @@ static func from_piece_state(source: ChessPieceState) -> ChessCorePiece:
 	result.has_moved = source.has_moved
 	result.stunned = source.stunned
 	result.stun_timer = source.stun_timer
+	result.current_cooldown = source.current_cooldown
+	result.cooldown_reset_pending = source.cooldown_reset_pending
+	result.initial_cooldown_turn_pending = source.initial_cooldown_turn_pending
 	return result
 
 
@@ -40,6 +46,9 @@ func copy() -> ChessCorePiece:
 	result.has_moved = has_moved
 	result.stunned = stunned
 	result.stun_timer = stun_timer
+	result.current_cooldown = current_cooldown
+	result.cooldown_reset_pending = cooldown_reset_pending
+	result.initial_cooldown_turn_pending = initial_cooldown_turn_pending
 	return result
 
 
@@ -55,8 +64,11 @@ func to_piece_state() -> ChessPieceState:
 	result.has_moved = has_moved
 	result.stunned = stunned
 	result.stun_timer = stun_timer
+	result.current_cooldown = current_cooldown
+	result.cooldown_reset_pending = cooldown_reset_pending
+	result.initial_cooldown_turn_pending = initial_cooldown_turn_pending
 	return result
 
 
 func is_king() -> bool:
-	return type_id == &"classic_king"
+	return type_id in [&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king"]

@@ -3,6 +3,7 @@ extends Node
 class_name ChessBoardModel
 
 enum StartupMode { DEFAULT_BATTLE, EMPTY }
+enum LiveAuthority { MODEL, CLASSIC_CORE }
 
 const TargetedAbilityContext := preload("res://scripts/core/chess_targeted_ability_presentation_context.gd")
 const PieceArrivalContext := preload("res://scripts/core/chess_piece_arrival_context.gd")
@@ -20,6 +21,10 @@ var board: Array = []
 ## DEFAULT_BATTLE preserves the live-game contract. Disposable search models set
 ## this before entering the SceneTree, then install an explicit ChessPosition.
 var startup_mode := StartupMode.DEFAULT_BATTLE
+var requested_live_authority := LiveAuthority.MODEL
+var active_live_authority := LiveAuthority.MODEL
+var live_authority_fallback_reason := ""
+var _classic_core_bridge: ClassicCoreLiveBridge
 ## ModelPiece Nodes are not SceneTree children, so the model must retain and
 ## release them explicitly. Destroyed pieces remain owned until replacement or
 ## disposal because presentation and reactions may still refer to them.
@@ -142,6 +147,7 @@ const NecromancerKing = preload("res://scripts/pieces/necromancer_king.gd")
 var custom_size = 16
 
 func _ready():
+	_classic_core_bridge = ClassicCoreLiveBridge.new(self)
 	_lunacy_rng.randomize()
 	_archer_volley_rng.randomize()
 	if startup_mode == StartupMode.DEFAULT_BATTLE:
@@ -170,6 +176,14 @@ func get_visibility_map(origin: Vector2i, minimum_visibility := LineOfSight.DEFA
 	return LineOfSight.build_visibility_map(board, origin, minimum_visibility)
 
 func capture_position() -> ChessPosition:
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null and _classic_core_bridge.active:
+		# A pending core choice is intentionally not exportable as a settled
+		# position; never substitute the partially projected facade.
+		return _classic_core_bridge.capture_position()
+	return _capture_projected_position()
+
+
+func _capture_projected_position() -> ChessPosition:
 	var position := ChessPosition.new()
 	position.board_size = Vector2i(board.size(), board[0].size() if not board.is_empty() else 0)
 	position.board_type = StringName(BOARD_TYPE)
@@ -184,6 +198,7 @@ func capture_position() -> ChessPosition:
 		&"archer_volley": _archer_volley_rng.state,
 	}
 	position.global_turn_number = global_turn_number
+	position.active_ability_cooldowns_disabled = active_ability_cooldowns_disabled
 	for row in board:
 		for piece in row:
 			if piece != null:
@@ -203,8 +218,9 @@ func load_position(position: ChessPosition) -> bool:
 	if not is_settled():
 		printerr("load_position: Model must be settled.")
 		return false
-	# Schema 1 predates non-physical board state; schema 2 predates RNG snapshots.
-	if position.schema_version in [1, 2]: position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION
+	# Schema 1 predates non-physical board state; schema 2 predates RNG snapshots;
+	# schema 3 predates authoritative ability-rule and initial-cooldown state.
+	if position.schema_version in [1, 2, 3]: position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION
 	var validation := ChessPositionValidator.validate(position)
 	if not validation.is_structurally_valid():
 		printerr("load_position: ", "; ".join(validation.structural_errors))
@@ -227,6 +243,10 @@ func load_position(position: ChessPosition) -> bool:
 		_reserve_state_id(piece.piece_id)
 		replacement[state.coordinate.x][state.coordinate.y] = piece
 		created.append(piece)
+	# From this point the replacement is committed. Stop exposing the previous
+	# core snapshot before any projection-rebuild signals can observe new pieces.
+	active_live_authority = LiveAuthority.MODEL
+	if _classic_core_bridge != null: _classic_core_bridge.deactivate()
 	_dispose_owned_pieces()
 	board = replacement
 	tile_effects.clear()
@@ -238,11 +258,6 @@ func load_position(position: ChessPosition) -> bool:
 	for piece in created:
 		inject_dependencies(piece)
 	current_turn = position.current_turn
-	# A loaded/editor-authored position is already in progress. Do not grant
-	# either side the one-time starting-cooldown hold used by a fresh battle.
-	for piece in created:
-		if piece is KingPiece:
-			(piece as KingPiece).mark_initial_turn_entered()
 	battle_over = position.battle_over
 	battle_result = position.battle_result
 	defeated_king_colors.assign(position.defeated_king_colors)
@@ -253,6 +268,18 @@ func load_position(position: ChessPosition) -> bool:
 	if position.random_states.has(&"archer_volley"):
 		_archer_volley_rng.state = int(position.random_states[&"archer_volley"])
 	global_turn_number = position.global_turn_number
+	active_ability_cooldowns_disabled = position.active_ability_cooldowns_disabled
+	# Dependency injection announces live cooldown state and may initialize a
+	# freshly-created King. Position replacement must retain the serialized rule
+	# state instead, including the one-time initial-turn hold.
+	for index in range(created.size()):
+		var restored_piece: ModelPiece = created[index]
+		if restored_piece is KingPiece:
+			var restored_king := restored_piece as KingPiece
+			var restored_state: ChessPieceState = position.pieces[index]
+			restored_king.current_cooldown = restored_state.current_cooldown
+			restored_king.cooldown_reset_pending = restored_state.cooldown_reset_pending
+			restored_king.initial_cooldown_turn_pending = restored_state.initial_cooldown_turn_pending
 	last_destroyed_piece = null
 	last_move = {}
 	if position.last_move != null and position.last_move.is_present:
@@ -275,8 +302,42 @@ func load_position(position: ChessPosition) -> bool:
 	consecutive_forced_passes = 0
 	is_initialized = true
 	position_revision += 1
+	_resynchronize_live_authority()
 	board_rebuilt.emit(board)
 	return true
+
+
+func set_live_authority(authority: LiveAuthority) -> bool:
+	if not is_settled(): return false
+	requested_live_authority = authority
+	return _resynchronize_live_authority()
+
+
+func _resynchronize_live_authority() -> bool:
+	if _classic_core_bridge == null: _classic_core_bridge = ClassicCoreLiveBridge.new(self)
+	if requested_live_authority != LiveAuthority.CLASSIC_CORE:
+		active_live_authority = LiveAuthority.MODEL
+		live_authority_fallback_reason = ""
+		_classic_core_bridge.deactivate()
+		return true
+	if _classic_core_bridge.synchronize_from_projection():
+		active_live_authority = LiveAuthority.CLASSIC_CORE
+		live_authority_fallback_reason = ""
+		return true
+	active_live_authority = LiveAuthority.MODEL
+	live_authority_fallback_reason = _classic_core_bridge.fallback_reason
+	return false
+
+
+func get_live_authority_diagnostics() -> Dictionary:
+	return {
+		"requested": LiveAuthority.keys()[requested_live_authority].to_lower(),
+		"active": LiveAuthority.keys()[active_live_authority].to_lower(),
+		"fallback_reason": live_authority_fallback_reason,
+		"core_resolutions": _classic_core_bridge.resolution_count if _classic_core_bridge != null else 0,
+		"rejected_transitions": _classic_core_bridge.rejected_transition_count if _classic_core_bridge != null else 0,
+		"projection_mismatches": _classic_core_bridge.projection_mismatch_count if _classic_core_bridge != null else 0,
+	}
 
 func initialize_board():
 	board.clear()
@@ -388,6 +449,8 @@ func inject_dependencies(piece: ModelPiece):
 
 func set_active_ability_cooldowns_disabled(disabled: bool) -> void:
 	active_ability_cooldowns_disabled = disabled
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		_classic_core_bridge.set_cooldowns_disabled(disabled)
 	if not disabled:
 		return
 	for row in board:
@@ -495,6 +558,8 @@ func add_piece(piece: ModelPiece, coord: Vector2i) -> bool:
 
 
 func get_legal_moves(piece: ModelPiece) -> Array:
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		return _classic_core_bridge.legal_moves(piece)
 	if not is_instance_valid(piece): # Basic safety check
 		printerr("Attempted to get moves for invalid piece instance.")
 		return []
@@ -577,6 +642,8 @@ func _collect_legal_primary_actions(color: String) -> Array[ChessPrimaryAction]:
 	var actions: Array[ChessPrimaryAction] = []
 	if color != current_turn or battle_over:
 		return actions
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		return _classic_core_bridge.legal_actions(color)
 
 	for row in board:
 		for piece in row:
@@ -706,6 +773,8 @@ func _finish_turn_entry_consequences() -> void:
 func resolve_unplayable_turns() -> bool:
 	if battle_over or action_in_progress or has_pending_reaction() or not selection_queue.is_empty() or forced_pass_in_progress:
 		return false
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		return await _classic_core_bridge.resolve_unplayable_turns()
 	if has_legal_primary_action(current_turn):
 		consecutive_forced_passes = 0
 		return false
@@ -839,6 +908,8 @@ func submit_move(piece: ModelPiece, to: Vector2i) -> bool:
 	if action_in_progress or battle_over or to not in get_legal_moves(piece):
 		return false
 	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, to)))
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		return await _classic_core_bridge.submit_move(piece, to)
 	await move_piece(piece, to)
 	return true
 
@@ -856,6 +927,8 @@ func submit_move_path(piece: ModelPiece, path: Array[Vector2i]) -> bool:
 	if not legal:
 		return false
 	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.MOVE, piece, path.back(), path)))
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		return await _classic_core_bridge.submit_move_path(piece, path)
 	await move_piece_path(piece, path)
 	return true
 
@@ -911,6 +984,8 @@ func submit_active_ability(king: KingPiece, target: Vector2i) -> bool:
 	if target not in king.get_active_ability_targets():
 		return false
 	primary_action_committed.emit(ActionCodec.describe(ChessPrimaryAction.new(ChessPrimaryAction.Kind.ACTIVE_ABILITY, king, target)))
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		return await _classic_core_bridge.submit_active_ability(king, target)
 	await perform_active_ability(king, target)
 	return true
 
@@ -1691,6 +1766,8 @@ func get_pending_reaction() -> Dictionary:
 	return pending_reaction.duplicate(true)
 
 func submit_reaction_selection(coord: Vector2i) -> bool:
+	if active_live_authority == LiveAuthority.CLASSIC_CORE and _classic_core_bridge != null:
+		return await _classic_core_bridge.submit_reaction_selection(coord)
 	if battle_over:
 		return false
 	if not action_in_progress:

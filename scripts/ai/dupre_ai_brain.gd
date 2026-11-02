@@ -6,6 +6,7 @@ const TacticalMap = preload("res://scripts/ai/dupre_tactical_map.gd")
 const OpeningBook = preload("res://scripts/ai/dupre_opening_book.gd")
 const OpeningSession = preload("res://scripts/ai/dupre_opening_session.gd")
 const QuiescencePolicy = preload("res://scripts/ai/dupre_quiescence_policy.gd")
+const ClassicCoreBackend = preload("res://scripts/ai/dupre_classic_core_backend.gd")
 const DEFAULT_CANDIDATE_LIMIT := 6
 const DEFAULT_MAX_BOOK_MOVES := 7
 const TACTICAL_SAFETY_MARGIN := 5.0
@@ -18,6 +19,7 @@ enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID, PRUNED }
 enum ExecutionStatus { COMPLETED, INCOMPLETE, INVALID }
 enum QuiescenceMode { CURRENT, DISABLED, IMMEDIATE_ONLY, TACTICAL }
 enum CompletionSchedule { BREADTH_FIRST, ESTABLISH_INCUMBENT }
+enum SimulationBackend { AUTO, MODEL, CLASSIC_CORE }
 
 var candidate_limit := DEFAULT_CANDIDATE_LIMIT
 var max_book_moves := DEFAULT_MAX_BOOK_MOVES
@@ -25,12 +27,15 @@ var quiescence_enabled := true
 var quiescence_mode := QuiescenceMode.TACTICAL
 var reduced_quiescence_evaluation := false
 var completion_schedule := CompletionSchedule.BREADTH_FIRST
+var simulation_backend := SimulationBackend.AUTO
 var previous_own_actions: Dictionary = {}
 var opening_session = OpeningSession.new()
 var _pending_book_action: Dictionary = {}
 var _tactical_map: DupreTacticalMap
 var _last_evaluation_complete := true
 var _evaluation_context_forcing := false
+var _active_simulation_backend := SimulationBackend.MODEL
+var _core_root_state: ChessCoreState
 
 
 static func unsupported_king_ids(model: ChessBoardModel) -> Array[StringName]:
@@ -73,12 +78,13 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		_finish_profile()
 		return null
 	phase_started = Time.get_ticks_usec()
-	var candidates := _select_candidates(ranked, policy)
+	var candidates := await _select_candidates(ranked, policy)
 	last_profile.candidate_selection_usec += Time.get_ticks_usec() - phase_started
 	_populate_policy_profile(policy)
 	last_profile["policy_candidate_count"] = candidates.size()
 	last_profile["unverified_selection"] = false
 	var root_position: ChessPosition = player.model.capture_position()
+	_configure_simulation_backend(root_position)
 	var records: Array[Dictionary] = []
 	for entry in candidates:
 		records.append(_new_candidate_record(entry))
@@ -238,6 +244,9 @@ func _new_candidate_record(entry: Dictionary) -> Dictionary:
 
 
 func _prepare_candidate(root_position: ChessPosition, record: Dictionary) -> void:
+	if _active_simulation_backend == SimulationBackend.CLASSIC_CORE:
+		await _prepare_core_candidate(record)
+		return
 	var simulation := await _make_model(root_position)
 	if simulation == null:
 		record.screen_status = ScreenStatus.INVALID
@@ -276,6 +285,51 @@ func _prepare_candidate(root_position: ChessPosition, record: Dictionary) -> voi
 	record["child_position"] = simulation.capture_position()
 	_record_phase(&"position_capture_usec", capture_started)
 	_free_model(simulation)
+	record.replies = replies
+	record.screen_status = ScreenStatus.READY
+	record.phase = &"prepared"
+
+
+func _prepare_core_candidate(record: Dictionary) -> void:
+	if _core_root_state == null:
+		record.screen_status = ScreenStatus.INVALID
+		record.phase = &"invalid"
+		last_profile.core_runtime_failure_count += 1
+		return
+	var execution_started := Time.get_ticks_usec()
+	var result := ClassicCoreBackend.resolve(_core_root_state, _describe_action(record.action))
+	_record_phase(&"core_resolution_usec", execution_started)
+	last_profile.core_resolution_count += 1
+	await _cooperate()
+	if result.status != ChessCoreStepResult.Status.COMPLETED:
+		record.screen_status = ScreenStatus.INVALID
+		record.phase = &"invalid"
+		last_profile.core_runtime_failure_count += 1
+		return
+	record.policy_reactions = result.resolved_reaction_colors.size()
+	_record_core_policy_reactions(result)
+	last_profile.prepared_root_candidates += 1
+	if result.state.battle_over:
+		record.screen_status = ScreenStatus.EXACT
+		record.score = ClassicCoreBackend.terminal_score(result.state, player.controlled_color)
+		record.screen_bound = record.score
+		record.terminal = true
+		record.phase = &"complete"
+		return
+	var legal_started := Time.get_ticks_usec()
+	var replies := ClassicCoreBackend.ordered_replies(result.state)
+	_record_core_legal_generation(legal_started)
+	last_profile.total_available_replies += replies.size()
+	for reply in replies:
+		if bool(reply.forcing): last_profile.forcing_reply_count += 1
+		else: last_profile.quiet_reply_count += 1
+	if replies.is_empty():
+		record.screen_status = ScreenStatus.EXACT
+		record.score = await _evaluate_core_state(result.state)
+		record.screen_bound = record.score
+		record.phase = &"complete"
+		return
+	record["child_state"] = result.state
 	record.replies = replies
 	record.screen_status = ScreenStatus.READY
 	record.phase = &"prepared"
@@ -326,6 +380,8 @@ func _advance_candidate_reply(record: Dictionary, forcing_only: bool, alpha: flo
 
 
 func _evaluate_record_reply(record: Dictionary, reply: Dictionary) -> Dictionary:
+	if _active_simulation_backend == SimulationBackend.CLASSIC_CORE:
+		return await _evaluate_core_record_reply(record, reply)
 	var leaf := await _make_model(record.child_position)
 	if leaf == null:
 		return {"valid": false}
@@ -343,6 +399,35 @@ func _evaluate_record_reply(record: Dictionary, reply: Dictionary) -> Dictionary
 	last_profile.evaluated_reply_count += 1
 	record.reply_scores[_reply_cache_key(reply)] = score
 	return {"valid": true, "complete": complete, "score": score}
+
+
+func _evaluate_core_record_reply(record: Dictionary, reply: Dictionary) -> Dictionary:
+	var child: ChessCoreState = record.get("child_state")
+	if child == null: return {"valid": false}
+	var execution_started := Time.get_ticks_usec()
+	var result := ClassicCoreBackend.resolve(child, reply)
+	_record_phase(&"core_resolution_usec", execution_started)
+	last_profile.core_resolution_count += 1
+	await _cooperate()
+	if result.status != ChessCoreStepResult.Status.COMPLETED:
+		last_profile.core_runtime_failure_count += 1
+		return {"valid": false}
+	record.policy_reactions = int(record.get("policy_reactions", 0)) + result.resolved_reaction_colors.size()
+	_record_core_policy_reactions(result)
+	_evaluation_context_forcing = bool(reply.get("forcing", false))
+	var score := await _evaluate_core_state(result.state)
+	_evaluation_context_forcing = false
+	var complete := _last_evaluation_complete
+	last_profile.evaluated_reply_count += 1
+	record.reply_scores[_reply_cache_key(reply)] = score
+	return {"valid": true, "complete": complete, "score": score}
+
+
+func _record_core_policy_reactions(result: ChessCoreStepResult) -> void:
+	for color in result.resolved_reaction_colors:
+		last_profile.policy_reactions_resolved += 1
+		if color == player.controlled_color: last_profile.own_policy_reactions_resolved += 1
+		else: last_profile.opponent_policy_reactions_resolved += 1
 
 
 func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
@@ -545,6 +630,87 @@ func _evaluate_model(model: ChessBoardModel, cached_actions: Dictionary = {}) ->
 	return best
 
 
+func _evaluate_core_state(state: ChessCoreState) -> float:
+	_last_evaluation_complete = true
+	var started := Time.get_ticks_usec()
+	var static_result := ClassicCoreBackend.evaluate_static(state, player.controlled_color, _evaluation_context_forcing, true)
+	last_profile.core_evaluation_count += 1
+	last_profile.core_legal_generation_count += 2
+	last_profile.legal_action_generation_count += 2
+	var yielded_usec := await _cooperate()
+	if not quiescence_enabled or quiescence_mode == QuiescenceMode.DISABLED or state.battle_over or state.current_turn != player.controlled_color:
+		_record_evaluation(started, yielded_usec)
+		return float(static_result.score)
+	var forcing: Array[Dictionary] = []
+	var classification_started := Time.get_ticks_usec()
+	for index in range(static_result.own_actions.size()):
+		var action: ChessCoreAction = static_result.own_actions[index]
+		var classification := ClassicCoreBackend.classify_quiescence(state, action)
+		_record_quiescence_classification(classification)
+		if int(classification.category) > QuiescencePolicy.Category.QUIET:
+			forcing.append({
+				"action": action, "category": classification.category,
+				"priority": classification.priority, "reason": classification.reason,
+				"index": index,
+			})
+			last_profile.quiescence_forcing_action_count += 1
+			if state.occupant(action.target) != null: last_profile.quiescence_capture_action_count += 1
+	last_profile.quiescence_classification_usec += Time.get_ticks_usec() - classification_started
+	forcing.sort_custom(func(a: Dictionary, b: Dictionary):
+		if int(a.category) != int(b.category): return int(a.category) > int(b.category)
+		if not is_equal_approx(float(a.priority), float(b.priority)): return float(a.priority) > float(b.priority)
+		return int(a.index) < int(b.index)
+	)
+	var unstable := not forcing.is_empty() or (_evaluation_context_forcing and _core_has_hanging_major(state))
+	if not unstable:
+		_record_evaluation(started, yielded_usec)
+		return float(static_result.score)
+	var best := float(static_result.score)
+	for entry in forcing:
+		if _dupre_budget_exhausted():
+			_last_evaluation_complete = false
+			last_profile.quiescence_incomplete_count += 1
+			_record_evaluation(started, yielded_usec)
+			return best
+		var resolve_started := Time.get_ticks_usec()
+		var result := ClassicCoreBackend.resolve(state, ClassicCoreBackend.describe(entry.action))
+		_record_phase(&"core_resolution_usec", resolve_started)
+		last_profile.core_resolution_count += 1
+		if result.status != ChessCoreStepResult.Status.COMPLETED:
+			_last_evaluation_complete = false
+			last_profile.core_runtime_failure_count += 1
+			last_profile.quiescence_incomplete_count += 1
+			_record_evaluation(started, yielded_usec)
+			return best
+		_record_core_policy_reactions(result)
+		var continuation := ClassicCoreBackend.evaluate_static(result.state, player.controlled_color, true, not reduced_quiescence_evaluation)
+		last_profile.core_evaluation_count += 1
+		if not reduced_quiescence_evaluation:
+			last_profile.core_legal_generation_count += 2
+			last_profile.legal_action_generation_count += 2
+		best = maxf(best, float(continuation.score))
+		last_profile.quiescence_node_count += 1
+		if last_profile.quiescence_extension_order.size() < 64:
+			last_profile.quiescence_extension_order.append({
+				"reason": entry.reason, "category": entry.category,
+				"action": ClassicCoreBackend.describe(entry.action),
+			})
+		yielded_usec += await _cooperate()
+	_record_evaluation(started, yielded_usec)
+	return best
+
+
+func _core_has_hanging_major(state: ChessCoreState) -> bool:
+	for piece in state.pieces:
+		if not piece.is_king() and _material_value_id(piece.type_id) >= 5.0 and ClassicCoreBackend.is_hanging(state, piece):
+			return true
+	return false
+
+
+func _material_value_id(type_id: StringName) -> float:
+	return float(MATERIAL_VALUES.get(type_id, 1.0))
+
+
 func _record_quiescence_classification(classification: Dictionary) -> void:
 	match int(classification.category):
 		QuiescencePolicy.Category.CRITICAL:
@@ -741,6 +907,27 @@ func _record_first_completion() -> void:
 		last_profile.time_to_first_completed_usec = Time.get_ticks_usec() - _search_started_usec
 
 
+func _configure_simulation_backend(position: ChessPosition) -> void:
+	_core_root_state = null
+	_active_simulation_backend = SimulationBackend.MODEL
+	last_profile.simulation_backend_requested = SimulationBackend.keys()[simulation_backend].to_lower()
+	last_profile.simulation_backend = &"model"
+	last_profile.simulation_backend_fallback_reason = &"forced_model" if simulation_backend == SimulationBackend.MODEL else &""
+	if simulation_backend == SimulationBackend.MODEL: return
+	var started := Time.get_ticks_usec()
+	var imported := ClassicChessCore.import_position(position)
+	last_profile.core_import_count += 1
+	last_profile.core_import_usec += Time.get_ticks_usec() - started
+	if not imported.ok:
+		last_profile.simulation_backend_fallback_reason = &"unsupported_position"
+		last_profile.simulation_backend_fallback_detail = String(imported.get("error", ""))
+		return
+	_core_root_state = imported.state
+	_active_simulation_backend = SimulationBackend.CLASSIC_CORE
+	last_profile.simulation_backend = &"classic_core"
+	last_profile.simulation_backend_fallback_reason = &""
+
+
 func reset_session(_reason: StringName = &"reset") -> void:
 	opening_session.reset()
 	# A reset makes the next valid position eligible for a fresh family.  The
@@ -781,6 +968,17 @@ func on_action_executed(action: ChessPrimaryAction, origin: Vector2i) -> void:
 
 
 func _begin_book_profile() -> void:
+	last_profile["simulation_backend_requested"] = SimulationBackend.keys()[simulation_backend].to_lower()
+	last_profile["simulation_backend"] = &"book_fast_path"
+	last_profile["simulation_backend_fallback_reason"] = &""
+	last_profile["simulation_backend_fallback_detail"] = ""
+	last_profile["core_import_count"] = 0
+	last_profile["core_import_usec"] = 0
+	last_profile["core_resolution_count"] = 0
+	last_profile["core_resolution_usec"] = 0
+	last_profile["core_legal_generation_count"] = 0
+	last_profile["core_evaluation_count"] = 0
+	last_profile["core_runtime_failure_count"] = 0
 	last_profile["opening_book_hit"] = false
 	last_profile["opening_book_fallback"] = false
 	last_profile["opening_book_override"] = false
@@ -1124,6 +1322,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 	for entry in ranked:
 		if player._is_immediate_win(entry.action):
 			_append_unique(selected, selected_keys, entry, &"immediate_win")
+		await _cooperate()
 	var king: ModelPiece = player.model.get_king(player.controlled_color)
 	var king_danger := false
 	if king != null:
@@ -1136,9 +1335,11 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			var minimum := 999
 			for entry in ranked:
 				minimum = mini(minimum, maxi(policy.direct_king_threat_count_after(entry.action), player._projected_king_threat_count(entry.action)))
+				await _cooperate()
 			for entry in ranked:
 				if maxi(policy.direct_king_threat_count_after(entry.action), player._projected_king_threat_count(entry.action)) == minimum:
 					_append_unique(selected, selected_keys, entry, &"king_safety")
+				await _cooperate()
 	var retained_king_attacks := 0
 	for entry in ranked:
 		if retained_king_attacks >= DIRECT_KING_ATTACK_CAP: break
@@ -1146,6 +1347,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			var before := selected.size()
 			_append_unique(selected, selected_keys, entry, &"king_attack")
 			if selected.size() > before: retained_king_attacks += 1
+		await _cooperate()
 	var retained_effects := 0
 	var verification_effects := 0
 	for entry in ranked:
@@ -1159,6 +1361,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			retained_effects += 1
 			if reason == &"ability_verification":
 				verification_effects += 1
+		await _cooperate()
 	last_profile.ability_effect_candidates = retained_effects
 	last_profile.ability_verification_candidates = verification_effects
 	for obligation in policy.ability_obligations(1):
@@ -1174,6 +1377,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 				responses.assign([entry])
 			elif is_equal_approx(remaining_loss, best_loss) and remaining_loss < float(obligation.loss):
 				responses.append(entry)
+			await _cooperate()
 		for entry in responses:
 			_append_unique(selected, selected_keys, entry, &"king_safety")
 	var hazard_obligations: Array = policy.scheduled_hazard_obligations(1)
@@ -1188,11 +1392,12 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 				hazard_responses.assign([entry])
 			elif is_equal_approx(remaining_hazard_loss, best_hazard_loss) and remaining_hazard_loss < float(obligation.loss):
 				hazard_responses.append(entry)
+			await _cooperate()
 		for entry in hazard_responses:
 			_append_unique(selected, selected_keys, entry, &"scheduled_hazard")
 		if obligation.piece.is_king:
 			king_danger = true
-	var obligations := _material_obligations(policy)
+	var obligations := await _material_obligations(policy)
 	last_profile.material_obligation_count = obligations.size()
 	for obligation in obligations:
 		var responses: Array[Dictionary] = []
@@ -1213,6 +1418,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 					"confidence": int(risk.confidence),
 					"captures_attacker": target_piece != null and attacker_ids.has(target_piece.piece_id),
 				})
+			await _cooperate()
 		responses.sort_custom(func(a: Dictionary, b: Dictionary):
 			if bool(a.captures_attacker) != bool(b.captures_attacker): return bool(a.captures_attacker)
 			if not is_equal_approx(float(a.loss), float(b.loss)): return float(a.loss) < float(b.loss)
@@ -1228,6 +1434,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			_append_unique(selected, selected_keys, entry, &"capture_king_attacker")
 		elif policy.capture_material_swing(entry.action) >= 3.0:
 			_append_unique(selected, selected_keys, entry, &"favorable_capture")
+		await _cooperate()
 	var retained_forcing := 0
 	for entry in ranked:
 		if not _layer_action_is_forcing(player.model, entry.action, player.controlled_color):
@@ -1239,6 +1446,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 				retained_forcing += 1
 		else:
 			last_profile.forcing_ability_deferred += 1
+		await _cooperate()
 	last_profile.forcing_ability_retained = retained_forcing
 	if king_danger or not obligations.is_empty() or not hazard_obligations.is_empty():
 		last_profile.danger_class = &"critical"
@@ -1253,6 +1461,7 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		_append_unique(selected, selected_keys, entry, &"policy")
 		if selected.size() > before:
 			ordinary_count += 1
+		await _cooperate()
 	return selected
 
 
@@ -1284,6 +1493,7 @@ func _material_obligations(policy) -> Array[Dictionary]:
 			last_profile.ability_threat_current_count += 1
 		else:
 			last_profile.ability_threat_next_turn_count += 1
+		await _cooperate()
 	for coordinate in policy.tactical_map.occupancy:
 		var piece = policy.tactical_map.occupancy[coordinate]
 		if not piece is ModelPiece or piece.color != player.controlled_color or piece.is_king:
@@ -1297,6 +1507,7 @@ func _material_obligations(policy) -> Array[Dictionary]:
 		var threshold := 0.01 if value >= 5.0 else SEVERE_MATERIAL_LOSS
 		if float(risk.loss) >= threshold:
 			result.append({"piece": piece, "loss": float(risk.loss), "confidence": int(risk.confidence), "sequence": risk.sequence})
+		await _cooperate()
 	result.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.loss) > float(b.loss))
 	return result
 
@@ -1321,6 +1532,12 @@ func _populate_tactical_profile() -> void:
 		return
 	last_profile.tactical_map_build_usec = _tactical_map.build_usec
 	last_profile.tactical_map_direct_attack_calls = _tactical_map.direct_attack_calls
+
+
+func _record_core_legal_generation(started_usec: int) -> void:
+	last_profile.core_legal_generation_count += 1
+	last_profile.legal_action_generation_count += 1
+	_record_phase(&"legal_action_generation_usec", started_usec)
 
 
 func _populate_policy_profile(policy) -> void:

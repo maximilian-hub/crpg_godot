@@ -52,6 +52,8 @@ var ai_mode_buttons := {}
 var ai_side_buttons := {}
 var ai_brain_options := {}
 var ai_brain_status_label: Label
+var authority_options: Array[OptionButton] = []
+var authority_status_labels: Array[Label] = []
 var think_button: Button
 var step_button: Button
 var speed_slider: HSlider
@@ -206,6 +208,7 @@ func _build_desktop_panel() -> void:
 	ai_brain_status_label = Label.new()
 	ai_brain_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	panel.add_child(ai_brain_status_label)
+	_add_authority_selector(panel)
 
 	think_button = _add_button("AI Think", think_ai)
 	execute_button = _add_button("AI Execute", execute_ai)
@@ -535,6 +538,7 @@ func _build_mobile_panel() -> void:
 	ai_brain_status_label = Label.new()
 	ai_brain_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ai_column.add_child(ai_brain_status_label)
+	_add_authority_selector(ai_column)
 	cooldowns_check = CheckButton.new()
 	cooldowns_check.text = "Disable Cooldowns"
 	cooldowns_check.toggled.connect(_on_cooldowns_toggled)
@@ -824,6 +828,10 @@ func _add_ai_side_button(parent: Control, label: String, color: String) -> void:
 	ai_side_buttons[color] = button
 
 func _add_labeled_control(label_text: String, control: Control) -> void:
+	_add_labeled_control_to(panel, label_text, control)
+
+
+func _add_labeled_control_to(parent: Control, label_text: String, control: Control) -> void:
 	var row := HBoxContainer.new()
 	var label := Label.new()
 	label.text = label_text
@@ -831,7 +839,7 @@ func _add_labeled_control(label_text: String, control: Control) -> void:
 	row.add_child(label)
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(control)
-	panel.add_child(row)
+	parent.add_child(row)
 
 func _make_compact_labeled_control(label_text: String, control: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -1070,6 +1078,22 @@ func _on_brain_selected(color: String, kind: ChessCpuPlayer.BrainKind) -> void:
 	_apply_ai_configuration()
 	_apply_play_control()
 	_refresh_control_states()
+
+
+func _add_authority_selector(parent: Control) -> void:
+	var option := OptionButton.new()
+	option.add_item("Model", ChessBoardModel.LiveAuthority.MODEL)
+	option.add_item("Pure Core — Classic/Arakne/Necromancer/Minotaur (Experimental)", ChessBoardModel.LiveAuthority.CLASSIC_CORE)
+	option.item_selected.connect(func(index: int):
+		model.set_live_authority(option.get_item_id(index))
+		_refresh_control_states()
+	)
+	authority_options.append(option)
+	_add_labeled_control_to(parent, "Rules Authority", option)
+	var status := Label.new()
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	parent.add_child(status)
+	authority_status_labels.append(status)
 
 
 func _brain_configuration_error(requested_mode: int = -1) -> String:
@@ -1478,6 +1502,16 @@ func _refresh_control_states() -> void:
 		var brain_error := _brain_configuration_error()
 		ai_brain_status_label.text = brain_error
 		ai_brain_status_label.modulate = Color("e87568") if not brain_error.is_empty() else Color("9a96a3")
+	var authority_diagnostics := model.get_live_authority_diagnostics()
+	for option in authority_options:
+		option.disabled = replay_mode or not settled or ai_thinking
+		option.select(option.get_item_index(model.requested_live_authority))
+	for status in authority_status_labels:
+		var active_authority := String(authority_diagnostics.active)
+		var fallback := String(authority_diagnostics.fallback_reason)
+		status.text = "Active: %s" % ("Classic Core" if active_authority == "classic_core" else "Model")
+		if not fallback.is_empty(): status.text += "\nFallback: " + fallback
+		status.modulate = Color("e87568") if not fallback.is_empty() else (COLOR_CYAN if active_authority == "classic_core" else Color("9a96a3"))
 	if speed_slider != null:
 		var adapter: ChessPresentationAdapter = $ChessGame/ChessPresentationAdapter
 		var speed: int = adapter.presentation_policy.speed
