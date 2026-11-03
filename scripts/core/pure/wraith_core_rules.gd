@@ -6,6 +6,7 @@ const ABILITY_ID := &"summon_wraith"
 const DAMAGE := 1
 const MOVE_INTERVAL_ROUNDS := 3
 const MAX_ACTIVE_WRAITHS := 2
+const CURSE_MARK_RANDOM_STREAM: StringName = &"wraith_curse_mark"
 
 
 static func base_cooldown() -> int:

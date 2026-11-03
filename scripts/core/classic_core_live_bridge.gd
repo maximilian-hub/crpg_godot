@@ -896,7 +896,11 @@ func _present_turn_entry_consequences(events: Array[ChessCoreEvent]) -> void:
 	var archer_presentation: PieceArrivalContext
 	var archer_defender_id := ""
 	for event in events:
-		if event.kind == &"archer_attack_committed":
+		if event.kind == &"tile_effect_removed" and StringName(event.data.get("type_id", &"")) == &"cursed_mark":
+			_present_tile_effect_removed(event)
+		elif event.kind == &"tile_effect_added" and StringName(event.data.get("spawn_reason", &"")) == &"wraith_projectile_capture":
+			_present_tile_effect_added(event, state)
+		elif event.kind == &"archer_attack_committed":
 			var attacker := model.find_piece_by_id(String(event.data.get("attacker_id", ""))) as ArcherKing
 			var defender := model.find_piece_by_id(String(event.data.get("defender_id", "")))
 			if attacker != null and defender != null:
@@ -965,6 +969,13 @@ func _present_turn_entry_consequences(events: Array[ChessCoreEvent]) -> void:
 		elif presenting_wraith and event.kind == &"autonomous_entity_removed":
 			await _present_entity_removed(event)
 			presenting_wraith = false
+		elif event.kind == &"piece_destroyed":
+			# A lethal Wraith impact removes the projectile before reporting the
+			# target's destruction. Keep destruction presentation independent of
+			# the projectile's lifetime so the defeated view and its effect are not
+			# left behind after the authoritative piece has gone away.
+			var destroyed := model.find_piece_by_id(String(event.data.get("piece_id", "")))
+			if destroyed != null: model.destroy_piece(destroyed, true)
 		elif event.kind == &"autonomous_entity_removed":
 			var removed_entity := _model_entity(String(event.data.get("entity_id", "")))
 			if removed_entity != null and removed_entity.type_id == &"wraith": await _present_entity_removed(event)
@@ -978,7 +989,8 @@ func _model_entity(entity_id: String) -> ChessAutonomousEntityState:
 
 func _present_tile_effect_additions(events: Array[ChessCoreEvent], core_state: ChessCoreState) -> void:
 	for event in events:
-		if event.kind == &"tile_effect_added": _present_tile_effect_added(event, core_state)
+		if event.kind == &"tile_effect_added" and StringName(event.data.get("spawn_reason", &"")) != &"wraith_projectile_capture":
+			_present_tile_effect_added(event, core_state)
 
 
 func _present_tile_effect_added(event: ChessCoreEvent, core_state: ChessCoreState) -> void:
@@ -1012,7 +1024,7 @@ func _present_archer_state_events(events: Array[ChessCoreEvent]) -> void:
 func _present_archer_effect_events(events: Array[ChessCoreEvent]) -> void:
 	_present_archer_state_events(events)
 	for event in events:
-		if event.kind == &"tile_effect_removed":
+		if event.kind == &"tile_effect_removed" and StringName(event.data.get("type_id", &"")) == &"archer_arrow":
 			_present_tile_effect_removed(event)
 		elif event.kind == &"archer_arrow_dropped":
 			var effect_id := String(event.data.get("effect_id", ""))

@@ -13,7 +13,12 @@ const MAX_CONSECUTIVE_FORCED_PASSES := 6
 static func randomized_random_states() -> Dictionary:
 	var lunacy := RandomNumberGenerator.new(); lunacy.randomize()
 	var volley := RandomNumberGenerator.new(); volley.randomize()
-	return {&"lunacy": lunacy.state, &"archer_volley": volley.state}
+	var curse_mark := RandomNumberGenerator.new(); curse_mark.randomize()
+	return {
+		&"lunacy": lunacy.state,
+		&"archer_volley": volley.state,
+		WraithCoreRules.CURSE_MARK_RANDOM_STREAM: curse_mark.state,
+	}
 
 
 static func seeded_random_state(seed: int) -> int:
@@ -822,11 +827,28 @@ static func _commit_capture(state: ChessCoreState, attacker: ChessCorePiece, def
 	_append_event(events, emit_events, &"piece_landed", {"piece_id": attacker.piece_id, "from": origin, "to": target})
 	_collect_archer_arrows(state, attacker, target, events, emit_events)
 	if attacker.type_id == &"wraith_king" and state.piece_by_id(attacker.piece_id) != null:
-		_add_cursed_mark(state, captured_at, attacker, events, emit_events)
+		_add_random_cursed_mark(state, attacker, events, emit_events, &"king_capture")
 		_wraith_on_landed(state, attacker, events, emit_events)
 
 
-static func _add_cursed_mark(state: ChessCoreState, coordinate: Vector2i, wraith: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
+static func _add_random_cursed_mark(state: ChessCoreState, wraith: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool, spawn_reason: StringName, entity_id := "") -> void:
+	if wraith == null or state.piece_by_id(wraith.piece_id) == null:
+		return
+	var candidates: Array[Vector2i] = []
+	for row in range(state.board_size.x):
+		for column in range(state.board_size.y):
+			var coordinate := Vector2i(row, column)
+			if not state.has_effect(&"cursed_mark", coordinate):
+				candidates.append(coordinate)
+	if candidates.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.state = int(state.random_states.get(
+		WraithCoreRules.CURSE_MARK_RANDOM_STREAM,
+		seeded_random_state(0)
+	))
+	var coordinate := candidates[rng.randi_range(0, candidates.size() - 1)]
+	state.random_states[WraithCoreRules.CURSE_MARK_RANDOM_STREAM] = rng.state
 	var effect := ChessCoreTileEffect.new()
 	effect.effect_id = state.allocate_state_id("effect")
 	effect.type_id = &"cursed_mark"
@@ -834,13 +856,20 @@ static func _add_cursed_mark(state: ChessCoreState, coordinate: Vector2i, wraith
 	effect.owner_color = wraith.color
 	effect.source_piece_id = wraith.piece_id
 	state.add_effect(effect)
-	_append_event(events, emit_events, &"tile_effect_added", {"effect_id": effect.effect_id, "type_id": effect.type_id, "coordinate": coordinate, "owner_color": effect.owner_color, "source_piece_id": effect.source_piece_id})
+	_append_event(events, emit_events, &"tile_effect_added", {
+		"effect_id": effect.effect_id,
+		"type_id": effect.type_id,
+		"coordinate": coordinate,
+		"owner_color": effect.owner_color,
+		"source_piece_id": effect.source_piece_id,
+		"spawn_reason": spawn_reason,
+		"entity_id": entity_id,
+	})
 
 
 static func _wraith_on_landed(state: ChessCoreState, wraith: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
-	if wraith == null or wraith.type_id != &"wraith_king" or bool(state.resolution_context.get("wraith_bonus_used", false)) or not state.has_effect(&"cursed_mark", wraith.coordinate, wraith.piece_id):
+	if wraith == null or wraith.type_id != &"wraith_king" or not state.has_effect(&"cursed_mark", wraith.coordinate):
 		return
-	state.resolution_context["wraith_bonus_used"] = true
 	state.next_reaction_sequence += 1
 	var reaction := ChessCoreReaction.new()
 	reaction.calling_piece_id = wraith.piece_id
@@ -852,11 +881,11 @@ static func _wraith_on_landed(state: ChessCoreState, wraith: ChessCorePiece, eve
 	_append_event(events, emit_events, &"reaction_queued", {"piece_id": wraith.piece_id, "action_type": reaction.action_type, "event_coordinate": reaction.event_coordinate, "sequence": reaction.sequence})
 
 
-static func _remove_cursed_mark(state: ChessCoreState, coordinate: Vector2i, source_piece_id: String, events: Array[ChessCoreEvent], emit_events: bool) -> bool:
+static func _remove_cursed_mark(state: ChessCoreState, coordinate: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> bool:
 	for effect in state.tile_effects.duplicate():
-		if effect.type_id == &"cursed_mark" and effect.coordinate == coordinate and effect.source_piece_id == source_piece_id:
+		if effect.type_id == &"cursed_mark" and effect.coordinate == coordinate:
 			state.remove_effect(effect)
-			_append_event(events, emit_events, &"tile_effect_removed", {"effect_id": effect.effect_id, "type_id": effect.type_id, "coordinate": coordinate, "source_piece_id": source_piece_id})
+			_append_event(events, emit_events, &"tile_effect_removed", {"effect_id": effect.effect_id, "type_id": effect.type_id, "coordinate": coordinate, "source_piece_id": effect.source_piece_id})
 			return true
 	return false
 
@@ -918,6 +947,16 @@ static func _destroy_piece(state: ChessCoreState, piece: ChessCorePiece, coordin
 	if piece.is_king() and piece.color not in state.defeated_king_colors:
 		state.defeated_king_colors.append(piece.color)
 	_queue_raise_dead(state, piece, coordinate, events, emit_events)
+	if piece.type_id == &"wraith_king":
+		for effect in state.tile_effects.duplicate():
+			if effect.type_id == &"cursed_mark" and effect.source_piece_id == piece.piece_id:
+				state.remove_effect(effect)
+				_append_event(events, emit_events, &"tile_effect_removed", {
+					"effect_id": effect.effect_id,
+					"type_id": effect.type_id,
+					"coordinate": effect.coordinate,
+					"source_piece_id": effect.source_piece_id,
+				})
 	for entity in state.autonomous_entities.duplicate():
 		if entity.source_piece_id != piece.piece_id and entity.target_piece_id != piece.piece_id: continue
 		state.remove_entity(entity)
@@ -1074,7 +1113,7 @@ static func _prepare_next_reaction(state: ChessCoreState, events: Array[ChessCor
 
 static func _lingering_malice_targets(state: ChessCoreState, wraith: ChessCorePiece, event_coordinate: Vector2i) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
-	if wraith == null or wraith.type_id != &"wraith_king" or wraith.coordinate != event_coordinate or not state.has_effect(&"cursed_mark", event_coordinate, wraith.piece_id):
+	if wraith == null or wraith.type_id != &"wraith_king" or wraith.coordinate != event_coordinate or not state.has_effect(&"cursed_mark", event_coordinate):
 		return result
 	result.append(wraith.coordinate)
 	for offset: Vector2i in [Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(1, 1)]:
@@ -1095,8 +1134,8 @@ static func _resolve_lingering_malice_choice(source: ChessCoreState, option, emi
 		return ChessCoreStepResult.rejected(source, "The Lingering Malice choice is no longer legal.")
 	state.pending_choice = null
 	_append_event(result.events, emit_events, &"reaction_selection_committed", {"piece_id": wraith.piece_id, "action_type": choice.action_type, "target": option, "sequence": choice.sequence})
-	_remove_cursed_mark(state, wraith.coordinate, wraith.piece_id, result.events, emit_events)
 	if option != wraith.coordinate:
+		_remove_cursed_mark(state, wraith.coordinate, result.events, emit_events)
 		var origin := wraith.coordinate
 		var occupant := state.occupant(option)
 		if occupant == null:
@@ -1104,6 +1143,7 @@ static func _resolve_lingering_malice_choice(source: ChessCoreState, option, emi
 			wraith.has_moved = true
 			_append_event(result.events, emit_events, &"piece_moved", {"piece_id": wraith.piece_id, "from": origin, "to": option})
 			_append_event(result.events, emit_events, &"piece_landed", {"piece_id": wraith.piece_id, "from": origin, "to": option})
+			_wraith_on_landed(state, wraith, result.events, emit_events)
 		elif occupant.current_hp <= wraith.attack_power:
 			_commit_capture(state, wraith, occupant, option, option, result.events, emit_events)
 		else:
@@ -1511,15 +1551,23 @@ static func _run_wraith_phase(state: ChessCoreState, owner_color: String, events
 			state.remove_entity(entity)
 			_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": entity.entity_id, "reason": &"invalid_target"})
 			continue
-		var from: Vector2i = entity.coordinate
-		var delta: Vector2i = target.coordinate - entity.coordinate
-		var destination: Vector2i = entity.coordinate + Vector2i(signi(delta.x), signi(delta.y))
-		entity.coordinate = destination
-		_append_event(events, emit_events, &"autonomous_entity_moved", {"entity_id": entity.entity_id, "from": from, "to": destination})
-		if destination == target.coordinate and state.piece_by_id(target.piece_id) != null:
-			_deal_damage(state, target, WraithCoreRules.DAMAGE, events, emit_events)
-			state.remove_entity(entity)
-			_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": entity.entity_id, "reason": &"reached_target"})
+		while entity in state.autonomous_entities:
+			var from: Vector2i = entity.coordinate
+			var delta: Vector2i = target.coordinate - entity.coordinate
+			var destination: Vector2i = entity.coordinate + Vector2i(signi(delta.x), signi(delta.y))
+			entity.coordinate = destination
+			_append_event(events, emit_events, &"autonomous_entity_moved", {"entity_id": entity.entity_id, "from": from, "to": destination})
+			if destination == target.coordinate and state.piece_by_id(target.piece_id) != null:
+				_deal_damage(state, target, WraithCoreRules.DAMAGE, events, emit_events)
+				var captured := state.piece_by_id(target.piece_id) == null
+				if entity in state.autonomous_entities:
+					state.remove_entity(entity)
+					_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": entity.entity_id, "reason": &"reached_target"})
+				if captured:
+					_add_random_cursed_mark(state, source, events, emit_events, &"wraith_projectile_capture", entity.entity_id)
+				break
+			if not _remove_cursed_mark(state, destination, events, emit_events):
+				break
 		if not state.defeated_king_colors.is_empty(): return
 
 

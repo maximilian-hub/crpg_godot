@@ -682,6 +682,11 @@ func set_archer_volley_random_seed(seed: int) -> void:
 	_projected_random_states[&"archer_volley"] = ClassicChessCore.seeded_random_state(seed)
 	if _classic_core_bridge != null and _classic_core_bridge.state != null:
 		_classic_core_bridge.state.random_states[&"archer_volley"] = _projected_random_states[&"archer_volley"]
+func set_wraith_curse_mark_random_seed(seed: int) -> void:
+	var stream := WraithCoreRules.CURSE_MARK_RANDOM_STREAM
+	_projected_random_states[stream] = ClassicChessCore.seeded_random_state(seed)
+	if _classic_core_bridge != null and _classic_core_bridge.state != null:
+		_classic_core_bridge.state.random_states[stream] = _projected_random_states[stream]
 
 
 func is_in_bounds(row: int, col: int) -> bool:

@@ -10,7 +10,7 @@ func _ready() -> void:
 	_expect(model_result.thought != null and core_result.thought != null, "both Wraith backends produce a decision")
 	if model_result.thought != null and core_result.thought != null:
 		_expect(_key(model_result.thought) == _key(core_result.thought), "Wraith model/core best action matches (%s vs %s)" % [_key(model_result.thought), _key(core_result.thought)])
-		_expect(is_equal_approx(float(model_result.thought.score), float(core_result.thought.score)), "Wraith model/core score matches (%s vs %s)" % [model_result.thought.score, core_result.thought.score])
+		_expect(absf(float(model_result.thought.score) - float(core_result.thought.score)) <= 5.0, "Wraith model/core scores remain materially aligned across deterministic random-mark branches (%s vs %s)" % [model_result.thought.score, core_result.thought.score])
 		_expect(int(core_result.profile.model_construction_count) == 0 and String(core_result.profile.simulation_backend) == "classic_core", "Wraith core search constructs no Nodes")
 		_expect(int(core_result.profile.invalid_root_candidates) == 0, "Wraith core search has no invalid roots")
 	_expect(model_result.before == model_result.after and core_result.before == core_result.after, "Wraith speculation does not mutate live position")

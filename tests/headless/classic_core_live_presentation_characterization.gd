@@ -23,6 +23,7 @@ func _ready() -> void:
 	await _test_promotion()
 	await _test_arakne_presentation()
 	await _test_necromancer_presentation()
+	await _test_wraith_projectile_capture_presentation()
 	await _test_minotaur_presentation()
 	await _test_quarterly_presentation()
 	if failures.is_empty():
@@ -153,6 +154,50 @@ func _test_minotaur_presentation() -> void:
 	var live_victim := model.board[3][3] as ModelPiece
 	_expect(await model.submit_move(model.board[4][0], Vector2i(4, 4)), "presented automatic Rage completes")
 	_expect(not adapter.piece_views.has(live_victim) and model.board[3][3] == null and model.is_settled(), "Rage presentation removes destroyed adjacent-piece visuals and settles")
+
+
+func _test_wraith_projectile_capture_presentation() -> void:
+	var source := WraithKing.new("white", Vector2i(7, 7))
+	var mover := Rook.new("white", Vector2i(6, 0))
+	var target := Pawn.new("black", Vector2i(3, 3))
+	var defender_king := ClassicKing.new("black", Vector2i(0, 7))
+	source.piece_id = "piece_wraith_source_fixture"
+	mover.piece_id = "piece_wraith_mover_fixture"
+	target.piece_id = "piece_wraith_target_fixture"
+	defender_king.piece_id = "piece_wraith_defender_king_fixture"
+	var position := ChessPosition.new()
+	position.current_turn = "white"
+	position.global_turn_number = 4
+	for piece in [source, mover, target, defender_king]:
+		position.pieces.append(piece.capture_piece_state())
+	var entity := ChessAutonomousEntityState.new()
+	entity.entity_id = "entity_wraith_capture_fixture"
+	entity.type_id = &"wraith"
+	entity.coordinate = Vector2i(4, 4)
+	entity.owner_color = "white"
+	entity.source_piece_id = source.piece_id
+	entity.target_piece_id = target.piece_id
+	entity.custom_state = {"next_move_turn": 4}
+	position.autonomous_entities.append(entity)
+	_expect(model.load_position(position), "lethal Wraith presentation fixture loads")
+	_expect(model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE), "lethal Wraith fixture activates core authority")
+	var live_mover := model.find_piece_by_id(mover.piece_id)
+	var live_target := model.find_piece_by_id(target.piece_id)
+	var target_view := adapter.get_piece_view(live_target)
+	var explosion_seen := {"value": false}
+	var observe_explosion := func(child: Node):
+		if child.name == &"Explosion": explosion_seen.value = true
+	adapter.view.child_entered_tree.connect(observe_explosion)
+	adapter.presentation_policy.speed = ChessPresentationPolicy.Speed.FAST
+	var old_wraith_duration := adapter.wraith_move_duration
+	adapter.wraith_move_duration = 0.01
+	_expect(await model.submit_move(live_mover, Vector2i(6, 1)), "lethal Wraith projectile turn completes")
+	await get_tree().process_frame
+	adapter.view.child_entered_tree.disconnect(observe_explosion)
+	adapter.wraith_move_duration = old_wraith_duration
+	adapter.presentation_policy.speed = ChessPresentationPolicy.Speed.INSTANT
+	_expect(explosion_seen.value, "lethal Wraith projectile uses the canned explosion presentation")
+	_expect(model.find_piece_by_id(target.piece_id) == null and not adapter.piece_views.has(live_target) and not is_instance_valid(target_view), "lethal Wraith projectile removes the captured piece and its sprite")
 
 
 func _test_quarterly_presentation() -> void:
