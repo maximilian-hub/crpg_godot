@@ -101,7 +101,7 @@ func score(action: ChessPrimaryAction) -> float:
 		_record_component(&"score_total", total_started, action)
 		return result
 	component_started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
-	if creates_new_king_threat(action):
+	if creates_new_king_threat(action) and not is_survivable_king_counterattack(action):
 		result -= NEW_KING_THREAT_PENALTY
 	var origin := action.piece.coordinate
 	var destination := action.target
@@ -400,12 +400,20 @@ func action_effect_assessment(action: ChessPrimaryAction) -> Dictionary:
 		"lethal_king": false,
 		"effect_count": 0,
 		"effects": [],
+		"candidate_group": &"",
+		"strategic_priority": 0,
+		"strategic_reason": &"",
 	}
 	for effect in action_effects(action):
 		if not effect.is_valid():
 			continue
 		result.effect_count += 1
 		result.effects.append(effect.to_diagnostic())
+		var strategic_priority := int(effect.metadata.get("strategic_priority", 0))
+		if strategic_priority > int(result.strategic_priority):
+			result.strategic_priority = strategic_priority
+			result.strategic_reason = StringName(effect.metadata.get("strategic_reason", &""))
+			result.candidate_group = StringName(effect.metadata.get("candidate_group", &""))
 		if effect.certainty != DupreAbilityEffect.Certainty.CERTAIN:
 			result.uncertain = true
 			result.requires_verification = true
@@ -566,6 +574,35 @@ func captures_current_king_attacker(action: ChessPrimaryAction) -> bool:
 		if attacker == target:
 			return true
 	return false
+
+
+func is_survivable_king_counterattack(action: ChessPrimaryAction) -> bool:
+	var king: ModelPiece = model.get_king(color)
+	if king == null or action.piece != king or not captures_current_king_attacker(action):
+		return false
+	var projected := projected_map(action)
+	if not _projected_piece_is(projected, action.target, king):
+		return false
+	var direct_attackers := projected.attackers(action.target, _other_color(color))
+	var maximum_damage := 0
+	for attacker in direct_attackers:
+		maximum_damage = maxi(maximum_damage, int(attacker.attack_power))
+	if comprehensive_king_threat_count_after(action) > direct_attackers.size():
+		return false
+	var captured: ModelPiece = model.board[action.target.x][action.target.y]
+	return maximum_damage < king.current_hp and (maximum_damage == 0 or (captured != null and _piece_value(captured) >= 3.0))
+
+
+func maximum_direct_king_damage_after(action: ChessPrimaryAction) -> int:
+	var king: ModelPiece = model.get_king(color)
+	if king == null:
+		return 999
+	var projected := projected_map(action)
+	var coordinate := action.target if action.kind == ChessPrimaryAction.Kind.MOVE and action.piece == king and _projected_piece_is(projected, action.target, king) else king.coordinate
+	var result := 0
+	for attacker in projected.attackers(coordinate, _other_color(color)):
+		result = maxi(result, int(attacker.attack_power))
+	return result
 
 
 func projection_metrics() -> Dictionary:

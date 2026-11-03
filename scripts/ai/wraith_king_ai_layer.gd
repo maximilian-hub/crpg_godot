@@ -45,7 +45,17 @@ func describe_ability_action(model: ChessBoardModel, action: ChessPrimaryAction,
 	effect.lethal = target.current_hp <= effect.damage
 	effect.certainty = AbilityEffect.Certainty.CONDITIONAL
 	effect.ready_in_turn_entries = WraithPolicy.travel_rounds(action.piece.coordinate, target.coordinate)
-	effect.metadata = {"autonomous_entity": &"wraith", "tracks_piece": true, "high_impact": target.is_king}
+	var already_targeted := model.get_wraith_entities_from_source(action.piece.piece_id).any(
+		func(entity: ChessAutonomousEntityState): return entity.target_piece_id == target.piece_id
+	)
+	effect.metadata = {
+		"autonomous_entity": &"wraith",
+		"tracks_piece": true,
+		"high_impact": target.is_king,
+		"candidate_group": &"wraith_summon",
+		"strategic_priority": 2 if target.is_king and not already_targeted else 0,
+		"strategic_reason": &"wraith_king_pressure" if target.is_king and not already_targeted else &"",
+	}
 	return [effect]
 
 

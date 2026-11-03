@@ -39,6 +39,8 @@ func _ready() -> void:
 	_test_ability_effect_contract()
 	_test_ability_effect_interpretation()
 	_test_timeout_fallback_risk_evidence()
+	await _test_wraith_strategic_summon_candidates()
+	await _test_survivable_king_counterattack()
 	_test_position_history_signatures()
 	await _test_settled_position_history_lifecycle()
 	_test_necromancer_removable_summon_policy()
@@ -683,6 +685,84 @@ func _test_timeout_fallback_risk_evidence() -> void:
 	records[1].forcing_coverage_complete = false
 	_expect(cpu.brain._best_screened_fallback(records).action == dangerous, "an unrefuted direct King attack retains mandatory priority among equally uncertain candidates")
 	_cleanup(cpu, model)
+
+
+func _test_wraith_strategic_summon_candidates() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var wraith := WraithKing.new("black", Vector2i(0, 4))
+	var enemy_king := ClassicKing.new("white", Vector2i(7, 4))
+	for piece in [wraith, enemy_king, Queen.new("white", Vector2i(7, 3)), Rook.new("white", Vector2i(7, 0)), Bishop.new("white", Vector2i(7, 2)), Knight.new("white", Vector2i(7, 1))]:
+		model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_book_moves = 0
+	brain._begin_profile(model.get_legal_primary_actions("black").size())
+	brain._begin_book_profile()
+	brain._ensure_tactical_map()
+	_expect(brain._has_mandatory_override(model.get_legal_primary_actions("black")) and brain.last_profile.opening_ability_override_reason == &"wraith_king_pressure", "early Wraith King pressure explicitly overrides ordinary opening-book play")
+	var policy := DuprePolicy.new(cpu, {}, brain._tactical_map)
+	var ranked: Array[Dictionary] = []
+	var index := 0
+	for action in model.get_legal_primary_actions("black"):
+		ranked.append({
+			"action": action,
+			"policy": policy.score(action),
+			"index": index,
+			"ability_assessment": policy.action_effect_assessment(action) if policy.action_may_have_effects(action) else {},
+		})
+		index += 1
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary): return float(a.policy) > float(b.policy))
+	var candidates := await brain._select_candidates(ranked, policy)
+	var king_summon: Dictionary = {}
+	for candidate in candidates:
+		if candidate.action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY and candidate.action.target == enemy_king.coordinate:
+			king_summon = candidate
+			break
+	_expect(not king_summon.is_empty() and king_summon.candidate_reason == &"strategic_ability", "Wraith retains early enemy-King pressure as an explicit strategic candidate")
+	var retained_wraith_summons := candidates.filter(func(candidate: Dictionary): return StringName(candidate.get("ability_assessment", {}).get("candidate_group", &"")) == &"wraith_summon").size()
+	_expect(retained_wraith_summons <= 3, "Wraith caps delayed summon roots while preserving a diverse bounded set")
+	var quiet: Dictionary = candidates.filter(func(candidate: Dictionary): return candidate.action.kind == ChessPrimaryAction.Kind.MOVE)[0]
+	var fallback_records: Array[Dictionary] = [
+		{"action": king_summon.action, "policy": king_summon.policy, "adjusted_policy": king_summon.policy, "candidate_reason": &"strategic_ability", "candidate_index": 0, "screen_status": DupreAiBrain.ScreenStatus.READY, "phase": &"prepared", "ability_assessment": king_summon.ability_assessment, "known_loss": 0.0, "known_terminal_loss": false, "forcing_coverage_complete": true, "forcing_replies_evaluated": 0, "forcing_replies_total": 0},
+		{"action": quiet.action, "policy": quiet.policy, "adjusted_policy": quiet.policy, "candidate_reason": &"policy", "candidate_index": 1, "screen_status": DupreAiBrain.ScreenStatus.READY, "phase": &"prepared", "ability_assessment": {}, "known_loss": 0.0, "known_terminal_loss": false, "forcing_coverage_complete": true, "forcing_replies_evaluated": 0, "forcing_replies_total": 0},
+	]
+	_expect(brain._best_screened_fallback(fallback_records).action == king_summon.action, "a prepared clear Wraith pressure action may beat a quiet move without being mislabeled exact")
+	fallback_records[0].forcing_coverage_complete = false
+	_expect(brain._best_screened_fallback(fallback_records).action == quiet.action, "incomplete Wraith verification remains ineligible beside a settled move")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _test_survivable_king_counterattack() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var wraith := WraithKing.new("black", Vector2i(3, 2))
+	wraith.current_hp = 4
+	var queen := Queen.new("white", Vector2i(4, 3))
+	for piece in [wraith, queen, ClassicKing.new("white", Vector2i(7, 0)), Rook.new("white", Vector2i(4, 7)), Bishop.new("white", Vector2i(7, 6)), Pawn.new("black", Vector2i(1, 0))]:
+		model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_book_moves = 0
+	brain.max_reply_leaves = 0
+	var capture: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("black"):
+		if action.piece == wraith and action.target == queen.coordinate:
+			capture = action
+			break
+	var policy := DuprePolicy.new(cpu)
+	_expect(capture != null and policy.is_survivable_king_counterattack(capture), "a multi-HP King recognizes that it can take a checking Queen and survive one immediate hit")
+	var thought = await cpu.think()
+	_expect(thought != null and thought.piece_coordinate == wraith.coordinate and thought.target == queen.coordinate, "timeout fallback prioritizes the survivable King counter-capture over irrelevant defense")
+	_expect(thought != null and thought.search_profile.selected_candidate_reason == &"king_counterattack" and int(thought.search_profile.king_safety_candidates_retained) <= 6, "the King counter-capture has explicit priority while generic safety candidates remain bounded")
+	wraith.current_hp = 1
+	policy = DuprePolicy.new(cpu)
+	_expect(not policy.is_survivable_king_counterattack(capture), "the same counter-capture receives no survivability waiver at one HP")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
 
 
 func _test_position_history_signatures() -> void:

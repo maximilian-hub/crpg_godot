@@ -14,6 +14,8 @@ const TACTICAL_SAFETY_MARGIN := 5.0
 const FORCING_ABILITY_CAP := 3
 const DIRECT_KING_ATTACK_CAP := 3
 const MAX_OBLIGATION_RESPONSES := 4
+const KING_SAFETY_CANDIDATE_CAP := 6
+const WRAITH_STRATEGIC_CANDIDATE_CAP := 3
 const SEVERE_MATERIAL_LOSS := 3.0
 
 enum ScreenStatus { READY, EXACT, INCOMPLETE, INVALID, PRUNED }
@@ -178,7 +180,7 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		selected_score = float(fallback_record.get("policy", 0.0)) if not fallback_record.is_empty() else (candidates[0].policy if not candidates.is_empty() else ranked[0].policy)
 		last_profile.fallback_used = true
 		last_profile.unverified_selection = true
-		last_profile.selected_status = &"breadth_fallback"
+		last_profile.selected_status = &"screened_strategic_fallback" if _is_screened_strategic_fallback(fallback_record) else &"breadth_fallback"
 		last_profile.timeout_fallback_source = fallback_record.get("phase", &"not_prepared") if not fallback_record.is_empty() else &"ranked"
 		last_profile.selected_candidate_reason = fallback_record.get("candidate_reason", &"policy") if not fallback_record.is_empty() else (candidates[0].get("candidate_reason", &"policy") if not candidates.is_empty() else &"policy")
 	else:
@@ -192,6 +194,7 @@ func choose_plan(actions: Array[ChessPrimaryAction]) -> ChessAiPlan:
 		last_profile.selected_candidate_reason = safe[0].get("candidate_reason", &"policy")
 		last_profile.selected_repetition_count = int(safe[0].get("repetition_count", 0))
 		last_profile.selected_repetition_penalty = float(safe[0].get("repetition_penalty", 0.0))
+	last_profile.selected_survivable_king_counterattack = last_profile.selected_candidate_reason == &"king_counterattack"
 	for record in records:
 		if record.action != selected_action:
 			continue
@@ -486,8 +489,10 @@ func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
 	for record in eligible: minimum_risk = mini(minimum_risk, int(record.fallback_risk))
 	eligible = eligible.filter(func(record: Dictionary): return int(record.fallback_risk) == minimum_risk)
 	# Speculative benefits never become safe merely because the clock expired.
+	# A prepared strategic action with complete forcing coverage and no known
+	# loss may still compete as a screened (never exact) fallback.
 	var settled: Array[Dictionary] = eligible.filter(func(record: Dictionary):
-		return not bool(record.get("ability_assessment", {}).get("requires_verification", false))
+		return not bool(record.get("ability_assessment", {}).get("requires_verification", false)) or _is_screened_strategic_fallback(record)
 	)
 	if not settled.is_empty():
 		eligible = settled
@@ -503,6 +508,22 @@ func _best_screened_fallback(records: Array[Dictionary]) -> Dictionary:
 		return int(a.get("candidate_index", 0)) < int(b.get("candidate_index", 0))
 	)
 	return eligible[0]
+
+
+func _is_screened_strategic_fallback(record: Dictionary) -> bool:
+	if record.is_empty() or int(record.get("fallback_risk", FallbackRisk.UNCERTAIN)) != FallbackRisk.CLEAR:
+		return false
+	if int(record.get("screen_status", ScreenStatus.INCOMPLETE)) != ScreenStatus.READY:
+		return false
+	if StringName(record.get("phase", &"not_prepared")) not in [&"prepared", &"screening"]:
+		return false
+	var assessment: Dictionary = record.get("ability_assessment", {})
+	return (
+		bool(assessment.get("requires_verification", false))
+		and int(assessment.get("strategic_priority", 0)) > 0
+		and bool(record.get("forcing_coverage_complete", false))
+		and not bool(record.get("known_terminal_loss", false))
+	)
 
 
 func _record_fallback_reply_evidence(record: Dictionary, reply: Dictionary, score: float) -> void:
@@ -566,12 +587,14 @@ func _fallback_reference_value(model: ChessBoardModel, perspective: String) -> f
 
 func _candidate_reason_priority(reason: StringName) -> int:
 	match reason:
-		&"immediate_win": return 6
+		&"immediate_win": return 7
+		&"king_counterattack": return 6
 		&"king_safety": return 5
 		&"king_attack": return 4
 		&"ability_effect": return 4
 		&"material_obligation": return 3
 		&"capture_king_attacker": return 3
+		&"strategic_ability": return 2
 		&"king_ability": return 2
 		&"ability_verification": return 1
 		&"favorable_capture": return 2
@@ -1162,7 +1185,12 @@ func _begin_book_profile() -> void:
 	last_profile["tactical_projection_attack_calls"] = 0
 	last_profile["tactical_projection_usec"] = 0
 	last_profile["mandatory_candidate_count"] = 0
+	last_profile["king_safety_candidates_retained"] = 0
+	last_profile["king_safety_candidates_deferred"] = 0
+	last_profile["strategic_ability_candidates_retained"] = 0
+	last_profile["strategic_ability_candidates_deferred"] = 0
 	last_profile["selected_candidate_reason"] = &""
+	last_profile["selected_survivable_king_counterattack"] = false
 	last_profile["fallback_classification_usec"] = 0
 	last_profile["selected_fallback_risk"] = FallbackRisk.UNCERTAIN
 	last_profile["selected_forcing_coverage_complete"] = false
@@ -1356,6 +1384,16 @@ func _has_mandatory_override(actions: Array[ChessPrimaryAction]) -> bool:
 			if policy.is_valuable_piece_threatened(piece):
 				_accumulate_ability_threat_profile(policy)
 				return true
+	# Scan the whole action set for explicit strategic obligations before the
+	# broader high-impact gate, whose legal-action order is not strategic order.
+	for action in actions:
+		if not player._is_acceptable_primary_action(action):
+			continue
+		var strategic_assessment: Dictionary = policy.action_effect_assessment(action) if policy.action_may_have_effects(action) else {}
+		if int(strategic_assessment.get("strategic_priority", 0)) > 0:
+			last_profile.opening_ability_override_reason = StringName(strategic_assessment.get("strategic_reason", &"strategic_ability_action"))
+			_accumulate_ability_threat_profile(policy)
+			return true
 	for action in actions:
 		if not player._is_acceptable_primary_action(action):
 			continue
@@ -1512,14 +1550,27 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		)
 		if current_threats > 0 or player.king_safety_turns_remaining > 0:
 			king_danger = true
-			var minimum := 999
+			var defensive: Array[Dictionary] = []
 			for entry in ranked:
-				minimum = mini(minimum, _entry_king_threat_after(entry, policy))
+				defensive.append({
+					"entry": entry,
+					"counterattack": policy.is_survivable_king_counterattack(entry.action),
+					"damage": policy.maximum_direct_king_damage_after(entry.action),
+					"threats": _entry_king_threat_after(entry, policy),
+				})
 				await _cooperate()
-			for entry in ranked:
-				if _entry_king_threat_after(entry, policy) == minimum:
-					_append_unique(selected, selected_keys, entry, &"king_safety")
-				await _cooperate()
+			defensive.sort_custom(func(a: Dictionary, b: Dictionary):
+				if bool(a.counterattack) != bool(b.counterattack): return bool(a.counterattack)
+				if int(a.damage) != int(b.damage): return int(a.damage) < int(b.damage)
+				if int(a.threats) != int(b.threats): return int(a.threats) < int(b.threats)
+				return float(a.entry.policy) > float(b.entry.policy)
+			)
+			var retained_defenses := mini(KING_SAFETY_CANDIDATE_CAP, defensive.size())
+			for index in range(retained_defenses):
+				var defense: Dictionary = defensive[index]
+				_append_unique(selected, selected_keys, defense.entry, &"king_counterattack" if bool(defense.counterattack) else &"king_safety")
+			last_profile.king_safety_candidates_retained = retained_defenses
+			last_profile.king_safety_candidates_deferred = maxi(0, defensive.size() - retained_defenses)
 	var retained_king_attacks := 0
 	for entry in ranked:
 		if retained_king_attacks >= DIRECT_KING_ATTACK_CAP: break
@@ -1530,15 +1581,25 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 		await _cooperate()
 	var retained_effects := 0
 	var verification_effects := 0
+	var strategic_groups := {}
 	for entry in ranked:
 		var assessment: Dictionary = entry.get("ability_assessment", {})
 		if assessment.is_empty() or not bool(assessment.get("high_impact", false)):
 			continue
-		var reason := &"ability_verification" if bool(assessment.get("requires_verification", false)) else &"ability_effect"
+		var group := StringName(assessment.get("candidate_group", &""))
+		var strategic := int(assessment.get("strategic_priority", 0)) > 0
+		if group == &"wraith_summon":
+			var group_count := int(strategic_groups.get(group, 0))
+			if group_count >= WRAITH_STRATEGIC_CANDIDATE_CAP:
+				last_profile.strategic_ability_candidates_deferred += 1
+				continue
+			strategic_groups[group] = group_count + 1
+		var reason := &"strategic_ability" if strategic else (&"ability_verification" if bool(assessment.get("requires_verification", false)) else &"ability_effect")
 		var before := selected.size()
 		_append_unique(selected, selected_keys, entry, reason)
 		if selected.size() > before:
 			retained_effects += 1
+			if strategic: last_profile.strategic_ability_candidates_retained += 1
 			if reason == &"ability_verification":
 				verification_effects += 1
 		await _cooperate()
@@ -1610,7 +1671,9 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 			_append_unique(selected, selected_keys, responses[index].entry, &"material_obligation")
 			if selected.size() > before: last_profile.obligation_response_count += 1
 	for entry in ranked:
-		if policy.captures_current_king_attacker(entry.action):
+		if policy.is_survivable_king_counterattack(entry.action):
+			_append_unique(selected, selected_keys, entry, &"king_counterattack")
+		elif policy.captures_current_king_attacker(entry.action):
 			_append_unique(selected, selected_keys, entry, &"capture_king_attacker")
 		elif policy.capture_material_swing(entry.action) >= 3.0:
 			_append_unique(selected, selected_keys, entry, &"favorable_capture")
@@ -1633,6 +1696,12 @@ func _select_candidates(ranked: Array[Dictionary], policy) -> Array[Dictionary]:
 	elif retained_forcing > 0 or selected.size() > 0:
 		last_profile.danger_class = &"tactical"
 	last_profile.mandatory_candidate_count = selected.size()
+	selected.sort_custom(func(a: Dictionary, b: Dictionary):
+		var a_priority := _candidate_reason_priority(a.get("candidate_reason", &"policy"))
+		var b_priority := _candidate_reason_priority(b.get("candidate_reason", &"policy"))
+		if a_priority != b_priority: return a_priority > b_priority
+		return int(a.get("index", 0)) < int(b.get("index", 0))
+	)
 	var ordinary_count := 0
 	for entry in ranked:
 		if ordinary_count >= candidate_limit:
