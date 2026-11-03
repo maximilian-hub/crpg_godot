@@ -13,10 +13,17 @@ const HANGING_DESTINATION_MULTIPLIER := 1.5
 const THREAT_MULTIPLIER := 0.6
 const NEW_KING_THREAT_PENALTY := 10000.0
 const EXPOSED_UNDEFENDED_ALLY_MULTIPLIER := 4.0
+## Root policy breaks otherwise quiet ties; authoritative reply evaluation
+## remains the stronger endgame signal. Keeping this modest prevents a passer
+## bonus from overwhelming tactical fallback when verification times out.
+const ENDGAME_ROOT_SCALE := 0.2
 
 var player: ChessCpuPlayer
 var model: ChessBoardModel
 var color: String
+var endgame_policy_enabled := true
+var endgame_technique_enabled := true
+var detailed_metrics_enabled := false
 var previous_own_actions: Dictionary
 var tactical_map: DupreTacticalMap
 var exchange_analyzer
@@ -26,6 +33,9 @@ var _ability_effect_cache: Dictionary = {}
 var _action_effect_cache: Dictionary = {}
 var _action_assessment_cache: Dictionary = {}
 var _endgame_assessments: Dictionary = {}
+var _material_risk_after_results: Dictionary = {}
+var _ability_loss_after_results: Dictionary = {}
+var _component_metrics: Dictionary = {}
 var _endgame_snapshot: Dictionary
 var _endgame_analysis: Dictionary
 var endgame_analysis_usec := 0
@@ -39,22 +49,34 @@ var ability_action_effect_collection_count := 0
 var ability_action_effect_collection_usec := 0
 
 
-func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_tactical_map: DupreTacticalMap = null) -> void:
+func _init(p_player: ChessCpuPlayer, p_previous_own_action: Dictionary = {}, p_tactical_map: DupreTacticalMap = null, p_endgame_policy_enabled := true, p_endgame_technique_enabled := true, p_detailed_metrics_enabled := false) -> void:
 	player = p_player
 	model = player.model
 	color = player.controlled_color
+	endgame_policy_enabled = p_endgame_policy_enabled
+	endgame_technique_enabled = p_endgame_technique_enabled
+	detailed_metrics_enabled = p_detailed_metrics_enabled
 	previous_own_actions = p_previous_own_action
 	tactical_map = p_tactical_map if p_tactical_map != null else DupreTacticalMap.from_model(model)
 	exchange_analyzer = ExchangeAnalyzer.new(model)
-	_endgame_snapshot = EndgamePolicy.snapshot_from_model(model)
-	_endgame_analysis = EndgamePolicy.analyze(_endgame_snapshot, color)
-	endgame_analysis_usec += int(_endgame_analysis.get("analysis_usec", 0))
+	if endgame_policy_enabled:
+		_endgame_snapshot = EndgamePolicy.snapshot_from_model(model)
+		_endgame_analysis = EndgamePolicy.analyze(_endgame_snapshot, color, endgame_technique_enabled)
+		endgame_analysis_usec += int(_endgame_analysis.get("analysis_usec", 0))
+	else:
+		_endgame_snapshot = {}
+		_endgame_analysis = EndgamePolicy.middlegame_analysis()
 
 
 func score(action: ChessPrimaryAction) -> float:
+	var total_started := Time.get_ticks_usec() if detailed_metrics_enabled else 0
 	if player._is_immediate_win(action):
+		_record_component(&"score_total", total_started, action)
 		return 10000.0
+	var component_started := Time.get_ticks_usec() if detailed_metrics_enabled else 0
 	var result := player._score_primary_action(action)
+	_record_component(&"base_score", component_started, action)
+	component_started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
 	var evaluated_layers := {}
 	for side in [color, _other_color(color)]:
 		var king: ModelPiece = model.get_king(side)
@@ -64,6 +86,8 @@ func score(action: ChessPrimaryAction) -> float:
 		if layer != null:
 			evaluated_layers[king.get_position_type_id()] = true
 			result += float(layer.action_policy_bonus(model, action, color, tactical_map))
+	_record_component(&"king_extensions", component_started, action)
+	component_started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
 	var exchange := exchange_result(action)
 	if action.kind == ChessPrimaryAction.Kind.MOVE:
 		var captured: ModelPiece = model.board[action.target.x][action.target.y]
@@ -72,8 +96,11 @@ func score(action: ChessPrimaryAction) -> float:
 	for type_id in evaluated_layers:
 		var exchange_layer = ChessKingAiRegistry.layer_for(type_id)
 		result += float(exchange_layer.exchange_policy_adjustment(model, action, color, exchange, tactical_map))
+	_record_component(&"exchange", component_started, action)
 	if action.kind == ChessPrimaryAction.Kind.ACTIVE_ABILITY:
+		_record_component(&"score_total", total_started, action)
 		return result
+	component_started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
 	if creates_new_king_threat(action):
 		result -= NEW_KING_THREAT_PENALTY
 	var origin := action.piece.coordinate
@@ -98,16 +125,14 @@ func score(action: ChessPrimaryAction) -> float:
 		result += float(_center_distance(origin) - _center_distance(destination)) * 0.2
 	if _is_immediate_reversal(action):
 		result -= REVERSAL_PENALTY
-
+	_record_component(&"positional", component_started, action)
+	component_started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
 	var projected := projected_map(action)
 	if float(_endgame_analysis.endgame_weight) > 0.0:
-		var endgame_assessment := EndgamePolicy.transition_bonus(
-			_endgame_snapshot, EndgamePolicy.snapshot_from_tactical_map(projected), color
-		)
-		_endgame_assessments[_action_key(action)] = endgame_assessment
-		endgame_analysis_usec += int(endgame_assessment.before.get("analysis_usec", 0))
-		endgame_analysis_usec += int(endgame_assessment.after.get("analysis_usec", 0))
-		result += float(endgame_assessment.score)
+		var endgame_assessment := _endgame_assessment(action, projected)
+		result += float(endgame_assessment.score) * ENDGAME_ROOT_SCALE
+	_record_component(&"endgame_transition", component_started, action)
+	component_started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
 	var piece_value := _piece_value(action.piece)
 	var projected_piece_coordinate := destination if _projected_piece_is(projected, destination, action.piece) else origin
 	var was_attacked := tactical_map.attack_count(origin, _other_color(color)) > 0
@@ -125,7 +150,35 @@ func score(action: ChessPrimaryAction) -> float:
 				best_threat = maxf(best_threat, 8.0 if enemy.is_king else _piece_value(enemy))
 	result += best_threat * THREAT_MULTIPLIER
 	result -= newly_exposed_undefended_value(action) * EXPOSED_UNDEFENDED_ALLY_MULTIPLIER
+	_record_component(&"tactical_exposure", component_started, action)
+	_record_component(&"score_total", total_started, action)
 	return result
+
+
+## Performs the expensive, independent score ingredients with scheduler
+## checkpoints. score() then consumes exactly the same memoized values as its
+## synchronous callers, preserving policy semantics.
+func prepare_action_cooperatively(action: ChessPrimaryAction, cooperate: Callable) -> void:
+	if player._is_immediate_win(action):
+		return
+	var started := Time.get_ticks_usec() if detailed_metrics_enabled else 0
+	var projected := projected_map(action)
+	_record_component(&"prepare_projection", started, action)
+	await cooperate.call()
+	started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
+	exchange_result(action)
+	_record_component(&"prepare_exchange", started, action)
+	await cooperate.call()
+	if action.kind != ChessPrimaryAction.Kind.ACTIVE_ABILITY and float(_endgame_analysis.endgame_weight) > 0.0:
+		started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
+		_endgame_assessment(action, projected)
+		_record_component(&"prepare_endgame", started, action)
+		await cooperate.call()
+	if action_may_have_effects(action):
+		started = Time.get_ticks_usec() if detailed_metrics_enabled else 0
+		action_effect_assessment(action)
+		_record_component(&"prepare_ability_effects", started, action)
+		await cooperate.call()
 
 
 func creates_new_king_threat(action: ChessPrimaryAction) -> bool:
@@ -210,12 +263,18 @@ func ability_threat_after(action: ChessPrimaryAction, piece: ModelPiece, horizon
 func ability_loss_after(action: ChessPrimaryAction, piece: ModelPiece, horizon: int = 1) -> float:
 	if piece == null:
 		return 0.0
+	var cache_key := "%s|%s|%s" % [_action_key(action), piece.piece_id, horizon]
+	if _ability_loss_after_results.has(cache_key):
+		return float(_ability_loss_after_results[cache_key])
 	var position := projected_map(action)
 	for effect in ability_effects(horizon, position):
 		if effect.certainty != DupreAbilityEffect.Certainty.CERTAIN:
 			continue
 		if _effect_impacts_piece(effect, piece.piece_id) and (effect.lethal or bool(effect.metadata.get("king_exposure", false))):
-			return _piece_value(piece)
+			var loss := _piece_value(piece)
+			_ability_loss_after_results[cache_key] = loss
+			return loss
+	_ability_loss_after_results[cache_key] = 0.0
 	return 0.0
 
 
@@ -443,6 +502,17 @@ func direct_king_threat_count_after(action: ChessPrimaryAction) -> int:
 	return projected.attack_count(coordinate, _other_color(color))
 
 
+## Matches ChessCpuPlayer's broader King-danger check (including ready Arakne
+## and Minotaur abilities) while reusing the policy's existing projection.
+func comprehensive_king_threat_count_after(action: ChessPrimaryAction) -> int:
+	var king: ModelPiece = model.get_king(color)
+	if king == null:
+		return 999
+	var projected := projected_map(action)
+	var coordinate := action.target if action.kind == ChessPrimaryAction.Kind.MOVE and action.piece == king and _projected_piece_is(projected, action.target, king) else king.coordinate
+	return player._king_threat_count(king, coordinate, projected.occupancy)
+
+
 func _projected_piece_is(projected: DupreTacticalMap, coordinate: Vector2i, piece: ModelPiece) -> bool:
 	var occupant = projected.occupancy.get(coordinate)
 	return occupant is ModelPiece and occupant == piece
@@ -467,14 +537,23 @@ func material_risk(piece: ModelPiece) -> Dictionary:
 
 
 func material_risk_after(action: ChessPrimaryAction, piece: ModelPiece) -> Dictionary:
+	var cache_key := "%s|%s" % [_action_key(action), piece.piece_id if piece != null else ""]
+	if _material_risk_after_results.has(cache_key):
+		return _material_risk_after_results[cache_key]
 	var projected := projected_map(action)
 	var coordinate = projected.piece_coordinates.get(piece.piece_id)
 	if coordinate == null:
-		return {"delta": 0.0, "loss": 0.0, "confidence": ExchangeAnalyzer.Confidence.HIGH, "reason": &"removed", "sequence": []}
+		var removed := {"delta": 0.0, "loss": 0.0, "confidence": ExchangeAnalyzer.Confidence.HIGH, "reason": &"removed", "sequence": []}
+		_material_risk_after_results[cache_key] = removed
+		return removed
 	var projected_piece = projected.occupancy.get(coordinate)
 	if not projected_piece is ModelPiece:
-		return {"delta": 0.0, "loss": 0.0, "confidence": ExchangeAnalyzer.Confidence.LOW, "reason": &"unknown", "sequence": []}
-	return exchange_analyzer.analyze_piece_risk(projected_piece, projected)
+		var unknown := {"delta": 0.0, "loss": 0.0, "confidence": ExchangeAnalyzer.Confidence.LOW, "reason": &"unknown", "sequence": []}
+		_material_risk_after_results[cache_key] = unknown
+		return unknown
+	var result: Dictionary = exchange_analyzer.analyze_piece_risk(projected_piece, projected)
+	_material_risk_after_results[cache_key] = result
+	return result
 
 
 func captures_current_king_attacker(action: ChessPrimaryAction) -> bool:
@@ -517,11 +596,38 @@ func projection_metrics() -> Dictionary:
 			"cache_hits": endgame_cache_hits,
 			"assessed_actions": _endgame_assessments.size(),
 		},
+		"components": _component_metrics.duplicate(true),
 	}
 
 
 func endgame_action_assessment(action: ChessPrimaryAction) -> Dictionary:
 	return _endgame_assessments.get(_action_key(action), {})
+
+
+func _endgame_assessment(action: ChessPrimaryAction, projected: DupreTacticalMap) -> Dictionary:
+	var key := _action_key(action)
+	if _endgame_assessments.has(key):
+		endgame_cache_hits += 1
+		return _endgame_assessments[key]
+	var result := EndgamePolicy.transition_bonus_from_analysis(
+		_endgame_analysis, EndgamePolicy.snapshot_from_tactical_map(projected, _other_color(color)), color, endgame_technique_enabled
+	)
+	_endgame_assessments[key] = result
+	endgame_analysis_usec += int(result.after.get("analysis_usec", 0))
+	return result
+
+
+func _record_component(component: StringName, started_usec: int, action: ChessPrimaryAction) -> void:
+	if not detailed_metrics_enabled:
+		return
+	var elapsed := Time.get_ticks_usec() - started_usec
+	var bucket: Dictionary = _component_metrics.get(component, {"count": 0, "usec": 0, "maximum_usec": 0, "worst_action": ""})
+	bucket.count = int(bucket.count) + 1
+	bucket.usec = int(bucket.usec) + elapsed
+	if elapsed > int(bucket.maximum_usec):
+		bucket.maximum_usec = elapsed
+		bucket.worst_action = _action_key(action)
+	_component_metrics[component] = bucket
 
 
 func _cached_effect_count() -> int:

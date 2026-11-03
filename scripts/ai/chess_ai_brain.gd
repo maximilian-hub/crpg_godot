@@ -28,6 +28,12 @@ func on_action_executed(_action: ChessPrimaryAction, _origin: Vector2i) -> void:
 	pass
 
 
+## Optional notification emitted only after the authoritative action and any
+## CPU-owned manual reactions have reached a capturable settled position.
+func on_position_settled(_position: ChessPosition) -> void:
+	pass
+
+
 func reset_session(_reason: StringName = &"reset") -> void:
 	pass
 

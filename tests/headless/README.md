@@ -16,6 +16,10 @@ godot --headless --path . tests/headless/classic_core_performance.tscn
 godot --headless --path . tests/headless/classic_core_differential.tscn
 godot --headless --path . tests/headless/dupre_classic_core_characterization.tscn
 godot --headless --path . tests/headless/dupre_classic_core_performance.tscn
+godot --headless --path . tests/headless/dupre_core_analysis_cache_characterization.tscn
+godot --headless --path . tests/headless/dupre_full_match_performance.tscn
+# Opt-in long benchmark: four matchups, 40 plies, three deterministic seeds.
+godot --headless --path . tests/headless/dupre_full_match_soak.tscn
 godot --headless --path . tests/headless/classic_core_live_authority_characterization.tscn
 godot --headless --path . tests/headless/classic_core_live_presentation_characterization.tscn
 godot --headless --path . tests/headless/quarterly_initiative_core_characterization.tscn

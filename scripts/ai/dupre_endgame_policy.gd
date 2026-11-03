@@ -14,43 +14,43 @@ static func snapshot_from_model(model: ChessBoardModel) -> Dictionary:
 	for row in model.board:
 		for piece in row:
 			if piece is ModelPiece:
-				pieces.append(_piece_record(piece.piece_id, piece.get_position_type_id(), piece.color, piece.coordinate, piece.is_king))
-	return _snapshot(pieces)
+				pieces.append(_model_piece_record(piece, piece.coordinate))
+	return _snapshot(pieces, model.current_turn, Vector2i(model.board.size(), model.board[0].size() if not model.board.is_empty() else 0))
 
 
-static func snapshot_from_tactical_map(tactical: DupreTacticalMap) -> Dictionary:
+static func snapshot_from_tactical_map(tactical: DupreTacticalMap, current_turn := "") -> Dictionary:
 	var pieces: Array[Dictionary] = []
 	for coordinate in tactical.occupancy:
 		var piece = tactical.occupancy[coordinate]
 		if piece is ModelPiece:
-			pieces.append(_piece_record(piece.piece_id, piece.get_position_type_id(), piece.color, coordinate, piece.is_king))
-	return _snapshot(pieces)
+			pieces.append(_model_piece_record(piece, coordinate))
+	return _snapshot(pieces, current_turn, tactical.board_size)
 
 
 static func snapshot_from_core(state: ChessCoreState) -> Dictionary:
 	var pieces: Array[Dictionary] = []
 	for piece in state.pieces:
-		pieces.append(_piece_record(piece.piece_id, piece.type_id, piece.color, piece.coordinate, piece.is_king()))
-	return _snapshot(pieces)
+		pieces.append(_piece_record(piece.piece_id, piece.type_id, piece.color, piece.coordinate, piece.is_king(), piece.has_moved, piece.current_hp, piece.max_hp, piece.attack_power, piece.stunned))
+	return _snapshot(pieces, state.current_turn, state.board_size)
 
 
-static func analyze_model(model: ChessBoardModel, perspective: String) -> Dictionary:
-	return analyze(snapshot_from_model(model), perspective)
+static func analyze_model(model: ChessBoardModel, perspective: String, technique_enabled := true) -> Dictionary:
+	return analyze(snapshot_from_model(model), perspective, technique_enabled)
 
 
-static func analyze_core(state: ChessCoreState, perspective: String) -> Dictionary:
-	var key := "dupre_endgame|%s" % perspective
+static func analyze_core(state: ChessCoreState, perspective: String, technique_enabled := true) -> Dictionary:
+	var key := "dupre_endgame|%s|%s" % [perspective, technique_enabled]
 	if state.analysis_cache.has(key):
 		var cached: Dictionary = state.analysis_cache[key]
 		var result := cached.duplicate(true)
 		result["cache_hit"] = true
 		return result
-	var result := analyze(snapshot_from_core(state), perspective)
+	var result := analyze(snapshot_from_core(state), perspective, technique_enabled)
 	state.analysis_cache[key] = result.duplicate(true)
 	return result
 
 
-static func analyze(snapshot: Dictionary, perspective: String) -> Dictionary:
+static func analyze(snapshot: Dictionary, perspective: String, technique_enabled := true) -> Dictionary:
 	var started := Time.get_ticks_usec()
 	var enemy := _other_color(perspective)
 	var non_pawn_material := 0.0
@@ -80,9 +80,10 @@ static func analyze(snapshot: Dictionary, perspective: String) -> Dictionary:
 			"distance": piece.coordinate.x if piece.color == "white" else 7 - piece.coordinate.x,
 			"blocked": snapshot.occupancy.has(front),
 			"protected": _pawn_supported(piece, snapshot.pieces),
+			"promotion_plies": _promotion_plies(piece, snapshot),
 		})
 	var raw_score := 0.0
-	var components := {"passed_pawns": 0.0, "king_activity": 0.0, "rook_support": 0.0}
+	var components := {"passed_pawns": 0.0, "king_activity": 0.0, "rook_support": 0.0, "promotion_race": 0.0, "king_escort": 0.0, "rook_technique": 0.0}
 	for passer in passed:
 		var sign_value := 1.0 if passer.color == perspective else -1.0
 		var distance := maxi(1, int(passer.distance))
@@ -97,6 +98,12 @@ static func analyze(snapshot: Dictionary, perspective: String) -> Dictionary:
 			pawn_score -= maxf(0.0, 4.0 - _king_distance(defending_king.coordinate, passer.coordinate)) * 0.16
 		components.passed_pawns += sign_value * pawn_score
 		components.rook_support += sign_value * _rook_behind_bonus(passer, snapshot.pieces)
+		if technique_enabled:
+			components.promotion_race += sign_value * _promotion_pressure(passer)
+			components.king_escort += sign_value * _escort_pressure(passer, kings)
+	if technique_enabled:
+		components.promotion_race += _race_tempo_balance(passed, perspective)
+		components.rook_technique += _rook_technique_score(passed, snapshot, perspective)
 	for color in ["white", "black"]:
 		var king: Dictionary = kings.get(color, {})
 		if king.is_empty(): continue
@@ -111,6 +118,10 @@ static func analyze(snapshot: Dictionary, perspective: String) -> Dictionary:
 		"non_pawn_material": non_pawn_material,
 		"friendly_passed_pawns": passed.filter(func(p): return p.color == perspective).size(),
 		"enemy_passed_pawns": passed.filter(func(p): return p.color == enemy).size(),
+		"friendly_fastest_promotion_plies": _fastest_promotion_plies(passed, perspective),
+		"enemy_fastest_promotion_plies": _fastest_promotion_plies(passed, enemy),
+		"blocked_passed_pawns": passed.filter(func(p): return int(p.promotion_plies) < 0).size(),
+		"technique_enabled": technique_enabled,
 		"score": raw_score * weight,
 		"components": components,
 		"analysis_usec": Time.get_ticks_usec() - started,
@@ -124,14 +135,22 @@ static func middlegame_analysis(material_balance := 0.0, total_material := 0.0, 
 		"material_balance": material_balance, "total_material": total_material,
 		"non_pawn_material": non_pawn_material,
 		"friendly_passed_pawns": 0, "enemy_passed_pawns": 0,
+		"friendly_fastest_promotion_plies": -1, "enemy_fastest_promotion_plies": -1,
+		"blocked_passed_pawns": 0, "technique_enabled": false,
 		"score": 0.0, "components": {}, "analysis_usec": elapsed_usec,
 		"cache_hit": false,
 	}
 
 
-static func transition_bonus(before: Dictionary, after: Dictionary, perspective: String) -> Dictionary:
-	var before_analysis := analyze(before, perspective)
-	var after_analysis := analyze(after, perspective)
+static func transition_bonus(before: Dictionary, after: Dictionary, perspective: String, technique_enabled := true) -> Dictionary:
+	var before_analysis := analyze(before, perspective, technique_enabled)
+	return transition_bonus_from_analysis(before_analysis, after, perspective, technique_enabled)
+
+
+## Root policy already owns the analysis of the settled position. Reusing it
+## avoids re-analyzing the same "before" board once for every legal action.
+static func transition_bonus_from_analysis(before_analysis: Dictionary, after: Dictionary, perspective: String, technique_enabled := true) -> Dictionary:
+	var after_analysis := analyze(after, perspective, technique_enabled)
 	var positional := float(after_analysis.score) - float(before_analysis.score)
 	var trade := 0.0
 	var reduction := maxf(0.0, float(before_analysis.total_material) - float(after_analysis.total_material))
@@ -152,14 +171,23 @@ static func transition_bonus(before: Dictionary, after: Dictionary, perspective:
 	}
 
 
-static func _snapshot(pieces: Array[Dictionary]) -> Dictionary:
+static func _snapshot(pieces: Array[Dictionary], current_turn := "white", board_size := Vector2i(8, 8)) -> Dictionary:
 	var occupancy := {}
 	for piece in pieces: occupancy[piece.coordinate] = piece
-	return {"pieces": pieces, "occupancy": occupancy}
+	return {"pieces": pieces, "occupancy": occupancy, "current_turn": current_turn, "board_size": board_size}
 
 
-static func _piece_record(piece_id: String, type_id: StringName, color: String, coordinate: Vector2i, is_king: bool) -> Dictionary:
-	return {"piece_id": piece_id, "type_id": type_id, "color": color, "coordinate": coordinate, "is_king": is_king}
+static func _model_piece_record(piece: ModelPiece, coordinate: Vector2i) -> Dictionary:
+	return _piece_record(piece.piece_id, piece.get_position_type_id(), piece.color, coordinate, piece.is_king, piece.has_moved, piece.current_hp, piece.max_hp, piece.attack_power, piece.stunned)
+
+
+static func _piece_record(piece_id: String, type_id: StringName, color: String, coordinate: Vector2i, is_king: bool, has_moved := true, current_hp := 1, max_hp := 1, attack_power := 1, stunned := false) -> Dictionary:
+	return {
+		"piece_id": piece_id, "type_id": type_id, "color": color,
+		"coordinate": coordinate, "is_king": is_king, "has_moved": has_moved,
+		"current_hp": current_hp, "max_hp": max_hp,
+		"attack_power": attack_power, "stunned": stunned,
+	}
 
 
 static func _is_passed_pawn(pawn: Dictionary, pieces: Array[Dictionary]) -> bool:
@@ -186,6 +214,106 @@ static func _rook_behind_bonus(passer: Dictionary, pieces: Array[Dictionary]) ->
 		if (passer.color == "white" and piece.coordinate.x > passer.coordinate.x) or (passer.color == "black" and piece.coordinate.x < passer.coordinate.x):
 			return 1.25
 	return 0.0
+
+
+static func _promotion_plies(pawn: Dictionary, snapshot: Dictionary) -> int:
+	if bool(pawn.get("stunned", false)):
+		return -1
+	var direction := -1 if pawn.color == "white" else 1
+	var board_size: Vector2i = snapshot.get("board_size", Vector2i(8, 8))
+	var occupancy: Dictionary = snapshot.get("occupancy", {})
+	var promotion_row := 0 if pawn.color == "white" else int(board_size.x) - 1
+	var distance := absi(int(pawn.coordinate.x) - promotion_row)
+	if distance <= 0:
+		return 0
+	# A file blocker makes the current race indeterminate. Captures or removal may
+	# reopen it later, but the static evaluator must not advertise a false clock.
+	for step in range(1, distance + 1):
+		if occupancy.has(pawn.coordinate + Vector2i(direction * step, 0)):
+			return -1
+	var moves := distance
+	var starting_row := int(board_size.x) - 2 if pawn.color == "white" else 1
+	if not bool(pawn.get("has_moved", true)) and pawn.coordinate.x == starting_row and distance >= 2:
+		moves -= 1
+	var waiting_ply := 0 if String(snapshot.get("current_turn", "white")) == String(pawn.color) else 1
+	return waiting_ply + moves * 2 - 1
+
+
+static func _promotion_pressure(passer: Dictionary) -> float:
+	var plies := int(passer.promotion_plies)
+	if plies < 0:
+		return -0.35
+	# Imminent promotion is a material-scale event. The sharp final-step increase
+	# makes spending the tempo competitive with generic King centralization while
+	# remaining far below tactical win/loss scores.
+	if plies <= 2: return 14.0
+	if plies <= 4: return 3.5
+	if plies <= 6: return 2.2
+	return clampf(1.8 - float(plies - 6) * 0.16, 0.15, 1.8)
+
+
+static func _escort_pressure(passer: Dictionary, kings: Dictionary) -> float:
+	var own: Dictionary = kings.get(passer.color, {})
+	var enemy: Dictionary = kings.get(_other_color(String(passer.color)), {})
+	if own.is_empty() or enemy.is_empty():
+		return 0.0
+	var direction := -1 if passer.color == "white" else 1
+	var critical: Vector2i = passer.coordinate + Vector2i(direction, 0)
+	var own_distance := _king_distance(own.coordinate, critical)
+	var enemy_distance := _king_distance(enemy.coordinate, critical)
+	# This is pressure, not orthodox square control: either King remains free to
+	# enter an attacked square and let authoritative combat resolve the result.
+	return clampf((enemy_distance - own_distance) * 0.14, -0.7, 0.7)
+
+
+static func _race_tempo_balance(passers: Array[Dictionary], perspective: String) -> float:
+	var friendly := _fastest_promotion_plies(passers, perspective)
+	var enemy := _fastest_promotion_plies(passers, _other_color(perspective))
+	if friendly < 0 and enemy < 0: return 0.0
+	if friendly >= 0 and enemy < 0: return 0.8
+	if friendly < 0 and enemy >= 0: return -0.8
+	return clampf(float(enemy - friendly) * 0.18, -1.2, 1.2)
+
+
+static func _fastest_promotion_plies(passers: Array[Dictionary], color: String) -> int:
+	var result := -1
+	for passer in passers:
+		var plies := int(passer.promotion_plies)
+		if passer.color == color and plies >= 0 and (result < 0 or plies < result):
+			result = plies
+	return result
+
+
+static func _rook_technique_score(passers: Array[Dictionary], snapshot: Dictionary, perspective: String) -> float:
+	var result := 0.0
+	for rook: Dictionary in snapshot.pieces:
+		if rook.type_id != &"rook" or bool(rook.get("stunned", false)):
+			continue
+		var rook_value := 0.0
+		for passer in passers:
+			if rook.coordinate.y != passer.coordinate.y or not _file_between_clear(rook.coordinate, passer.coordinate, snapshot.occupancy):
+				continue
+			var direction := -1 if passer.color == "white" else 1
+			var behind := signi(rook.coordinate.x - passer.coordinate.x) == -direction
+			var in_front := signi(rook.coordinate.x - passer.coordinate.x) == direction
+			if rook.color == passer.color:
+				# Existing rook_support already rewards the canonical placement; this
+				# smaller term rewards maintaining a clear, useful support ray.
+				if behind: rook_value += 0.35
+			elif behind:
+				rook_value += 0.9
+			elif in_front:
+				rook_value += 0.55
+		result += rook_value if rook.color == perspective else -rook_value
+	return result
+
+
+static func _file_between_clear(a: Vector2i, b: Vector2i, occupancy: Dictionary) -> bool:
+	if a.y != b.y: return false
+	var direction := signi(b.x - a.x)
+	for row in range(a.x + direction, b.x, direction):
+		if occupancy.has(Vector2i(row, a.y)): return false
+	return true
 
 
 static func _material_value(type_id: StringName) -> float:

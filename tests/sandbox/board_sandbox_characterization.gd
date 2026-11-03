@@ -25,6 +25,7 @@ func _ready() -> void:
 	_check(is_equal_approx(view.viewport_height_width_ratio, 1.0), "sandbox inherits fluid board height ratio", failures)
 	_check(is_equal_approx(view.viewport_width_cap_ratio, 0.72), "sandbox inherits fluid board width cap", failures)
 	_check(sandbox.mode_button.text == "Mode: Edit [P]", "mode button identifies Edit Mode and its shortcut", failures)
+	_check(sandbox.panel.size.x <= 190.0 and sandbox.authority_options[0].get_item_text(0) == "Pure Core", "desktop sandbox sidebar remains compact despite the rules-authority readout", failures)
 	_check(sandbox.view_side_button.text == "View: White" and view.viewing_color == "white", "sandbox starts from White perspective", failures)
 	_check(sandbox.undo_button.text == "Undo [←]" and sandbox.redo_button.text == "Redo [→]" and sandbox.reset_button.text == "Reset [R]", "history controls display keyboard shortcuts", failures)
 	_check(is_equal_approx(sandbox.record_panel.anchor_left, 1.0) and sandbox.record_panel.get_global_rect().position.y >= sandbox.piece_palette.get_global_rect().end.y, "desktop record/replay panel is docked on the right beneath the piece selector", failures)

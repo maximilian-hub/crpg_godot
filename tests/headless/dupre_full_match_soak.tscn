@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource path="res://tests/headless/dupre_full_match_performance.gd" type="Script" id="1"]
+
+[node name="DupreFullMatchSoak" type="Node"]
+script = ExtResource("1")
+maximum_plies = 40
+think_budget_msec = 1200
+max_reply_leaves = 256
+seeds = Array[int]([1409, 2718, 4099])

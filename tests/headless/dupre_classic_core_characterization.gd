@@ -154,16 +154,18 @@ func _think(position: ChessPosition, backend: int) -> Dictionary:
 
 
 func _think_on_model(model: ChessBoardModel, backend: int) -> Dictionary:
-	add_child(model)
+	if not model.is_inside_tree(): add_child(model)
 	var cpu := ChessCpuPlayer.new(); cpu.model = model; add_child(cpu)
 	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, model.current_turn)
 	cpu.set_brain(ChessCpuPlayer.BrainKind.DUPRE); cpu.set_random_seed(77123)
 	var brain: DupreAiBrain = cpu.brain
 	brain.max_book_moves = 0
 	brain.simulation_backend = backend
-	brain.think_budget_msec = 60000
-	brain.max_reply_leaves = 100000
-	brain.candidate_limit = 4
+	# Keep this parity gate bounded: two policy-leading roots are enough to prove
+	# backend identity without turning a characterization test into a long soak.
+	brain.think_budget_msec = 4000
+	brain.max_reply_leaves = 256
+	brain.candidate_limit = 2
 	var before := ChessPositionCodec.to_json(model.capture_position(), false)
 	var thought = await cpu.think()
 	var output := {
@@ -259,7 +261,10 @@ func _position_from_pieces(pieces: Array) -> ChessPosition:
 
 
 func _model_from_position(position: ChessPosition) -> ChessBoardModel:
-	var model := ChessBoardModel.new(); model.startup_mode = ChessBoardModel.StartupMode.EMPTY; model.diagnostic_logging_enabled = false
+	var model := ChessBoardModel.new()
+	model.startup_mode = ChessBoardModel.StartupMode.EMPTY
+	model.diagnostic_logging_enabled = false
+	add_child(model)
 	model.load_position(position.copy())
 	return model
 

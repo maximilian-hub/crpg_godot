@@ -169,6 +169,49 @@ king activity, rook support behind passers, and whether simplification helps the
 materially leading side. It does not alter rules or add search depth, and its
 influence is zero in material-rich middlegames.
 
+The endgame policy has internal master and technique A/B switches, enabled by
+default, and a fixed-seed gameplay soak at
+tests/headless/dupre_endgame_soak.tscn. The default gate runs short race,
+conversion, Classic, Arakne, and Necromancer endgames with the established
+evaluator and the new technique layer. Pass `-- --endgame-profile=soak` for
+three seeds and longer games, or `-- --endgame-fixture=<name>` to print a
+detailed action trace for one fixture. The short gate treats outcomes as
+behavioral evidence rather than an exact strength rating because budget
+fallbacks remain explicitly unverified.
+
+The first gate held aggregate material equal, improved aggregate endgame score
+slightly, and reduced immediate reversals from two to zero. It also showed that
+endgame root bonuses can steer timeout fallback before tactical verification is
+complete. Root influence is therefore intentionally only twenty percent of the
+shared evaluator's score; completed tactical leaf evaluation retains the full
+signal.
+
+Dupre's timeout fallback now keeps categorical evidence for every prepared root:
+terminal loss, known severe loss, incomplete forcing-reply coverage, or clear
+forcing coverage. Partial minimax scores remain optimistic bounds and are never
+compared as exact results. When no root completes, Dupre first chooses the least
+risky category, rejects unsettled speculative abilities where possible, then
+uses mandatory-purpose priority and policy score as deterministic tie-breakers.
+The search profile and per-candidate diagnostics expose the selected risk,
+forcing coverage, known loss, and classification cost.
+
+Dupre also keeps a bounded history of settled authoritative positions. Its
+signature retains every rule-relevant piece, ability, hazard, turn, and battle
+field while ignoring absolute round number and RNG bookkeeping; last-move state
+is retained only when it can still enable en passant. Returning to a prior state
+penalizes only quiet root choices, so wins, captures, defenses, and forcing king
+attacks are never suppressed merely because a position occurred before. History
+is recorded after authoritative reactions settle and resets with the AI match
+session.
+
+The optional endgame technique layer adds side-to-move promotion clocks,
+initial-double-move awareness, conservative blocker detection, King escort and
+interception pressure, and purposeful rook support/blockade relationships. It
+does not implement orthodox check or opposition: threatened squares remain
+legal under Chess RPG's damage rules. Race clocks are positional estimates only;
+authoritative tactical simulation still decides whether accepting an attack is
+safe, losing, or lethal.
+
 1. Profile full representative matches and optimize measured hotspots.
    The next useful sample is not another synthetic architecture migration: run
    fixed-seed Classic and mixed-king matches, compare endgame and middlegame
@@ -186,6 +229,11 @@ influence is zero in material-rich middlegames.
    races, opposition, rook endgames, repetition awareness, and king-specific
    endgame ability timing are the likely next candidates. Improve forcing-reply
    ordering and conservative quiescence before blindly increasing depth.
+
+   Timeout-safe tactical fallback, bounded repetition awareness, promotion-race
+   tempo, King escort/interception, and basic rook conversion technique are now
+   in place. Extend them only from observed games, with fixtures which permit
+   several sensible moves rather than demanding one brittle exact action.
 
 4. Prototype bounded worker search.
    Copy one settled position on the main thread, use isolated state and RNG per

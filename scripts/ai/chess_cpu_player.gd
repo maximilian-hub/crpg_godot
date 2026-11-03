@@ -189,6 +189,8 @@ func execute_thought() -> bool:
 		brain.on_action_executed(matching, executed_origin)
 	if accepted and execution_mode == ExecutionMode.MANUAL:
 		await _resolve_manual_reactions()
+	if accepted and brain != null and model.is_settled():
+		brain.on_position_settled(model.capture_position())
 	return accepted
 
 func step() -> bool:

@@ -1084,10 +1084,11 @@ func _on_brain_selected(color: String, kind: ChessCpuPlayer.BrainKind) -> void:
 
 func _add_authority_selector(parent: Control) -> void:
 	var option := OptionButton.new()
-	option.add_item("Pure Core — Authoritative", ChessBoardModel.LiveAuthority.CLASSIC_CORE)
+	option.add_item("Pure Core", ChessBoardModel.LiveAuthority.CLASSIC_CORE)
+	option.tooltip_text = "Pure Core is the authoritative live-rules engine"
 	option.disabled = true
 	authority_options.append(option)
-	_add_labeled_control_to(parent, "Rules Authority", option)
+	_add_labeled_control_to(parent, "Rules", option)
 	var status := Label.new()
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	parent.add_child(status)

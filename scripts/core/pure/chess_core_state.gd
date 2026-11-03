@@ -87,29 +87,34 @@ func occupant(coordinate: Vector2i) -> ChessCorePiece:
 
 
 func add_piece(piece: ChessCorePiece) -> void:
+	analysis_cache.clear()
 	pieces.append(piece)
 	occupancy[piece.coordinate] = piece
 	pieces_by_id[piece.piece_id] = piece
 
 
 func move_piece(piece: ChessCorePiece, target: Vector2i) -> void:
+	analysis_cache.clear()
 	occupancy.erase(piece.coordinate)
 	piece.coordinate = target
 	occupancy[target] = piece
 
 
 func remove_piece(piece: ChessCorePiece) -> void:
+	analysis_cache.clear()
 	occupancy.erase(piece.coordinate)
 	pieces_by_id.erase(piece.piece_id)
 	pieces.erase(piece)
 
 
 func add_effect(effect: ChessCoreTileEffect) -> void:
+	analysis_cache.clear()
 	tile_effects.append(effect)
 	effects_by_id[effect.effect_id] = effect
 
 
 func remove_effect(effect: ChessCoreTileEffect) -> void:
+	analysis_cache.clear()
 	tile_effects.erase(effect)
 	effects_by_id.erase(effect.effect_id)
 
@@ -132,10 +137,12 @@ func allocate_state_id(prefix: String) -> String:
 
 
 func add_entity(entity: ChessCoreAutonomousEntity) -> void:
+	analysis_cache.clear()
 	autonomous_entities.append(entity)
 	entities_by_id[entity.entity_id] = entity
 
 
 func remove_entity(entity: ChessCoreAutonomousEntity) -> void:
+	analysis_cache.clear()
 	autonomous_entities.erase(entity)
 	entities_by_id.erase(entity.entity_id)

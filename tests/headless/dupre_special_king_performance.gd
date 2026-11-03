@@ -44,7 +44,7 @@ func _ready() -> void:
 func _benchmark(kind: StringName) -> Dictionary:
 	print("DUPRE SPECIAL KING BENCHMARK START: ", kind)
 	var model := _position(kind)
-	add_child(model)
+	if not model.is_inside_tree(): add_child(model)
 	var cpu := ChessCpuPlayer.new()
 	cpu.model = model
 	add_child(cpu)
@@ -67,7 +67,9 @@ func _benchmark(kind: StringName) -> Dictionary:
 
 func _position(kind: StringName) -> ChessBoardModel:
 	var model := ChessBoardModel.new()
+	model.startup_mode = ChessBoardModel.StartupMode.EMPTY
 	model.diagnostic_logging_enabled = false
+	add_child(model)
 	model.initialize_battle()
 	for row in model.board:
 		for piece in row:

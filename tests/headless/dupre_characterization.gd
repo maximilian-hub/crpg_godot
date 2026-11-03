@@ -3,6 +3,7 @@ extends Node
 const DuprePolicy = preload("res://scripts/ai/dupre_move_policy.gd")
 const TacticalMap = preload("res://scripts/ai/dupre_tactical_map.gd")
 const ExchangeAnalyzer = preload("res://scripts/ai/dupre_exchange_analyzer.gd")
+const PositionHistory = preload("res://scripts/ai/dupre_position_history.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -37,6 +38,9 @@ func _ready() -> void:
 	_test_arakne_ability_threat_horizon()
 	_test_ability_effect_contract()
 	_test_ability_effect_interpretation()
+	_test_timeout_fallback_risk_evidence()
+	_test_position_history_signatures()
+	await _test_settled_position_history_lifecycle()
 	_test_necromancer_removable_summon_policy()
 	_test_necromancer_does_not_trade_queen_for_pawn()
 	await _test_material_obligation_candidates()
@@ -48,6 +52,7 @@ func _ready() -> void:
 	await _test_quarterly_simulation_secondary_choice()
 	_test_cannon_policy_and_hazard_support()
 	_test_brain_specific_king_support()
+	await _test_cooperative_policy_score_identity()
 	if failures.is_empty():
 		print("DUPRE CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -658,6 +663,78 @@ func _test_ability_effect_interpretation() -> void:
 	_cleanup(cpu, model)
 
 
+func _test_timeout_fallback_risk_evidence() -> void:
+	var model := _new_empty_model()
+	var rook := Rook.new("white", Vector2i(6, 0))
+	for piece in [ClassicKing.new("white", Vector2i(7, 4)), rook, Pawn.new("white", Vector2i(6, 2)), ClassicKing.new("black", Vector2i(0, 4))]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var actions := model.get_legal_primary_actions("white")
+	var dangerous: ChessPrimaryAction = actions[0]
+	var safe: ChessPrimaryAction = actions[1]
+	var records: Array[Dictionary] = [
+		{"action": dangerous, "policy": 100.0, "adjusted_policy": 100.0, "candidate_reason": &"policy", "screen_status": DupreAiBrain.ScreenStatus.INCOMPLETE, "ability_assessment": {}, "known_loss": 40.0, "known_terminal_loss": false, "forcing_coverage_complete": true, "forcing_replies_evaluated": 1, "candidate_index": 0},
+		{"action": safe, "policy": 0.0, "adjusted_policy": 0.0, "candidate_reason": &"policy", "screen_status": DupreAiBrain.ScreenStatus.INCOMPLETE, "ability_assessment": {}, "known_loss": 0.0, "known_terminal_loss": false, "forcing_coverage_complete": true, "forcing_replies_evaluated": 1, "candidate_index": 1},
+	]
+	_expect(cpu.brain._best_screened_fallback(records).action == safe, "timeout fallback rejects a known severe reply instead of trusting the higher optimistic policy score")
+	records[0].known_loss = 0.0
+	records[0].candidate_reason = &"king_attack"
+	records[0].forcing_coverage_complete = false
+	_expect(cpu.brain._best_screened_fallback(records).action == safe, "completed forcing coverage outranks a partially screened attack when their risk evidence differs")
+	records[1].forcing_coverage_complete = false
+	_expect(cpu.brain._best_screened_fallback(records).action == dangerous, "an unrefuted direct King attack retains mandatory priority among equally uncertain candidates")
+	_cleanup(cpu, model)
+
+
+func _test_position_history_signatures() -> void:
+	var model := _new_empty_model()
+	var king := ClassicKing.new("white", Vector2i(7, 4))
+	for piece in [king, ClassicKing.new("black", Vector2i(0, 4)), Rook.new("white", Vector2i(6, 0))]: model.add_piece(piece, piece.coordinate)
+	var first := model.capture_position()
+	var cosmetically_later := first.copy()
+	cosmetically_later.global_turn_number += 9
+	cosmetically_later.random_states[&"test"] = 999
+	var history := PositionHistory.new(2)
+	history.observe_position(first)
+	_expect(history.count_position(cosmetically_later) == 1, "repetition signatures ignore absolute turn and RNG bookkeeping")
+	var changed := first.copy()
+	changed.pieces[0].current_cooldown += 1
+	_expect(history.count_position(changed) == 0, "repetition signatures retain legality-relevant cooldown state")
+	history.observe_position(cosmetically_later)
+	history.observe_position(changed)
+	_expect(history.count_position(first) == 1 and int(history.snapshot().size) == 2, "bounded repetition history evicts only the oldest observation")
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain._begin_profile(1)
+	brain._begin_book_profile()
+	brain.position_history.observe_position(first)
+	var quiet: ChessPrimaryAction = model.get_legal_primary_actions("white").filter(func(action: ChessPrimaryAction): return action.kind == ChessPrimaryAction.Kind.MOVE and model.board[action.target.x][action.target.y] == null)[0]
+	var quiet_record := {"action": quiet, "policy": 5.0, "adjusted_policy": 5.0, "candidate_reason": &"policy"}
+	brain._apply_repetition_evidence(quiet_record, first)
+	var forcing_record := {"action": quiet, "policy": 5.0, "adjusted_policy": 5.0, "candidate_reason": &"king_attack"}
+	brain._apply_repetition_evidence(forcing_record, first)
+	_expect(float(quiet_record.repetition_penalty) > 0.0 and float(forcing_record.repetition_penalty) == 0.0, "repetition discourages quiet cycles without suppressing mandatory tactical actions")
+	_cleanup(cpu, model)
+
+
+func _test_settled_position_history_lifecycle() -> void:
+	var model := _new_empty_model()
+	for piece in [ClassicKing.new("white", Vector2i(7, 4)), Rook.new("white", Vector2i(6, 0)), ClassicKing.new("black", Vector2i(0, 4))]:
+		model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_book_moves = 0
+	brain.candidate_limit = 2
+	brain.max_reply_leaves = 1
+	brain.think_budget_msec = 100
+	var thought = await cpu.think()
+	var executed := thought != null and await cpu.execute_thought()
+	_expect(executed and int(brain.position_history.snapshot().size) == 1, "Dupre records one settled authoritative position only after its completed action")
+	brain.reset_session(&"test")
+	_expect(int(brain.position_history.snapshot().size) == 0, "Dupre clears repetition history with the rest of its match session")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
 func _test_necromancer_removable_summon_policy() -> void:
 	var model := _new_empty_model()
 	model.current_turn = "black"
@@ -930,6 +1007,31 @@ func _test_brain_specific_king_support() -> void:
 	_expect(DupreAiBrain.unsupported_king_ids(model).is_empty(), "Dupre supports Quarterly Initiative and Cannon Kings on either side")
 	_expect(LeMayAiBrain.unsupported_king_ids(model).size() == 2, "Quarterly and Cannon support remains scoped to Dupre")
 	model.free()
+
+
+func _test_cooperative_policy_score_identity() -> void:
+	var model := _new_empty_model()
+	for piece in [
+		ClassicKing.new("white", Vector2i(7, 4)), Queen.new("white", Vector2i(6, 3)), Rook.new("white", Vector2i(7, 0)), Pawn.new("white", Vector2i(5, 2)),
+		ClassicKing.new("black", Vector2i(0, 4)), Queen.new("black", Vector2i(1, 3)), Rook.new("black", Vector2i(0, 7)), Pawn.new("black", Vector2i(2, 5)),
+	]: model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	var actions := model.get_legal_primary_actions("white")
+	var synchronous := DuprePolicy.new(cpu)
+	var cooperative := DuprePolicy.new(cpu)
+	for action in actions.slice(0, mini(8, actions.size())):
+		var expected := synchronous.score(action)
+		await cooperative.prepare_action_cooperatively(action, Callable(self, "_cooperate_for_policy_test"))
+		_expect(is_equal_approx(expected, cooperative.score(action)), "cooperative policy preparation preserves the synchronous score for %s" % action.target)
+	var metrics: Dictionary = cooperative.projection_metrics()
+	_expect(int(metrics.get("endgame", {}).get("cache_hits", 0)) > 0, "cooperative scoring reuses prepared endgame assessments")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
+
+
+func _cooperate_for_policy_test() -> int:
+	await get_tree().process_frame
+	return 0
 
 
 func _add_dupre(model: ChessBoardModel) -> ChessCpuPlayer:

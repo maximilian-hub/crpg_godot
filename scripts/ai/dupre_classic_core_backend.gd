@@ -68,7 +68,7 @@ static func resolve(state: ChessCoreState, descriptor: Dictionary) -> ChessCoreS
 
 static func ordered_replies(state: ChessCoreState) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var actions := ClassicChessCore.legal_actions(state, state.current_turn)
+	var actions := _analysis_actions(state, state.current_turn)
 	for index in range(actions.size()):
 		var action: ChessCoreAction = actions[index]
 		var reply_class := _reply_class(state, action)
@@ -85,7 +85,7 @@ static func ordered_replies(state: ChessCoreState) -> Array[Dictionary]:
 	return result
 
 
-static func evaluate_static(state: ChessCoreState, perspective: String, tactical_detail := true, generate_actions := true) -> Dictionary:
+static func evaluate_static(state: ChessCoreState, perspective: String, tactical_detail := true, generate_actions := true, endgame_policy_enabled := true, endgame_technique_enabled := true) -> Dictionary:
 	if state.battle_over:
 		return {"score": terminal_score(state, perspective), "own_actions": [], "enemy_actions": []}
 	var enemy := _other_color(perspective)
@@ -111,8 +111,8 @@ static func evaluate_static(state: ChessCoreState, perspective: String, tactical
 	var own_actions: Array[ChessCoreAction] = []
 	var enemy_actions: Array[ChessCoreAction] = []
 	if generate_actions:
-		own_actions = ClassicChessCore.analysis_actions(state, perspective)
-		enemy_actions = ClassicChessCore.analysis_actions(state, enemy)
+		own_actions = _analysis_actions(state, perspective)
+		enemy_actions = _analysis_actions(state, enemy)
 	score += float(own_actions.size() - enemy_actions.size()) * 0.1
 	if tactical_detail:
 		for piece in state.pieces:
@@ -128,7 +128,7 @@ static func evaluate_static(state: ChessCoreState, perspective: String, tactical
 	score += _arc_mortar_evaluation_bonus(state, perspective)
 	score += _rhetorician_evaluation_bonus(state, perspective)
 	score += _wraith_evaluation_bonus(state, perspective)
-	var endgame := EndgamePolicy.analyze_core(state, perspective) if non_pawn_material < EndgamePolicy.ENDGAME_BLEND_START else EndgamePolicy.middlegame_analysis(material_balance, total_material, non_pawn_material)
+	var endgame := EndgamePolicy.analyze_core(state, perspective, endgame_technique_enabled) if endgame_policy_enabled and non_pawn_material < EndgamePolicy.ENDGAME_BLEND_START else EndgamePolicy.middlegame_analysis(material_balance, total_material, non_pawn_material)
 	score += float(endgame.score)
 	return {"score": score, "own_actions": own_actions, "enemy_actions": enemy_actions, "endgame": endgame}
 
@@ -543,8 +543,21 @@ static func _other_color(color: String) -> String:
 
 
 static func _tactical_attackers(state: ChessCoreState, target: Vector2i, color := "") -> Array[ChessCorePiece]:
+	var profiling := state.performance_metrics != null and state.performance_metrics.detailed_analysis_enabled
+	var started := Time.get_ticks_usec() if profiling else 0
 	var result: Array[ChessCorePiece] = []
 	for piece in state.pieces:
 		if (color.is_empty() or piece.color == color) and ClassicChessCore.geometrically_attacks_in_occupancy(piece, piece.coordinate, target, state.occupancy):
 			result.append(piece)
+	if profiling:
+		state.performance_metrics.record_tactical_attackers(Time.get_ticks_usec() - started, false)
+	return result
+
+
+static func _analysis_actions(state: ChessCoreState, color: String) -> Array[ChessCoreAction]:
+	var profiling := state.performance_metrics != null and state.performance_metrics.detailed_analysis_enabled
+	var started := Time.get_ticks_usec() if profiling else 0
+	var result := ClassicChessCore.analysis_actions(state, color)
+	if profiling:
+		state.performance_metrics.record_analysis_actions(Time.get_ticks_usec() - started, result.size(), false)
 	return result

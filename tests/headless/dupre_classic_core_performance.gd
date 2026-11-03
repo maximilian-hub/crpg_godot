@@ -66,6 +66,7 @@ func _run(position: ChessPosition, backend: int, leaves: int, budget_msec: int, 
 	brain.max_book_moves = 0; brain.simulation_backend = backend
 	brain.max_reply_leaves = leaves; brain.think_budget_msec = budget_msec
 	brain.quiescence_enabled = quiescence
+	brain.core_detailed_profiling_enabled = true
 	var started := Time.get_ticks_usec()
 	var thought = await cpu.think()
 	var elapsed := Time.get_ticks_usec() - started
@@ -99,6 +100,19 @@ func _run(position: ChessPosition, backend: int, leaves: int, budget_msec: int, 
 		"state_copy_usec": int(profile.get("state_copy_usec", 0)),
 		"maximum_state_copy_usec": int(profile.get("maximum_state_copy_usec", 0)),
 		"silent_event_count": int(profile.get("silent_event_count", 0)),
+		"analysis_action_queries": int(profile.get("analysis_action_query_count", 0)),
+		"analysis_action_cache_hits": int(profile.get("analysis_action_cache_hit_count", 0)),
+		"analysis_action_generations": int(profile.get("analysis_action_generation_count", 0)),
+		"analysis_action_count": int(profile.get("analysis_action_count", 0)),
+		"analysis_action_usec": int(profile.get("analysis_action_usec", 0)),
+		"maximum_analysis_action_usec": int(profile.get("maximum_analysis_action_usec", 0)),
+		"ordered_piece_queries": int(profile.get("ordered_piece_query_count", 0)),
+		"ordered_piece_cache_hits": int(profile.get("ordered_piece_cache_hit_count", 0)),
+		"ordered_piece_sort_usec": int(profile.get("ordered_piece_sort_usec", 0)),
+		"tactical_attacker_queries": int(profile.get("tactical_attacker_query_count", 0)),
+		"tactical_attacker_cache_hits": int(profile.get("tactical_attacker_cache_hit_count", 0)),
+		"tactical_attacker_scans": int(profile.get("tactical_attacker_scan_count", 0)),
+		"tactical_attacker_usec": int(profile.get("tactical_attacker_usec", 0)),
 		"resolution_by_action_kind": profile.get("resolution_by_action_kind", {}),
 		"resolution_by_king_type": profile.get("resolution_by_king_type", {}),
 		"endgame_evaluation_count": int(profile.get("endgame_evaluation_count", 0)),

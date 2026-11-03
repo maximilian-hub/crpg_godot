@@ -163,19 +163,31 @@ static func analysis_actions(state: ChessCoreState, color: String) -> Array[Ches
 	var result: Array[ChessCoreAction] = []
 	if state == null or state.battle_over or state.pending_choice != null or color not in ["white", "black"]:
 		return result
-	var ordered := state.pieces.duplicate()
-	ordered.sort_custom(func(a: ChessCorePiece, b: ChessCorePiece):
-		if a.coordinate.x != b.coordinate.x: return a.coordinate.x < b.coordinate.x
-		return a.coordinate.y < b.coordinate.y
-	)
+	var ordered: Array = state.analysis_cache.get("ordered_pieces", [])
+	var ordered_cache_hit := not ordered.is_empty() or state.pieces.is_empty()
+	var profile_ordering := state.performance_metrics != null and state.performance_metrics.detailed_analysis_enabled
+	var ordered_started := Time.get_ticks_usec() if profile_ordering else 0
+	if ordered.is_empty() and not state.pieces.is_empty():
+		ordered = state.pieces.duplicate()
+		ordered.sort_custom(func(a: ChessCorePiece, b: ChessCorePiece):
+			if a.coordinate.x != b.coordinate.x: return a.coordinate.x < b.coordinate.x
+			return a.coordinate.y < b.coordinate.y
+		)
+		state.analysis_cache["ordered_pieces"] = ordered
+	if profile_ordering:
+		state.performance_metrics.record_ordered_pieces(Time.get_ticks_usec() - ordered_started, ordered_cache_hit)
 	for piece: ChessCorePiece in ordered:
 		if piece.color != color or piece.stunned or piece.current_hp <= 0:
 			continue
-		var movement_paths := _legal_paths(state, piece)
+		var movement_paths := _legal_paths(state, piece, false)
 		for movement_type in piece.granted_movement_types:
 			for destination in _moves_as(state, piece, movement_type):
 				movement_paths.append([destination])
-		movement_paths = movement_paths.filter(func(path): return not path.is_empty() and not _rhetorician_attack_blocked(state, piece, path.back()))
+		var accepted_paths: Array[Array] = []
+		for path in movement_paths:
+			if not path.is_empty() and not _rhetorician_attack_blocked(state, piece, path.back()):
+				accepted_paths.append(path)
+		movement_paths = accepted_paths
 		if piece.type_id == &"arakne_king":
 			for path in movement_paths:
 				var action := ChessCoreAction.new()
@@ -645,8 +657,10 @@ static func _legal_destinations(state: ChessCoreState, piece: ChessCorePiece) ->
 			return moves
 		&"classic_king", &"arakne_king", &"necromancer_king", &"minotaur_king", &"quarterly_initiative_king", &"cannon_king", &"rhetorician_king", &"wraith_king":
 			var moves: Array[Vector2i] = []
-			for row in range(8):
-				for column in range(8):
+			# Preserve the former row-major order while visiting only the king's
+			# neighborhood instead of scanning all 64 squares for every query.
+			for row in range(maxi(0, piece.coordinate.x - 1), mini(7, piece.coordinate.x + 1) + 1):
+				for column in range(maxi(0, piece.coordinate.y - 1), mini(7, piece.coordinate.y + 1) + 1):
 					var target := Vector2i(row, column)
 					var delta := target - piece.coordinate
 					var quarterly_efficiency := piece.type_id == &"quarterly_initiative_king" and state.occupant(target) != null and state.occupant(target).color == piece.color
@@ -667,8 +681,10 @@ static func _moves_as(state: ChessCoreState, piece: ChessCorePiece, movement_typ
 	return []
 
 
-static func _legal_paths(state: ChessCoreState, piece: ChessCorePiece) -> Array[Array]:
-	var destinations := _legal_destinations(state, piece).filter(func(destination): return not _rhetorician_attack_blocked(state, piece, destination))
+static func _legal_paths(state: ChessCoreState, piece: ChessCorePiece, filter_rhetorician := true) -> Array[Array]:
+	var destinations := _legal_destinations(state, piece)
+	if filter_rhetorician:
+		destinations = destinations.filter(func(destination): return not _rhetorician_attack_blocked(state, piece, destination))
 	if piece.type_id == &"arakne_king":
 		return ArakneCoreRules.movement_paths(state, piece, destinations)
 	var result: Array[Array] = []

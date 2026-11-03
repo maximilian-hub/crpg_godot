@@ -1,0 +1,74 @@
+DUPRE GAMEPLAY TEST GUIDE
+=========================
+
+Why Save Games?
+---------------
+
+Saved games let us replay the exact position where Dupre made an interesting,
+foolish, or impressive decision. The strongest examples can become permanent
+automated tests, helping us improve Dupre's judgment without breaking behavior
+that already works.
+
+Human playtesting also catches something mechanical tests cannot: moves that
+are technically legal and safe, but feel pointless, unnatural, frustrating, or
+unfun. A small number of clearly explained examples is more useful than a large
+pile of unexplained game files.
+
+
+What Games to Save
+------------------
+
+Please save a game when Dupre:
+
+* Gives away material or overlooks an obvious capture.
+* Misses an immediate attack, defense, victory, or king-damage opportunity.
+* Uses a king ability at a strange time or misunderstands another king's ability.
+* Repeats moves, shuffles pieces, or appears to have no useful plan.
+* Handles an opening, promotion race, rook ending, or other endgame poorly.
+* Makes a move that is safe but feels conspicuously passive or purposeless.
+* Makes an unusually clever, convincing, or enjoyable move we should preserve.
+
+Games Dupre wins are useful too. Please include both colors, different king
+matchups, and games that reach an endgame when convenient. There is no quota:
+one especially clear example may be more valuable than ten ordinary games.
+
+
+What Notes to Leave
+-------------------
+
+For each saved .crpggame file, record:
+
+* The filename.
+* The approximate round or turn.
+* Which color and king Dupre controlled.
+* What Dupre did.
+* What you expected Dupre to consider instead.
+* Why the move seemed bad, good, or interesting.
+* Whether the problem felt urgent and tactical or slower and strategic.
+
+Example:
+
+    game12.crpggame
+    Round 18 — Dupre was the Black Necromancer.
+    Dupre summoned a Bone Pawn to defend his threatened queen.
+    I expected him to capture the attacking pawn or move the queen.
+    The pawn took the queen and the Bone Pawn recaptured it, so Dupre traded
+    his queen for a pawn. This looked like an urgent tactical mistake.
+
+Short notes are completely fine. If the exact round is unknown, describe the
+position or say roughly when it happened. Do not alter or resave the position
+to make it cleaner—the original game record is the most useful evidence.
+
+
+Suggested Collection Mix
+------------------------
+
+As a loose starting target, gather about 8–12 interesting games across:
+
+* Classic and special-king matchups.
+* Dupre playing White and Black.
+* Wins and losses.
+* Openings, middlegames, and at least a couple of endgames.
+
+Send games whenever they are ready. There is no need to wait for a complete
+batch before reviewing a particularly clear example.

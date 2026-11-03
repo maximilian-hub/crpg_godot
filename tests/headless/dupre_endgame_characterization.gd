@@ -2,6 +2,7 @@ extends Node
 
 const EndgamePolicy = preload("res://scripts/ai/dupre_endgame_policy.gd")
 const CoreBackend = preload("res://scripts/ai/dupre_classic_core_backend.gd")
+const MovePolicy = preload("res://scripts/ai/dupre_move_policy.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -13,9 +14,16 @@ func _ready() -> void:
 	_test_enemy_passer_danger()
 	_test_king_activity()
 	_test_rook_support()
+	_test_promotion_race_tempo()
+	_test_blocked_passer_clock()
+	_test_king_escort_pressure()
+	_test_rook_passer_pressure()
+	_test_root_policy_prefers_passer_push()
+	_test_root_policy_prefers_rook_pressure()
 	_test_simplification_direction()
 	_test_model_core_parity()
 	_test_core_cache_and_metrics()
+	_test_policy_toggle()
 	if failures.is_empty():
 		print("DUPRE ENDGAME CHARACTERIZATION: PASS (", checks, " checks)")
 		get_tree().quit(0)
@@ -57,6 +65,68 @@ func _test_rook_support() -> void:
 	_expect(float(EndgamePolicy.analyze(supported, "white").score) > float(EndgamePolicy.analyze(unsupported, "white").score), "a rook behind its passer is valued over unrelated rook activity")
 
 
+func _test_promotion_race_tempo() -> void:
+	var ready := _base_with([_p("wp", &"pawn", "white", Vector2i(6, 2), false, false)])
+	ready.current_turn = "white"
+	var waiting := ready.duplicate(true); waiting.current_turn = "black"
+	var ready_analysis := EndgamePolicy.analyze(ready, "white")
+	var waiting_analysis := EndgamePolicy.analyze(waiting, "white")
+	_expect(int(ready_analysis.friendly_fastest_promotion_plies) == 9 and int(waiting_analysis.friendly_fastest_promotion_plies) == 10, "promotion clocks include side-to-move tempo and an available initial double move")
+	_expect(float(ready_analysis.components.promotion_race) > float(waiting_analysis.components.promotion_race), "moving first improves the bounded promotion-race score")
+	var moved := _base_with([_p("wp", &"pawn", "white", Vector2i(6, 2), false, true)])
+	_expect(int(EndgamePolicy.analyze(moved, "white").friendly_fastest_promotion_plies) == 11, "a pawn that already moved receives no fictional initial double move")
+
+
+func _test_blocked_passer_clock() -> void:
+	var blocked := _base_with([_p("wp", &"pawn", "white", Vector2i(3, 2)), _p("br", &"rook", "black", Vector2i(2, 2))])
+	var analysis := EndgamePolicy.analyze(blocked, "white")
+	_expect(int(analysis.friendly_fastest_promotion_plies) == -1 and int(analysis.blocked_passed_pawns) == 1, "a file blocker suppresses an unsupported static promotion clock")
+
+
+func _test_king_escort_pressure() -> void:
+	var far := _snapshot([_p("wk", &"classic_king", "white", Vector2i(7, 7), true), _p("bk", &"classic_king", "black", Vector2i(1, 0), true), _p("wp", &"pawn", "white", Vector2i(3, 2))])
+	var near := _snapshot([_p("wk", &"classic_king", "white", Vector2i(3, 3), true), _p("bk", &"classic_king", "black", Vector2i(1, 0), true), _p("wp", &"pawn", "white", Vector2i(3, 2))])
+	_expect(float(EndgamePolicy.analyze(near, "white").components.king_escort) > float(EndgamePolicy.analyze(far, "white").components.king_escort), "King proximity to a passer's critical square is useful pressure without making attacked squares illegal")
+
+
+func _test_rook_passer_pressure() -> void:
+	var inactive := _base_with([_p("bp", &"pawn", "black", Vector2i(4, 2)), _p("wr", &"rook", "white", Vector2i(2, 5))])
+	var active := _base_with([_p("bp", &"pawn", "black", Vector2i(4, 2)), _p("wr", &"rook", "white", Vector2i(2, 2))])
+	var legacy := EndgamePolicy.analyze(active, "white", false)
+	_expect(float(EndgamePolicy.analyze(active, "white").components.rook_technique) > float(EndgamePolicy.analyze(inactive, "white").components.rook_technique), "a clear rook behind an enemy passer receives purposeful pressure credit")
+	_expect(float(legacy.components.rook_technique) == 0.0, "the technique switch preserves the legacy endgame baseline")
+
+
+func _test_root_policy_prefers_passer_push() -> void:
+	var model := _model([ClassicKing.new("white", Vector2i(7, 7)), Pawn.new("white", Vector2i(2, 2)), ClassicKing.new("black", Vector2i(0, 7)), Pawn.new("black", Vector2i(5, 6))])
+	var cpu := _cpu(model)
+	var policy := MovePolicy.new(cpu, {}, null, true, true)
+	var push: ChessPrimaryAction
+	var king_drift: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece is Pawn and action.target == Vector2i(1, 2): push = action
+		elif action.piece is KingPiece and king_drift == null: king_drift = action
+	var push_score := policy.score(push) if push != null else -INF
+	var drift_score := policy.score(king_drift) if king_drift != null else INF
+	_expect(push != null and king_drift != null and push_score > drift_score, "a winning-race pawn push outranks unrelated King drift (%s vs %s)" % [push_score, drift_score])
+	cpu.queue_free(); model.queue_free()
+
+
+func _test_root_policy_prefers_rook_pressure() -> void:
+	var rook := Rook.new("white", Vector2i(6, 0))
+	var model := _model([ClassicKing.new("white", Vector2i(7, 7)), rook, ClassicKing.new("black", Vector2i(0, 7)), Pawn.new("black", Vector2i(4, 2))])
+	var cpu := _cpu(model)
+	var policy := MovePolicy.new(cpu, {}, null, true, true)
+	var pressure: ChessPrimaryAction
+	var lateral: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("white"):
+		if action.piece != rook: continue
+		if action.target == Vector2i(6, 2): pressure = action
+		elif action.target == Vector2i(6, 1): lateral = action
+	_expect(pressure != null and lateral != null and policy.score(pressure) > policy.score(lateral), "rook pressure against an enemy passer outranks an equivalent lateral shuffle")
+	cpu.queue_free(); model.queue_free()
+
+
 func _test_simplification_direction() -> void:
 	var ahead := _base_with([_p("wq", &"queen", "white", Vector2i(6, 0)), _p("wr", &"rook", "white", Vector2i(6, 1)), _p("bq", &"queen", "black", Vector2i(1, 0))])
 	var ahead_trade := _base_with([_p("wr", &"rook", "white", Vector2i(6, 1))])
@@ -87,11 +157,21 @@ func _test_core_cache_and_metrics() -> void:
 		var piece := ChessCorePiece.new(); piece.piece_id = record.piece_id; piece.type_id = record.type_id; piece.color = record.color; piece.coordinate = record.coordinate; state.add_piece(piece)
 	var first := EndgamePolicy.analyze_core(state, "white")
 	var second := EndgamePolicy.analyze_core(state, "white")
-	state.copy()
+	var copied := state.copy()
 	_expect(not bool(first.cache_hit) and bool(second.cache_hit), "pure endgame analysis is memoized only within an unchanged state")
+	_expect(copied.analysis_cache.is_empty(), "copied mutable states never inherit analysis cached for their parent")
 	_expect(int(state.performance_metrics.snapshot().state_copy_count) == 1, "pure-core state-copy instrumentation records search work")
 	var evaluation := CoreBackend.evaluate_static(state, "white", false, false)
 	_expect(evaluation.has("endgame"), "pure leaf evaluation reports its phase-aware endgame component")
+
+
+func _test_policy_toggle() -> void:
+	var state := ChessCoreState.new()
+	for record in _base_with([_p("wp", &"pawn", "white", Vector2i(2, 2)), _p("wr", &"rook", "white", Vector2i(6, 2))]).pieces:
+		var piece := ChessCorePiece.new(); piece.piece_id = record.piece_id; piece.type_id = record.type_id; piece.color = record.color; piece.coordinate = record.coordinate; state.add_piece(piece)
+	var enabled := CoreBackend.evaluate_static(state, "white", false, false, true)
+	var disabled := CoreBackend.evaluate_static(state, "white", false, false, false)
+	_expect(float(enabled.endgame.score) > 0.0 and float(disabled.endgame.score) == 0.0, "the A/B switch removes only phase-aware endgame evaluation")
 
 
 func _base_with(extra: Array[Dictionary]) -> Dictionary:
@@ -100,14 +180,33 @@ func _base_with(extra: Array[Dictionary]) -> Dictionary:
 	return _snapshot(pieces)
 
 
+func _model(pieces: Array) -> ChessBoardModel:
+	var model := ChessBoardModel.new(); model.startup_mode = ChessBoardModel.StartupMode.EMPTY; model.diagnostic_logging_enabled = false
+	add_child(model); model.initialize_battle()
+	for row in model.board:
+		for piece in row:
+			if piece != null: model.unregister_piece(piece)
+	model.board.clear()
+	for _row in range(8): model.board.append([null, null, null, null, null, null, null, null])
+	for piece in pieces: model.add_piece(piece, piece.coordinate)
+	model.current_turn = "white"
+	return model
+
+
+func _cpu(model: ChessBoardModel) -> ChessCpuPlayer:
+	var cpu := ChessCpuPlayer.new(); cpu.model = model; add_child(cpu)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "white")
+	return cpu
+
+
 func _snapshot(pieces: Array[Dictionary]) -> Dictionary:
 	var occupancy := {}
 	for piece in pieces: occupancy[piece.coordinate] = piece
-	return {"pieces": pieces, "occupancy": occupancy}
+	return {"pieces": pieces, "occupancy": occupancy, "current_turn": "white", "board_size": Vector2i(8, 8)}
 
 
-func _p(id: String, type_id: StringName, color: String, coordinate: Vector2i, king := false) -> Dictionary:
-	return {"piece_id": id, "type_id": type_id, "color": color, "coordinate": coordinate, "is_king": king}
+func _p(id: String, type_id: StringName, color: String, coordinate: Vector2i, king := false, has_moved := true) -> Dictionary:
+	return {"piece_id": id, "type_id": type_id, "color": color, "coordinate": coordinate, "is_king": king, "has_moved": has_moved, "current_hp": 1, "max_hp": 1, "attack_power": 1, "stunned": false}
 
 
 func _expect(condition: bool, message: String) -> void:
