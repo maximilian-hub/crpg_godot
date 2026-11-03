@@ -11,6 +11,7 @@ var platform := ""
 var frames: Array[Dictionary] = []
 var flagged_frame := -1
 var issue_note := ""
+var issue_report: Dictionary = {}
 var provenance: Dictionary = {}
 
 
@@ -33,5 +34,12 @@ func copy():
 	result.frames = frames.duplicate(true)
 	result.flagged_frame = flagged_frame
 	result.issue_note = issue_note
+	result.issue_report = issue_report.duplicate(true)
 	result.provenance = provenance.duplicate(true)
 	return result
+
+
+func clear_issue_report() -> void:
+	flagged_frame = -1
+	issue_note = ""
+	issue_report.clear()

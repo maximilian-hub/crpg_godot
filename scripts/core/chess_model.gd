@@ -82,6 +82,10 @@ signal autonomous_entity_moved(entity: ChessAutonomousEntityState, from: Vector2
 signal autonomous_entity_removed(entity: ChessAutonomousEntityState, reason: StringName, completion: CompletionGate)
 signal arc_mortar_impact(entity: ChessAutonomousEntityState, affected_coords: Array, completion: CompletionGate)
 signal movement_type_selection_requested(king: QuarterlyInitiativeKing, target: ModelPiece, options: Array[StringName])
+## Emitted only after an authoritative secondary choice has been accepted.
+## Record/replay surfaces use this generic transcript hook instead of knowing
+## which king or presentation UI supplied the choice.
+signal authoritative_selection_committed(kind: StringName, option: Variant)
 signal lunacy_changed(color: String, value: int, socratic_turns_remaining: int)
 
 var battle_over: bool = false
@@ -546,6 +550,7 @@ func submit_movement_type_grant(movement_type: StringName) -> bool:
 	if movement_type not in options:
 		return false
 	pending_movement_type_grant.clear()
+	authoritative_selection_committed.emit(&"movement_type_grant", movement_type)
 	movement_type_selection_resolved.emit(movement_type)
 	return true
 
@@ -567,6 +572,7 @@ func submit_promotion_selection(piece_type: StringName) -> bool:
 	if piece_type not in options:
 		return false
 	pending_promotion.clear()
+	authoritative_selection_committed.emit(&"promotion", piece_type)
 	promotion_selection_resolved.emit(piece_type)
 	return true
 

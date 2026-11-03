@@ -16,6 +16,8 @@ static func to_dictionary(record) -> Dictionary:
 			"label": String(frame.get("label", "")),
 			"position": ChessPositionCodec.to_dictionary(position),
 			"action": _json_safe(frame.get("action", {})),
+			"transition": String(frame.get("transition", &"action" if not frame.get("action", {}).is_empty() else &"snapshot")),
+			"selections": _json_safe(frame.get("selections", [])),
 			"ai": _json_safe(frame.get("ai", {})),
 			"context": _json_safe(frame.get("context", {})),
 		})
@@ -25,7 +27,15 @@ static func to_dictionary(record) -> Dictionary:
 		"record_id": record.record_id,
 		"created_utc": record.created_utc,
 		"build": {"id": record.build_id, "engine": record.engine_version, "platform": record.platform},
-		"report": {"flagged_frame": record.flagged_frame, "note": record.issue_note},
+		"report": {
+			"flagged_frame": record.flagged_frame,
+			"note": record.issue_note,
+			"category": String(record.issue_report.get("category", "")),
+			"urgency": String(record.issue_report.get("urgency", "")),
+			"observed": String(record.issue_report.get("observed", "")),
+			"expected": String(record.issue_report.get("expected", "")),
+			"reasoning": String(record.issue_report.get("reasoning", "")),
+		},
 		"provenance": _json_safe(record.provenance),
 		"frames": encoded_frames,
 	}
@@ -70,6 +80,15 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	if report is Dictionary:
 		record.flagged_frame = int(report.get("flagged_frame", -1))
 		record.issue_note = String(report.get("note", ""))
+		record.issue_report = {
+			"category": String(report.get("category", "")),
+			"urgency": String(report.get("urgency", "")),
+			"observed": String(report.get("observed", report.get("note", ""))),
+			"expected": String(report.get("expected", "")),
+			"reasoning": String(report.get("reasoning", "")),
+		}
+		if record.issue_report.values().all(func(value): return String(value).is_empty()):
+			record.issue_report.clear()
 	var provenance = data.get("provenance", {})
 	record.provenance = provenance.duplicate(true) if provenance is Dictionary else {}
 	for index in range(raw_frames.size()):
@@ -86,6 +105,8 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 			"label": String(raw.get("label", "")),
 			"position": decoded.position,
 			"action": _dictionary_or_empty(raw.get("action", {})),
+			"transition": StringName(raw.get("transition", "action" if not raw.get("action", {}).is_empty() else "snapshot")),
+			"selections": _array_or_empty(raw.get("selections", [])),
 			"ai": _dictionary_or_empty(raw.get("ai", {})),
 			"context": _dictionary_or_empty(raw.get("context", {})),
 		})
@@ -108,6 +129,10 @@ static func load_file(path: String) -> Dictionary:
 
 static func _dictionary_or_empty(value) -> Dictionary:
 	return value.duplicate(true) if value is Dictionary else {}
+
+
+static func _array_or_empty(value) -> Array:
+	return value.duplicate(true) if value is Array else []
 
 
 static func _json_safe(value):

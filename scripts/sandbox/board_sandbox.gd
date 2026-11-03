@@ -6,6 +6,9 @@ const BoardPiecePaletteScript = preload("res://scripts/editor/board_piece_palett
 const GameRecordScript = preload("res://scripts/state/chess_game_record.gd")
 const GameRecordCodec = preload("res://scripts/state/chess_game_record_codec.gd")
 const ActionCodec = preload("res://scripts/state/chess_action_codec.gd")
+const PureCore = preload("res://scripts/core/pure/classic_chess_core.gd")
+const CoreAction = preload("res://scripts/core/pure/chess_core_action.gd")
+const CoreStepResult = preload("res://scripts/core/pure/chess_core_step_result.gd")
 
 enum Mode { EDIT, PLAY }
 
@@ -98,6 +101,7 @@ var replay_cursor := 0
 var replay_warnings: Array[String] = []
 var pending_action: Dictionary = {}
 var pending_ai: Dictionary = {}
+var pending_selections: Array[Dictionary] = []
 var record_provenance: Dictionary = {}
 var record_panel: PanelContainer
 var record_status_label: Label
@@ -110,7 +114,22 @@ var replay_fork_button: Button
 var replay_analyze_button: Button
 var record_open_dialog: FileDialog
 var record_save_dialog: FileDialog
+var record_save_clean := false
 var replay_analysis_running := false
+var replay_playing := false
+var replay_pause_requested := false
+var replay_selection_queue: Array[Dictionary] = []
+var replay_play_button: Button
+var replay_watch_button: Button
+var replay_compatibility_label: Label
+var report_panel: PanelContainer
+var report_category_option: OptionButton
+var report_urgency_option: OptionButton
+var report_observed_edit: TextEdit
+var report_expected_edit: TextEdit
+var report_reasoning_edit: TextEdit
+var report_notes_edit: TextEdit
+var report_context_label: Label
 var piece_skin_tuning := {
 	PieceView.StandardSkin.CLASSIC: {"scale": 1.0, "base_offset": Vector2.ZERO},
 	PieceView.StandardSkin.CHUNKY: {"scale": 1.25, "base_offset": Vector2(0.0, 5.0)},
@@ -134,6 +153,10 @@ func _ready() -> void:
 	model.action_finished.connect(_refresh_control_states)
 	model.action_cancelled.connect(_refresh_control_states)
 	model.primary_action_committed.connect(_on_primary_action_committed)
+	model.authoritative_selection_committed.connect(_on_authoritative_selection_committed)
+	model.promotion_selection_requested.connect(_on_replay_promotion_requested)
+	model.movement_type_selection_requested.connect(_on_replay_movement_grant_requested)
+	model.reaction_selection_requested.connect(_on_replay_reaction_requested)
 	model.board_rebuilt.connect(_on_board_rebuilt)
 	history.changed.connect(func(_can_undo: bool, _can_redo: bool): _refresh_control_states())
 	game.white_cpu_player.thought_changed.connect(func(thought): _on_ai_thought_changed(thought); _refresh_control_states())
@@ -142,6 +165,8 @@ func _ready() -> void:
 	game.black_cpu_player.thinking_changed.connect(func(_thinking): _refresh_control_states())
 	_build_panel()
 	_build_record_panel()
+	_build_report_panel()
+	if mobile_layout: _layout_mobile_controls()
 	_set_mode(Mode.EDIT)
 	baseline = model.capture_position()
 	history.establish_baseline(baseline, "Normal Start", {"kind": &"baseline", "context": _capture_record_context()})
@@ -360,22 +385,26 @@ func _build_record_panel() -> void:
 	record_panel = PanelContainer.new()
 	record_panel.name = "RecordReplayPanel"
 	if mobile_layout:
-		record_panel.set_anchors_preset(Control.PRESET_CENTER)
-		record_panel.offset_left = -190.0
-		record_panel.offset_top = -250.0
-		record_panel.offset_right = 190.0
-		record_panel.offset_bottom = 250.0
+		record_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		record_panel.offset_left = 12.0
+		record_panel.offset_top = 70.0
+		record_panel.offset_right = -12.0
+		record_panel.offset_bottom = -12.0
 	else:
 		record_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-		record_panel.offset_left = -392.0
+		record_panel.offset_left = -472.0
 		record_panel.offset_top = 360.0
 		record_panel.offset_right = -12.0
-		record_panel.offset_bottom = 860.0
+		record_panel.offset_bottom = 960.0
 	record_panel.visible = false
 	$SandboxLayer.add_child(record_panel)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 6)
-	record_panel.add_child(column)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	record_panel.add_child(scroll)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
 	var title := Label.new()
 	title.text = "Game Record / Replay"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -385,15 +414,22 @@ func _build_record_panel() -> void:
 	column.add_child(record_frame_label)
 	var nav := HBoxContainer.new()
 	column.add_child(nav)
-	replay_previous_button = _add_button_to(nav, "◀ Previous", _replay_previous)
-	replay_next_button = _add_button_to(nav, "Next ▶", _replay_next)
+	replay_previous_button = _add_button_to(nav, "◀ Previous Turn", _replay_previous_turn)
+	replay_next_button = _add_button_to(nav, "Next Turn ▶", _replay_next_turn)
+	var playback := HBoxContainer.new()
+	column.add_child(playback)
+	replay_watch_button = _add_button_to(playback, "Watch from Start", _watch_replay_from_start)
+	replay_play_button = _add_button_to(playback, "Play", _toggle_replay_playback)
 	var actions := HBoxContainer.new()
 	column.add_child(actions)
-	_add_button_to(actions, "Copy Game", copy_game_record)
-	_add_button_to(actions, "Paste Game", paste_game_record)
+	_add_button_to(actions, "Share Game", copy_clean_game_record)
+	_add_button_to(actions, "Report Issue", _open_report_panel)
+	var import_actions := HBoxContainer.new()
+	column.add_child(import_actions)
+	_add_button_to(import_actions, "Paste Game", paste_game_record)
 	if not mobile_layout:
-		_add_button_to(actions, "Open…", func(): record_open_dialog.popup_centered_ratio(0.7))
-		_add_button_to(actions, "Save…", func(): record_save_dialog.popup_centered_ratio(0.7))
+		_add_button_to(import_actions, "Open…", func(): record_open_dialog.popup_centered_ratio(0.7))
+		_add_button_to(import_actions, "Save Game…", _open_clean_save_dialog)
 	var replay_actions := HBoxContainer.new()
 	column.add_child(replay_actions)
 	replay_flag_button = _add_button_to(replay_actions, "Flag Frame", _flag_replay_frame)
@@ -401,17 +437,22 @@ func _build_record_panel() -> void:
 	replay_analyze_button = _add_button_to(replay_actions, "Analyze Again", analyze_replay_again)
 	_add_button_to(column, "Copy Current Position", copy_position)
 	var note_label := Label.new()
-	note_label.text = "Issue note"
+	note_label.text = "Imported report note"
 	column.add_child(note_label)
 	record_note_edit = TextEdit.new()
 	record_note_edit.custom_minimum_size.y = 92.0
 	record_note_edit.placeholder_text = "What looked wrong at the flagged frame?"
+	record_note_edit.editable = false
 	record_note_edit.text_changed.connect(_on_record_note_changed)
 	column.add_child(record_note_edit)
 	record_status_label = Label.new()
 	record_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	record_status_label.custom_minimum_size.y = 58.0
 	column.add_child(record_status_label)
+	replay_compatibility_label = Label.new()
+	replay_compatibility_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	replay_compatibility_label.modulate = Color("d6b35a")
+	column.add_child(replay_compatibility_label)
 	_add_button_to(column, "Close", _toggle_record_panel)
 	if not mobile_layout:
 		record_open_dialog = FileDialog.new()
@@ -430,16 +471,174 @@ func _build_record_panel() -> void:
 		call_deferred(&"_layout_record_panel")
 	_refresh_record_panel()
 
+func _build_report_panel() -> void:
+	report_panel = PanelContainer.new()
+	report_panel.name = "GameIssueReportPanel"
+	report_panel.visible = false
+	report_panel.z_index = 200
+	if mobile_layout:
+		report_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		report_panel.offset_left = 12.0
+		report_panel.offset_top = 12.0
+		report_panel.offset_right = -12.0
+		report_panel.offset_bottom = -12.0
+	else:
+		report_panel.set_anchors_preset(Control.PRESET_CENTER)
+		report_panel.offset_left = -330.0
+		report_panel.offset_top = -340.0
+		report_panel.offset_right = 330.0
+		report_panel.offset_bottom = 340.0
+	$SandboxLayer.add_child(report_panel)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	report_panel.add_child(scroll)
+	var column := VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 8)
+	scroll.add_child(column)
+	var title := Label.new()
+	title.text = "Report an Interesting Turn"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(title)
+	report_context_label = Label.new()
+	report_context_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(report_context_label)
+	report_category_option = OptionButton.new()
+	for label in ["Tactical mistake", "Strategic mistake", "Ability use", "Repetition / no plan", "Endgame", "Good play", "Other"]:
+		report_category_option.add_item(label)
+	_add_report_field(column, "Type", report_category_option)
+	report_urgency_option = OptionButton.new()
+	report_urgency_option.add_item("Immediate / tactical")
+	report_urgency_option.add_item("Slower / strategic")
+	_add_report_field(column, "Urgency", report_urgency_option)
+	report_observed_edit = _make_report_text_edit("What did Dupre do?", 82.0)
+	_add_report_field(column, "What happened? *", report_observed_edit)
+	report_expected_edit = _make_report_text_edit("What should Dupre have considered instead?", 82.0)
+	_add_report_field(column, "What did you expect?", report_expected_edit)
+	report_reasoning_edit = _make_report_text_edit("Why was the move bad, good, or interesting?", 82.0)
+	_add_report_field(column, "Why was it interesting?", report_reasoning_edit)
+	report_notes_edit = _make_report_text_edit("Anything else that may help reproduce or understand it.", 70.0)
+	_add_report_field(column, "Additional notes", report_notes_edit)
+	var actions := HBoxContainer.new()
+	column.add_child(actions)
+	_add_button_to(actions, "Copy Report", _copy_issue_report)
+	if not mobile_layout:
+		_add_button_to(actions, "Save Report…", _open_report_save_dialog)
+	_add_button_to(actions, "Cancel", _close_report_panel)
+
+func _add_report_field(column: VBoxContainer, label_text: String, control: Control) -> void:
+	var label := Label.new()
+	label.text = label_text
+	column.add_child(label)
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_child(control)
+
+func _make_report_text_edit(placeholder: String, height: float) -> TextEdit:
+	var edit := TextEdit.new()
+	edit.custom_minimum_size.y = height
+	edit.placeholder_text = placeholder
+	edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	return edit
+
+func _open_report_panel() -> void:
+	var record = replay_record if replay_mode else _record_from_history()
+	if record == null:
+		return
+	if record.flagged_frame < 0:
+		record_status_label.text = "Flag the interesting turn before creating a report."
+		return
+	var report: Dictionary = record.issue_report
+	_select_option_text(report_category_option, String(report.get("category", "Tactical mistake")))
+	_select_option_text(report_urgency_option, String(report.get("urgency", "Immediate / tactical")))
+	report_observed_edit.text = String(report.get("observed", record.issue_note))
+	report_expected_edit.text = String(report.get("expected", ""))
+	report_reasoning_edit.text = String(report.get("reasoning", ""))
+	report_notes_edit.text = record.issue_note if not record.issue_note.is_empty() and record.issue_note != report_observed_edit.text else ""
+	report_context_label.text = _report_context(record, record.flagged_frame)
+	report_panel.visible = true
+	record_panel.visible = false
+
+func _close_report_panel() -> void:
+	report_panel.visible = false
+	record_panel.visible = true
+
+func _select_option_text(option: OptionButton, value: String) -> void:
+	for index in range(option.item_count):
+		if option.get_item_text(index) == value:
+			option.select(index)
+			return
+	option.select(0)
+
+func _store_issue_report() -> bool:
+	var record = replay_record if replay_mode else _record_from_history()
+	if record == null or record.flagged_frame < 0:
+		report_context_label.text = "Flag an interesting turn before exporting a report."
+		return false
+	var observed := report_observed_edit.text.strip_edges()
+	if observed.is_empty():
+		report_context_label.text = "Please briefly describe what happened."
+		report_observed_edit.grab_focus()
+		return false
+	record.issue_report = {
+		"category": report_category_option.get_item_text(report_category_option.selected),
+		"urgency": report_urgency_option.get_item_text(report_urgency_option.selected),
+		"observed": observed,
+		"expected": report_expected_edit.text.strip_edges(),
+		"reasoning": report_reasoning_edit.text.strip_edges(),
+	}
+	record.issue_note = report_notes_edit.text.strip_edges()
+	if record.issue_note.is_empty():
+		record.issue_note = observed
+	return true
+
+func _copy_issue_report() -> void:
+	if not _store_issue_report(): return
+	var record = replay_record if replay_mode else _record_from_history()
+	DisplayServer.clipboard_set(GameRecordCodec.to_json(record))
+	report_panel.visible = false
+	record_panel.visible = true
+	record_status_label.text = "Copied annotated %d-frame game JSON to clipboard." % record.frames.size()
+	_refresh_record_panel()
+
+func _open_clean_save_dialog() -> void:
+	record_save_clean = true
+	record_save_dialog.popup_centered_ratio(0.7)
+
+func _open_report_save_dialog() -> void:
+	if not _store_issue_report(): return
+	record_save_clean = false
+	record_save_dialog.popup_centered_ratio(0.7)
+
+func _report_context(record, frame_index: int) -> String:
+	if frame_index < 0 or frame_index >= record.frames.size(): return "Unknown turn"
+	var frame: Dictionary = record.frames[frame_index]
+	var position: ChessPosition = record.frames[maxi(0, frame_index - 1)].get("position")
+	var round_number := maxi(1, int(ceili(float(position.global_turn_number) / 2.0))) if position != null else 0
+	var action: Dictionary = frame.get("action", {})
+	var color := String(action.get("color", "Unknown")).capitalize()
+	var context: Dictionary = frame.get("context", {})
+	var cpu: Dictionary = context.get(String(action.get("color", "")), {})
+	var brain := String(cpu.get("brain", frame.get("ai", {}).get("brain_id", "Unknown")))
+	var matchup := "%s vs %s" % [_king_label(position, "white"), _king_label(position, "black")]
+	return "Frame %d · Round %d · %s · %s · Seed %s\n%s · %s" % [frame_index + 1, round_number, color, brain, context.get("seed", "?"), matchup, String(frame.get("label", "Recorded turn"))]
+
+func _king_label(position: ChessPosition, color: String) -> String:
+	if position == null: return color.capitalize()
+	for piece in position.pieces:
+		if piece.color == color and (String(piece.type_id).ends_with("king") or String(piece.type_id).contains("archer")):
+			return "%s %s" % [color.capitalize(), String(piece.type_id).replace("_", " ").capitalize()]
+	return color.capitalize()
+
 func _layout_record_panel() -> void:
 	if mobile_layout or record_panel == null or piece_palette == null: return
 	var palette_bottom: float = piece_palette.position.y + piece_palette.size.y
 	var top: float = palette_bottom + 12.0
 	var available_height: float = get_viewport().get_visible_rect().size.y - top - 12.0
 	record_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	record_panel.offset_left = -392.0
+	record_panel.offset_left = -472.0
 	record_panel.offset_top = top
 	record_panel.offset_right = -12.0
-	record_panel.offset_bottom = top + minf(500.0, maxf(260.0, available_height))
+	record_panel.offset_bottom = top + minf(640.0, maxf(320.0, available_height))
 
 func _toggle_record_panel() -> void:
 	if record_panel == null: return
@@ -457,10 +656,16 @@ func _refresh_record_panel() -> void:
 	var cursor: int = replay_cursor if replay_mode else history.cursor
 	record_frame_label.text = "%s — Frame %d / %d" % ["Replay" if replay_mode else "Live Recording", cursor + 1, count]
 	replay_previous_button.disabled = not replay_mode or replay_cursor <= 0
-	replay_next_button.disabled = not replay_mode or replay_record == null or replay_cursor >= replay_record.frames.size() - 1
-	replay_flag_button.disabled = count <= 0
-	replay_fork_button.disabled = not replay_mode
-	replay_analyze_button.disabled = not replay_mode or replay_cursor <= 0
+	replay_next_button.disabled = not replay_mode or replay_record == null or replay_playing or _next_replay_turn_index(replay_cursor) < 0
+	replay_previous_button.disabled = not replay_mode or replay_playing or _previous_replay_turn_index(replay_cursor) < 0
+	if replay_play_button != null:
+		replay_play_button.text = "Pausing…" if replay_pause_requested else ("Pause after Turn" if replay_playing else "Play")
+		replay_play_button.disabled = not replay_mode or replay_pause_requested or (not replay_playing and _next_replay_turn_index(replay_cursor) < 0)
+	if replay_watch_button != null:
+		replay_watch_button.disabled = not replay_mode or replay_playing or _first_replay_turn_index() < 0
+	replay_flag_button.disabled = count <= 0 or replay_playing
+	replay_fork_button.disabled = not replay_mode or replay_playing
+	replay_analyze_button.disabled = not replay_mode or replay_cursor <= 0 or replay_playing
 	var record = replay_record if replay_mode else _record_from_history()
 	var note: String = record.issue_note if record != null else ""
 	if record_note_edit.text != note:
@@ -601,6 +806,16 @@ func _layout_mobile_controls() -> void:
 	piece_palette.offset_right = -right
 	piece_palette.offset_bottom = -bottom
 	piece_palette._layout_king_picker()
+	if record_panel != null:
+		record_panel.offset_left = left
+		record_panel.offset_top = top + 58.0
+		record_panel.offset_right = -right
+		record_panel.offset_bottom = -bottom
+	if report_panel != null:
+		report_panel.offset_left = left
+		report_panel.offset_top = top
+		report_panel.offset_right = -right
+		report_panel.offset_bottom = -bottom
 
 func _make_confirmation(title: String, message: String, callback: Callable) -> ConfirmationDialog:
 	var dialog := ConfirmationDialog.new()
@@ -955,15 +1170,27 @@ func _on_settled_action_completed() -> void:
 	if mode == Mode.PLAY and not restoring_history and not replay_mode:
 		var label: String = ActionCodec.label(pending_action)
 		_invalidate_flag_on_history_branch()
-		history.push(model.capture_position(), label, {"kind": &"gameplay", "action": pending_action.duplicate(true), "ai": pending_ai.duplicate(true), "context": _capture_record_context()})
+		history.push(model.capture_position(), label, {
+			"kind": &"gameplay", "action": pending_action.duplicate(true),
+			"transition": &"action" if not pending_action.is_empty() else &"forced_pass",
+			"selections": pending_selections.duplicate(true),
+			"ai": pending_ai.duplicate(true), "context": _capture_record_context(),
+		})
 		pending_action.clear()
 		pending_ai.clear()
+		pending_selections.clear()
 	_refresh_record_panel()
 	_refresh_control_states()
 
 func _on_primary_action_committed(descriptor: Dictionary) -> void:
 	if not replay_mode and not replay_analysis_running:
+		pending_selections.clear()
 		pending_action = descriptor.duplicate(true)
+
+func _on_authoritative_selection_committed(kind: StringName, option: Variant) -> void:
+	if replay_mode or replay_analysis_running:
+		return
+	pending_selections.append({"kind": String(kind), "option": _encode_record_value(option)})
 
 func _invalidate_flag_on_history_branch() -> void:
 	if active_record != null and active_record.flagged_frame > history.cursor:
@@ -1191,6 +1418,8 @@ func _record_from_history():
 		active_record.frames.append({
 			"position": history.entries[index].copy(), "label": history.labels[index],
 			"kind": meta.get("kind", &"gameplay"), "action": meta.get("action", {}).duplicate(true),
+			"transition": meta.get("transition", &"action" if not meta.get("action", {}).is_empty() else &"snapshot"),
+			"selections": meta.get("selections", []).duplicate(true),
 			"ai": meta.get("ai", {}).duplicate(true), "context": meta.get("context", {}).duplicate(true),
 		})
 	return active_record
@@ -1199,6 +1428,13 @@ func copy_game_record() -> void:
 	var record = replay_record if replay_mode else _record_from_history()
 	DisplayServer.clipboard_set(GameRecordCodec.to_json(record))
 	record_status_label.text = "Copied %d-frame game JSON to clipboard." % record.frames.size()
+
+func copy_clean_game_record() -> void:
+	var source = replay_record if replay_mode else _record_from_history()
+	var record = source.copy()
+	record.clear_issue_report()
+	DisplayServer.clipboard_set(GameRecordCodec.to_json(record))
+	record_status_label.text = "Copied clean %d-frame game JSON to clipboard." % record.frames.size()
 
 func paste_game_record() -> void:
 	import_record_text(DisplayServer.clipboard_get())
@@ -1223,6 +1459,8 @@ func import_record_text(text: String) -> bool:
 	return true
 
 func _enter_replay(record, warnings: Array) -> void:
+	_stop_replay_playback()
+	if replay_compatibility_label != null: replay_compatibility_label.text = ""
 	replay_record = record
 	replay_mode = true
 	replay_warnings.assign(warnings)
@@ -1237,7 +1475,7 @@ func _enter_replay(record, warnings: Array) -> void:
 	_refresh_record_panel()
 
 func _load_replay_frame(index: int) -> void:
-	if replay_record == null or index < 0 or index >= replay_record.frames.size() or not model.is_settled(): return
+	if replay_record == null or index < 0 or index >= replay_record.frames.size() or not model.is_settled() or replay_playing: return
 	replay_cursor = index
 	restoring_history = true
 	model.load_position((replay_record.frames[index].position as ChessPosition).copy())
@@ -1249,6 +1487,230 @@ func _replay_previous() -> void:
 
 func _replay_next() -> void:
 	_load_replay_frame(replay_cursor + 1)
+
+func _is_replay_turn(index: int) -> bool:
+	if replay_record == null or index <= 0 or index >= replay_record.frames.size(): return false
+	var frame: Dictionary = replay_record.frames[index]
+	return not frame.get("action", {}).is_empty() or StringName(frame.get("transition", &"snapshot")) == &"forced_pass"
+
+func _first_replay_turn_index() -> int:
+	if replay_record == null: return -1
+	for index in range(1, replay_record.frames.size()):
+		if _is_replay_turn(index): return index
+	return -1
+
+func _next_replay_turn_index(after_index: int) -> int:
+	if replay_record == null: return -1
+	for index in range(maxi(1, after_index + 1), replay_record.frames.size()):
+		if _is_replay_turn(index): return index
+	return -1
+
+func _previous_replay_turn_index(before_index: int) -> int:
+	if replay_record == null: return -1
+	for index in range(before_index - 1, 0, -1):
+		if _is_replay_turn(index): return index
+	var first := _first_replay_turn_index()
+	return first - 1 if first > 0 and before_index >= first else -1
+
+func _watch_replay_from_start() -> void:
+	if replay_record == null or replay_playing: return
+	var first := _first_replay_turn_index()
+	if first < 0: return
+	_load_replay_frame(first - 1)
+	_start_replay_playback()
+
+func _toggle_replay_playback() -> void:
+	if replay_playing:
+		replay_pause_requested = true
+		_refresh_record_panel()
+	else:
+		_start_replay_playback()
+
+func _start_replay_playback() -> void:
+	if replay_record == null or replay_playing: return
+	replay_playing = true
+	replay_pause_requested = false
+	game_controller.configure_player_controlled_colors([])
+	_refresh_record_panel()
+	while replay_playing:
+		var next := _next_replay_turn_index(replay_cursor)
+		if next < 0: break
+		await _play_replay_turn(next)
+		if replay_pause_requested: break
+	_stop_replay_playback()
+
+func _stop_replay_playback() -> void:
+	replay_playing = false
+	replay_pause_requested = false
+	replay_selection_queue.clear()
+	if replay_mode:
+		game_controller.configure_player_controlled_colors([])
+	_refresh_record_panel()
+
+func _replay_previous_turn() -> void:
+	if not replay_mode or replay_playing: return
+	var previous := _previous_replay_turn_index(replay_cursor)
+	if previous >= 0: _load_replay_frame(previous)
+
+func _replay_next_turn() -> void:
+	if not replay_mode or replay_playing: return
+	var next := _next_replay_turn_index(replay_cursor)
+	if next < 0: return
+	replay_playing = true
+	game_controller.configure_player_controlled_colors([])
+	_refresh_record_panel()
+	await _play_replay_turn(next)
+	_stop_replay_playback()
+
+func _play_replay_turn(target_index: int) -> void:
+	if replay_record == null or target_index <= 0 or target_index >= replay_record.frames.size(): return
+	var source_index := target_index - 1
+	# A turn may follow setup/edit snapshots that are not themselves theatrical.
+	if replay_cursor != source_index:
+		var was_playing := replay_playing
+		replay_playing = false
+		_load_replay_frame(source_index)
+		replay_playing = was_playing
+	var validation := _validate_replay_turn(source_index, target_index)
+	if not bool(validation.get("ok", false)):
+		_replay_snapshot_fallback(target_index, String(validation.get("error", "Recorded transition is not executable.")))
+		return
+	var frame: Dictionary = replay_record.frames[target_index]
+	replay_selection_queue.assign(frame.get("selections", []).duplicate(true))
+	var accepted := false
+	if StringName(frame.get("transition", &"action")) == &"forced_pass":
+		accepted = await model.resolve_unplayable_turns()
+	else:
+		accepted = await _execute_recorded_action(frame.get("action", {}))
+	if accepted and not model.is_settled():
+		await model.settled_action_completed
+	if not accepted or not model.is_settled():
+		_replay_snapshot_fallback(target_index, "The live model rejected the recorded turn.")
+		return
+	var expected: ChessPosition = frame.get("position")
+	if _canonical_position(model.capture_position()) != _canonical_position(expected):
+		_replay_snapshot_fallback(target_index, "The animated result differed from the recorded position.")
+		return
+	replay_cursor = target_index
+	replay_selection_queue.clear()
+	_refresh_record_panel()
+
+func _execute_recorded_action(raw: Dictionary) -> bool:
+	var descriptor := _normalized_action_descriptor(raw)
+	var piece: ModelPiece = model.find_piece_by_id(String(descriptor.get("piece_id", "")))
+	if piece == null: return false
+	var matching: ChessPrimaryAction
+	for candidate in model.get_legal_primary_actions(model.current_turn):
+		if candidate.piece == piece and candidate.kind == int(descriptor.kind) and candidate.target == descriptor.target and candidate.path == descriptor.path:
+			matching = candidate
+			break
+	if matching == null: return false
+	match matching.kind:
+		ChessPrimaryAction.Kind.MOVE:
+			return await model.submit_move_path(piece, matching.path) if matching.path.size() > 1 else await model.submit_move(piece, matching.target)
+		ChessPrimaryAction.Kind.ACTIVE_ABILITY:
+			return await model.submit_active_ability(piece as KingPiece, matching.target)
+		ChessPrimaryAction.Kind.ARCHER_CHARGE:
+			return await model.submit_archer_charge(piece as ArcherKing)
+	return false
+
+func _validate_replay_turn(source_index: int, target_index: int) -> Dictionary:
+	var source: ChessPosition = replay_record.frames[source_index].get("position")
+	var target: ChessPosition = replay_record.frames[target_index].get("position")
+	var imported: Dictionary = PureCore.import_position(source)
+	if not bool(imported.get("ok", false)):
+		return {"ok": false, "error": "The recorded source position is unsupported by the current rules."}
+	var frame: Dictionary = replay_record.frames[target_index]
+	var result
+	if StringName(frame.get("transition", &"action")) == &"forced_pass":
+		result = PureCore.resolve_forced_passes(imported.state, false)
+	else:
+		var descriptor := _normalized_action_descriptor(frame.get("action", {}))
+		var submitted: CoreAction
+		for candidate in PureCore.legal_actions(imported.state, imported.state.current_turn):
+			if candidate.kind == int(descriptor.get("kind", -1)) and candidate.piece_id == String(descriptor.get("piece_id", "")) and candidate.from == descriptor.from and candidate.target == descriptor.target and candidate.path == descriptor.path:
+				submitted = candidate
+				break
+		if submitted == null:
+			return {"ok": false, "error": "The recorded action is no longer legal."}
+		result = PureCore.resolve_action(imported.state, submitted, false)
+	var selections: Array = frame.get("selections", [])
+	var selection_index := 0
+	while result.status == CoreStepResult.Status.PENDING_CHOICE:
+		if result.choice == null or selection_index >= selections.size():
+			return {"ok": false, "error": "This recording does not contain every secondary choice."}
+		var selection: Dictionary = selections[selection_index]
+		if StringName(selection.get("kind", &"")) != result.choice.kind:
+			return {"ok": false, "error": "A recorded secondary choice no longer matches the rules."}
+		var option: Variant = _decode_record_value(selection.get("option"))
+		if option not in result.choice.options:
+			return {"ok": false, "error": "A recorded secondary choice is no longer legal."}
+		result = PureCore.resolve_choice(result.state, option, false)
+		selection_index += 1
+	if result.status != CoreStepResult.Status.COMPLETED or selection_index != selections.size():
+		return {"ok": false, "error": "The recorded turn did not settle cleanly."}
+	if _canonical_position(PureCore.export_position(result.state)) != _canonical_position(target):
+		return {"ok": false, "error": "Current rules produce a different result for this recorded turn."}
+	return {"ok": true}
+
+func _replay_snapshot_fallback(target_index: int, reason: String) -> void:
+	replay_selection_queue.clear()
+	if reason not in replay_warnings: replay_warnings.append(reason)
+	replay_playing = false
+	_load_replay_frame(target_index)
+	replay_playing = true
+	if replay_compatibility_label != null:
+		replay_compatibility_label.text = "Compatibility fallback: %s" % reason
+
+func _normalized_action_descriptor(raw: Dictionary) -> Dictionary:
+	var result := raw.duplicate(true)
+	result["from"] = _decode_coordinate(raw.get("from", [-1, -1]))
+	result["target"] = _decode_coordinate(raw.get("target", [-1, -1]))
+	var path: Array[Vector2i] = []
+	for value in raw.get("path", []): path.append(_decode_coordinate(value))
+	result["path"] = path
+	return result
+
+func _canonical_position(position: ChessPosition) -> String:
+	return ChessPositionCodec.to_json(position, false) if position != null else ""
+
+func _encode_record_value(value: Variant) -> Variant:
+	if value is Vector2i: return [value.x, value.y]
+	if value is StringName: return String(value)
+	return value
+
+func _decode_record_value(value: Variant) -> Variant:
+	if value is Array and value.size() == 2: return Vector2i(int(value[0]), int(value[1]))
+	return StringName(value) if value is String else value
+
+func _decode_coordinate(value: Variant) -> Vector2i:
+	if value is Vector2i: return value
+	if value is Array and value.size() == 2: return Vector2i(int(value[0]), int(value[1]))
+	return Vector2i(-1, -1)
+
+func _take_replay_selection(kind: StringName, options: Array) -> Variant:
+	if replay_selection_queue.is_empty(): return options[0] if not options.is_empty() else null
+	var selection: Dictionary = replay_selection_queue.pop_front()
+	var option: Variant = _decode_record_value(selection.get("option"))
+	if StringName(selection.get("kind", &"")) != kind or option not in options:
+		return options[0] if not options.is_empty() else null
+	return option
+
+func _on_replay_promotion_requested(_pawn: ModelPiece, options: Array[StringName]) -> void:
+	if not replay_playing: return
+	var option: Variant = _take_replay_selection(&"promotion", options)
+	if option != null: model.call_deferred(&"submit_promotion_selection", option)
+
+func _on_replay_movement_grant_requested(_king: QuarterlyInitiativeKing, _target: ModelPiece, options: Array[StringName]) -> void:
+	if not replay_playing: return
+	var option: Variant = _take_replay_selection(&"movement_type_grant", options)
+	if option != null: model.call_deferred(&"submit_movement_type_grant", option)
+
+func _on_replay_reaction_requested(_piece: ModelPiece, _action_type: String, targets: Array) -> void:
+	if not replay_playing: return
+	var kind := StringName(replay_selection_queue[0].get("kind", &"")) if not replay_selection_queue.is_empty() else &"raise_dead"
+	var option: Variant = _take_replay_selection(kind, targets)
+	if option != null: model.call_deferred(&"submit_reaction_selection", option)
 
 func _flag_replay_frame() -> void:
 	var record = replay_record if replay_mode else active_record
@@ -1333,7 +1795,11 @@ func analyze_replay_again() -> void:
 
 func _save_game_record_file(path: String) -> void:
 	var final_path: String = path if path.ends_with(".crpggame") else path + ".crpggame"
-	var error: Error = GameRecordCodec.save_file(replay_record if replay_mode else _record_from_history(), final_path)
+	var record = replay_record if replay_mode else _record_from_history()
+	if record_save_clean:
+		record = record.copy()
+		record.clear_issue_report()
+	var error: Error = GameRecordCodec.save_file(record, final_path)
 	record_status_label.text = "Saved: %s" % final_path if error == OK else "Save failed (%s)." % error
 
 func _open_game_record_file(path: String) -> void:

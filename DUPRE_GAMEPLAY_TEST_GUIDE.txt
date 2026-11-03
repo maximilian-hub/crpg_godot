@@ -36,7 +36,12 @@ one especially clear example may be more valuable than ten ordinary games.
 What Notes to Leave
 -------------------
 
-For each saved .crpggame file, record:
+In the sandbox, navigate to the interesting settled turn and choose Flag Frame.
+Use Report Issue to attach the notes below directly to the exported game. The
+report screen automatically includes the exact frame, round, matchup, AI brain,
+seed, and recorded action.
+
+For each reported game, record:
 
 * The filename.
 * The approximate round or turn.
@@ -56,8 +61,13 @@ Example:
     his queen for a pawn. This looked like an urgent tactical mistake.
 
 Short notes are completely fine. If the exact round is unknown, describe the
-position or say roughly when it happened. Do not alter or resave the position
-to make it cleaner—the original game record is the most useful evidence.
+position or say roughly when it happened. Do not alter the position to make it
+cleaner—the original game record is the most useful evidence.
+
+Use Share Game instead when you simply want to exchange an interesting match
+for fun. Share Game deliberately exports a clean recording without a flagged
+turn or issue report. Imported games can be watched continuously, paused after
+the current turn finishes animating, or stepped backward and forward by turn.
 
 
 Suggested Collection Mix

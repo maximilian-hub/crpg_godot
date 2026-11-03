@@ -14,6 +14,7 @@ var projection_mismatch_count := 0
 var last_rejection_context := ""
 var last_projection_mismatch_context := ""
 var pending_completion_events: Array[ChessCoreEvent] = []
+var presented_reaction_sequences: Dictionary = {}
 
 
 func _init(owner: ChessBoardModel) -> void:
@@ -113,6 +114,7 @@ func set_cooldowns_disabled(disabled: bool) -> void:
 
 func _submit_matching_action(piece: ModelPiece, kind: ChessCoreAction.Kind, target: Vector2i, path: Array[Vector2i]) -> bool:
 	if not active or state == null or piece == null: return false
+	presented_reaction_sequences.clear()
 	var action: ChessCoreAction
 	for candidate in ClassicChessCore.legal_actions(state, state.current_turn):
 		if candidate.kind == kind and candidate.piece_id == piece.piece_id and candidate.target == target and candidate.path == path:
@@ -346,12 +348,14 @@ func _present_wraith_ability(before: ChessCoreState, after: ChessCoreState, acti
 func submit_reaction_selection(coord: Vector2i) -> bool:
 	if not active or state == null or state.pending_choice == null or state.pending_choice.kind not in [&"raise_dead", &"lingering_malice"] or coord not in state.pending_choice.options:
 		return false
+	var choice_kind: StringName = state.pending_choice.kind
 	model.pending_reaction.clear()
 	var result := ClassicChessCore.resolve_choice(state, coord)
 	if result.status not in [ChessCoreStepResult.Status.COMPLETED, ChessCoreStepResult.Status.PENDING_CHOICE]:
 		_record_rejection("reaction choice failed to resolve")
 		return false
 	state = result.state
+	model.authoritative_selection_committed.emit(choice_kind, coord)
 	resolution_count += 1
 	pending_completion_events.append_array(result.events)
 	await _present_reaction_events(result.events, true)
@@ -440,8 +444,8 @@ func _present_reaction_events(events: Array[ChessCoreEvent], include_piece_event
 		var action_type := String(event.data.get("action_type", ""))
 		match event.kind:
 			&"reaction_queued":
-				if include_queued and caller != null:
-					model.reaction_queued.emit(caller, action_type, event.data.get("event_coordinate"), int(event.data.get("sequence", 0)))
+				if include_queued:
+					_present_reaction_queued_event(event)
 			&"reaction_selection_preparing":
 				if caller != null:
 					var gate := CompletionGate.new()
@@ -504,8 +508,7 @@ func _present_automatic_reaction_timeline(events: Array[ChessCoreEvent]) -> void
 		var action_type := String(event.data.get("action_type", ""))
 		match event.kind:
 			&"reaction_queued":
-				if caller != null:
-					model.reaction_queued.emit(caller, action_type, event.data.get("event_coordinate"), int(event.data.get("sequence", 0)))
+				_present_reaction_queued_event(event)
 			&"automatic_reaction_started":
 				automatic_active = true
 				if caller is MinotaurKing:
@@ -611,10 +614,40 @@ func _present_capture(attacker: ModelPiece, defender: ModelPiece, origin: Vector
 	model.piece_capture_committed.emit(attacker, defender, origin, target, captured_at, presentation)
 	presentation.close_claims()
 	await presentation.wait_for_impact()
+	# Pure Core resolves the complete action before presentation begins, but a
+	# capture reaction should still announce itself at physical contact. This is
+	# the hand rig's defender-pickup/clack beat, before its placement and retreat.
+	_present_capture_reactions_at_impact(events, captured_at)
 	model.destroy_piece(defender, false)
 	await presentation.wait_for_arrival(attacker)
 	await model._announce_piece_landed(attacker, origin, target)
 	await presentation.wait_for_aftermath()
+
+
+func _present_capture_reactions_at_impact(events: Array[ChessCoreEvent], captured_at: Vector2i) -> void:
+	for event in events:
+		if (
+			event.kind == &"reaction_queued"
+			and StringName(event.data.get("action_type", &"")) == &"raise_dead"
+			and event.data.get("event_coordinate") == captured_at
+		):
+			_present_reaction_queued_event(event)
+
+
+func _present_reaction_queued_event(event: ChessCoreEvent) -> void:
+	var sequence := int(event.data.get("sequence", 0))
+	if presented_reaction_sequences.has(sequence):
+		return
+	var caller := model.find_piece_by_id(String(event.data.get("piece_id", "")))
+	if caller == null:
+		return
+	presented_reaction_sequences[sequence] = true
+	model.reaction_queued.emit(
+		caller,
+		String(event.data.get("action_type", "")),
+		event.data.get("event_coordinate"),
+		sequence
+	)
 
 
 func _present_damage(attacker: ModelPiece, defender: ModelPiece, damage_event: ChessCoreEvent) -> void:

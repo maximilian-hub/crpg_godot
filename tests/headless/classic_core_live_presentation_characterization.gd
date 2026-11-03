@@ -105,7 +105,32 @@ func _test_necromancer_presentation() -> void:
 	var bishop := Bishop.new("black", Vector2i(4, 3))
 	_load([ClassicKing.new("white", Vector2i(7, 7)), rook, black_necro, bishop])
 	var live_rook := model.board[4][0] as Rook
+	adapter.presentation_policy.speed = ChessPresentationPolicy.Speed.FAST
+	var capture_hand := adapter.view.get_hand_rig_for_color("white")
+	capture_hand.approach_duration = 0.01
+	capture_hand.grasp_hold_duration = 0.01
+	capture_hand.capture_approach_duration = 0.01
+	capture_hand.capture_swipe_duration = 0.01
+	capture_hand.capture_placement_duration = 0.01
+	capture_hand.release_hold_duration = 0.01
+	capture_hand.retreat_duration = 0.08
+	var contact_feedback := {"pickup_seen": false, "seen": false, "reaction_sound": false, "skulls": false, "queued": 0}
+	capture_hand.captured_piece_grabbed.connect(func(_captured):
+		contact_feedback.pickup_seen = true
+	, CONNECT_ONE_SHOT)
+	model.reaction_queued.connect(func(_caller, action_type: String, _event_data, _sequence):
+		if action_type == "raise_dead":
+			contact_feedback.queued += 1
+			contact_feedback.seen = contact_feedback.pickup_seen and capture_hand.is_animating
+			contact_feedback.reaction_sound = adapter.reaction_sound_scheduled
+			contact_feedback.skulls = get_tree().get_nodes_in_group(&"reaction_skull_anchor").any(
+				func(anchor): return anchor.get_parent() == adapter.view and anchor.emitting
+			)
+	)
 	_expect(await model.submit_move(live_rook, Vector2i(4, 3)) and model.has_pending_reaction(), "presented core capture reveals Raise Dead selection")
+	_expect(contact_feedback.seen and contact_feedback.reaction_sound and contact_feedback.skulls, "Raise Dead sound and skulls begin at capture pickup while the hand is still active")
+	_expect(contact_feedback.queued == 1, "impact-time Raise Dead presentation is not replayed after capture retreat")
+	adapter.presentation_policy.speed = ChessPresentationPolicy.Speed.INSTANT
 	var target: Vector2i = model.get_pending_reaction().targets[0]
 	_expect(await model.submit_reaction_selection(target), "presented core Raise Dead choice completes")
 	summoned = model.board[target.x][target.y] as ModelPiece
