@@ -561,7 +561,7 @@ static func _resolve_active_ability(source: ChessCoreState, submitted: ChessCore
 	elif effect.get("archer_volley", false):
 		_resolve_archer_volley(state, piece, result.events, emit_events)
 	elif effect.has("summon_type"):
-		_summon_bone_pawn(state, piece.color, submitted.target, result.events, emit_events)
+		_summon_bone_pawn(state, piece.color, submitted.target, 1, result.events, emit_events)
 	elif effect.get("charge", false):
 		_resolve_charge(state, piece, submitted.target, target, int(effect.get("damage", 2)), result.events, emit_events)
 	else:
@@ -996,15 +996,19 @@ static func _queue_raise_dead(state: ChessCoreState, destroyed: ChessCorePiece, 
 		_append_event(events, emit_events, &"reaction_queued", {"piece_id": candidate.piece_id, "action_type": reaction.action_type, "event_coordinate": coordinate, "sequence": reaction.sequence})
 
 
-static func _summon_bone_pawn(state: ChessCoreState, color: String, target: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> ChessCorePiece:
+static func _summon_bone_pawn(state: ChessCoreState, color: String, target: Vector2i, sickness_duration: int, events: Array[ChessCoreEvent], emit_events: bool) -> ChessCorePiece:
 	if not _in_bounds(target) or state.occupant(target) != null: return null
 	var pawn := ChessCorePiece.new()
 	pawn.type_id = &"bone_pawn"
 	pawn.piece_id = state.allocate_piece_id()
 	pawn.color = color
 	pawn.coordinate = target
+	pawn.stunned = sickness_duration > 0
+	pawn.stun_timer = maxi(0, sickness_duration)
 	state.add_piece(pawn)
 	_append_event(events, emit_events, &"piece_summoned", {"piece_id": pawn.piece_id, "piece_type": pawn.type_id, "color": color, "coordinate": target})
+	if pawn.stunned:
+		_append_event(events, emit_events, &"piece_stunned", {"piece_id": pawn.piece_id, "duration": pawn.stun_timer, "reason": &"summoning_sickness"})
 	if _is_terminal_rank(pawn): _destroy_piece(state, pawn, target, events, emit_events)
 	return pawn
 
@@ -1186,7 +1190,12 @@ static func _resolve_raise_dead_choice(source: ChessCoreState, option, emit_even
 	if caller == null or caller.type_id != &"necromancer_king": return ChessCoreStepResult.rejected(source, "The reacting Necromancer is no longer active.")
 	state.pending_choice = null
 	_append_event(result.events, emit_events, &"reaction_selection_committed", {"piece_id": caller.piece_id, "action_type": choice.action_type, "target": option, "sequence": choice.sequence})
-	_summon_bone_pawn(state, caller.color, option, result.events, emit_events)
+	# A reaction belonging to the acting color consumes that color's current
+	# turn. An opposing Raise Dead is followed immediately by its owner's turn,
+	# so it needs one additional turn-entry tick in order to miss that turn.
+	var action_owner := String(state.resolution_context.get("action_owner", state.current_turn))
+	var sickness_duration := 1 if caller.color == action_owner else 2
+	_summon_bone_pawn(state, caller.color, option, sickness_duration, result.events, emit_events)
 	_append_event(result.events, emit_events, &"reaction_selection_resolved", {"piece_id": caller.piece_id, "action_type": choice.action_type, "target": option, "sequence": choice.sequence})
 	_append_event(result.events, emit_events, &"reaction_finished", {"piece_id": caller.piece_id, "action_type": choice.action_type, "event_coordinate": choice.event_coordinate, "sequence": choice.sequence, "resolved": true})
 	if not state.defeated_king_colors.is_empty():
@@ -1271,7 +1280,9 @@ static func _switch_turn(state: ChessCoreState, events: Array[ChessCoreEvent], e
 			continue
 		if piece.stunned and piece.stun_timer > 0:
 			piece.stun_timer -= 1
-			if piece.stun_timer == 0: piece.stunned = false
+			if piece.stun_timer == 0:
+				piece.stunned = false
+				_append_event(events, emit_events, &"piece_recovered", {"piece_id": piece.piece_id})
 		if ChessCoreKingRules.for_type(piece.type_id) != null or (piece.is_king() and piece.initial_cooldown_turn_pending):
 			_advance_cooldown(state, piece, events, emit_events)
 	_apply_lunacy_turn_start(state, state.current_turn, events, emit_events)

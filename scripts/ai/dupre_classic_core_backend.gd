@@ -379,7 +379,7 @@ static func _best_raise_dead_target(state: ChessCoreState, choice: ChessCoreChoi
 	var best_score := -INF
 	for target in choice.options:
 		if not target is Vector2i: continue
-		var score := _necromancer_placement_score(state, necromancer, target, necromancer.color)
+		var score := _necromancer_placement_score(state, necromancer, target, necromancer.color, false)
 		if score > best_score:
 			best_score = score
 			best = target
@@ -489,7 +489,7 @@ static func _quarterly_grant_targets(state: ChessCoreState, recipient: ChessCore
 	return result
 
 
-static func _necromancer_placement_score(state: ChessCoreState, necromancer: ChessCorePiece, target: Vector2i, perspective: String) -> float:
+static func _necromancer_placement_score(state: ChessCoreState, necromancer: ChessCorePiece, target: Vector2i, perspective: String, include_immediate_pressure := true) -> float:
 	if target.x == (0 if necromancer.color == "white" else 7) or state.occupant(target) != null: return -100000.0
 	var before_attackers := king_attackers(state, necromancer.color).size()
 	var pawn := ChessCorePiece.new(); pawn.type_id = &"bone_pawn"; pawn.color = necromancer.color; pawn.coordinate = target; pawn.piece_id = "dupre_core_bone"
@@ -503,7 +503,7 @@ static func _necromancer_placement_score(state: ChessCoreState, necromancer: Che
 			if piece.color != necromancer.color and ClassicChessCore.geometrically_attacks_in_occupancy(piece, piece.coordinate, own_king.coordinate, occupancy): after_attackers += 1
 	var score := 1.0 + float(before_attackers - after_attackers) * 25.0
 	for piece in state.pieces:
-		if piece.color != necromancer.color and ClassicChessCore.geometrically_attacks_in_occupancy(pawn, target, piece.coordinate, occupancy):
+		if include_immediate_pressure and piece.color != necromancer.color and ClassicChessCore.geometrically_attacks_in_occupancy(pawn, target, piece.coordinate, occupancy):
 			score += 5.0 if piece.is_king() else _material_value(piece) * 0.6
 	var enemy := _other_color(necromancer.color)
 	var enemy_attacks := 0; var own_defenses := 0

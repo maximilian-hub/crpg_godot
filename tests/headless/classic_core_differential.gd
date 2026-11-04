@@ -348,6 +348,7 @@ func _connect_trace(model: ChessBoardModel) -> void:
 	model.piece_capture_committed.connect(func(attacker, defender, from, to, captured_at, _p): model_events.append({"kind": "piece_captured", "attacker_id": attacker.piece_id, "defender_id": defender.piece_id, "from": _coord(from), "to": _coord(to), "captured_at": _coord(captured_at)}))
 	model.piece_destroyed.connect(func(piece): model_events.append({"kind": "piece_destroyed", "piece_id": piece.piece_id, "coordinate": _coord(piece.coordinate)}))
 	model.piece_damaged.connect(func(piece, amount, hp, max_hp): model_events.append({"kind": "piece_damaged", "piece_id": piece.piece_id, "amount": amount, "current_hp": hp, "max_hp": max_hp}))
+	model.piece_recovered.connect(func(piece): model_events.append({"kind": "piece_recovered", "piece_id": piece.piece_id}))
 	model.promotion_selection_requested.connect(func(pawn, options):
 		model_events.append({"kind": "choice_requested", "choice_kind": "promotion", "piece_id": pawn.piece_id, "options": Array(options).map(func(value): return String(value))})
 		model.call_deferred("submit_promotion_selection", promotion_choice)

@@ -100,6 +100,12 @@ func _test_necromancer_presentation() -> void:
 	_expect(await model.submit_active_ability(necromancer, Vector2i(6, 3)), "presented core Bone Pawn summon completes")
 	var summoned := model.board[6][3] as ModelPiece
 	_expect(summoned is BonePawn and is_instance_valid(adapter.get_piece_view(summoned)) and necromancer.cooldown_reset_pending, "active summon retains its portal-backed visual mapping and cooldown")
+	var summoned_view := adapter.get_piece_view(summoned)
+	_expect(summoned.stunned and adapter.view._get_descendant_effects_in_group(summoned_view, &"stun").size() == 1, "summoning-sick Bone Pawn displays stun stars")
+	var black_king := model.get_king("black")
+	_expect(await model.submit_move(black_king, Vector2i(0, 3)), "opponent reply advances active-summon sickness")
+	await get_tree().process_frame
+	_expect(not summoned.stunned and adapter.view._get_descendant_effects_in_group(summoned_view, &"stun").is_empty(), "Bone Pawn recovery removes its stun stars before its owner's next turn")
 
 	var black_necro := NecromancerKing.new("black", Vector2i(0, 7)); black_necro.set_cooldown(0); black_necro.initial_cooldown_turn_pending = false
 	var rook := Rook.new("white", Vector2i(4, 0))
@@ -135,7 +141,7 @@ func _test_necromancer_presentation() -> void:
 	var target: Vector2i = model.get_pending_reaction().targets[0]
 	_expect(await model.submit_reaction_selection(target), "presented core Raise Dead choice completes")
 	summoned = model.board[target.x][target.y] as ModelPiece
-	_expect(summoned is BonePawn and is_instance_valid(adapter.get_piece_view(summoned)) and model.is_settled(), "Raise Dead preserves aura/portal presentation and the summoned visual mapping")
+	_expect(summoned is BonePawn and summoned.stunned and summoned.stun_timer == 1 and is_instance_valid(adapter.get_piece_view(summoned)) and model.is_settled(), "Raise Dead preserves its visual mapping and leaves the pawn sick for the immediately following owner turn")
 
 
 func _test_minotaur_presentation() -> void:

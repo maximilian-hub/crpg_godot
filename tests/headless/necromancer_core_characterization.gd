@@ -7,6 +7,7 @@ var checks := 0
 func _ready() -> void:
 	await _test_active_summon_parity()
 	await _test_capture_raise_dead_parity()
+	await _test_bone_pawn_summoning_sickness()
 	await _test_ability_destruction_raise_dead_parity()
 	await _test_double_necromancer_order()
 	await _test_bone_pawn_terminal_expiration()
@@ -54,6 +55,46 @@ func _test_capture_raise_dead_parity() -> void:
 	model.free()
 
 
+func _test_bone_pawn_summoning_sickness() -> void:
+	var white_king := ClassicKing.new("white", Vector2i(7, 7))
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var bishop := Bishop.new("black", Vector2i(4, 3))
+	var necromancer := _ready_necromancer("black", Vector2i(0, 7))
+	var model := _model([white_king, rook, necromancer, bishop])
+	var state: ChessCoreState = ClassicChessCore.import_position(model.capture_position()).state
+	var capture := _find(state, ChessCoreAction.Kind.MOVE, rook.piece_id, bishop.coordinate)
+	var result := ClassicChessCore.resolve_action(state, capture)
+	var summon_square := Vector2i(3, 2)
+	_expect(summon_square in result.choice.options, "Raise Dead sickness fixture offers an attacking summon square")
+	result = ClassicChessCore.resolve_choice(result.state, summon_square)
+	var raised := result.state.occupant(summon_square)
+	_expect(raised != null and raised.type_id == &"bone_pawn" and raised.stunned and raised.stun_timer == 1, "off-turn Raise Dead pawn remains sick on its immediately following owner turn")
+	_expect(_find(result.state, ChessCoreAction.Kind.MOVE, raised.piece_id, Vector2i(4, 3)) == null, "summoning-sick Raise Dead pawn cannot immediately recapture")
+	var black_wait := _find(result.state, ChessCoreAction.Kind.MOVE, necromancer.piece_id, Vector2i(0, 6))
+	result = ClassicChessCore.resolve_action(result.state, black_wait)
+	var white_wait := _find(result.state, ChessCoreAction.Kind.MOVE, white_king.piece_id, Vector2i(7, 6))
+	result = ClassicChessCore.resolve_action(result.state, white_wait)
+	raised = result.state.piece_by_id(raised.piece_id)
+	_expect(raised != null and not raised.stunned and raised.stun_timer == 0, "Raise Dead pawn recovers on its next owner turn after missing one turn")
+	_expect(_find(result.state, ChessCoreAction.Kind.MOVE, raised.piece_id, Vector2i(4, 3)) != null, "recovered Raise Dead pawn can capture normally")
+	model.free()
+
+	necromancer = _ready_necromancer("white", Vector2i(7, 4))
+	var active_black_king := ClassicKing.new("black", Vector2i(0, 4))
+	model = _model([necromancer, active_black_king, Pawn.new("white", Vector2i(5, 0))])
+	state = ClassicChessCore.import_position(model.capture_position()).state
+	var summon := _find(state, ChessCoreAction.Kind.ACTIVE_ABILITY, necromancer.piece_id, Vector2i(6, 3))
+	result = ClassicChessCore.resolve_action(state, summon)
+	var active_pawn := result.state.occupant(summon.target)
+	_expect(active_pawn != null and active_pawn.stunned and active_pawn.stun_timer == 1 and result.state.current_turn == "black", "active summon is sick only while its owner has already spent the turn")
+	var black_reply := _find(result.state, ChessCoreAction.Kind.MOVE, active_black_king.piece_id, Vector2i(0, 3))
+	result = ClassicChessCore.resolve_action(result.state, black_reply)
+	active_pawn = result.state.piece_by_id(active_pawn.piece_id)
+	_expect(active_pawn != null and not active_pawn.stunned and active_pawn.stun_timer == 0 and result.state.current_turn == "white", "active summon recovers before its owner's next action opportunity")
+	_expect(ClassicChessCore.legal_actions(result.state, "white").any(func(action): return action.piece_id == active_pawn.piece_id), "recovered active summon has legal actions on its owner's next turn")
+	model.free()
+
+
 func _test_double_necromancer_order() -> void:
 	var white_necro := _ready_necromancer("white", Vector2i(7, 7))
 	var black_necro := _ready_necromancer("black", Vector2i(0, 7))
@@ -72,6 +113,10 @@ func _test_double_necromancer_order() -> void:
 		result = ClassicChessCore.resolve_choice(result.state, selected)
 		await model.submit_reaction_selection(selected)
 	_expect(result.status == ChessCoreStepResult.Status.COMPLETED and _json(result.state) == ChessPositionCodec.to_json(model.capture_position(), false), "chained opposing Raise Dead reactions settle identically")
+	var raised_by_color := {}
+	for piece in result.state.pieces:
+		if piece.type_id == &"bone_pawn": raised_by_color[piece.color] = piece
+	_expect(raised_by_color.has("white") and raised_by_color.has("black") and raised_by_color.white.stunned and raised_by_color.white.stun_timer == 1 and raised_by_color.black.stunned and raised_by_color.black.stun_timer == 1, "chained same-turn Raise Dead summons retain owner-relative sickness timing")
 	model.free()
 
 

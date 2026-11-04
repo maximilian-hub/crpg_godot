@@ -792,6 +792,18 @@ func _apply_turn_events(events: Array[ChessCoreEvent]) -> void:
 	for event in events:
 		if event.kind in [&"cooldown_scheduled", &"cooldown_changed", &"cooldown_ready"]:
 			_present_cooldown_event(event)
+		elif event.kind == &"piece_stunned" and StringName(event.data.get("reason", &"")) == &"summoning_sickness":
+			var stunned_piece := model.find_piece_by_id(String(event.data.get("piece_id", "")))
+			if stunned_piece != null:
+				stunned_piece.stunned = true
+				stunned_piece.stun_timer = int(event.data.get("duration", stunned_piece.stun_timer))
+				model.piece_stunned.emit(stunned_piece, stunned_piece.stun_timer)
+		elif event.kind == &"piece_recovered":
+			var recovered_piece := model.find_piece_by_id(String(event.data.get("piece_id", "")))
+			if recovered_piece != null:
+				recovered_piece.stunned = false
+				recovered_piece.stun_timer = 0
+				model.piece_recovered.emit(recovered_piece)
 		elif event.kind == &"turn_changed":
 			model.current_turn = String(event.data.get("color", model.current_turn))
 			model.global_turn_number = int(event.data.get("global_turn_number", model.global_turn_number))

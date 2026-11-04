@@ -94,7 +94,7 @@ func exchange_policy_adjustment(model: ChessBoardModel, action: ChessPrimaryActi
 			if enemy_king is NecromancerKing:
 				var best_raise := DOOMED_SCORE
 				for square in _raise_dead_targets(model, target.coordinate):
-					best_raise = maxf(best_raise, placement_score(model, enemy_king, square, perspective, tactical_map))
+					best_raise = maxf(best_raise, placement_score(model, enemy_king, square, perspective, tactical_map, false))
 				if best_raise > DOOMED_SCORE:
 					result += best_raise
 	return result
@@ -109,10 +109,10 @@ func action_is_forcing(model: ChessBoardModel, action: ChessPrimaryAction, persp
 func reaction_target_score(model: ChessBoardModel, calling_piece: ModelPiece, action_type: String, _event_data, target: Vector2i, perspective: String, tactical_map = null) -> float:
 	if not calling_piece is NecromancerKing or action_type != "raise_dead":
 		return -INF
-	return placement_score(model, calling_piece, target, perspective, tactical_map)
+	return placement_score(model, calling_piece, target, perspective, tactical_map, false)
 
 
-func placement_score(model: ChessBoardModel, necromancer: ModelPiece, target: Vector2i, perspective: String, tactical_map = null) -> float:
+func placement_score(model: ChessBoardModel, necromancer: ModelPiece, target: Vector2i, perspective: String, tactical_map = null, include_immediate_pressure := true) -> float:
 	if target.x == model.get_back_rank(model.get_other_color(necromancer.color)):
 		return DOOMED_SCORE
 	var base_map: DupreTacticalMap = tactical_map if tactical_map != null else DupreTacticalMap.from_model(model)
@@ -121,6 +121,8 @@ func placement_score(model: ChessBoardModel, necromancer: ModelPiece, target: Ve
 		return DOOMED_SCORE
 	var pawn := BonePawnPiece.new(necromancer.color, target)
 	pawn.piece_id = "dupre_projected_bone_%s_%s" % [target.x, target.y]
+	pawn.stunned = not include_immediate_pressure
+	pawn.stun_timer = 1 if pawn.stunned else 0
 	occupancy[target] = pawn
 	var projected: DupreTacticalMap = base_map.project(occupancy)
 	var attack_position := ChessAttackPosition.from_occupancy(projected.board_size, projected.occupancy)
