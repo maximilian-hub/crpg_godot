@@ -157,9 +157,10 @@ movement grants, Performance Cycle self-damage, secondary movement choices,
 fallback, position replacement, and the real
 presentation adapter's completion gates and visual identity maps.
 
-The Wraith suites cover Cursed Marks, Lingering Malice, targeted autonomous
-pursuit, immediate source/target cleanup, mixed reaction ordering, live
-projection, Dupre routing, and fixed-work performance.
+The Wraith suites cover capture-square Cursed Marks, projectile-only chained
+movement through shared marks, targeted autonomous pursuit, immediate
+source/target cleanup, mixed reaction ordering, live projection, Dupre routing,
+and fixed-work performance.
 
 `cross_king_core_soak.tscn` is the bounded all-King conformance gate. It runs
 every ordered pairing of Classic, Arakne, Necromancer, Minotaur, Quarterly

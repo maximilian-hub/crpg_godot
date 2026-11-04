@@ -56,9 +56,6 @@ static func resolve(state: ChessCoreState, descriptor: Dictionary) -> ChessCoreS
 		elif result.choice.kind == &"movement_type_grant":
 			option = _best_quarterly_grant(result.state, result.choice)
 			if option == null: return ChessCoreStepResult.rejected(state, "Dupre could not settle Stakeholder Pandering.")
-		elif result.choice.kind == &"lingering_malice":
-			option = _best_lingering_malice(result.state, result.choice)
-			if option == null: return ChessCoreStepResult.rejected(state, "Dupre could not settle Lingering Malice.")
 		else:
 			return ChessCoreStepResult.rejected(state, "Dupre does not support this pure-core choice.")
 		result = ClassicChessCore.resolve_choice(result.state, option, false)
@@ -398,41 +395,6 @@ static func _best_quarterly_grant(state: ChessCoreState, choice: ChessCoreChoice
 			best_score = score
 			best = option
 	return best if best != null else (choice.options[0] if not choice.options.is_empty() else null)
-
-
-static func _best_lingering_malice(state: ChessCoreState, choice: ChessCoreChoice):
-	var wraith := state.piece_by_id(choice.piece_id)
-	if wraith == null: return null
-	var best = null
-	var best_score := -INF
-	for option in choice.options:
-		if not option is Vector2i: continue
-		var score := _lingering_malice_score(state, wraith, option)
-		if score > best_score:
-			best_score = score
-			best = option
-	return best
-
-
-static func _lingering_malice_score(state: ChessCoreState, wraith: ChessCorePiece, target: Vector2i) -> float:
-	if target == wraith.coordinate: return 0.0
-	var occupant := state.occupant(target)
-	var score := 0.0
-	if occupant != null and occupant.color != wraith.color:
-		var value := WraithPolicy.material_value(occupant.type_id, occupant.is_king())
-		score += 40.0 if occupant.is_king() else (value * 10.0 if occupant.current_hp <= wraith.attack_power else value * 2.0)
-		if occupant.current_hp > wraith.attack_power: return score
-	var before := king_attackers(state, wraith.color).size()
-	var projected := state.copy()
-	var projected_wraith := projected.piece_by_id(wraith.piece_id)
-	var projected_target := projected.occupant(target)
-	if projected_target != null: projected.remove_piece(projected_target)
-	projected.move_piece(projected_wraith, target)
-	var after := king_attackers(projected, wraith.color).size()
-	score += float(before - after) * 25.0
-	if after > before: score -= float(after - before) * 35.0
-	var center_distance := absf(float(target.x) - 3.5) + absf(float(target.y) - 3.5)
-	return score + (7.0 - center_distance) * 0.1
 
 
 static func _wraith_summon_score(state: ChessCoreState, wraith: ChessCorePiece, target: ChessCorePiece, perspective: String) -> float:

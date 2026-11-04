@@ -346,7 +346,7 @@ func _present_wraith_ability(before: ChessCoreState, after: ChessCoreState, acti
 
 
 func submit_reaction_selection(coord: Vector2i) -> bool:
-	if not active or state == null or state.pending_choice == null or state.pending_choice.kind not in [&"raise_dead", &"lingering_malice"] or coord not in state.pending_choice.options:
+	if not active or state == null or state.pending_choice == null or state.pending_choice.kind != &"raise_dead" or coord not in state.pending_choice.options:
 		return false
 	var choice_kind: StringName = state.pending_choice.kind
 	model.pending_reaction.clear()
@@ -910,6 +910,8 @@ func _present_turn_entry_consequences(events: Array[ChessCoreEvent]) -> void:
 	for event in events:
 		if event.kind == &"tile_effect_removed" and StringName(event.data.get("type_id", &"")) == &"cursed_mark":
 			_present_tile_effect_removed(event)
+		elif event.kind == &"tile_effect_refreshed" and StringName(event.data.get("type_id", &"")) == &"cursed_mark":
+			_present_tile_effect_refreshed(event, state)
 		elif event.kind == &"tile_effect_added" and StringName(event.data.get("spawn_reason", &"")) == &"wraith_projectile_capture":
 			_present_tile_effect_added(event, state)
 		elif event.kind == &"archer_attack_committed":
@@ -1001,7 +1003,9 @@ func _model_entity(entity_id: String) -> ChessAutonomousEntityState:
 
 func _present_tile_effect_additions(events: Array[ChessCoreEvent], core_state: ChessCoreState) -> void:
 	for event in events:
-		if event.kind == &"tile_effect_added" and StringName(event.data.get("spawn_reason", &"")) != &"wraith_projectile_capture":
+		if event.kind == &"tile_effect_refreshed" and StringName(event.data.get("spawn_reason", &"")) != &"wraith_projectile_capture":
+			_present_tile_effect_refreshed(event, core_state)
+		elif event.kind == &"tile_effect_added" and StringName(event.data.get("spawn_reason", &"")) != &"wraith_projectile_capture":
 			_present_tile_effect_added(event, core_state)
 
 
@@ -1022,6 +1026,19 @@ func _present_tile_effect_removed(event: ChessCoreEvent) -> void:
 		if effect.effect_id != effect_id: continue
 		model.tile_effects.erase(effect)
 		model.tile_effect_removed.emit(effect)
+		return
+
+
+func _present_tile_effect_refreshed(event: ChessCoreEvent, core_state: ChessCoreState) -> void:
+	var effect_id := String(event.data.get("effect_id", ""))
+	var core_effect: ChessCoreTileEffect = core_state.effects_by_id.get(effect_id)
+	if core_effect == null: return
+	for effect in model.tile_effects:
+		if effect.effect_id != effect_id: continue
+		effect.owner_color = core_effect.owner_color
+		effect.source_piece_id = core_effect.source_piece_id
+		effect.custom_state = core_effect.custom_state.duplicate(true)
+		model.tile_effect_refreshed.emit(effect)
 		return
 
 

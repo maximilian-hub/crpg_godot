@@ -77,6 +77,7 @@ signal reaction_queued(calling_piece: ModelPiece, action_type: String, event_dat
 signal reaction_finished(calling_piece: ModelPiece, action_type: String, event_data, sequence: int, resolved: bool)
 signal tile_effect_added(effect: ChessTileEffectState)
 signal tile_effect_removed(effect: ChessTileEffectState)
+signal tile_effect_refreshed(effect: ChessTileEffectState)
 signal autonomous_entity_added(entity: ChessAutonomousEntityState, completion: CompletionGate)
 signal autonomous_entity_moved(entity: ChessAutonomousEntityState, from: Vector2i, to: Vector2i, completion: CompletionGate)
 signal autonomous_entity_removed(entity: ChessAutonomousEntityState, reason: StringName, completion: CompletionGate)

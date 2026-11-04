@@ -393,7 +393,6 @@ static func _resolve_action_unprofiled(source: ChessCoreState, submitted: ChessC
 		_append_event(result.events, emit_events, &"piece_moved", {"piece_id": piece.piece_id, "from": origin, "to": submitted.target})
 		_append_event(result.events, emit_events, &"piece_landed", {"piece_id": piece.piece_id, "from": origin, "to": submitted.target})
 		_collect_archer_arrows(state, piece, submitted.target, result.events, emit_events)
-		_wraith_on_landed(state, piece, result.events, emit_events)
 	state.last_move = {"piece_id": piece.piece_id, "piece_type": piece.type_id, "piece_color": piece.color, "from": origin, "to": submitted.target}
 	if piece.type_id == &"bone_pawn" and state.piece_by_id(piece.piece_id) != null and _is_terminal_rank(piece):
 		_destroy_piece(state, piece, piece.coordinate, result.events, emit_events)
@@ -584,8 +583,6 @@ static func resolve_choice(source: ChessCoreState, option, emit_events := true) 
 		return _resolve_raise_dead_choice(source, option, emit_events)
 	if source.pending_choice.kind == &"movement_type_grant":
 		return _resolve_movement_type_grant_choice(source, option, emit_events)
-	if source.pending_choice.kind == &"lingering_malice":
-		return _resolve_lingering_malice_choice(source, option, emit_events)
 	if source.pending_choice.kind != &"promotion":
 		return ChessCoreStepResult.rejected(source, "The pending choice kind is unsupported.")
 	var state := source.copy()
@@ -819,6 +816,7 @@ static func _resolve_castle(state: ChessCoreState, king: ChessCorePiece, target:
 
 static func _commit_capture(state: ChessCoreState, attacker: ChessCorePiece, defender: ChessCorePiece, target: Vector2i, captured_at: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> void:
 	var origin := attacker.coordinate
+	var enemy_capture := defender != null and defender.color != attacker.color
 	_destroy_piece(state, defender, captured_at, events, emit_events, false)
 	state.move_piece(attacker, target)
 	attacker.has_moved = true
@@ -826,29 +824,35 @@ static func _commit_capture(state: ChessCoreState, attacker: ChessCorePiece, def
 	_append_event(events, emit_events, &"piece_destroyed", {"piece_id": defender.piece_id, "coordinate": captured_at})
 	_append_event(events, emit_events, &"piece_landed", {"piece_id": attacker.piece_id, "from": origin, "to": target})
 	_collect_archer_arrows(state, attacker, target, events, emit_events)
-	if attacker.type_id == &"wraith_king" and state.piece_by_id(attacker.piece_id) != null:
-		_add_random_cursed_mark(state, attacker, events, emit_events, &"king_capture")
-		_wraith_on_landed(state, attacker, events, emit_events)
+	if enemy_capture:
+		var allied_wraith := _wraith_king_for_color(state, attacker.color)
+		if allied_wraith != null:
+			_place_or_refresh_cursed_mark(state, allied_wraith, captured_at, events, emit_events, &"allied_capture")
 
 
-static func _add_random_cursed_mark(state: ChessCoreState, wraith: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool, spawn_reason: StringName, entity_id := "") -> void:
+static func _wraith_king_for_color(state: ChessCoreState, color: String) -> ChessCorePiece:
+	for piece in state.pieces:
+		if piece.color == color and piece.type_id == &"wraith_king" and piece.current_hp > 0:
+			return piece
+	return null
+
+
+static func _place_or_refresh_cursed_mark(state: ChessCoreState, wraith: ChessCorePiece, coordinate: Vector2i, events: Array[ChessCoreEvent], emit_events: bool, spawn_reason: StringName, entity_id := "") -> void:
 	if wraith == null or state.piece_by_id(wraith.piece_id) == null:
 		return
-	var candidates: Array[Vector2i] = []
-	for row in range(state.board_size.x):
-		for column in range(state.board_size.y):
-			var coordinate := Vector2i(row, column)
-			if not state.has_effect(&"cursed_mark", coordinate):
-				candidates.append(coordinate)
-	if candidates.is_empty():
+	for existing in state.tile_effects:
+		if existing.type_id != &"cursed_mark" or existing.coordinate != coordinate:
+			continue
+		existing.owner_color = wraith.color
+		existing.source_piece_id = wraith.piece_id
+		state.analysis_cache.clear()
+		_append_event(events, emit_events, &"tile_effect_refreshed", {
+			"effect_id": existing.effect_id, "type_id": existing.type_id,
+			"coordinate": coordinate, "owner_color": existing.owner_color,
+			"source_piece_id": existing.source_piece_id, "spawn_reason": spawn_reason,
+			"entity_id": entity_id,
+		})
 		return
-	var rng := RandomNumberGenerator.new()
-	rng.state = int(state.random_states.get(
-		WraithCoreRules.CURSE_MARK_RANDOM_STREAM,
-		seeded_random_state(0)
-	))
-	var coordinate := candidates[rng.randi_range(0, candidates.size() - 1)]
-	state.random_states[WraithCoreRules.CURSE_MARK_RANDOM_STREAM] = rng.state
 	var effect := ChessCoreTileEffect.new()
 	effect.effect_id = state.allocate_state_id("effect")
 	effect.type_id = &"cursed_mark"
@@ -865,20 +869,6 @@ static func _add_random_cursed_mark(state: ChessCoreState, wraith: ChessCorePiec
 		"spawn_reason": spawn_reason,
 		"entity_id": entity_id,
 	})
-
-
-static func _wraith_on_landed(state: ChessCoreState, wraith: ChessCorePiece, events: Array[ChessCoreEvent], emit_events: bool) -> void:
-	if wraith == null or wraith.type_id != &"wraith_king" or not state.has_effect(&"cursed_mark", wraith.coordinate):
-		return
-	state.next_reaction_sequence += 1
-	var reaction := ChessCoreReaction.new()
-	reaction.calling_piece_id = wraith.piece_id
-	reaction.action_type = &"lingering_malice"
-	reaction.priority = 0
-	reaction.sequence = state.next_reaction_sequence
-	reaction.event_coordinate = wraith.coordinate
-	state.reaction_queue.append(reaction)
-	_append_event(events, emit_events, &"reaction_queued", {"piece_id": wraith.piece_id, "action_type": reaction.action_type, "event_coordinate": reaction.event_coordinate, "sequence": reaction.sequence})
 
 
 static func _remove_cursed_mark(state: ChessCoreState, coordinate: Vector2i, events: Array[ChessCoreEvent], emit_events: bool) -> bool:
@@ -1078,22 +1068,6 @@ static func _prepare_next_reaction(state: ChessCoreState, events: Array[ChessCor
 				_complete_battle(state, events, emit_events)
 				return false
 			continue
-		if reaction.action_type == &"lingering_malice":
-			var lingering_targets := _lingering_malice_targets(state, caller, reaction.event_coordinate)
-			if lingering_targets.is_empty():
-				_append_event(events, emit_events, &"reaction_finished", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "event_coordinate": reaction.event_coordinate, "sequence": reaction.sequence, "resolved": false})
-				continue
-			var lingering_choice := ChessCoreChoice.new()
-			lingering_choice.kind = &"lingering_malice"
-			lingering_choice.piece_id = caller.piece_id
-			lingering_choice.action_type = reaction.action_type
-			lingering_choice.sequence = reaction.sequence
-			lingering_choice.event_coordinate = reaction.event_coordinate
-			lingering_choice.options.assign(lingering_targets)
-			state.pending_choice = lingering_choice
-			_append_event(events, emit_events, &"reaction_selection_preparing", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "targets": lingering_targets.duplicate(), "sequence": reaction.sequence})
-			_append_event(events, emit_events, &"reaction_selection_requested", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "targets": lingering_targets.duplicate(), "sequence": reaction.sequence})
-			return true
 		if reaction.action_type != &"raise_dead":
 			_append_event(events, emit_events, &"reaction_finished", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "event_coordinate": reaction.event_coordinate, "sequence": reaction.sequence, "resolved": false})
 			continue
@@ -1113,53 +1087,6 @@ static func _prepare_next_reaction(state: ChessCoreState, events: Array[ChessCor
 		_append_event(events, emit_events, &"reaction_selection_requested", {"piece_id": caller.piece_id, "action_type": reaction.action_type, "targets": targets.duplicate(), "sequence": reaction.sequence})
 		return true
 	return false
-
-
-static func _lingering_malice_targets(state: ChessCoreState, wraith: ChessCorePiece, event_coordinate: Vector2i) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	if wraith == null or wraith.type_id != &"wraith_king" or wraith.coordinate != event_coordinate or not state.has_effect(&"cursed_mark", event_coordinate):
-		return result
-	result.append(wraith.coordinate)
-	for offset: Vector2i in [Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(1, 1)]:
-		var target := wraith.coordinate + offset
-		var occupant := state.occupant(target) if _in_bounds(target) else null
-		if _in_bounds(target) and (occupant == null or occupant.color != wraith.color): result.append(target)
-	return result
-
-
-static func _resolve_lingering_malice_choice(source: ChessCoreState, option, emit_events: bool) -> ChessCoreStepResult:
-	if not option is Vector2i: return ChessCoreStepResult.rejected(source, "Lingering Malice requires a coordinate.")
-	var state := source.copy()
-	var result := ChessCoreStepResult.new()
-	result.state = state
-	var choice := state.pending_choice
-	var wraith := state.piece_by_id(choice.piece_id)
-	if wraith == null or wraith.type_id != &"wraith_king" or option not in _lingering_malice_targets(state, wraith, choice.event_coordinate):
-		return ChessCoreStepResult.rejected(source, "The Lingering Malice choice is no longer legal.")
-	state.pending_choice = null
-	_append_event(result.events, emit_events, &"reaction_selection_committed", {"piece_id": wraith.piece_id, "action_type": choice.action_type, "target": option, "sequence": choice.sequence})
-	if option != wraith.coordinate:
-		_remove_cursed_mark(state, wraith.coordinate, result.events, emit_events)
-		var origin := wraith.coordinate
-		var occupant := state.occupant(option)
-		if occupant == null:
-			state.move_piece(wraith, option)
-			wraith.has_moved = true
-			_append_event(result.events, emit_events, &"piece_moved", {"piece_id": wraith.piece_id, "from": origin, "to": option})
-			_append_event(result.events, emit_events, &"piece_landed", {"piece_id": wraith.piece_id, "from": origin, "to": option})
-			_wraith_on_landed(state, wraith, result.events, emit_events)
-		elif occupant.current_hp <= wraith.attack_power:
-			_commit_capture(state, wraith, occupant, option, option, result.events, emit_events)
-		else:
-			_deal_damage(state, occupant, wraith.attack_power, result.events, emit_events)
-	_append_event(result.events, emit_events, &"reaction_selection_resolved", {"piece_id": wraith.piece_id, "action_type": choice.action_type, "target": option, "sequence": choice.sequence})
-	_append_event(result.events, emit_events, &"reaction_finished", {"piece_id": wraith.piece_id, "action_type": choice.action_type, "event_coordinate": choice.event_coordinate, "sequence": choice.sequence, "resolved": true})
-	if not state.defeated_king_colors.is_empty():
-		_complete_battle(state, result.events, emit_events)
-		result.status = ChessCoreStepResult.Status.COMPLETED
-	else:
-		_complete_or_pause(state, result, emit_events)
-	return result
 
 
 static func _resolve_rage(state: ChessCoreState, minotaur: ChessCorePiece, reaction: ChessCoreReaction, events: Array[ChessCoreEvent], emit_events: bool) -> void:
@@ -1575,7 +1502,7 @@ static func _run_wraith_phase(state: ChessCoreState, owner_color: String, events
 					state.remove_entity(entity)
 					_append_event(events, emit_events, &"autonomous_entity_removed", {"entity_id": entity.entity_id, "reason": &"reached_target"})
 				if captured:
-					_add_random_cursed_mark(state, source, events, emit_events, &"wraith_projectile_capture", entity.entity_id)
+					_place_or_refresh_cursed_mark(state, source, target.coordinate, events, emit_events, &"wraith_projectile_capture", entity.entity_id)
 				break
 			if not _remove_cursed_mark(state, destination, events, emit_events):
 				break

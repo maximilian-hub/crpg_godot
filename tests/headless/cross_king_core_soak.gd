@@ -366,7 +366,7 @@ func _assert_coverage() -> void:
 	for king_type in KING_TYPES:
 		if king_type == &"classic_king": continue
 		_expect(int(stats.abilities.get(String(king_type), 0)) > 0, "gate exercises %s active ability" % king_type)
-	for choice_kind in ["promotion", "raise_dead", "movement_type_grant", "lingering_malice"]:
+	for choice_kind in ["promotion", "raise_dead", "movement_type_grant"]:
 		_expect(int(stats.choices.get(choice_kind, 0)) > 0, "gate exercises %s choice" % choice_kind)
 	for event_kind in ["arc_mortar_impact", "automatic_reaction_started", "socratic_action_selected", "autonomous_entity_moved", "tile_effect_added", "turn_passed"]:
 		_expect(int(stats.events.get(event_kind, 0)) > 0 or (event_kind == "turn_passed" and int(stats.forced_passes) > 0), "gate exercises %s" % event_kind)

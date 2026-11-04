@@ -5,7 +5,7 @@ var checks := 0
 
 
 func _ready() -> void:
-	await _test_lingering_malice()
+	await _test_capture_square_marks()
 	await _test_summon_and_autonomous_lifecycle()
 	await _test_projectile_curse_marks_and_boosts()
 	await _test_target_destruction_cleanup()
@@ -24,73 +24,74 @@ func _ready() -> void:
 	get_tree().quit(1)
 
 
-func _test_lingering_malice() -> void:
-	var wraith := WraithKing.new("white", Vector2i(4, 4)); wraith.initial_cooldown_turn_pending = false
-	var victim := Pawn.new("black", Vector2i(3, 3))
-	var model := _model([wraith, victim, ClassicKing.new("black", Vector2i(0, 7))])
-	model.set_wraith_curse_mark_random_seed(7711)
-	var imported := ClassicChessCore.import_position(model.capture_position())
-	_expect(imported.ok, "Wraith position imports into the pure core")
-	var state: ChessCoreState = imported.state
-	var result := ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, wraith.piece_id, victim.coordinate))
-	var repeated := ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, wraith.piece_id, victim.coordinate))
-	_expect(result.state.tile_effects.size() == 1 and result.state.tile_effects[0].source_piece_id == wraith.piece_id, "direct capture creates one sourced Cursed Mark")
-	_expect(result.state.tile_effects[0].coordinate == repeated.state.tile_effects[0].coordinate, "seeded Cursed Mark placement is deterministic")
-	await model.submit_move(wraith, victim.coordinate)
-	if result.status == ChessCoreStepResult.Status.PENDING_CHOICE:
-		result = ClassicChessCore.resolve_choice(result.state, result.state.piece_by_id(wraith.piece_id).coordinate)
-		await model.submit_reaction_selection(wraith.coordinate)
-	_expect(_json(result.state) == ChessPositionCodec.to_json(model.capture_position(), false), "random capture mark placement exactly matches ChessBoardModel")
+func _test_capture_square_marks() -> void:
+	var wraith := WraithKing.new("white", Vector2i(7, 7)); wraith.initial_cooldown_turn_pending = false
+	var rook := Rook.new("white", Vector2i(4, 0))
+	var victim := Pawn.new("black", Vector2i(4, 3))
+	var model := _model([wraith, rook, victim, ClassicKing.new("black", Vector2i(0, 7))])
+	var state: ChessCoreState = ClassicChessCore.import_position(model.capture_position()).state
+	var rng_before = state.random_states.get(WraithCoreRules.CURSE_MARK_RANDOM_STREAM)
+	var result := ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, rook.piece_id, victim.coordinate))
+	_expect(result.status == ChessCoreStepResult.Status.COMPLETED and result.state.tile_effects.size() == 1, "any allied piece capture creates exactly one Cursed Mark")
+	_expect(result.state.tile_effects[0].coordinate == victim.coordinate and result.state.tile_effects[0].source_piece_id == wraith.piece_id, "the Cursed Mark occupies the defeated piece's square and belongs to the allied Wraith King")
+	_expect(result.state.random_states.get(WraithCoreRules.CURSE_MARK_RANDOM_STREAM) == rng_before, "deterministic capture-square placement does not advance legacy Wraith RNG")
+	await model.submit_move(rook, victim.coordinate)
+	_expect(_json(result.state) == ChessPositionCodec.to_json(model.capture_position(), false), "allied capture-mark placement exactly matches ChessBoardModel")
 	model.free(); await get_tree().process_frame
 
-	# Marks are shared terrain. Capturing onto an enemy-owned mark starts an
-	# optional chain; moving consumes it, while declining on the next mark does not.
+	# The physical King may stand on marks, but only autonomous projectiles use them.
 	wraith = WraithKing.new("white", Vector2i(4, 4)); wraith.initial_cooldown_turn_pending = false
-	var enemy_wraith := WraithKing.new("black", Vector2i(0, 7)); enemy_wraith.initial_cooldown_turn_pending = false
-	victim = Pawn.new("black", Vector2i(3, 3))
-	model = _model([wraith, victim, enemy_wraith])
+	model = _model([wraith, ClassicKing.new("black", Vector2i(0, 7))])
 	state = ClassicChessCore.import_position(model.capture_position()).state
-	_add_core_mark(state, enemy_wraith.piece_id, "black", Vector2i(3, 3))
-	_add_core_mark(state, enemy_wraith.piece_id, "black", Vector2i(2, 2))
-	result = ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, wraith.piece_id, victim.coordinate))
-	_expect(result.status == ChessCoreStepResult.Status.PENDING_CHOICE and result.choice.kind == &"lingering_malice", "landing on an enemy Cursed Mark exposes Lingering Malice")
-	result = ClassicChessCore.resolve_choice(result.state, Vector2i(2, 2))
-	_expect(result.status == ChessCoreStepResult.Status.PENDING_CHOICE and result.state.piece_by_id(wraith.piece_id).coordinate == Vector2i(2, 2), "moving consumes one mark and chains from the next")
-	var marks_before_decline := result.state.tile_effects.size()
-	result = ClassicChessCore.resolve_choice(result.state, Vector2i(2, 2))
-	_expect(result.status == ChessCoreStepResult.Status.COMPLETED and result.state.tile_effects.size() == marks_before_decline, "declining a chained move leaves its Cursed Mark intact")
+	_add_core_mark(state, wraith.piece_id, "white", Vector2i(3, 3))
+	result = ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, wraith.piece_id, Vector2i(3, 3)))
+	_expect(result.status == ChessCoreStepResult.Status.COMPLETED and result.state.pending_choice == null, "the Wraith King receives no Lingering Malice choice on a Cursed Mark")
+	_expect(result.state.tile_effects.size() == 1 and result.state.tile_effects[0].coordinate == Vector2i(3, 3), "the Wraith King does not consume a Cursed Mark")
 	model.free(); await get_tree().process_frame
 
-	var durable := Rook.new("black", Vector2i(3, 2)); durable.max_hp = 2; durable.current_hp = 2
-	wraith = WraithKing.new("white", Vector2i(3, 3)); wraith.initial_cooldown_turn_pending = false
-	model = _model([wraith, durable, ClassicKing.new("black", Vector2i(0, 7))])
+	# A capture refreshes an opposing mark instead of stacking another effect.
+	wraith = WraithKing.new("white", Vector2i(7, 7)); wraith.initial_cooldown_turn_pending = false
+	var enemy_wraith := WraithKing.new("black", Vector2i(0, 7)); enemy_wraith.initial_cooldown_turn_pending = false
+	rook = Rook.new("white", Vector2i(4, 0)); victim = Pawn.new("black", Vector2i(4, 3))
+	model = _model([wraith, rook, victim, enemy_wraith])
 	state = ClassicChessCore.import_position(model.capture_position()).state
-	var core_mark := ChessCoreTileEffect.new()
-	core_mark.effect_id = state.allocate_state_id("effect"); core_mark.type_id = &"cursed_mark"; core_mark.coordinate = wraith.coordinate
-	core_mark.owner_color = "white"; core_mark.source_piece_id = wraith.piece_id
-	state.add_effect(core_mark)
-	# Move off and back onto the mark through a direct fixture action is unnecessary;
-	# queue the same authoritative landing consequence via a neighboring capture.
-	state.resolution_context = {"action_owner": "white"}
-	var choice := ChessCoreChoice.new(); choice.kind = &"lingering_malice"; choice.piece_id = wraith.piece_id; choice.action_type = &"lingering_malice"; choice.event_coordinate = wraith.coordinate; choice.options = [wraith.coordinate, durable.coordinate]
-	state.pending_choice = choice
-	result = ClassicChessCore.resolve_choice(state, durable.coordinate)
-	_expect(result.state.piece_by_id(durable.piece_id).current_hp == 1 and result.state.piece_by_id(wraith.piece_id).coordinate == Vector2i(3, 3), "Lingering attack damages a durable target without moving the King")
-	_expect(result.state.tile_effects.is_empty(), "durable Lingering attack still consumes its mark")
+	_add_core_mark(state, enemy_wraith.piece_id, "black", victim.coordinate)
+	result = ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, rook.piece_id, victim.coordinate))
+	_expect(result.state.tile_effects.size() == 1 and result.state.tile_effects[0].source_piece_id == wraith.piece_id and result.state.tile_effects[0].owner_color == "white", "capture refreshes one existing mark to the capturing Wraith army")
+	_expect(result.events.any(func(event: ChessCoreEvent): return event.kind == &"tile_effect_refreshed"), "mark refresh has an explicit deterministic lifecycle event")
+	model.free(); await get_tree().process_frame
+
+	# En passant marks the defeated pawn's square, not the capturing pawn's landing square.
+	wraith = WraithKing.new("white", Vector2i(7, 7)); wraith.initial_cooldown_turn_pending = false
+	var white_pawn := Pawn.new("white", Vector2i(3, 4)); var black_pawn := Pawn.new("black", Vector2i(3, 5))
+	model = _model([wraith, white_pawn, black_pawn, ClassicKing.new("black", Vector2i(0, 7))])
+	state = ClassicChessCore.import_position(model.capture_position()).state
+	state.last_move = {"piece_id": black_pawn.piece_id, "piece_type": &"pawn", "piece_color": "black", "from": Vector2i(1, 5), "to": black_pawn.coordinate}
+	result = ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, white_pawn.piece_id, Vector2i(2, 5)))
+	_expect(result.state.tile_effects.size() == 1 and result.state.tile_effects[0].coordinate == Vector2i(3, 5), "en passant marks its distinct captured square")
+	model.free(); await get_tree().process_frame
+
+	var classic := ClassicKing.new("white", Vector2i(7, 7))
+	rook = Rook.new("white", Vector2i(4, 0)); victim = Pawn.new("black", Vector2i(4, 3))
+	model = _model([classic, rook, victim, ClassicKing.new("black", Vector2i(0, 7))])
+	state = ClassicChessCore.import_position(model.capture_position()).state
+	result = ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, rook.piece_id, victim.coordinate))
+	_expect(result.state.tile_effects.is_empty(), "an army without a Wraith King creates no Cursed Mark")
 	model.free(); await get_tree().process_frame
 
 
 func _test_projectile_curse_marks_and_boosts() -> void:
 	var wraith := WraithKing.new("white", Vector2i(7, 7)); wraith.initial_cooldown_turn_pending = false
 	var target: ModelPiece = Rook.new("black", Vector2i(1, 1)); target.max_hp = 2; target.current_hp = 2
-	var model := _model([wraith, target, ClassicKing.new("black", Vector2i(0, 7))])
+	var enemy_wraith := WraithKing.new("black", Vector2i(0, 7)); enemy_wraith.initial_cooldown_turn_pending = false
+	var model := _model([wraith, target, enemy_wraith])
 	var state: ChessCoreState = ClassicChessCore.import_position(model.capture_position()).state
-	_add_core_mark(state, wraith.piece_id, "white", Vector2i(3, 3))
-	_add_core_mark(state, wraith.piece_id, "white", Vector2i(2, 2))
+	_add_core_mark(state, enemy_wraith.piece_id, "black", Vector2i(3, 3))
+	_add_core_mark(state, enemy_wraith.piece_id, "black", Vector2i(2, 2))
 	_add_core_wraith(state, wraith.piece_id, target.piece_id, Vector2i(4, 4), "white")
 	var events: Array[ChessCoreEvent] = []
 	ClassicChessCore._run_wraith_phase(state, "white", events, true)
-	_expect(events.filter(func(event): return event.kind == &"autonomous_entity_moved").size() == 3, "a projectile chains through successive Cursed Marks in one activation")
+	_expect(events.filter(func(event): return event.kind == &"autonomous_entity_moved").size() == 3, "a projectile chains through shared opposing Cursed Marks in one activation")
 	_expect(events.filter(func(event): return event.kind == &"tile_effect_removed").size() == 2 and state.tile_effects.is_empty(), "projectile boosts consume each traversed mark")
 	_expect(state.piece_by_id(target.piece_id).current_hp == 1 and state.autonomous_entities.is_empty(), "nonlethal target impact damages and removes the projectile")
 	_expect(not events.any(func(event): return event.kind == &"tile_effect_added"), "nonlethal projectile damage creates no Cursed Mark")
@@ -100,13 +101,12 @@ func _test_projectile_curse_marks_and_boosts() -> void:
 	target = Pawn.new("black", Vector2i(1, 1))
 	model = _model([wraith, target, ClassicKing.new("black", Vector2i(0, 7))])
 	state = ClassicChessCore.import_position(model.capture_position()).state
-	state.random_states[WraithCoreRules.CURSE_MARK_RANDOM_STREAM] = ClassicChessCore.seeded_random_state(9922)
 	_add_core_wraith(state, wraith.piece_id, target.piece_id, Vector2i(2, 2), "white")
 	events = []
 	ClassicChessCore._run_wraith_phase(state, "white", events, true)
 	var additions := events.filter(func(event): return event.kind == &"tile_effect_added")
-	_expect(state.piece_by_id(target.piece_id) == null and additions.size() == 1, "lethal projectile capture creates exactly one random Cursed Mark")
-	_expect(additions[0].data.get("spawn_reason") == &"wraith_projectile_capture" and state.tile_effects[0].source_piece_id == wraith.piece_id, "projectile-created mark retains its summoning King attribution")
+	_expect(state.piece_by_id(target.piece_id) == null and additions.size() == 1, "lethal projectile capture creates exactly one target-square Cursed Mark")
+	_expect(additions[0].data.get("spawn_reason") == &"wraith_projectile_capture" and state.tile_effects[0].source_piece_id == wraith.piece_id and state.tile_effects[0].coordinate == target.coordinate, "projectile-created mark retains its summoning King attribution at the impact square")
 	model.free(); await get_tree().process_frame
 
 	wraith = WraithKing.new("white", Vector2i(7, 7)); wraith.initial_cooldown_turn_pending = false
@@ -194,16 +194,13 @@ func _test_necromancer_reaction_order() -> void:
 	var state: ChessCoreState = ClassicChessCore.import_position(model.capture_position()).state
 	var result := ClassicChessCore.resolve_action(state, _find(state, ChessCoreAction.Kind.MOVE, wraith.piece_id, victim.coordinate))
 	await model.submit_move(wraith, victim.coordinate)
-	_expect(result.status == ChessCoreStepResult.Status.PENDING_CHOICE and result.choice.kind == &"raise_dead", "enemy Raise Dead outranks Lingering Malice after a major capture")
-	_expect(model.get_pending_reaction().action_type == "raise_dead", "model exposes the same first mixed reaction")
+	_expect(result.status == ChessCoreStepResult.Status.PENDING_CHOICE and result.choice.kind == &"raise_dead", "enemy Raise Dead remains available after a Wraith-army capture creates a mark")
+	_expect(model.get_pending_reaction().action_type == "raise_dead", "model exposes the same capture reaction")
 	var raise_target: Vector2i = result.choice.options[0]
 	result = ClassicChessCore.resolve_choice(result.state, raise_target)
 	await model.submit_reaction_selection(raise_target)
-	_expect(result.status == ChessCoreStepResult.Status.PENDING_CHOICE and result.choice.kind == &"lingering_malice", "Lingering Malice resumes after Raise Dead")
-	_expect(model.get_pending_reaction().action_type == "lingering_malice", "model resumes the same Lingering choice")
-	result = ClassicChessCore.resolve_choice(result.state, wraith.coordinate)
-	await model.submit_reaction_selection(wraith.coordinate)
-	_expect(_json(result.state) == ChessPositionCodec.to_json(model.capture_position(), false), "Raise Dead and Lingering Malice settle identically")
+	_expect(result.status == ChessCoreStepResult.Status.COMPLETED and not model.has_pending_reaction(), "Raise Dead settles without an obsolete Lingering Malice follow-up")
+	_expect(_json(result.state) == ChessPositionCodec.to_json(model.capture_position(), false), "Raise Dead and capture-mark placement settle identically")
 	model.free(); await get_tree().process_frame
 
 
@@ -236,10 +233,9 @@ func _test_live_authority() -> void:
 	wraith = WraithKing.new("white", Vector2i(4, 4)); wraith.initial_cooldown_turn_pending = false
 	model = _model([wraith, victim, ClassicKing.new("black", Vector2i(0, 7))])
 	_add_model_mark(model, wraith, victim.coordinate)
-	_expect(model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE), "Lingering fixture activates pure authority")
-	_expect(await model.submit_move(wraith, victim.coordinate) and model.has_pending_reaction(), "live direct capture exposes Lingering choice")
-	_expect(await model.submit_reaction_selection(Vector2i(2, 2)), "live bridge accepts Lingering bonus movement")
-	_expect(wraith.coordinate == Vector2i(2, 2) and model.tile_effects.size() == 1 and model.get_live_authority_diagnostics().projection_mismatches == 0, "live Lingering choice consumes its triggering mark while retaining the random capture mark without divergence")
+	_expect(model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE), "capture-mark fixture activates pure authority")
+	_expect(await model.submit_move(wraith, victim.coordinate) and not model.has_pending_reaction(), "live Wraith King capture settles without bonus movement")
+	_expect(wraith.coordinate == victim.coordinate and model.tile_effects.size() == 1 and model.tile_effects[0].coordinate == victim.coordinate and model.get_live_authority_diagnostics().projection_mismatches == 0, "live capture refreshes its square's mark without moving the physical King again")
 	model.free(); await get_tree().process_frame
 
 	wraith = WraithKing.new("white", Vector2i(4, 4)); wraith.initial_cooldown_turn_pending = false
@@ -250,8 +246,7 @@ func _test_live_authority() -> void:
 	_expect(model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE), "mixed Wraith/Necromancer fixture activates pure authority")
 	_expect(await model.submit_move(wraith, queen.coordinate) and model.get_pending_reaction().action_type == "raise_dead", "live mixed capture preserves Raise Dead priority")
 	var raise_target: Vector2i = model.get_pending_reaction().targets[0]
-	_expect(await model.submit_reaction_selection(raise_target) and model.get_pending_reaction().action_type == "lingering_malice", "live mixed bridge resumes Lingering after Raise Dead")
-	_expect(await model.submit_reaction_selection(wraith.coordinate), "live mixed bridge accepts Lingering decline")
+	_expect(await model.submit_reaction_selection(raise_target) and not model.has_pending_reaction(), "live mixed bridge settles after Raise Dead without Lingering Malice")
 	_expect(model.get_live_authority_diagnostics().projection_mismatches == 0, "mixed Wraith/Necromancer live projection remains identical")
 	model.free(); await get_tree().process_frame
 

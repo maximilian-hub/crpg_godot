@@ -163,6 +163,15 @@ func _test_minotaur_presentation() -> void:
 
 
 func _test_wraith_projectile_capture_presentation() -> void:
+	var allied_wraith := WraithKing.new("white", Vector2i(7, 7))
+	var allied_rook := Rook.new("white", Vector2i(4, 0))
+	var ordinary_victim := Pawn.new("black", Vector2i(4, 3))
+	_load([allied_wraith, allied_rook, ordinary_victim, ClassicKing.new("black", Vector2i(0, 7))])
+	var live_rook := model.board[4][0] as ModelPiece
+	_expect(await model.submit_move(live_rook, ordinary_victim.coordinate), "presented Wraith-allied capture completes")
+	var ordinary_marks := model.tile_effects.filter(func(effect: ChessTileEffectState): return effect.type_id == &"cursed_mark" and effect.coordinate == ordinary_victim.coordinate)
+	_expect(ordinary_marks.size() == 1 and adapter.tile_effect_views.has(ordinary_marks[0].effect_id), "ordinary allied capture presents its target-square Cursed Mark")
+
 	var source := WraithKing.new("white", Vector2i(7, 7))
 	var mover := Rook.new("white", Vector2i(6, 0))
 	var target := Pawn.new("black", Vector2i(3, 3))
@@ -204,6 +213,9 @@ func _test_wraith_projectile_capture_presentation() -> void:
 	adapter.presentation_policy.speed = ChessPresentationPolicy.Speed.INSTANT
 	_expect(explosion_seen.value, "lethal Wraith projectile uses the canned explosion presentation")
 	_expect(model.find_piece_by_id(target.piece_id) == null and not adapter.piece_views.has(live_target) and not is_instance_valid(target_view), "lethal Wraith projectile removes the captured piece and its sprite")
+	var marks := model.tile_effects.filter(func(effect: ChessTileEffectState): return effect.type_id == &"cursed_mark" and effect.coordinate == target.coordinate)
+	_expect(marks.size() == 1 and marks[0].source_piece_id == source.piece_id, "lethal Wraith projectile leaves one sourced Cursed Mark on its impact square")
+	_expect(adapter.tile_effect_views.has(marks[0].effect_id) and is_instance_valid(adapter.tile_effect_views[marks[0].effect_id]), "projectile-created Cursed Mark receives a live presentation view")
 
 
 func _test_quarterly_presentation() -> void:

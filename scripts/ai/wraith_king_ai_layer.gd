@@ -70,30 +70,6 @@ func evaluation_bonus(model: ChessBoardModel, perspective: String) -> float:
 	return score
 
 
-func reaction_target_score(model: ChessBoardModel, calling_piece: ModelPiece, action_type: String, _event_data, target: Vector2i, perspective: String, tactical_map = null) -> float:
-	if not calling_piece is WraithKing or action_type != "lingering_malice": return -INF
-	if target == calling_piece.coordinate: return 0.0
-	var base_map: DupreTacticalMap = tactical_map if tactical_map != null else DupreTacticalMap.from_model(model)
-	var occupant = base_map.occupancy.get(target)
-	var score := 0.0
-	if occupant is ModelPiece and occupant.color != calling_piece.color:
-		var value := WraithPolicy.material_value(occupant.get_position_type_id(), occupant.is_king)
-		score += 40.0 if occupant.is_king else (value * 10.0 if occupant.current_hp <= calling_piece.attack_power else value * 2.0)
-		if occupant.current_hp > calling_piece.attack_power: return score
-	var projected_occupancy := base_map.occupancy.duplicate()
-	projected_occupancy.erase(calling_piece.coordinate)
-	projected_occupancy.erase(target)
-	projected_occupancy[target] = calling_piece
-	var projected := base_map.project(projected_occupancy)
-	var before := base_map.king_attackers(calling_piece.color).size()
-	var after := projected.king_attackers(calling_piece.color).size()
-	score += float(before - after) * 25.0
-	if after > before: score -= float(after - before) * 35.0
-	var center_distance := absf(float(target.x) - 3.5) + absf(float(target.y) - 3.5)
-	score += (7.0 - center_distance) * 0.1
-	return score if calling_piece.color == perspective else -score
-
-
 func _entity_value(model: ChessBoardModel, entity: ChessAutonomousEntityState) -> float:
 	var target := model.find_piece_by_id(entity.target_piece_id)
 	if target == null: return 0.0

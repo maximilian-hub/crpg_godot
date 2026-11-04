@@ -68,8 +68,9 @@ King-specific rules are divided into:
 * cannon_core_rules.gd — Arc Mortar targeting and area rules.
 * rhetorician_core_rules.gd — attack prevention, compelled movement, Lunacy,
   and Socratic behavior.
-* wraith_core_rules.gd — Cursed Marks, Lingering Malice, summons, replacement,
-  and pursuit.
+* wraith_core_rules.gd — summon, replacement, and pursuit policy data; shared
+  core resolution owns capture-square Cursed Marks and projectile-only chained
+  movement through marks.
 * archer_core_rules.gd — all Archer variants, ranged attacks, Draw, Quiver,
   Charge, Volley, arrow effects, and Archer RNG behavior.
 
