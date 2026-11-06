@@ -86,12 +86,12 @@ func _test_bone_pawn_summoning_sickness() -> void:
 	var summon := _find(state, ChessCoreAction.Kind.ACTIVE_ABILITY, necromancer.piece_id, Vector2i(6, 3))
 	result = ClassicChessCore.resolve_action(state, summon)
 	var active_pawn := result.state.occupant(summon.target)
-	_expect(active_pawn != null and active_pawn.stunned and active_pawn.stun_timer == 1 and result.state.current_turn == "black", "active summon is sick only while its owner has already spent the turn")
+	_expect(active_pawn != null and not active_pawn.stunned and active_pawn.stun_timer == 0 and result.state.current_turn == "black", "active summon is immediately readable as ready for its owner's next turn")
 	var black_reply := _find(result.state, ChessCoreAction.Kind.MOVE, active_black_king.piece_id, Vector2i(0, 3))
 	result = ClassicChessCore.resolve_action(result.state, black_reply)
 	active_pawn = result.state.piece_by_id(active_pawn.piece_id)
-	_expect(active_pawn != null and not active_pawn.stunned and active_pawn.stun_timer == 0 and result.state.current_turn == "white", "active summon recovers before its owner's next action opportunity")
-	_expect(ClassicChessCore.legal_actions(result.state, "white").any(func(action): return action.piece_id == active_pawn.piece_id), "recovered active summon has legal actions on its owner's next turn")
+	_expect(active_pawn != null and not active_pawn.stunned and active_pawn.stun_timer == 0 and result.state.current_turn == "white", "active summon remains ready at its owner's next action opportunity")
+	_expect(ClassicChessCore.legal_actions(result.state, "white").any(func(action): return action.piece_id == active_pawn.piece_id), "active summon has legal actions on its owner's next turn")
 	model.free()
 
 

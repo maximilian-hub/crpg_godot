@@ -45,6 +45,7 @@ func _ready() -> void:
 	await _test_settled_position_history_lifecycle()
 	_test_necromancer_removable_summon_policy()
 	_test_necromancer_does_not_trade_queen_for_pawn()
+	await _test_active_bone_pawn_threatens_cannon_queen()
 	await _test_material_obligation_candidates()
 	await _test_king_attack_timeout_fallback()
 	await _test_game3_imminent_spike_burst_obligation()
@@ -880,6 +881,49 @@ func _test_necromancer_does_not_trade_queen_for_pawn() -> void:
 	_expect(float(current_risk.loss) >= 8.0 and float(summon_risk.get("loss", 0.0)) >= 8.0, "exchange analysis recognizes that adding a defender does not erase a profitable pawn-for-Queen exchange")
 	_expect(not capture_exchange.is_empty() and capture_exchange.sequence.size() <= 6, "bounded exchange analysis reports a finite capture sequence")
 	_cleanup(cpu, model)
+
+
+func _test_active_bone_pawn_threatens_cannon_queen() -> void:
+	var model := _new_empty_model()
+	model.current_turn = "black"
+	var cannon := CannonKing.new("black", Vector2i(0, 4))
+	var queen := Queen.new("black", Vector2i(4, 7))
+	var necromancer := NecromancerKing.new("white", Vector2i(7, 4))
+	var active_summon := BonePawn.new("white", Vector2i(5, 6))
+	var tempting_pawn := Pawn.new("white", Vector2i(4, 5))
+	for piece in [cannon, queen, necromancer, active_summon, tempting_pawn]:
+		model.add_piece(piece, piece.coordinate)
+	var cpu := _add_dupre(model)
+	cpu.configure_mode(ChessCpuPlayer.ExecutionMode.MANUAL, "black")
+	var brain: DupreAiBrain = cpu.brain
+	brain.max_book_moves = 0
+	brain.think_budget_msec = 500
+	var policy := DuprePolicy.new(cpu)
+	var poisoned_capture: ChessPrimaryAction
+	var safe_queen_move: ChessPrimaryAction
+	for action in model.get_legal_primary_actions("black"):
+		if action.piece != queen:
+			continue
+		var risk := policy.material_risk_after(action, queen)
+		if action.target == tempting_pawn.coordinate:
+			poisoned_capture = action
+		elif float(risk.get("loss", 0.0)) < 8.0 and safe_queen_move == null:
+			safe_queen_move = action
+	var current_risk := policy.material_risk(queen)
+	var poisoned_risk := policy.material_risk_after(poisoned_capture, queen) if poisoned_capture != null else {}
+	_expect(float(current_risk.get("loss", 0.0)) >= 8.0, "a ready active-summoned Bone Pawn registers as an immediate threat to the Cannon Queen")
+	_expect(poisoned_capture != null and float(poisoned_risk.get("loss", 0.0)) >= 8.0 and safe_queen_move != null, "the cannon_wasted_queen capture remains poisoned while safe Queen moves exist")
+	var thought = await cpu.think()
+	var selected_action: ChessPrimaryAction
+	if thought != null:
+		for action in model.get_legal_primary_actions("black"):
+			if action.kind == thought.action_kind and action.piece.coordinate == thought.piece_coordinate and action.target == thought.target and action.path == thought.path:
+				selected_action = action
+				break
+	var selected_risk := policy.material_risk_after(selected_action, queen) if selected_action != null else {}
+	_expect(selected_action != null and selected_action.piece == queen and float(selected_risk.get("loss", 0.0)) < 8.0, "Dupre answers the active Bone Pawn threat by saving the Cannon Queen")
+	_cleanup(cpu, model)
+	await get_tree().process_frame
 
 
 func _test_material_obligation_candidates() -> void:

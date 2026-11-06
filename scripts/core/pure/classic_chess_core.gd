@@ -562,7 +562,10 @@ static func _resolve_active_ability(source: ChessCoreState, submitted: ChessCore
 	elif effect.get("archer_volley", false):
 		_resolve_archer_volley(state, piece, result.events, emit_events)
 	elif effect.has("summon_type"):
-		_summon_bone_pawn(state, piece.color, submitted.target, 1, result.events, emit_events)
+		# An active summon already spends the Necromancer's action before the
+		# opponent receives a turn. It needs no artificial stun; Raise Dead is
+		# the only summon which needs sickness to prevent an immediate takeback.
+		_summon_bone_pawn(state, piece.color, submitted.target, 0, result.events, emit_events)
 	elif effect.get("charge", false):
 		_resolve_charge(state, piece, submitted.target, target, int(effect.get("damage", 2)), result.events, emit_events)
 	else:
