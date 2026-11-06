@@ -5,6 +5,7 @@ const PresentationPolicy = preload("res://scripts/view/chess_presentation_policy
 const BoardPiecePaletteScript = preload("res://scripts/editor/board_piece_palette.gd")
 const GameRecordScript = preload("res://scripts/state/chess_game_record.gd")
 const GameRecordCodec = preload("res://scripts/state/chess_game_record_codec.gd")
+const PerformanceTelemetry = preload("res://scripts/state/chess_ai_performance_telemetry.gd")
 const ActionCodec = preload("res://scripts/state/chess_action_codec.gd")
 const PureCore = preload("res://scripts/core/pure/classic_chess_core.gd")
 const CoreAction = preload("res://scripts/core/pure/chess_core_action.gd")
@@ -684,7 +685,15 @@ func _clean_export_record():
 	var source = replay_record if replay_mode else _record_from_history()
 	var record = source.copy()
 	record.clear_issue_report()
+	_strip_detailed_ai_diagnostics(record)
 	return record
+
+func _strip_detailed_ai_diagnostics(record) -> void:
+	for frame in record.frames:
+		var ai: Dictionary = frame.get("ai", {})
+		if ai.is_empty(): continue
+		ai.erase("search_profile")
+		ai.erase("candidates")
 
 func _connect_record_exchange() -> void:
 	record_exchange.document_saved.connect(func(display_name: String):
@@ -784,7 +793,23 @@ func _refresh_record_panel() -> void:
 		var ai: Dictionary = frame.get("ai", {})
 		if not ai.is_empty():
 			var candidates: Array = ai.get("candidates", [])
-			details += "\n%s score %.2f — %d candidates" % [ai.get("brain_id", "AI"), float(ai.get("score", 0.0)), candidates.size()]
+			var telemetry: Dictionary = ai.get("performance", {})
+			if telemetry.is_empty(): telemetry = PerformanceTelemetry.from_search_profile(ai.get("search_profile", {}))
+			details += "\n%s score %.2f" % [ai.get("brain_id", "AI"), float(ai.get("score", 0.0))]
+			if not telemetry.is_empty():
+				var thinking_ms := float(telemetry.get("thinking_usec", 0)) / 1000.0
+				var replies := int(telemetry.get("evaluated_reply_count", 0))
+				var rate := float(replies) * 1000000.0 / maxf(1.0, float(telemetry.get("thinking_usec", 0)))
+				details += "\n%.1f ms · %d replies (%.1f/s) · roots %d exact / %d incomplete / %d pruned" % [
+					thinking_ms, replies, rate, int(telemetry.get("exact_root_candidates", 0)),
+					int(telemetry.get("incomplete_root_candidates", 0)), int(telemetry.get("pruned_root_candidates", 0)),
+				]
+				details += "\n%s · max uninterrupted %.2f ms%s" % [
+					String(telemetry.get("selected_status", "unknown")),
+					float(telemetry.get("maximum_uninterrupted_usec", 0)) / 1000.0,
+					" · UNVERIFIED" if bool(telemetry.get("unverified", false)) else "",
+				]
+			if not candidates.is_empty(): details += " — %d detailed candidates" % candidates.size()
 			for candidate_index in range(mini(candidates.size(), 12)):
 				var candidate: Dictionary = candidates[candidate_index]
 				var action: Dictionary = candidate.get("action", {})
@@ -792,6 +817,11 @@ func _refresh_record_panel() -> void:
 				details += "\n%d. %s → %s  %.2f%s" % [candidate_index + 1, action.get("from", action.get("piece_type", "?")), action.get("target", "?"), candidate_score, "  " + String(candidate.get("reason", "")) if candidate.has("reason") else ""]
 		if not replay_warnings.is_empty():
 			details += "\n⚠ " + "\n⚠ ".join(replay_warnings)
+		var summary := PerformanceTelemetry.summarize_frames(replay_record.frames)
+		if int(summary.get("turns", 0)) > 0:
+			details += "\n\nMatch: %d AI turns · %.1f replies/s · %d fallbacks · %d unverified" % [
+				int(summary.turns), float(summary.replies_per_second), int(summary.fallback_turns), int(summary.unverified_turns),
+			]
 		record_status_label.text = details
 
 
@@ -1314,7 +1344,7 @@ func _on_ai_thought_changed(thought) -> void:
 	if thought == null or replay_mode or replay_analysis_running: return
 	pending_ai = thought.to_dictionary()
 	var cpu := game.white_cpu_player if thought.color == "white" else game.black_cpu_player
-	pending_ai["pre_decision_context"] = cpu.last_pre_decision_context.duplicate(true)
+	pending_ai["pre_decision_context"] = _compact_cpu_context(cpu.last_pre_decision_context)
 
 func _on_board_rebuilt(_board: Array) -> void:
 	_clear_ai_thoughts()
@@ -1503,9 +1533,29 @@ func _on_seed_changed(value: float) -> void:
 func _capture_record_context() -> Dictionary:
 	return {
 		"ai_mode": ai_mode, "ai_sides": ai_sides.duplicate(true), "seed": seed_value,
-		"white": game.white_cpu_player.capture_debug_context(),
-		"black": game.black_cpu_player.capture_debug_context(),
+		"white": _compact_cpu_context(game.white_cpu_player.capture_debug_context()),
+		"black": _compact_cpu_context(game.black_cpu_player.capture_debug_context()),
 	}
+
+func _compact_cpu_context(source: Dictionary) -> Dictionary:
+	return {
+		"brain": String(source.get("brain", "")),
+		"brain_kind": int(source.get("brain_kind", 0)),
+		"color": String(source.get("color", "")),
+		"rng_state": String(source.get("rng_state", "0")),
+		"king_safety_turns": int(source.get("king_safety_turns", 0)),
+	}
+
+func _compact_record_ai(source: Dictionary, include_diagnostics: bool) -> Dictionary:
+	if source.is_empty(): return {}
+	var result := source.duplicate(true)
+	if result.get("performance", {}).is_empty():
+		result["performance"] = PerformanceTelemetry.from_search_profile(result.get("search_profile", {}))
+	result["pre_decision_context"] = _compact_cpu_context(result.get("pre_decision_context", {}))
+	if not include_diagnostics:
+		result.erase("search_profile")
+		result.erase("candidates")
+	return result
 
 func _record_from_history():
 	active_record.frames.clear()
@@ -1514,12 +1564,13 @@ func _record_from_history():
 	active_record.provenance = record_provenance.duplicate(true)
 	for index in range(history.entries.size()):
 		var meta: Dictionary = history.metadata[index] if index < history.metadata.size() else {}
+		var keep_diagnostics: bool = active_record.flagged_frame >= 0 and absi(index - active_record.flagged_frame) <= 1
 		active_record.frames.append({
 			"position": history.entries[index].copy(), "label": history.labels[index],
 			"kind": meta.get("kind", &"gameplay"), "action": meta.get("action", {}).duplicate(true),
 			"transition": meta.get("transition", &"action" if not meta.get("action", {}).is_empty() else &"snapshot"),
 			"selections": meta.get("selections", []).duplicate(true),
-			"ai": meta.get("ai", {}).duplicate(true), "context": meta.get("context", {}).duplicate(true),
+			"ai": _compact_record_ai(meta.get("ai", {}), keep_diagnostics), "context": meta.get("context", {}).duplicate(true),
 		})
 	return active_record
 

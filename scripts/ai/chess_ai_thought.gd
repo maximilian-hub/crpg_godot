@@ -1,6 +1,8 @@
 extends RefCounted
 class_name ChessAiThought
 
+const PerformanceTelemetry := preload("res://scripts/state/chess_ai_performance_telemetry.gd")
+
 var model_revision: int
 var color: String
 var action_kind: ChessPrimaryAction.Kind
@@ -21,5 +23,6 @@ func to_dictionary() -> Dictionary:
 		"selected": {"kind": action_kind, "piece_type": String(piece_type_id), "from": [piece_coordinate.x, piece_coordinate.y], "target": [target.x, target.y], "path": path.map(func(value: Vector2i): return [value.x, value.y])},
 		"analyzed_leaf_count": analyzed_leaf_count,
 		"search_profile": search_profile.duplicate(true),
+		"performance": PerformanceTelemetry.from_search_profile(search_profile),
 		"candidates": candidates.duplicate(true),
 	}

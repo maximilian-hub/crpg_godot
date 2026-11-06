@@ -14,6 +14,15 @@ func _ready() -> void:
 	_check("Share Game" not in record_labels and "Paste Game" not in record_labels and "Copy Current Position" not in record_labels, "desktop record panel no longer exposes clipboard exchange", failures)
 	_check("Copy Report" not in _button_labels(sandbox.report_panel), "desktop report form no longer exposes clipboard exchange", failures)
 	_check(sandbox.history.entries.size() == 1 and sandbox.history.metadata[0].kind == &"baseline", "sandbox starts an always-on recording baseline", failures)
+	var verbose_context: Dictionary = sandbox.game.white_cpu_player.capture_debug_context()
+	verbose_context["brain_state"] = {"position_history": ["large transient state"]}
+	var compact_context: Dictionary = sandbox._compact_cpu_context(verbose_context)
+	_check(not compact_context.has("brain_state") and compact_context.has("rng_state"), "recording context drops repeated brain internals while retaining replay RNG", failures)
+	var verbose_ai := {"search_profile": {"thinking_usec": 1000, "evaluated_reply_count": 2}, "candidates": [{"selected": true}], "pre_decision_context": verbose_context}
+	var compact_ai: Dictionary = sandbox._compact_record_ai(verbose_ai, false)
+	var report_ai: Dictionary = sandbox._compact_record_ai(verbose_ai, true)
+	_check(compact_ai.has("performance") and not compact_ai.has("search_profile") and not compact_ai.has("candidates"), "ordinary game frames retain compact telemetry without full diagnostics", failures)
+	_check(report_ai.has("search_profile") and report_ai.has("candidates") and not report_ai.pre_decision_context.has("brain_state"), "issue-report frames can retain detailed search diagnostics without transient brain state", failures)
 	var before_json := ChessPositionCodec.to_json(sandbox.model.capture_position())
 	sandbox.editor.select_palette_piece(&"pawn", "white")
 	sandbox.editor.place_selected(Vector2i(4, 4))

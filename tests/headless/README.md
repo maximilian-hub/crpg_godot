@@ -20,6 +20,9 @@ godot --headless --path . tests/headless/dupre_core_analysis_cache_characterizat
 godot --headless --path . tests/headless/dupre_full_match_performance.tscn
 # Opt-in long benchmark: four matchups, 40 plies, three deterministic seeds.
 godot --headless --path . tests/headless/dupre_full_match_soak.tscn
+
+Replay telemetry and corpus/fixed-work tooling are documented in
+`tools/REPLAY_PERFORMANCE_TELEMETRY.md`.
 godot --headless --path . tests/headless/classic_core_live_authority_characterization.tscn
 godot --headless --path . tests/headless/classic_core_live_presentation_characterization.tscn
 godot --headless --path . tests/headless/quarterly_initiative_core_characterization.tscn

@@ -2,6 +2,7 @@ extends RefCounted
 class_name ChessGameRecordCodec
 
 const RecordScript = preload("res://scripts/state/chess_game_record.gd")
+const PerformanceTelemetry = preload("res://scripts/state/chess_ai_performance_telemetry.gd")
 const MAX_FRAMES := 10000
 
 
@@ -37,6 +38,7 @@ static func to_dictionary(record) -> Dictionary:
 			"reasoning": String(record.issue_report.get("reasoning", "")),
 		},
 		"provenance": _json_safe(record.provenance),
+		"performance_summary": PerformanceTelemetry.summarize_frames(record.frames),
 		"frames": encoded_frames,
 	}
 
@@ -59,7 +61,8 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	var errors: Array[String] = []
 	var warnings: Array[String] = []
 	if data.get("schema", "") != "crpg_chess_record": errors.append("Unknown game record schema.")
-	if int(data.get("version", -1)) != RecordScript.CURRENT_SCHEMA_VERSION: errors.append("Unsupported game record version.")
+	var input_version := int(data.get("version", -1))
+	if input_version not in [1, RecordScript.CURRENT_SCHEMA_VERSION]: errors.append("Unsupported game record version.")
 	var raw_frames = data.get("frames", [])
 	if not raw_frames is Array or raw_frames.is_empty():
 		errors.append("Game record must contain at least one frame.")

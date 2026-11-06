@@ -1,7 +1,7 @@
 extends RefCounted
 class_name ChessGameRecord
 
-const CURRENT_SCHEMA_VERSION := 1
+const CURRENT_SCHEMA_VERSION := 2
 
 var record_id := ""
 var created_utc := ""

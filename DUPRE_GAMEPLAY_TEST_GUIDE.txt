@@ -32,6 +32,12 @@ Games Dupre wins are useful too. Please include both colors, different king
 matchups, and games that reach an endgame when convenient. There is no quota:
 one especially clear example may be more valuable than ten ordinary games.
 
+Ordinary games are also useful for performance work. New recordings retain a
+small per-turn summary of how much search Dupre completed inside his fixed time
+budget, where that work was spent, whether he fell back to an unverified move,
+and his longest uninterrupted compute interval. You do not need to recognize or
+annotate technical slowdowns; a varied collection supplies the comparison data.
+
 
 What Notes to Leave
 -------------------

@@ -365,6 +365,7 @@ func _begin_profile(root_action_count: int) -> void:
 	_search_started_usec = Time.get_ticks_usec()
 	_slice_started_usec = _search_started_usec
 	last_profile = {
+		"budget_usec": think_budget_msec * 1000,
 		"root_action_count": root_action_count,
 		"evaluated_reply_count": 0,
 		"total_available_replies": 0,
