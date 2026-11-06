@@ -1,0 +1,348 @@
+CHESS RPG — CURRENT AI OPPONENTS
+================================
+
+Last reviewed: November 2026
+
+Purpose
+-------
+
+This document describes how the selectable CPU brains currently choose actions.
+It is an implementation reference, not a promise that every heuristic is final.
+AI design goals and future opponent-knowledge ideas remain in
+AI_DESIGN_NORTH_STAR.txt. Rules ownership and native-performance intentions live
+in PURE_DATA_AUTHORITATIVE_CORE_INTENT.txt.
+
+
+Shared CPU Execution
+--------------------
+
+ChessCpuPlayer owns one selected brain per army: Ryck, LeMay, or Dupre. It asks
+the authoritative model for legal actions, lets the brain choose a plan, then
+matches the plan back to a still-legal authoritative action before execution.
+This revision check prevents an obsolete thought from acting on a changed board.
+
+The CPU player also resolves required selections such as promotion, Raise Dead,
+and Quarterly Initiative movement grants. Seeded randomness is used where a
+brain intentionally chooses among equivalent options. Sandbox armies may select
+brains independently, allowing matches such as Ryck versus Dupre.
+
+
+Ryck — Brief Summary
+--------------------
+
+Ryck is the original fast heuristic opponent. He scores the current legal action
+list without opponent-reply search, using shared tactical filters and older
+king-specific behavior in ChessCpuPlayer. He is inexpensive and lively, but can
+miss elementary consequences because he does not simulate the opponent's next
+turn. Ryck's behavior is intentionally retained as its own selectable brain.
+
+
+LeMay — Brief Summary
+---------------------
+
+LeMay is the original general two-ply minimax experiment. He simulates each root
+move and the opponent's replies with authoritative ChessBoardModels, uses
+alpha-beta pruning, and accepts only completed minimax candidates as exact.
+LeMay has a five-second soft budget and cooperative main-thread yielding, but his
+generic evaluation and exhaustive model-based work make him slower and less
+purposeful than Dupre. Current enhanced king support is limited to Classic and
+Arakne.
+
+
+Dupre — Overview
+----------------
+
+Dupre combines three kinds of intelligence:
+
+1. A fast traditional opening book.
+2. A cheap purposeful policy that ranks every legal action.
+3. Selective authoritative tactical verification of the most important moves.
+
+This is not a conventional deep chess engine. Dupre normally looks one move
+ahead and examines the opponent's immediate replies (two plies total), with a
+limited extra tactical continuation at unstable leaves. His strength comes from
+choosing useful candidates, recognizing obligations, ordering dangerous replies
+first, and understanding Chess RPG consequences—not from searching many turns.
+
+
+Dupre's Decision Pipeline
+-------------------------
+
+1. Validate support and capture the current revision
+
+Dupre declines to think if either king lacks a registered, validated Dupre
+layer. Legal actions always come from the authoritative rules. A changed model
+revision invalidates a thought before it can execute.
+
+2. Build the tactical view
+
+DupreTacticalMap records occupancy and lazily answers attack, defense, hanging-
+piece, and king-attacker questions. Projected maps reuse unchanged occupancy and
+calculate only relationships actually queried for an action. This is a cheap
+policy aid, not a second legality engine.
+
+DupreExchangeAnalyzer estimates short capture/recapture sequences, material
+swings, and the risk to threatened pieces. Its confidence is reduced for durable
+pieces and kings, where simple orthodox exchange assumptions are less reliable.
+
+3. Try the opening-book fast path
+
+At the beginning of a compatible match, Dupre uniformly selects one opening
+family and remains committed to it. The current generated runtime book contains
+48 families and is approximately 347 KB. Its source data is imported offline
+from lichess-org/chess-openings; runtime play does not parse SAN or download
+data.
+
+The default ceiling is seven successfully executed book moves by Dupre, not
+seven full rounds. Recognized opponent replies advance the selected branch.
+After a modest deviation, compatible recovery moves may still be offered.
+
+Every recommendation is matched to an authoritative legal action. Dupre leaves
+or overrides the book for immediate wins, direct king attacks, king danger,
+valuable threatened pieces, certain ability threats, imminent scheduled
+hazards, or strategically important king abilities. A normal safe book hit uses
+no tactical simulations.
+
+Opening state resets when the brain/session or position is reset. Book actions
+increment the limit only after successful authoritative execution.
+
+4. Rank all acceptable actions with purposeful policy
+
+DupreMovePolicy begins with Ryck's established action score, then adds a more
+deliberate positional and tactical interpretation. Important considerations
+include:
+
+* immediate victory and direct damage to the enemy king;
+* development of knights, bishops, and useful pawn moves;
+* rook activity and a penalty for purposeless back-rank rook shuffling;
+* centralization of knights, bishops, and queens;
+* immediate move-reversal avoidance;
+* safe captures and estimated capture/recapture exchanges;
+* rescuing threatened valuable pieces;
+* penalties for moving onto attacked squares or exposing undefended allies;
+* king safety, including survivable counterattacks and capturing an attacker;
+* current and near-future enemy ability effects;
+* pending hazards such as Cannon mortar impacts;
+* short-cycle/repeated-position penalties; and
+* endgame technique.
+
+The endgame policy blends in as non-pawn material falls. It values passed pawns,
+promotion races, king activity and escort, rooks behind passers, sensible trades
+while ahead, and selected rook endgame technique. Its root-policy influence is
+kept modest so it cannot overwhelm urgent tactics.
+
+5. Preserve mandatory and strategically important candidates
+
+Dupre does not simply search the top N policy scores. Before adding the default
+six ordinary policy candidates, he preserves relevant actions from categories
+such as:
+
+* immediate wins;
+* responses to king danger;
+* direct king attacks;
+* captures of king attackers;
+* responses to threatened major pieces and ability obligations;
+* responses to scheduled hazards;
+* favorable captures;
+* forcing or high-impact abilities; and
+* king-specific strategic ability actions.
+
+Caps prevent any one ability category from consuming the entire budget, but the
+final candidate set may be larger than six because mandatory actions are added
+outside the ordinary policy allowance.
+
+6. Prepare every candidate before deepening any one candidate
+
+Search preparation is breadth-first. Dupre simulates every retained root action
+before allowing a single favorite to consume the reply budget. Opponent replies
+are ordered with wins, king damage, captures, serious threats, and forcing
+abilities first.
+
+Dupre then advances reply analysis round-robin across root candidates:
+
+* first, one forcing reply per candidate per round;
+* then, remaining replies per candidate per round; and
+* alpha-beta cutoffs when a candidate is already no better than a completed
+  alternative.
+
+This prevents legal-action order from deciding which move happens to receive
+useful analysis before timeout.
+
+7. Evaluate authoritative resulting states
+
+Production Dupre normally imports the settled position once into
+ClassicChessCore and simulates copied pure-data ChessCoreStates. These searches
+do not instantiate temporary scene-tree nodes. The pure core owns movement,
+combat, abilities, reactions, random state, hazards, and turn resolution.
+
+The static evaluation principally considers:
+
+* victory or defeat;
+* material and partial damage to durable pieces;
+* king HP, with a much larger value than ordinary material;
+* mobility;
+* hanging rooks and queens;
+* direct king pressure and immediate lethal actions;
+* granted movement types;
+* supported king-specific positional state; and
+* blended endgame technique.
+
+If a position cannot be imported into the pure backend, Dupre can fall back to
+authoritative ChessBoardModel simulation. Unsupported king types are normally
+rejected earlier rather than guessed at.
+
+8. Extend tactically unstable leaves
+
+Quiescence adds one selective continuation for immediate tactical actions. It
+includes captures, king damage, lethal or major material damage, consequential
+forced movement, and genuinely urgent ability consequences. Quiet summons,
+delayed Wraith pressure, ordinary Quarterly grants, and scheduled Cannon mortar
+placements do not expand the tactical leaf merely because they are abilities.
+
+If the budget expires during this extension, the leaf is marked incomplete. It
+is never silently promoted to an exact score.
+
+9. Select an exact result or an honest fallback
+
+An exact candidate has completed all required opponent replies. Dupre chooses
+among tactically near-equal exact candidates using the purposeful policy, which
+allows chess style and activity to matter after tactical safety is established.
+
+Incomplete minimizing scores are optimistic bounds and are never compared as
+if they were exact. If no root completes, Dupre uses a classified breadth-first
+fallback. Known terminal or severe losses are disfavored; complete forcing-reply
+coverage, mandatory tactical purpose, policy score, and stable source order
+guide the fallback. Diagnostics explicitly mark this choice as unverified.
+
+
+Budgets and Main-Thread Responsiveness
+--------------------------------------
+
+Dupre currently inherits these production limits from LeMay:
+
+* five-second soft thinking budget;
+* 4,096 evaluated opponent-reply leaves; and
+* approximately 3 ms cooperative simulation slices.
+
+Policy preparation uses a somewhat wider cooperative threshold for batches of
+cheap cached queries. All SceneTree interaction remains on the main thread.
+Pure-data simulation removes most node construction from the hot loop, but it is
+still GDScript running on the main thread; cooperative yields reduce stalls but
+cannot preempt one unusually expensive authoritative operation midway through.
+
+Opening-book decisions bypass ordinary tactical search when safe and should be
+near-immediate. Presentation delays and animations are separate from AI compute.
+
+
+King Support
+------------
+
+Dupre currently registers these king types:
+
+* Classic — generic rules-compatible support.
+* Arakne — enhanced Spike Burst threats and path-preserving Skitter simulation.
+* Necromancer — enhanced summon placement, Raise Dead settlement, Bone Pawn
+  consequences, and exchange adjustments.
+* Minotaur — enhanced Charge and Retaliating Rage consequences.
+* Quarterly Initiative — enhanced grant selection, HP-sacrifice policy, and
+  movement-grant consequences.
+* Cannon — enhanced mortar footprint, friendly fire, scheduled-hazard pressure,
+  and reaction consequences.
+* Rhetorician — enhanced Compel, forced movement/capture, Lunacy, and Socratic
+  consequences.
+* Wraith — enhanced summon targeting, travel pressure, replacement cost,
+  projectiles, and Cursed Mark consequences.
+* Archer variants — generic rules-compatible support only. Bespoke strategy is
+  intentionally deferred while the final Archer design is unsettled. Registered
+  IDs are archer_king, archer_king_draw, archer_king_quiver,
+  archer_king_combination, and archer_king_charge.
+
+The authoritative core defines what these abilities actually do. AI layers add
+strategic descriptions, threat interpretation, move ordering, and policy—not a
+duplicate executable rules engine.
+
+
+State, Randomness, and Reproducibility
+--------------------------------------
+
+Dupre retains limited match state:
+
+* selected opening family and branch;
+* successfully played book moves;
+* previous own actions for reversal detection; and
+* settled-position history for repetition detection.
+
+The CPU debug context captures the brain, color, RNG state, safety state, and
+brain session state. Game recordings may also contain decision telemetry and
+candidate diagnostics. Pure simulations copy authoritative state, including RNG
+state, so speculative branches do not advance the live game's random stream.
+
+
+Diagnostics
+-----------
+
+Each Dupre thought exposes a search profile and a bounded candidate report.
+Useful fields include total thinking time, simulation backend, book hit/fallback
+reason, policy and candidate-selection time, legal-action generations, core
+resolutions, replies available and evaluated, forcing coverage, exact/pruned/
+incomplete/invalid roots, quiescence nodes, alpha-beta cutoffs, fallback risk,
+repetition evidence, cooperative yields, and maximum uninterrupted computation.
+
+These diagnostics are the main reason annotated representative .crpggame files
+are useful: two turns that both consume the five-second ceiling may nevertheless
+perform very different amounts and kinds of work.
+
+
+Important Current Limitations
+-----------------------------
+
+* Dupre does not plan several quiet moves ahead. Long-term plans are approximated
+  by policy, opening theory, endgame technique, and immediate-reply search.
+* The five-second budget means busy positions may end with an explicitly
+  unverified fallback, even after dangerous replies were screened fairly.
+* Tactical maps and exchange sequences are selective approximations. Final
+  legality and simulated consequences always come from the authoritative core.
+* Archer variants have legality support but no finalized bespoke strategy.
+* Opponent king knowledge is currently perfect for every supported king. The
+  Unknown/Observed/Familiar design in AI_DESIGN_NORTH_STAR.txt is not yet active.
+* Character personalities, opening preferences, risk tolerance, and theatrical
+  thinking delays are not yet implemented as opponent-specific traits.
+* The pure authoritative core is optimized GDScript, not a native module. Native
+  experimentation remains a possible later optimization after profiling.
+
+
+Primary Implementation Locations
+--------------------------------
+
+CPU orchestration:
+  scripts/ai/chess_cpu_player.gd
+
+Brains:
+  scripts/ai/ryck_ai_brain.gd
+  scripts/ai/lemay_ai_brain.gd
+  scripts/ai/dupre_ai_brain.gd
+
+Dupre policy and analysis:
+  scripts/ai/dupre_move_policy.gd
+  scripts/ai/dupre_tactical_map.gd
+  scripts/ai/dupre_exchange_analyzer.gd
+  scripts/ai/dupre_endgame_policy.gd
+  scripts/ai/dupre_quiescence_policy.gd
+  scripts/ai/dupre_position_history.gd
+
+Opening book:
+  scripts/ai/dupre_opening_book.gd
+  scripts/ai/dupre_opening_session.gd
+  assets/data/openings/dupre_openings_runtime.json
+  tools/opening_import/
+
+King strategy extensions:
+  scripts/ai/chess_king_ai_registry.gd
+  scripts/ai/*_king_ai_layer.gd
+
+Pure authoritative simulation:
+  scripts/core/pure/classic_chess_core.gd
+  scripts/core/pure/chess_core_state.gd
+  scripts/core/pure/*_core_rules.gd
+  scripts/ai/dupre_classic_core_backend.gd
+
