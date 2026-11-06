@@ -110,6 +110,7 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 			"ai": _dictionary_or_empty(raw.get("ai", {})),
 			"context": _dictionary_or_empty(raw.get("context", {})),
 		})
+	_migrate_legacy_allocator_states(record, raw_frames)
 	if record.flagged_frame >= record.frames.size(): errors.append("Flagged frame is outside the timeline.")
 	return {"record": record if errors.is_empty() else null, "errors": errors, "warnings": warnings}
 
@@ -133,6 +134,38 @@ static func _dictionary_or_empty(value) -> Dictionary:
 
 static func _array_or_empty(value) -> Array:
 	return value.duplicate(true) if value is Array else []
+
+
+static func _migrate_legacy_allocator_states(record, raw_frames: Array) -> void:
+	# Schema 4 positions did not retain the allocator high-water mark. For each
+	# recorded transition, a newly appearing durable ID reveals the allocator
+	# value that must have existed at the source frame. This preserves old replay
+	# action IDs without pretending removed IDs were necessarily still reserved.
+	for index in range(1, mini(record.frames.size(), raw_frames.size())):
+		var raw_position = raw_frames[index - 1].get("position", {}) if raw_frames[index - 1] is Dictionary else {}
+		if raw_position is Dictionary and int(raw_position.get("version", 0)) >= 5:
+			continue
+		var source: ChessPosition = record.frames[index - 1].position
+		var target: ChessPosition = record.frames[index].position
+		var source_ids := _position_state_ids(source)
+		var first_new_suffix := -1
+		for id in _position_state_ids(target):
+			if id in source_ids:
+				continue
+			var suffix := id.get_slice("_", id.get_slice_count("_") - 1)
+			if suffix.is_valid_int():
+				var number := suffix.to_int()
+				first_new_suffix = number if first_new_suffix < 0 else mini(first_new_suffix, number)
+		if first_new_suffix >= 1:
+			source.next_state_id = first_new_suffix
+
+
+static func _position_state_ids(position: ChessPosition) -> Array[String]:
+	var result: Array[String] = []
+	for piece in position.pieces: result.append(piece.piece_id)
+	for effect in position.tile_effects: result.append(effect.effect_id)
+	for entity in position.autonomous_entities: result.append(entity.entity_id)
+	return result
 
 
 static func _json_safe(value):

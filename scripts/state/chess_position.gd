@@ -1,7 +1,7 @@
 extends Resource
 class_name ChessPosition
 
-const CURRENT_SCHEMA_VERSION := 4
+const CURRENT_SCHEMA_VERSION := 5
 
 @export var schema_version: int = CURRENT_SCHEMA_VERSION
 @export var board_size := Vector2i(8, 8)
@@ -22,6 +22,8 @@ const CURRENT_SCHEMA_VERSION := 4
 @export var random_states := {}
 @export var global_turn_number := 1
 @export var active_ability_cooldowns_disabled := false
+## High-water mark for deterministic piece/effect/entity IDs after reload.
+@export var next_state_id := 1
 
 func copy() -> ChessPosition:
 	var result := ChessPosition.new()
@@ -44,4 +46,5 @@ func copy() -> ChessPosition:
 	result.random_states = random_states.duplicate(true)
 	result.global_turn_number = global_turn_number
 	result.active_ability_cooldowns_disabled = active_ability_cooldowns_disabled
+	result.next_state_id = next_state_id
 	return result

@@ -29,6 +29,7 @@ func synchronize_from_projection() -> bool:
 		fallback_reason = String(imported.get("error", "Unsupported Classic position."))
 		return false
 	state = imported.state
+	model._next_state_id = state.next_state_id
 	active = true
 	fallback_reason = ""
 	return true
@@ -789,6 +790,7 @@ func _apply_turn_events(events: Array[ChessCoreEvent]) -> void:
 			"piece_color": state.last_move.get("piece_color", moved_piece.color if moved_piece != null else ""),
 		}
 	model._projected_random_states = state.random_states.duplicate(true)
+	model._next_state_id = state.next_state_id
 	for event in events:
 		if event.kind in [&"cooldown_scheduled", &"cooldown_changed", &"cooldown_ready"]:
 			_present_cooldown_event(event)

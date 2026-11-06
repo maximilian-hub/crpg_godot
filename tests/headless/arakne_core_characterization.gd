@@ -149,7 +149,7 @@ func _test_atomic_rejection_and_schema() -> void:
 	position.active_ability_cooldowns_disabled = true
 	var encoded := ChessPositionCodec.to_json(position, false)
 	var decoded: ChessPosition = ChessPositionCodec.from_json(encoded).position
-	_expect(decoded != null and decoded.schema_version == 4 and decoded.active_ability_cooldowns_disabled and decoded.pieces.any(func(piece): return piece.type_id == &"arakne_king" and not piece.initial_cooldown_turn_pending), "schema 4 round-trips Arakne cooldown rule state")
+	_expect(decoded != null and decoded.schema_version == ChessPosition.CURRENT_SCHEMA_VERSION and decoded.active_ability_cooldowns_disabled and decoded.pieces.any(func(piece): return piece.type_id == &"arakne_king" and not piece.initial_cooldown_turn_pending), "current schema round-trips Arakne cooldown rule state")
 	var arakne_state: ChessPieceState = position.pieces.filter(func(piece): return piece.type_id == &"arakne_king")[0]
 	position.active_ability_cooldowns_disabled = false
 	arakne_state.current_cooldown = 1; arakne_state.initial_cooldown_turn_pending = true

@@ -39,6 +39,7 @@ static func import_position(position: ChessPosition) -> Dictionary:
 		if socratic_turns > 0 and not position.random_states.has(&"lunacy"):
 			return {"ok": false, "error": "Active Socratic state requires a serialized Lunacy RNG."}
 	var state := ChessCoreState.new()
+	state.next_state_id = position.next_state_id
 	state.board_size = position.board_size
 	state.board_type = position.board_type
 	state.current_turn = position.current_turn
@@ -142,6 +143,7 @@ static func export_position(state: ChessCoreState) -> ChessPosition:
 	result.socratic_turns_by_color = state.socratic_turns_by_color.duplicate(true)
 	result.global_turn_number = state.global_turn_number
 	result.active_ability_cooldowns_disabled = state.active_ability_cooldowns_disabled
+	result.next_state_id = state.next_state_id
 	for piece in state.pieces: result.pieces.append(piece.to_piece_state())
 	for effect in state.tile_effects: result.tile_effects.append(effect.to_effect_state())
 	for entity in state.autonomous_entities: result.autonomous_entities.append(entity.to_entity_state())

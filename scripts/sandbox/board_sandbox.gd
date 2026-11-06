@@ -1564,6 +1564,8 @@ func _replay_next_turn() -> void:
 
 func _play_replay_turn(target_index: int) -> void:
 	if replay_record == null or target_index <= 0 or target_index >= replay_record.frames.size(): return
+	if replay_compatibility_label != null:
+		replay_compatibility_label.text = ""
 	var source_index := target_index - 1
 	# A turn may follow setup/edit snapshots that are not themselves theatrical.
 	if replay_cursor != source_index:
@@ -1589,7 +1591,7 @@ func _play_replay_turn(target_index: int) -> void:
 		return
 	var expected: ChessPosition = frame.get("position")
 	if _canonical_position(model.capture_position()) != _canonical_position(expected):
-		_replay_snapshot_fallback(target_index, "The animated result differed from the recorded position.")
+		_replay_snapshot_fallback(target_index, "The animated result differed from the recorded position. %s" % _position_difference_summary(expected, model.capture_position()))
 		return
 	replay_cursor = target_index
 	replay_selection_queue.clear()
@@ -1649,8 +1651,12 @@ func _validate_replay_turn(source_index: int, target_index: int) -> Dictionary:
 		selection_index += 1
 	if result.status != CoreStepResult.Status.COMPLETED or selection_index != selections.size():
 		return {"ok": false, "error": "The recorded turn did not settle cleanly."}
-	if _canonical_position(PureCore.export_position(result.state)) != _canonical_position(target):
-		return {"ok": false, "error": "Current rules produce a different result for this recorded turn."}
+	var actual: ChessPosition = PureCore.export_position(result.state)
+	if _canonical_position(actual) != _canonical_position(target):
+		return {
+			"ok": false,
+			"error": "Current rules produce a different result for this recorded turn. %s" % _position_difference_summary(target, actual),
+		}
 	return {"ok": true}
 
 func _replay_snapshot_fallback(target_index: int, reason: String) -> void:
@@ -1672,7 +1678,77 @@ func _normalized_action_descriptor(raw: Dictionary) -> Dictionary:
 	return result
 
 func _canonical_position(position: ChessPosition) -> String:
-	return ChessPositionCodec.to_json(position, false) if position != null else ""
+	if position == null:
+		return ""
+	var dictionary := ChessPositionCodec.to_dictionary(position)
+	# The allocator cursor is replay infrastructure rather than board state.
+	# Generated IDs themselves remain part of the comparison.
+	dictionary.erase("next_state_id")
+	return JSON.stringify(_canonical_comparison_value(dictionary))
+
+func _canonical_comparison_value(value):
+	if value is float and is_equal_approx(value, roundf(value)):
+		return int(value)
+	if value is Dictionary:
+		var result := {}
+		for key in value:
+			result[key] = _canonical_comparison_value(value[key])
+		return result
+	if value is Array:
+		return value.map(func(item): return _canonical_comparison_value(item))
+	return value
+
+func _position_difference_summary(expected: ChessPosition, actual: ChessPosition) -> String:
+	if expected == null or actual == null:
+		return "One position was unavailable."
+	var differences: Array[String] = []
+	var expected_dictionary := ChessPositionCodec.to_dictionary(expected)
+	var actual_dictionary := ChessPositionCodec.to_dictionary(actual)
+	expected_dictionary.erase("next_state_id")
+	actual_dictionary.erase("next_state_id")
+	_collect_value_differences(
+		expected_dictionary,
+		actual_dictionary,
+		"position",
+		differences,
+		3
+	)
+	return "Difference: %s" % "; ".join(differences) if not differences.is_empty() else "Canonical encodings differed."
+
+func _collect_value_differences(expected, actual, path: String, differences: Array[String], limit: int) -> void:
+	if differences.size() >= limit:
+		return
+	if typeof(expected) != typeof(actual):
+		differences.append("%s expected %s, got %s" % [path, str(expected), str(actual)])
+		return
+	if expected is Dictionary:
+		var keys: Array = expected.keys()
+		for key in actual.keys():
+			if key not in keys:
+				keys.append(key)
+		keys.sort_custom(func(a, b): return String(a) < String(b))
+		for key in keys:
+			if differences.size() >= limit:
+				return
+			var child_path := "%s.%s" % [path, key]
+			if not expected.has(key):
+				differences.append("%s was added as %s" % [child_path, str(actual[key])])
+			elif not actual.has(key):
+				differences.append("%s expected %s, but was absent" % [child_path, str(expected[key])])
+			else:
+				_collect_value_differences(expected[key], actual[key], child_path, differences, limit)
+		return
+	if expected is Array:
+		if expected.size() != actual.size():
+			differences.append("%s expected %d items, got %d" % [path, expected.size(), actual.size()])
+			return
+		for index in range(expected.size()):
+			_collect_value_differences(expected[index], actual[index], "%s[%d]" % [path, index], differences, limit)
+			if differences.size() >= limit:
+				return
+		return
+	if expected != actual:
+		differences.append("%s expected %s, got %s" % [path, str(expected), str(actual)])
 
 func _encode_record_value(value: Variant) -> Variant:
 	if value is Vector2i: return [value.x, value.y]

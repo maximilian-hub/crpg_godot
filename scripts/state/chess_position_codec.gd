@@ -43,6 +43,7 @@ static func to_dictionary(position: ChessPosition) -> Dictionary:
 		"board": {"rows": position.board_size.x, "columns": position.board_size.y, "type": String(position.board_type)},
 		"current_turn": position.current_turn, "last_move": last,
 		"global_turn_number": position.global_turn_number,
+		"next_state_id": position.next_state_id,
 		"rules": {"active_ability_cooldowns_disabled": position.active_ability_cooldowns_disabled},
 		"battle": {"over": position.battle_over, "result": position.battle_result, "defeated_king_colors": position.defeated_king_colors.duplicate()},
 		"lunacy": {"white": int(position.lunacy_by_color.get("white", 0)), "black": int(position.lunacy_by_color.get("black", 0)), "socratic_turns": position.socratic_turns_by_color.duplicate(true)},
@@ -67,17 +68,18 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 	if data.get("schema", "") != "crpg_chess_position":
 		errors.append("Unknown position schema.")
 	var input_version := int(data.get("version", -1))
-	if input_version not in [1, 2, 3, ChessPosition.CURRENT_SCHEMA_VERSION]:
+	if input_version not in [1, 2, 3, 4, ChessPosition.CURRENT_SCHEMA_VERSION]:
 		errors.append("Unsupported position version.")
 	var board_data = data.get("board", {})
 	if not board_data is Dictionary:
 		errors.append("Board must be an object.")
 		board_data = {}
 	var position := ChessPosition.new()
-	position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION if input_version in [1, 2, 3] else input_version
+	position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION if input_version in [1, 2, 3, 4] else input_version
 	position.board_size = Vector2i(int(board_data.get("rows", 0)), int(board_data.get("columns", 0)))
 	position.board_type = StringName(board_data.get("type", "default"))
 	position.current_turn = String(data.get("current_turn", ""))
+	position.next_state_id = maxi(1, int(data.get("next_state_id", 1)))
 	var rules = data.get("rules", {})
 	if rules is Dictionary:
 		position.active_ability_cooldowns_disabled = bool(rules.get("active_ability_cooldowns_disabled", false))
@@ -162,6 +164,8 @@ static func from_dictionary(data: Dictionary) -> Dictionary:
 		var entity_custom = raw.get("custom", {})
 		entity.custom_state = entity_custom.duplicate(true) if entity_custom is Dictionary else {}
 		position.autonomous_entities.append(entity)
+	if not data.has("next_state_id"):
+		position.next_state_id = _derived_next_state_id(position)
 	var validation := ChessPositionValidator.validate(position)
 	errors.append_array(validation.structural_errors)
 	return {"position": position if errors.is_empty() else null, "errors": errors}
@@ -191,3 +195,14 @@ static func _encode_random_states(states: Dictionary) -> Dictionary:
 	for key in keys:
 		result[String(key)] = str(int(states[key]))
 	return result
+
+static func _derived_next_state_id(position: ChessPosition) -> int:
+	var next_id := 1
+	var ids: Array[String] = []
+	for piece in position.pieces: ids.append(piece.piece_id)
+	for effect in position.tile_effects: ids.append(effect.effect_id)
+	for entity in position.autonomous_entities: ids.append(entity.entity_id)
+	for id in ids:
+		var suffix := id.get_slice("_", id.get_slice_count("_") - 1)
+		if suffix.is_valid_int(): next_id = maxi(next_id, suffix.to_int() + 1)
+	return next_id

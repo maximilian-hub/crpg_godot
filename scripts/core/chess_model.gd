@@ -190,6 +190,7 @@ func _capture_projected_position() -> ChessPosition:
 	position.random_states = _projected_random_states.duplicate(true)
 	position.global_turn_number = global_turn_number
 	position.active_ability_cooldowns_disabled = active_ability_cooldowns_disabled
+	position.next_state_id = _next_state_id
 	for row in board:
 		for piece in row:
 			if piece != null:
@@ -209,9 +210,8 @@ func load_position(position: ChessPosition) -> bool:
 	if not is_settled():
 		printerr("load_position: Model must be settled.")
 		return false
-	# Schema 1 predates non-physical board state; schema 2 predates RNG snapshots;
-	# schema 3 predates authoritative ability-rule and initial-cooldown state.
-	if position.schema_version in [1, 2, 3]: position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION
+	# Earlier schemas predate portions of authoritative non-physical state.
+	if position.schema_version in [1, 2, 3, 4]: position.schema_version = ChessPosition.CURRENT_SCHEMA_VERSION
 	var validation := ChessPositionValidator.validate(position)
 	if not validation.is_structurally_valid():
 		printerr("load_position: ", "; ".join(validation.structural_errors))
@@ -229,7 +229,7 @@ func load_position(position: ChessPosition) -> bool:
 		row.fill(null)
 		replacement.append(row)
 	var created: Array[ModelPiece] = []
-	_next_state_id = 1
+	_next_state_id = position.next_state_id
 	for state in position.pieces:
 		var piece := ChessPieceCatalog.create_piece(state.type_id, state.color, state.coordinate)
 		if piece == null:

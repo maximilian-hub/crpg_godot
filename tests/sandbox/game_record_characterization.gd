@@ -44,6 +44,16 @@ func _ready() -> void:
 	clean_record.clear_issue_report()
 	_check(clean_record.flagged_frame == -1 and clean_record.issue_report.is_empty() and decoded.record.flagged_frame == 1, "clean sharing removes annotations from a copy without mutating the report", failures)
 	_check(ChessPositionCodec.to_json(decoded.record.frames[0].position) == before_json, "record frames retain authoritative complete positions", failures)
+	var allocator_position: ChessPosition = decoded.record.frames[0].position.copy()
+	allocator_position.next_state_id = 73
+	var allocator_round_trip := ChessPositionCodec.from_json(ChessPositionCodec.to_json(allocator_position, false)).position as ChessPosition
+	_check(allocator_round_trip != null and allocator_round_trip.next_state_id == 73, "position snapshots preserve the generated-state ID allocator", failures)
+	var numeric_expected := allocator_position.copy()
+	var numeric_actual := allocator_position.copy()
+	if not numeric_expected.pieces.is_empty():
+		numeric_expected.pieces[0].custom_state["comparison_counter"] = 10.0
+		numeric_actual.pieces[0].custom_state["comparison_counter"] = 10
+	_check(sandbox._canonical_position(numeric_expected) == sandbox._canonical_position(numeric_actual), "replay comparison treats equivalent integral JSON numbers as equal", failures)
 	_check(sandbox.import_record_text(json) and sandbox.replay_mode and sandbox.replay_cursor == 1, "record import enters replay at the flagged frame", failures)
 	_check(not sandbox.editor.editor_enabled and not sandbox.piece_palette.palette_enabled, "replay mode is immutable", failures)
 	await sandbox.analyze_replay_again()
