@@ -1016,14 +1016,23 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 		if touch.pressed:
 			if mobile_ui_pointer >= 0:
 				return false
-			mobile_ui_touch_target = _mobile_button_at(touch.position)
-			if mobile_ui_touch_target != null:
-				pass
-			elif piece_palette != null and piece_palette.mobile_contains(touch.position):
-				if not piece_palette.handle_mobile_touch_pressed(touch.position, touch.index):
-					return false
+			mobile_ui_touch_target = null
+			var touch_is_in_king_picker: bool = piece_palette != null and piece_palette.king_picker != null and piece_palette.king_picker.visible and piece_palette.king_picker.get_global_rect().has_point(touch.position)
+			if touch_is_in_king_picker and piece_palette.handle_mobile_touch_pressed(touch.position, touch.index):
 				mobile_ui_touch_target = piece_palette
 			else:
+				var mobile_button := _mobile_button_at(touch.position)
+				if mobile_button != null:
+					mobile_ui_touch_target = mobile_button
+				elif piece_palette != null and piece_palette.mobile_contains(touch.position):
+					if not piece_palette.handle_mobile_touch_pressed(touch.position, touch.index):
+						return false
+					mobile_ui_touch_target = piece_palette
+				else:
+					mobile_ui_touch_target = _mobile_text_edit_at(touch.position)
+					if mobile_ui_touch_target != null:
+						(mobile_ui_touch_target as TextEdit).grab_focus()
+			if mobile_ui_touch_target == null:
 				return false
 			mobile_ui_pointer = touch.index
 			get_viewport().set_input_as_handled()
@@ -1062,6 +1071,19 @@ func _mobile_button_at(position: Vector2) -> Button:
 	for candidate: Button in mobile_button_callbacks:
 		if candidate.is_visible_in_tree() and candidate.get_global_rect().has_point(position):
 			return candidate
+	var report_panel_node := report_panel if report_panel != null else get_node_or_null("SandboxLayer/GameIssueReportPanel")
+	if report_panel_node != null and report_panel_node.visible:
+		for child in report_panel_node.find_children("*", "Button", true, false):
+			var candidate := child as Button
+			if candidate.is_visible_in_tree() and not candidate.disabled and candidate.get_global_rect().has_point(position):
+				return candidate
+	if mobile_layout:
+		for candidate in $SandboxLayer.find_children("*", "Button", true, false):
+			var button := candidate as Button
+			if piece_palette != null and piece_palette.is_ancestor_of(button):
+				continue
+			if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(position):
+				return button
 	var presentation_adapter: Node = game.get_node_or_null("ChessPresentationAdapter")
 	var archer_draw_button := presentation_adapter.get("archer_draw_button") as Button if presentation_adapter != null else null
 	if archer_draw_button != null and archer_draw_button.is_visible_in_tree() and archer_draw_button.get_global_rect().has_point(position):
@@ -1072,6 +1094,21 @@ func _mobile_button_at(position: Vector2) -> Button:
 			var candidate := child as Button
 			if candidate.is_visible_in_tree() and candidate.get_global_rect().has_point(position):
 				return candidate
+	var promotion_panel := game.get_node_or_null("LunacyLayer/LunacyUI/PromotionPanel")
+	if promotion_panel != null:
+		for child in promotion_panel.find_children("*", "Button", true, false):
+			var candidate := child as Button
+			if candidate.is_visible_in_tree() and not candidate.disabled and candidate.get_global_rect().has_point(position):
+				return candidate
+	return null
+
+func _mobile_text_edit_at(position: Vector2) -> TextEdit:
+	if not mobile_layout:
+		return null
+	for candidate in $SandboxLayer.find_children("*", "TextEdit", true, false):
+		var edit := candidate as TextEdit
+		if edit.is_visible_in_tree() and edit.get_global_rect().has_point(position):
+			return edit
 	return null
 
 func _route_mobile_board_touch(event: InputEvent) -> bool:

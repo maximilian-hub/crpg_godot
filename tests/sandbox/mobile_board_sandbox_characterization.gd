@@ -119,6 +119,22 @@ func _ready() -> void:
 	sandbox.interaction._input(outside_release)
 	_check(model.board[4][4] == null and sandbox.interaction.drag_source == BoardEditorInteraction.DragSource.NONE, "off-board touch release cancels palette placement", failures)
 
+	var brain_selector_presses := [0]
+	sandbox._set_mode(sandbox.Mode.EDIT)
+	sandbox.mobile_ai_panel.visible = true
+	await get_tree().process_frame
+	sandbox.ai_brain_options.white.pressed.connect(func(): brain_selector_presses[0] += 1)
+	_route_touch_button(sandbox, sandbox.ai_brain_options.white, 17)
+	_check(brain_selector_presses[0] == 1, "mobile touch opens AI brain selectors", failures)
+	sandbox.ai_brain_options.white.get_popup().hide()
+	sandbox.mobile_ai_panel.visible = false
+	sandbox.report_panel.visible = true
+	sandbox.record_panel.visible = false
+	await get_tree().process_frame
+	var report_edit: TextEdit = sandbox.report_observed_edit
+	_route_touch_button(sandbox, report_edit, 18)
+	_check(sandbox.get_viewport().gui_get_focus_owner() == report_edit, "mobile touch focuses report text fields", failures)
+	sandbox.report_panel.visible = false
 	if failures.is_empty():
 		print("MOBILE BOARD SANDBOX CHARACTERIZATION: PASS")
 		get_tree().quit(0)

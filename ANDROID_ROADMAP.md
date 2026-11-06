@@ -98,6 +98,7 @@ The partner should:
 
 1. Download the APK.
 2. Allow **Install unknown apps** for the browser or file-manager app used to open it.
+
 3. Open and install the APK.
 4. Accept Android's warning that the app did not come from the Play Store.
 5. Launch it normally.
@@ -116,6 +117,20 @@ The exact device is not required before development begins. For the first extern
 These details become important if the APK refuses to install, Vulkan initialization fails, touch coordinates are wrong, or performance is unexpectedly poor.
 
 Reference: [Godot 4.4 system requirements](https://docs.godotengine.org/en/4.4/about/system_requirements.html)
+
+## Sandbox UI touch-routing reminder
+
+Every new control added to the mobile board sandbox needs an Android touch-routing check. The sandbox handles `InputEventScreenTouch` in `scripts/sandbox/board_sandbox.gd` before the board interaction code; if a control is not discoverable there, a tap can fall through and place or move a chess piece instead of activating the control.
+
+When adding sandbox UI:
+
+- Prefer `_add_button_to(...)` for ordinary buttons so the control is registered with the mobile router.
+- For controls created outside `SandboxLayer` (for example chess choice panels under `ChessGame/LunacyLayer`), add an explicit scan in `_mobile_button_at(...)`.
+- Route `TextEdit`/`LineEdit` fields explicitly so a touch focuses the field and opens the Android keyboard.
+- Keep piece-palette/king-picker routing ahead of generic button scans so picker scrolling and selection continue to work.
+- Add a touch regression to `tests/sandbox/mobile_board_sandbox_characterization.gd` whenever a new mobile control surface is introduced.
+
+The recurring symptom of missing routing is: the UI appears, but button/dropdown taps do nothing or the board receives the tap and changes position.
 
 ## Next Required Step
 
