@@ -385,9 +385,9 @@ func resolve_unplayable_turns() -> bool:
 		return true
 	await _apply_turn_events(result.events)
 	model.position_revision += 1
+	_validate_projection("forced-pass completion")
 	if state.battle_over: model.battle_finished.emit(state.battle_result)
 	model.settled_action_completed.emit()
-	if not _projection_matches(): _record_projection_mismatch("forced-pass completion")
 	return true
 
 
@@ -748,12 +748,14 @@ func _complete_action_from_events(events: Array[ChessCoreEvent]) -> void:
 	model.action_owner_color = ""
 	await _apply_turn_events(events)
 	model.position_revision += 1
+	# Validate the facade before completion signals allow listeners to begin the
+	# next lifecycle operation or otherwise alter the newly settled projection.
+	_validate_projection("action completion")
 	if state.battle_over:
 		model.battle_finished.emit(state.battle_result)
 	else:
 		model.action_finished.emit()
 	model.settled_action_completed.emit()
-	if not _projection_matches(): _record_projection_mismatch("action completion")
 
 
 func _record_rejection(context: String) -> void:
@@ -1081,7 +1083,21 @@ func _present_entity_removed(event: ChessCoreEvent) -> void:
 		return
 
 
-func _projection_matches() -> bool:
+func _validate_projection(context: String) -> bool:
 	var projected := model._capture_projected_position()
 	var authoritative := ClassicChessCore.export_position(state)
-	return ChessPositionCodec.to_json(projected, false) == ChessPositionCodec.to_json(authoritative, false)
+	if projected == null:
+		_record_projection_mismatch("%s: projected position unavailable" % context)
+		return false
+	if authoritative == null:
+		var reason := "authoritative position unavailable"
+		if state == null:
+			reason = "authoritative state unavailable"
+		elif state.pending_choice != null:
+			reason = "authoritative state still has pending choice '%s'" % String(state.pending_choice.kind)
+		_record_projection_mismatch("%s: %s" % [context, reason])
+		return false
+	if ChessPositionCodec.to_json(projected, false) != ChessPositionCodec.to_json(authoritative, false):
+		_record_projection_mismatch(context)
+		return false
+	return true

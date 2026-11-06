@@ -131,6 +131,24 @@ func _test_necromancer_live_authority() -> void:
 	_expect(model.get_live_authority_diagnostics().projection_mismatches == 0, "Raise Dead projection matches authoritative state")
 	model.queue_free(); await get_tree().process_frame
 
+	# Projection parity must be established before public completion listeners
+	# can begin another lifecycle operation or mutate presentation-only state.
+	necromancer = NecromancerKing.new("black", Vector2i(0, 7)); necromancer.set_cooldown(0); necromancer.initial_cooldown_turn_pending = false
+	rook = Rook.new("white", Vector2i(4, 0)); bishop = Bishop.new("black", Vector2i(4, 3))
+	model = _model([ClassicKing.new("white", Vector2i(7, 7)), rook, necromancer, bishop])
+	model.set_live_authority(ChessBoardModel.LiveAuthority.CLASSIC_CORE)
+	var completion_listener := {"ran": false}
+	model.action_finished.connect(func():
+		completion_listener.ran = true
+		model.global_turn_number += 100
+	, CONNECT_ONE_SHOT)
+	_expect(await model.submit_move(rook, bishop.coordinate) and model.has_pending_reaction(), "Raise Dead ordering fixture reaches its reaction choice")
+	target = model.get_pending_reaction().targets[0]
+	_expect(await model.submit_reaction_selection(target), "Raise Dead ordering fixture settles")
+	var ordering_diagnostics := model.get_live_authority_diagnostics()
+	_expect(completion_listener.ran and ordering_diagnostics.projection_mismatches == 0, "Raise Dead parity is checked before completion listeners can alter the settled facade (listener=%s, mismatches=%s, context=%s)" % [completion_listener.ran, ordering_diagnostics.projection_mismatches, ordering_diagnostics.last_projection_mismatch_context])
+	model.queue_free(); await get_tree().process_frame
+
 
 	necromancer = NecromancerKing.new("black", Vector2i(0, 7)); necromancer.set_cooldown(0); necromancer.initial_cooldown_turn_pending = false
 	rook = Rook.new("white", Vector2i(4, 0)); bishop = Bishop.new("black", Vector2i(4, 3))
