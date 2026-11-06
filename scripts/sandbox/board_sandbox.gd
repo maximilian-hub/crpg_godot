@@ -10,6 +10,11 @@ const PureCore = preload("res://scripts/core/pure/classic_chess_core.gd")
 const CoreAction = preload("res://scripts/core/pure/chess_core_action.gd")
 const CoreStepResult = preload("res://scripts/core/pure/chess_core_step_result.gd")
 const RecordExchange = preload("res://scripts/platform/game_record_exchange.gd")
+const WATCH_PATH_EXIT := "M14 6 4 16l10 10v-7h9v-6h-9z M21 5h7v22h-7v-4h3V9h-3z"
+const WATCH_PATH_PLAY := "M9 5v22l18-11z"
+const WATCH_PATH_PAUSE := "M8 5h6v22H8z M18 5h6v22h-6z"
+const WATCH_PATH_PREVIOUS := "M7 5h4v22H7z M27 6v20L12 16z"
+const WATCH_PATH_NEXT := "M21 5h4v22h-4z M5 6v20l15-10z"
 
 enum Mode { EDIT, PLAY }
 
@@ -122,6 +127,14 @@ var replay_pause_requested := false
 var replay_selection_queue: Array[Dictionary] = []
 var replay_play_button: Button
 var replay_watch_button: Button
+var mobile_watch_controls: VBoxContainer
+var mobile_watch_exit_button: Button
+var mobile_watch_play_button: Button
+var mobile_watch_previous_button: Button
+var mobile_watch_next_button: Button
+var mobile_watch_mode := false
+var mobile_watch_play_icon: Texture2D
+var mobile_watch_pause_icon: Texture2D
 var replay_compatibility_label: Label
 var report_panel: PanelContainer
 var report_category_option: OptionButton
@@ -169,6 +182,7 @@ func _ready() -> void:
 	_build_panel()
 	_build_record_panel()
 	_build_report_panel()
+	if mobile_layout: _build_mobile_watch_controls()
 	if mobile_layout: _layout_mobile_controls()
 	_set_mode(Mode.EDIT)
 	baseline = model.capture_position()
@@ -525,6 +539,37 @@ func _build_report_panel() -> void:
 		record_file_buttons.append(_add_button_to(actions, "Share Report", _share_issue_report))
 	_add_button_to(actions, "Cancel", _close_report_panel)
 
+func _build_mobile_watch_controls() -> void:
+	mobile_watch_controls = VBoxContainer.new()
+	mobile_watch_controls.name = "ReplayWatchControls"
+	mobile_watch_controls.visible = false
+	mobile_watch_controls.z_index = 300
+	mobile_watch_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mobile_watch_controls.add_theme_constant_override("separation", 8)
+	$SandboxLayer.add_child(mobile_watch_controls)
+	mobile_watch_play_icon = _make_watch_icon(WATCH_PATH_PLAY)
+	mobile_watch_pause_icon = _make_watch_icon(WATCH_PATH_PAUSE)
+	mobile_watch_exit_button = _add_watch_icon_button(_make_watch_icon(WATCH_PATH_EXIT), "Return to replay controls", _exit_mobile_watch_mode)
+	mobile_watch_play_button = _add_watch_icon_button(mobile_watch_pause_icon, "Pause replay", _toggle_replay_playback)
+	mobile_watch_next_button = _add_watch_icon_button(_make_watch_icon(WATCH_PATH_NEXT), "Next turn", _replay_next_turn)
+	mobile_watch_previous_button = _add_watch_icon_button(_make_watch_icon(WATCH_PATH_PREVIOUS), "Previous turn", _replay_previous_turn)
+
+func _make_watch_icon(path_data: String) -> Texture2D:
+	var image := Image.new()
+	var svg := '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path fill="#fff" d="%s"/></svg>' % path_data
+	if image.load_svg_from_string(svg, 2.0) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
+
+func _add_watch_icon_button(icon: Texture2D, description: String, callback: Callable) -> Button:
+	var button := _add_button_to(mobile_watch_controls, "", callback)
+	button.icon = icon
+	button.custom_minimum_size = Vector2(52.0, 52.0)
+	button.tooltip_text = description
+	button.set_meta(&"accessibility_name", description)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	return button
+
 func _add_report_field(column: VBoxContainer, label_text: String, control: Control) -> void:
 	var label := Label.new()
 	label.text = label_text
@@ -727,6 +772,7 @@ func _refresh_record_panel() -> void:
 	replay_analyze_button.disabled = not replay_mode or replay_cursor <= 0 or replay_playing
 	for button in record_file_buttons:
 		button.disabled = record_exchange.operation_pending or (mobile_layout and not record_exchange.is_available())
+	_refresh_mobile_watch_controls()
 	var record = replay_record if replay_mode else _record_from_history()
 	var note: String = record.issue_note if record != null else ""
 	if record_note_edit.text != note:
@@ -877,6 +923,13 @@ func _layout_mobile_controls() -> void:
 		report_panel.offset_top = top
 		report_panel.offset_right = -right
 		report_panel.offset_bottom = -bottom
+	if mobile_watch_controls != null:
+		var controls_height := mobile_watch_controls.get_combined_minimum_size().y
+		mobile_watch_controls.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+		mobile_watch_controls.offset_left = -(right + 52.0)
+		mobile_watch_controls.offset_top = -controls_height * 0.5
+		mobile_watch_controls.offset_right = -right
+		mobile_watch_controls.offset_bottom = controls_height * 0.5
 
 func _make_confirmation(title: String, message: String, callback: Callable) -> ConfirmationDialog:
 	var dialog := ConfirmationDialog.new()
@@ -1548,7 +1601,37 @@ func _watch_replay_from_start() -> void:
 	var first := _first_replay_turn_index()
 	if first < 0: return
 	_load_replay_frame(first - 1)
+	if mobile_layout:
+		_enter_mobile_watch_mode()
 	_start_replay_playback()
+
+func _enter_mobile_watch_mode() -> void:
+	mobile_watch_mode = true
+	record_panel.visible = false
+	report_panel.visible = false
+	mobile_toolbar_panel.visible = false
+	mobile_ai_panel.visible = false
+	piece_palette.visible = false
+	mobile_watch_controls.visible = true
+	_refresh_mobile_watch_controls()
+
+func _exit_mobile_watch_mode() -> void:
+	if not mobile_watch_mode: return
+	if replay_playing:
+		replay_pause_requested = true
+	mobile_watch_mode = false
+	mobile_watch_controls.visible = false
+	mobile_toolbar_panel.visible = true
+	record_panel.visible = true
+	_refresh_record_panel()
+
+func _refresh_mobile_watch_controls() -> void:
+	if mobile_watch_controls == null: return
+	mobile_watch_play_button.icon = mobile_watch_pause_icon if replay_playing else mobile_watch_play_icon
+	mobile_watch_play_button.tooltip_text = "Pause replay" if replay_playing else "Play replay"
+	mobile_watch_play_button.disabled = replay_pause_requested or (not replay_playing and _next_replay_turn_index(replay_cursor) < 0)
+	mobile_watch_previous_button.disabled = replay_playing or _previous_replay_turn_index(replay_cursor) < 0
+	mobile_watch_next_button.disabled = replay_playing or _next_replay_turn_index(replay_cursor) < 0
 
 func _toggle_replay_playback() -> void:
 	if replay_playing:

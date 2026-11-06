@@ -22,6 +22,8 @@ func _ready() -> void:
 	_check("Paste Game" not in record_labels and "Copy Current Position" not in record_labels and "Copy Report" not in _button_labels(sandbox.report_panel), "mobile sandbox exposes no clipboard exchange controls", failures)
 	_check(sandbox.report_panel != null and sandbox.report_panel.anchor_right == 1.0 and sandbox.report_observed_edit.custom_minimum_size.y >= 80.0, "mobile issue reporting uses a full-screen touch-friendly form", failures)
 	_check(sandbox.record_panel.get_child(0) is ScrollContainer, "mobile record and replay controls remain scrollable on short screens", failures)
+	_check(sandbox.mobile_watch_controls != null and sandbox.mobile_watch_controls.get_child_count() == 4, "mobile replay provides a dedicated four-button watch overlay", failures)
+	_check(sandbox.mobile_watch_controls.get_children().all(func(child): return child is Button and (child as Button).text.is_empty() and (child as Button).icon != null), "mobile watch controls use icons instead of text", failures)
 	_check(sandbox.piece_skin_option == null and sandbox.piece_scale_spin == null and sandbox.piece_base_x_spin == null and PieceView.standard_skin == PieceView.StandardSkin.CLASSIC, "mobile sandbox omits skin, scale, and base-anchor tuning and keeps Classic artwork", failures)
 	_check(sandbox.mode_button.text == "Edit" and sandbox.undo_button.text == "Back" and sandbox.redo_button.text == "Forward", "mobile toolbar uses compact labels", failures)
 	_check(sandbox.ai_mode_buttons.has(ChessCpuPlayer.ExecutionMode.DISABLED) and sandbox.ai_mode_buttons.has(ChessCpuPlayer.ExecutionMode.AUTO), "mobile AI panel exposes Off and Auto", failures)
