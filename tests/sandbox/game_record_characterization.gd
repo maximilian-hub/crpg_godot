@@ -9,6 +9,10 @@ func _ready() -> void:
 	var sandbox = SANDBOX.instantiate()
 	add_child(sandbox)
 	await get_tree().process_frame
+	var record_labels := _button_labels(sandbox.record_panel)
+	_check(sandbox.record_open_dialog != null and sandbox.record_save_dialog != null and "Save Game" in record_labels and "Open Game" in record_labels, "desktop record exchange retains file save/open dialogs", failures)
+	_check("Share Game" not in record_labels and "Paste Game" not in record_labels and "Copy Current Position" not in record_labels, "desktop record panel no longer exposes clipboard exchange", failures)
+	_check("Copy Report" not in _button_labels(sandbox.report_panel), "desktop report form no longer exposes clipboard exchange", failures)
 	_check(sandbox.history.entries.size() == 1 and sandbox.history.metadata[0].kind == &"baseline", "sandbox starts an always-on recording baseline", failures)
 	var before_json := ChessPositionCodec.to_json(sandbox.model.capture_position())
 	sandbox.editor.select_palette_piece(&"pawn", "white")
@@ -104,3 +108,10 @@ func _ready() -> void:
 
 func _check(condition: bool, message: String, failures: Array[String]) -> void:
 	if not condition: failures.append(message)
+
+
+func _button_labels(root: Node) -> Array[String]:
+	var labels: Array[String] = []
+	for child in root.find_children("*", "Button", true, false):
+		labels.append((child as Button).text)
+	return labels

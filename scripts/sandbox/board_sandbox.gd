@@ -9,6 +9,7 @@ const ActionCodec = preload("res://scripts/state/chess_action_codec.gd")
 const PureCore = preload("res://scripts/core/pure/classic_chess_core.gd")
 const CoreAction = preload("res://scripts/core/pure/chess_core_action.gd")
 const CoreStepResult = preload("res://scripts/core/pure/chess_core_step_result.gd")
+const RecordExchange = preload("res://scripts/platform/game_record_exchange.gd")
 
 enum Mode { EDIT, PLAY }
 
@@ -49,8 +50,6 @@ var undo_button: Button
 var redo_button: Button
 var reset_button: Button
 var clear_button: Button
-var copy_button: Button
-var paste_button: Button
 var ai_mode_buttons := {}
 var ai_side_buttons := {}
 var ai_brain_options := {}
@@ -115,6 +114,8 @@ var replay_analyze_button: Button
 var record_open_dialog: FileDialog
 var record_save_dialog: FileDialog
 var record_save_clean := false
+var record_exchange
+var record_file_buttons: Array[Button] = []
 var replay_analysis_running := false
 var replay_playing := false
 var replay_pause_requested := false
@@ -137,6 +138,8 @@ var piece_skin_tuning := {
 
 func _ready() -> void:
 	mobile_layout = force_mobile_layout_for_testing or OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
+	record_exchange = RecordExchange.new()
+	_connect_record_exchange()
 	PieceView.standard_skin = PieceView.StandardSkin.CLASSIC
 	PieceView.standard_skin_scale = 1.0
 	PieceView.standard_skin_base_offset = Vector2.ZERO
@@ -188,8 +191,6 @@ func _build_desktop_panel() -> void:
 	redo_button = _add_button_to(history_row, "Redo [→]", redo)
 	reset_button = _add_button("Reset [R]", reset)
 	clear_button = _add_button("Clear", func(): editor.clear_board())
-	copy_button = _add_button("Copy Position", copy_position)
-	paste_button = _add_button("Paste Position", paste_position)
 
 	piece_skin_option = OptionButton.new()
 	piece_skin_option.add_item("Classic")
@@ -422,20 +423,18 @@ func _build_record_panel() -> void:
 	replay_play_button = _add_button_to(playback, "Play", _toggle_replay_playback)
 	var actions := HBoxContainer.new()
 	column.add_child(actions)
-	_add_button_to(actions, "Share Game", copy_clean_game_record)
+	record_file_buttons.append(_add_button_to(actions, "Save Game", _save_clean_game_record))
+	if record_exchange.is_available():
+		record_file_buttons.append(_add_button_to(actions, "Share Game", _share_clean_game_record))
 	_add_button_to(actions, "Report Issue", _open_report_panel)
 	var import_actions := HBoxContainer.new()
 	column.add_child(import_actions)
-	_add_button_to(import_actions, "Paste Game", paste_game_record)
-	if not mobile_layout:
-		_add_button_to(import_actions, "Open…", func(): record_open_dialog.popup_centered_ratio(0.7))
-		_add_button_to(import_actions, "Save Game…", _open_clean_save_dialog)
+	record_file_buttons.append(_add_button_to(import_actions, "Open Game", _open_game_record))
 	var replay_actions := HBoxContainer.new()
 	column.add_child(replay_actions)
 	replay_flag_button = _add_button_to(replay_actions, "Flag Frame", _flag_replay_frame)
 	replay_fork_button = _add_button_to(replay_actions, "Fork Here", fork_replay_here)
 	replay_analyze_button = _add_button_to(replay_actions, "Analyze Again", analyze_replay_again)
-	_add_button_to(column, "Copy Current Position", copy_position)
 	var note_label := Label.new()
 	note_label.text = "Imported report note"
 	column.add_child(note_label)
@@ -521,9 +520,9 @@ func _build_report_panel() -> void:
 	_add_report_field(column, "Additional notes", report_notes_edit)
 	var actions := HBoxContainer.new()
 	column.add_child(actions)
-	_add_button_to(actions, "Copy Report", _copy_issue_report)
-	if not mobile_layout:
-		_add_button_to(actions, "Save Report…", _open_report_save_dialog)
+	record_file_buttons.append(_add_button_to(actions, "Save Report", _save_issue_report))
+	if record_exchange.is_available():
+		record_file_buttons.append(_add_button_to(actions, "Share Report", _share_issue_report))
 	_add_button_to(actions, "Cancel", _close_report_panel)
 
 func _add_report_field(column: VBoxContainer, label_text: String, control: Control) -> void:
@@ -591,23 +590,83 @@ func _store_issue_report() -> bool:
 		record.issue_note = observed
 	return true
 
-func _copy_issue_report() -> void:
+func _save_clean_game_record() -> void:
+	var record = _clean_export_record()
+	if record_exchange.is_available():
+		_begin_native_record_operation("Saving game…")
+		record_exchange.save_document(RecordExchange.suggested_filename(false), GameRecordCodec.to_json(record))
+		return
+	record_save_clean = true
+	record_save_dialog.current_file = RecordExchange.suggested_filename(false)
+	record_save_dialog.popup_centered_ratio(0.7)
+
+func _share_clean_game_record() -> void:
+	var record = _clean_export_record()
+	_begin_native_record_operation("Opening share sheet…")
+	record_exchange.share_document(RecordExchange.suggested_filename(false), GameRecordCodec.to_json(record))
+
+func _save_issue_report() -> void:
 	if not _store_issue_report(): return
 	var record = replay_record if replay_mode else _record_from_history()
-	DisplayServer.clipboard_set(GameRecordCodec.to_json(record))
+	_close_report_after_export()
+	if record_exchange.is_available():
+		_begin_native_record_operation("Saving report…")
+		record_exchange.save_document(RecordExchange.suggested_filename(true), GameRecordCodec.to_json(record))
+		return
+	record_save_clean = false
+	record_save_dialog.current_file = RecordExchange.suggested_filename(true)
+	record_save_dialog.popup_centered_ratio(0.7)
+
+func _share_issue_report() -> void:
+	if not _store_issue_report(): return
+	var record = replay_record if replay_mode else _record_from_history()
+	_close_report_after_export()
+	_begin_native_record_operation("Opening share sheet…")
+	record_exchange.share_document(RecordExchange.suggested_filename(true), GameRecordCodec.to_json(record))
+
+func _open_game_record() -> void:
+	if record_exchange.is_available():
+		_begin_native_record_operation("Opening document picker…")
+		record_exchange.open_document()
+		return
+	record_open_dialog.popup_centered_ratio(0.7)
+
+func _close_report_after_export() -> void:
 	report_panel.visible = false
 	record_panel.visible = true
-	record_status_label.text = "Copied annotated %d-frame game JSON to clipboard." % record.frames.size()
-	_refresh_record_panel()
 
-func _open_clean_save_dialog() -> void:
-	record_save_clean = true
-	record_save_dialog.popup_centered_ratio(0.7)
+func _clean_export_record():
+	var source = replay_record if replay_mode else _record_from_history()
+	var record = source.copy()
+	record.clear_issue_report()
+	return record
 
-func _open_report_save_dialog() -> void:
-	if not _store_issue_report(): return
-	record_save_clean = false
-	record_save_dialog.popup_centered_ratio(0.7)
+func _connect_record_exchange() -> void:
+	record_exchange.document_saved.connect(func(display_name: String):
+		_finish_native_record_operation("Saved %s." % display_name)
+	)
+	record_exchange.document_shared.connect(func(display_name: String):
+		_finish_native_record_operation("Shared %s." % display_name)
+	)
+	record_exchange.document_opened.connect(func(contents: String, display_name: String):
+		for button in record_file_buttons: button.disabled = false
+		if import_record_text(contents):
+			record_status_label.text = "Opened %s." % display_name
+	)
+	record_exchange.operation_cancelled.connect(func(operation: String):
+		_finish_native_record_operation("%s cancelled." % operation.capitalize())
+	)
+	record_exchange.operation_failed.connect(func(operation: String, message: String):
+		_finish_native_record_operation("%s failed: %s" % [operation.capitalize(), message])
+	)
+
+func _begin_native_record_operation(message: String) -> void:
+	for button in record_file_buttons: button.disabled = true
+	record_status_label.text = message
+
+func _finish_native_record_operation(message: String) -> void:
+	for button in record_file_buttons: button.disabled = false
+	record_status_label.text = message
 
 func _report_context(record, frame_index: int) -> String:
 	if frame_index < 0 or frame_index >= record.frames.size(): return "Unknown turn"
@@ -666,6 +725,8 @@ func _refresh_record_panel() -> void:
 	replay_flag_button.disabled = count <= 0 or replay_playing
 	replay_fork_button.disabled = not replay_mode or replay_playing
 	replay_analyze_button.disabled = not replay_mode or replay_cursor <= 0 or replay_playing
+	for button in record_file_buttons:
+		button.disabled = record_exchange.operation_pending or (mobile_layout and not record_exchange.is_available())
 	var record = replay_record if replay_mode else _record_from_history()
 	var note: String = record.issue_note if record != null else ""
 	if record_note_edit.text != note:
@@ -1386,21 +1447,6 @@ func _on_seed_changed(value: float) -> void:
 	game.black_cpu_player.set_random_seed(seed_value)
 	_refresh_control_states()
 
-func copy_position() -> void:
-	DisplayServer.clipboard_set(ChessPositionCodec.to_json(model.capture_position()))
-
-func paste_position() -> void:
-	if mode != Mode.EDIT:
-		return
-	var decoded := ChessPositionCodec.from_json(DisplayServer.clipboard_get())
-	if decoded.position != null:
-		restoring_history = true
-		model.load_position(decoded.position)
-		restoring_history = false
-		baseline = model.capture_position()
-		history.establish_baseline(baseline, "Imported position")
-	_refresh_control_states()
-
 func _capture_record_context() -> Dictionary:
 	return {
 		"ai_mode": ai_mode, "ai_sides": ai_sides.duplicate(true), "seed": seed_value,
@@ -1424,25 +1470,10 @@ func _record_from_history():
 		})
 	return active_record
 
-func copy_game_record() -> void:
-	var record = replay_record if replay_mode else _record_from_history()
-	DisplayServer.clipboard_set(GameRecordCodec.to_json(record))
-	record_status_label.text = "Copied %d-frame game JSON to clipboard." % record.frames.size()
-
-func copy_clean_game_record() -> void:
-	var source = replay_record if replay_mode else _record_from_history()
-	var record = source.copy()
-	record.clear_issue_report()
-	DisplayServer.clipboard_set(GameRecordCodec.to_json(record))
-	record_status_label.text = "Copied clean %d-frame game JSON to clipboard." % record.frames.size()
-
-func paste_game_record() -> void:
-	import_record_text(DisplayServer.clipboard_get())
-
 func import_record_text(text: String) -> bool:
 	var json := JSON.new()
 	if json.parse(text) != OK or not json.data is Dictionary:
-		_set_record_error("Clipboard does not contain valid JSON.")
+		_set_record_error("Selected file does not contain valid JSON.")
 		return false
 	if json.data.get("schema", "") == "crpg_chess_position":
 		var decoded := ChessPositionCodec.from_dictionary(json.data)
@@ -2008,10 +2039,6 @@ func _refresh_control_states() -> void:
 	redo_button.disabled = not editing or not history.can_redo()
 	reset_button.disabled = not editing or not history.can_undo()
 	clear_button.disabled = not editing
-	if copy_button != null:
-		copy_button.disabled = not settled
-	if paste_button != null:
-		paste_button.disabled = not editing
 	if preset_option != null:
 		preset_option.disabled = replay_mode or not settled
 	if turn_option != null:
@@ -2139,7 +2166,7 @@ func _style_button(button: Button, active: bool, color: Color, dark_text := fals
 func _sync_disabled_focus_states() -> void:
 	var controls: Array[Control] = [
 		mode_button, view_side_button, undo_button, redo_button, reset_button, clear_button,
-		copy_button, paste_button, think_button, execute_button, step_button,
+		think_button, execute_button, step_button,
 		preset_option, turn_option,
 	]
 	for button in ai_mode_buttons.values():

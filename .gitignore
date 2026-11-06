@@ -7,6 +7,8 @@
 *.aab
 *.keystore
 /build/
+/native/android/**/.gradle/
+/native/android/**/build/
 
 
 

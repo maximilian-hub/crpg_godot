@@ -19,6 +19,14 @@ Project-side Android support is now in place:
 
 The development toolchain is configured and a signed debug APK has been produced at `android/crpg-debug.apk`. The package targets Android API 34, supports ARMv7 and ARM64, and has been signature-verified. Final appearance, device cutouts, audio, suspend/resume, performance, and control feel still require testing on real Android hardware.
 
+The sandbox build uses Godot's Gradle export path and includes the
+repository-owned `CrpgDocumentExchange` plugin. Its record panel saves and
+opens `.crpggame` files through Android's system document picker and shares
+them as real attachments through the system share sheet. This uses scoped URI
+grants and requests no broad storage permission. Install the Godot 4.5.2
+Android build template before exporting; plugin source and its packaged AAR
+are checked into the repository.
+
 ## 1. Add Basic Mobile Controls (Implemented)
 
 Create a touchscreen overlay owned by `Main`:

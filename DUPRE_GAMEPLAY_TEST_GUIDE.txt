@@ -64,10 +64,12 @@ Short notes are completely fine. If the exact round is unknown, describe the
 position or say roughly when it happened. Do not alter the position to make it
 cleaner—the original game record is the most useful evidence.
 
-Use Share Game instead when you simply want to exchange an interesting match
-for fun. Share Game deliberately exports a clean recording without a flagged
-turn or issue report. Imported games can be watched continuously, paused after
-the current turn finishes animating, or stepped backward and forward by turn.
+Use Save Game or Share Game when you simply want to exchange an interesting
+match for fun. Both deliberately export a clean recording without a flagged
+turn or issue report. On Android, Save uses the system document picker and
+Share sends a real .crpggame attachment through the share sheet. Imported games
+can be watched continuously, paused after the current turn finishes animating,
+or stepped backward and forward by turn.
 
 
 Suggested Collection Mix
