@@ -46,7 +46,7 @@ var restoring_history := false
 var baseline: ChessPosition
 var ai_mode := ChessCpuPlayer.ExecutionMode.DISABLED
 var ai_sides := {"white": false, "black": true}
-var ai_brains := {"white": ChessCpuPlayer.BrainKind.RYCK, "black": ChessCpuPlayer.BrainKind.RYCK}
+var ai_brains := {"white": ChessCpuPlayer.BrainKind.DUPRE, "black": ChessCpuPlayer.BrainKind.DUPRE}
 var seed_value := 1
 
 var mode_button: Button
@@ -1445,7 +1445,7 @@ func _brain_configuration_error(requested_mode: int = -1) -> String:
 	for color in ["white", "black"]:
 		if not ai_sides.get(color, false):
 			continue
-		var brain: ChessCpuPlayer.BrainKind = ai_brains.get(color, ChessCpuPlayer.BrainKind.RYCK)
+		var brain: ChessCpuPlayer.BrainKind = ai_brains.get(color, ChessCpuPlayer.BrainKind.DUPRE)
 		var rejected: Array[StringName] = []
 		if brain == ChessCpuPlayer.BrainKind.LEMAY:
 			rejected = LeMayAiBrain.unsupported_king_ids(model)
