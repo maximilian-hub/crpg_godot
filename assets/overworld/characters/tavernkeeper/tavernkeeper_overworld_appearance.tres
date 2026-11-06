@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="OverworldCharacterAppearance" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/overworld/overworld_character_appearance.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://assets/overworld/characters/tavernkeeper/tavernkeeper_overworld_frames.tres" id="2_frames"]
+
+[resource]
+script = ExtResource("1_script")
+appearance_id = &"tavernkeeper_test"
+sprite_frames = ExtResource("2_frames")
+mirror_left = false
+visual_offset = Vector2(0, -4)

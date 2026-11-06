@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_1_neutral.png" id="2_neutral"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_2_smiling.png" id="3_smiling"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_3_laughing.png" id="4_laughing"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_4_flustered.png" id="5_flustered"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_5_sad.png" id="6_sad"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_6_worried.png" id="7_worried"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_7_surprised.png" id="8_surprised"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_8_tired.png" id="9_tired"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_11_crazy.png" id="10_crazy"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/tavernkeeper/tavernkeeper_12_firm.png" id="11_firm"]
+
+[resource]
+script = ExtResource("1_profile")
+speaker_id = "tavernkeeper"
+default_display_name = "Tavernkeeper"
+portrait_ids = PackedStringArray("neutral", "smiling", "laughing", "flustered", "sad", "worried", "surprised", "tired", "crazy", "firm")
+portrait_textures = Array[Texture2D]([ExtResource("2_neutral"), ExtResource("3_smiling"), ExtResource("4_laughing"), ExtResource("5_flustered"), ExtResource("6_sad"), ExtResource("7_worried"), ExtResource("8_surprised"), ExtResource("9_tired"), ExtResource("10_crazy"), ExtResource("11_firm")])
+voice_enabled = false

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/skeleton/skeleton_neutral.png" id="2_neutral"]
+
+[resource]
+script = ExtResource("1_profile")
+speaker_id = "skeleton"
+default_display_name = "Skeleton"
+portrait_ids = PackedStringArray("neutral")
+portrait_textures = Array[Texture2D]([ExtResource("2_neutral")])
+voice_enabled = false

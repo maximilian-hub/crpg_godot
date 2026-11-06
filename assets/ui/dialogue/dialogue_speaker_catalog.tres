@@ -1,10 +1,13 @@
-[gd_resource type="Resource" script_class="DialogueSpeakerCatalog" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="DialogueSpeakerCatalog" load_steps=8 format=3 uid="uid://cyr3u4i5egt8l"]
 
-[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_catalog.gd" id="1_catalog"]
-[ext_resource type="Resource" path="res://assets/ui/dialogue/hood_dialogue_speaker.tres" id="2_hood"]
+[ext_resource type="Script" uid="uid://c5uri2i8xhi5u" path="res://scripts/dialogue/dialogue_speaker_catalog.gd" id="1_catalog"]
+[ext_resource type="Resource" uid="uid://buqngbuxss8vj" path="res://assets/ui/dialogue/hood_dialogue_speaker.tres" id="2_hood"]
 [ext_resource type="Resource" path="res://assets/ui/dialogue/ernest_dialogue_speaker.tres" id="3_ernest"]
-[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="4_profile"]
+[ext_resource type="Script" uid="uid://vuofly8lljtg" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="4_profile"]
+[ext_resource type="Resource" path="res://assets/ui/dialogue/grunch_dialogue_speaker.tres" id="5_grunch"]
+[ext_resource type="Resource" path="res://assets/ui/dialogue/tavernkeeper_dialogue_speaker.tres" id="6_tavernkeeper"]
+[ext_resource type="Resource" path="res://assets/ui/dialogue/skeleton_dialogue_speaker.tres" id="7_skeleton"]
 
 [resource]
 script = ExtResource("1_catalog")
-profiles = Array[ExtResource("4_profile")]([ExtResource("2_hood"), ExtResource("3_ernest")])
+profiles = Array[ExtResource("4_profile")]([ExtResource("2_hood"), ExtResource("3_ernest"), ExtResource("5_grunch"), ExtResource("6_tavernkeeper"), ExtResource("7_skeleton")])

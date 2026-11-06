@@ -1,6 +1,13 @@
 extends Node
 
 const OVERWORLD := preload("res://scenes/overworld/overworld.tscn")
+const TEST_TAVERN_WORLD := preload("res://scenes/overworld/test_tavern_world.tscn")
+const GRUNCH := preload("res://scenes/overworld/npcs/grunch.tscn")
+const TAVERNKEEPER := preload("res://scenes/overworld/npcs/tavernkeeper.tscn")
+const SKELETON_NPC := preload("res://scenes/overworld/npcs/skeleton.tscn")
+const EDITOR_GRID_SNAP := preload("res://scripts/overworld/editor_grid_center_snap.gd")
+const SKELETON_APPEARANCE := preload("res://assets/overworld/characters/skeleton/skeleton_overworld_appearance.tres")
+const TAVERNKEEPER_APPEARANCE := preload("res://assets/overworld/characters/tavernkeeper/tavernkeeper_overworld_appearance.tres")
 const MAIN := preload("res://scenes/main.tscn")
 const MOBILE_CONTROLS := preload("res://scenes/ui/mobile_game_controls.tscn")
 const SQUARE := preload("res://scenes/square.tscn")
@@ -10,6 +17,7 @@ var checks: int = 0
 
 func _ready() -> void:
 	await _test_overworld_scene()
+	await _test_tavern_world_and_npc_facing()
 	await _test_mobile_controls()
 	await _test_chess_square_touch()
 	await _test_main_starts_in_overworld()
@@ -20,6 +28,58 @@ func _ready() -> void:
 		for failure in failures:
 			printerr("OVERWORLD FAILURE: ", failure)
 		get_tree().quit(1)
+
+func _test_tavern_world_and_npc_facing() -> void:
+	_check(OverworldNpc.snap_position_to_cell_center(Vector2(121, 72)) == Vector2(120, 72), "NPC editor snapping uses the same floor-and-center rule as runtime placement")
+	_check(OverworldNpc.snap_position_to_cell_center(Vector2(104, 88)) == Vector2(104, 88), "already centered NPC positions remain unchanged")
+	_check(EDITOR_GRID_SNAP.snap_position_to_cell_center(Vector2(118, 153)) == Vector2(120, 152), "players and spawn markers share runtime's floor-and-center placement rule")
+	var tavern: Overworld = TEST_TAVERN_WORLD.instantiate()
+	tavern.configure(Vector2i(-1, -1), Vector2i.LEFT, "initial", TAVERNKEEPER_APPEARANCE)
+	add_child(tavern)
+	await get_tree().process_frame
+	var tavern_player_body := tavern.player.get_node("Body") as AnimatedSprite2D
+	_check(tavern.player.appearance == TAVERNKEEPER_APPEARANCE, "overworld configuration applies the selected player appearance")
+	_check(tavern_player_body.animation == &"walk_left" and not tavern_player_body.flip_h and tavern_player_body.sprite_frames.get_frame_texture(&"walk_left", 0).resource_path.ends_with("tavernkeeper_left_0001.png"), "Tavernkeeper player appearance uses its authored left-facing frames without mirroring")
+	tavern.player.set_appearance(SKELETON_APPEARANCE)
+	tavern.player._sync_animation()
+	_check(tavern_player_body.flip_h and tavern_player_body.sprite_frames.get_frame_texture(&"walk_left", 0).resource_path.ends_with("skeleton_right_0001.png"), "Skeleton player appearance restores mirrored-left presentation")
+	var authored_npc_count := 0
+	for child in tavern.y_sorted_world.get_children():
+		if child is OverworldNpc:
+			authored_npc_count += 1
+	_check(tavern.npcs.size() == authored_npc_count, "test tavern discovers every NPC authored under YSortedWorld")
+	_check(tavern.collision_grid.grid_size == Vector2i(20, 10), "test tavern matches the 20-by-10 map")
+	_check(tavern.collision_grid.is_cell_blocked(Vector2i(-1, 5)) and not tavern.collision_grid.is_cell_blocked(Vector2i(10, 5)), "test tavern rejects out-of-bounds movement while retaining an open interior")
+	_check((tavern.get_node("Map") as Sprite2D).texture.resource_path.ends_with("test_map_2.png"), "test tavern uses the supplied map")
+	tavern.queue_free()
+	await get_tree().process_frame
+
+	var grunch: OverworldNpc = GRUNCH.instantiate()
+	add_child(grunch)
+	await get_tree().process_frame
+	grunch.face_toward(grunch.grid_cell + Vector2i.LEFT)
+	var grunch_body := grunch.get_node("Body") as Sprite2D
+	_check(grunch_body.flip_h and grunch_body.texture == grunch.right_texture, "Grunch follows the standard mirrored-left convention")
+	grunch.queue_free()
+
+	var tavernkeeper: OverworldNpc = TAVERNKEEPER.instantiate()
+	add_child(tavernkeeper)
+	await get_tree().process_frame
+	tavernkeeper.face_toward(tavernkeeper.grid_cell + Vector2i.LEFT)
+	var keeper_body := tavernkeeper.get_node("Body") as Sprite2D
+	_check(not keeper_body.flip_h and keeper_body.texture == tavernkeeper.left_texture and keeper_body.texture != tavernkeeper.right_texture, "Tavernkeeper uses her authored left-facing sprite without mirroring")
+	tavernkeeper.queue_free()
+	await get_tree().process_frame
+
+	var skeleton: OverworldNpc = SKELETON_NPC.instantiate()
+	add_child(skeleton)
+	await get_tree().process_frame
+	var skeleton_body := skeleton.get_node("Body") as Sprite2D
+	_check(skeleton_body.texture.resource_path.ends_with("skeleton_down_0001.png"), "Skeleton NPC reuses the player's neutral down-facing overworld sprite")
+	skeleton.face_toward(skeleton.grid_cell + Vector2i.LEFT)
+	_check(skeleton_body.flip_h and skeleton_body.texture.resource_path.ends_with("skeleton_right_0001.png"), "Skeleton NPC mirrors the player's right-facing neutral sprite when looking left")
+	skeleton.queue_free()
+	await get_tree().process_frame
 
 func _test_overworld_scene() -> void:
 	var overworld: Overworld = OVERWORLD.instantiate()
@@ -51,7 +111,7 @@ func _test_overworld_scene() -> void:
 	var npc_body := overworld.npc.get_node("Body") as Sprite2D
 	_check(npc_body.position == Vector2(0, -4), "NPC artwork has the visual-only vertical offset")
 	_check(overworld.npc.get_node("CollisionShape2D").position == Vector2.ZERO, "NPC collision remains rooted at the gameplay position")
-	_check(npc_body.texture.resource_path.ends_with("hood_up_0001.png") and not npc_body.flip_h, "NPC starts in its authored up-facing pose")
+	_check(npc_body.texture.resource_path.ends_with("hood_down_0001.png") and not npc_body.flip_h, "NPC defaults to its authored down-facing pose")
 	_check(overworld.npc.encounter_profile != null and overworld.npc.encounter_profile.encounter_id == &"forest_challenger", "forest NPC owns its encounter profile")
 	_check(overworld.npc.encounter_profile.opponent_hand_style.resource_path.ends_with("hood_hand_style.tres"), "forest encounter owns the Hood hand style")
 	_check(overworld.npc.encounter_profile.opponent_presentation != null and overworld.npc.encounter_profile.opponent_presentation.hand_style == overworld.npc.encounter_profile.opponent_hand_style, "forest encounter owns a complete opponent presentation loadout")

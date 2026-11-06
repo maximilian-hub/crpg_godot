@@ -2,8 +2,9 @@
 extends TileMapLayer
 class_name OverworldCollisionGrid
 
-const GRID_SIZE := Vector2i(10, 10)
 const CELL_SIZE := 16
+## Legacy/default world dimensions. Individual maps can override `grid_size`.
+const GRID_SIZE := Vector2i(10, 10)
 const FULL_BLOCK_SOURCE_ID := 0
 const EDGE_SOURCE_ID := 1
 
@@ -24,8 +25,12 @@ const EDGE_DIRECTIONS := {
 }
 
 @export var show_collision_overlay_in_game: bool = false
+@export var grid_size := GRID_SIZE
+@export var generate_blocked_perimeter_if_empty := false
 
 func _ready() -> void:
+	if generate_blocked_perimeter_if_empty and get_used_cells().is_empty():
+		_generate_blocked_perimeter()
 	collision_enabled = true
 	# TileMapLayer deactivates its physics quadrants when hidden. Keep the layer
 	# active and make only its debug artwork transparent at runtime.
@@ -39,7 +44,15 @@ func is_cell_blocked(cell: Vector2i) -> bool:
 	return get_cell_source_id(cell) == FULL_BLOCK_SOURCE_ID
 
 func is_cell_in_bounds(cell: Vector2i) -> bool:
-	return cell.x >= 0 and cell.y >= 0 and cell.x < GRID_SIZE.x and cell.y < GRID_SIZE.y
+	return cell.x >= 0 and cell.y >= 0 and cell.x < grid_size.x and cell.y < grid_size.y
+
+func _generate_blocked_perimeter() -> void:
+	for x in range(grid_size.x):
+		set_cell(Vector2i(x, 0), FULL_BLOCK_SOURCE_ID, Vector2i.ZERO)
+		set_cell(Vector2i(x, grid_size.y - 1), FULL_BLOCK_SOURCE_ID, Vector2i.ZERO)
+	for y in range(1, grid_size.y - 1):
+		set_cell(Vector2i(0, y), FULL_BLOCK_SOURCE_ID, Vector2i.ZERO)
+		set_cell(Vector2i(grid_size.x - 1, y), FULL_BLOCK_SOURCE_ID, Vector2i.ZERO)
 
 ## Returns the persistent map-space edge flags authored on this cell.
 ## Edge atlas coordinates encode the mask as x + y * 4.

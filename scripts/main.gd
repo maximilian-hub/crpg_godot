@@ -4,7 +4,8 @@ class_name GameFlow
 
 signal dialogue_choice_resolved(target: String)
 
-const OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
+const DEFAULT_OVERWORLD_SCENE := preload("res://scenes/overworld/overworld.tscn")
+const DEFAULT_PLAYER_OVERWORLD_APPEARANCE := preload("res://assets/overworld/characters/skeleton/skeleton_overworld_appearance.tres")
 const CHESS_SCENE := preload("res://scenes/chess_game.tscn")
 const DEFAULT_BATTLE_PRESENTATION := preload("res://assets/boards/presentations/default_battle_presentation.tres")
 const BATTLE_LOGICAL_SIZE := Vector2i(960, 540)
@@ -16,6 +17,8 @@ enum BattlePresentationMode {
 
 @export var transition_duration: float = 0.25
 @export var battle_presentation_mode: BattlePresentationMode = BattlePresentationMode.FLUID_NATIVE
+@export var overworld_scene: PackedScene = DEFAULT_OVERWORLD_SCENE
+@export var player_overworld_appearance: OverworldCharacterAppearance = DEFAULT_PLAYER_OVERWORLD_APPEARANCE
 
 @onready var active_content: Node = $ActiveContent
 @onready var fade_overlay: ColorRect = $TransitionLayer/FadeOverlay
@@ -38,6 +41,7 @@ var battle_viewport: SubViewport = null
 var battle_shake_offset := Vector2.ZERO
 var dialogue_pending := false
 var active_encounter_profile: ChessEncounterProfile = null
+var active_encounter_npc: OverworldNpc = null
 
 func _ready() -> void:
 	fade_overlay.modulate.a = 0.0
@@ -91,10 +95,11 @@ func _show_overworld() -> void:
 	overworld_frame.add_child(overworld_viewport)
 	_layout_overworld_frame()
 
-	active_overworld = OVERWORLD_SCENE.instantiate()
-	active_overworld.configure(player_cell, player_facing, encounter_state)
+	active_overworld = overworld_scene.instantiate()
+	active_overworld.configure(player_cell, player_facing, encounter_state, player_overworld_appearance)
 	active_overworld.challenge_requested.connect(_on_challenge_requested)
 	active_overworld.inspection_requested.connect(_on_inspection_requested)
+	active_overworld.npc_dialogue_requested.connect(_on_npc_dialogue_requested)
 	overworld_viewport.add_child(active_overworld)
 	_layout_overworld_frame()
 
@@ -128,6 +133,7 @@ func _on_challenge_requested(encounter_profile: ChessEncounterProfile) -> void:
 	if is_transitioning or dialogue_pending or active_overworld == null:
 		return
 	active_encounter_profile = encounter_profile
+	active_encounter_npc = active_overworld.interaction_npc
 	player_cell = active_overworld.get_player_cell()
 	player_facing = active_overworld.get_player_facing()
 	active_overworld.set_world_input_enabled(false)
@@ -161,6 +167,9 @@ func _on_inspection_requested(dialogue_path: String) -> void:
 	dialogue_pending = false
 	if active_overworld != null and not is_transitioning:
 		active_overworld.set_world_input_enabled(true)
+
+func _on_npc_dialogue_requested(_npc: OverworldNpc, dialogue_path: String) -> void:
+	await _on_inspection_requested(dialogue_path)
 
 func _run_rematch_dialogue(encounter_profile: ChessEncounterProfile) -> bool:
 	if encounter_profile == null or encounter_profile.rematch_dialogue_path.is_empty():
@@ -354,7 +363,9 @@ func _present_result_dialogue(player_result: String) -> void:
 	if active_overworld == null:
 		return
 	dialogue_pending = true
-	active_overworld.npc.face_toward(active_overworld.player.grid_cell)
+	var result_npc := active_encounter_npc if is_instance_valid(active_encounter_npc) else active_overworld.npc
+	if result_npc != null:
+		result_npc.face_toward(active_overworld.player.grid_cell)
 	var path := ""
 	if active_encounter_profile != null:
 		match player_result:

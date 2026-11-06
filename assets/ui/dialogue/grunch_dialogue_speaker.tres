@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="DialogueSpeakerProfile" load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_speaker_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_1_neutral.png" id="2_neutral"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_2_alert.png" id="3_alert"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_drag_cig.png" id="4_drag"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_exhale_1.png" id="5_exhale1"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_exhale_2.png" id="6_exhale2"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_flick_cig.png" id="7_flick"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_hold_cig.png" id="8_hold"]
+[ext_resource type="Texture2D" path="res://assets/ui/portraits/grunch/grunch_light_cig.png" id="9_light"]
+
+[resource]
+script = ExtResource("1_profile")
+speaker_id = "grunch"
+default_display_name = "Grunch"
+portrait_ids = PackedStringArray("neutral", "alert", "drag_cig", "exhale_1", "exhale_2", "flick_cig", "hold_cig", "light_cig")
+portrait_textures = Array[Texture2D]([ExtResource("2_neutral"), ExtResource("3_alert"), ExtResource("4_drag"), ExtResource("5_exhale1"), ExtResource("6_exhale2"), ExtResource("7_flick"), ExtResource("8_hold"), ExtResource("9_light")])
+voice_enabled = false

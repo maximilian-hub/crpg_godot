@@ -1,3 +1,4 @@
+@tool
 extends CharacterBody2D
 class_name OverworldPlayer
 
@@ -6,6 +7,7 @@ signal step_finished(cell: Vector2i)
 enum MovementState { GRID_IDLE, TURNING, GRID_STEPPING, INPUT_LOCKED }
 
 const CELL_SIZE := 16
+const EDITOR_GRID_SNAP := preload("res://scripts/overworld/editor_grid_center_snap.gd")
 const DIRECTIONS := {
 	"move_up": Vector2i.UP,
 	"move_down": Vector2i.DOWN,
@@ -15,6 +17,11 @@ const DIRECTIONS := {
 
 @onready var body: AnimatedSprite2D = $Body
 @onready var bump_sound: AudioStreamPlayer = $BumpSound
+
+@export var appearance: OverworldCharacterAppearance:
+	set(value):
+		appearance = value
+		_apply_appearance()
 
 @export_range(0.05, 1.0, 0.01) var step_duration: float = 0.14
 ## Actual pixels travelled before advancing to the next of the four gait phases.
@@ -40,20 +47,59 @@ var walking_distance_accumulator: float = 0.0
 var turn_time_remaining: float = 0.0
 var turn_direction := Vector2i.ZERO
 var collision_grid: OverworldCollisionGrid
-var blocking_npc: OverworldNpc
+var blocking_npcs: Array[OverworldNpc] = []
 var blocked_walk_active: bool = false
 var blocked_walk_direction := Vector2i.ZERO
 var blocked_walk_time: float = 0.0
 var bump_cooldown_remaining: float = 0.0
+var editor_snap_armed := false
+var editor_snap_active := false
+
+func _enter_tree() -> void:
+	set_notify_transform(true)
+
+func _ready() -> void:
+	_apply_appearance()
+	if Engine.is_editor_hint():
+		call_deferred("_arm_editor_snap")
+
+func set_appearance(value: OverworldCharacterAppearance) -> void:
+	appearance = value
+
+func _notification(what: int) -> void:
+	if (
+		what != NOTIFICATION_TRANSFORM_CHANGED
+		or not Engine.is_editor_hint()
+		or not editor_snap_armed
+		or editor_snap_active
+		or get_parent() == null
+		or get_parent().name != &"YSortedWorld"
+	):
+		return
+	var snapped_position: Vector2 = EDITOR_GRID_SNAP.snap_position_to_cell_center(position)
+	if position.is_equal_approx(snapped_position):
+		return
+	editor_snap_active = true
+	position = snapped_position
+	editor_snap_active = false
+
+func _arm_editor_snap() -> void:
+	editor_snap_armed = true
 
 func configure(
 	p_collision_grid: OverworldCollisionGrid,
-	p_blocking_npc: OverworldNpc,
+	p_blocking_npcs,
 	start_cell: Vector2i,
 	start_facing: Vector2i
 ) -> void:
 	collision_grid = p_collision_grid
-	blocking_npc = p_blocking_npc
+	blocking_npcs.clear()
+	if p_blocking_npcs is OverworldNpc:
+		blocking_npcs.append(p_blocking_npcs)
+	elif p_blocking_npcs is Array:
+		for candidate in p_blocking_npcs:
+			if candidate is OverworldNpc:
+				blocking_npcs.append(candidate)
 	grid_cell = start_cell
 	target_cell = start_cell
 	step_origin_cell = start_cell
@@ -91,6 +137,8 @@ func is_grid_idle() -> bool:
 	return movement_state == MovementState.GRID_IDLE
 
 func _unhandled_input(event: InputEvent) -> void:
+	if Engine.is_editor_hint():
+		return
 	if movement_state == MovementState.INPUT_LOCKED:
 		return
 	for action in DIRECTIONS:
@@ -109,6 +157,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 func _physics_process(delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
 	bump_cooldown_remaining = maxf(0.0, bump_cooldown_remaining - delta)
 	if movement_state == MovementState.GRID_IDLE and blocked_walk_active:
 		_process_blocked_walk(delta)
@@ -215,8 +265,9 @@ func _settle_gait_to_neutral() -> void:
 func _is_traversable(cell: Vector2i) -> bool:
 	if collision_grid == null or collision_grid.is_boundary_blocked(grid_cell, cell):
 		return false
-	if blocking_npc != null and blocking_npc.grid_cell == cell:
-		return false
+	for blocking_npc in blocking_npcs:
+		if is_instance_valid(blocking_npc) and blocking_npc.grid_cell == cell:
+			return false
 	return true
 
 func _cancel_step_after_contact() -> void:
@@ -302,7 +353,7 @@ func _sync_animation() -> void:
 		return
 	var direction_name := _direction_name(facing)
 	var requested_animation := StringName("walk_" + direction_name)
-	body.flip_h = facing == Vector2i.LEFT
+	body.flip_h = facing == Vector2i.LEFT and (appearance == null or appearance.mirror_left)
 	body.animation = requested_animation
 	body.pause()
 	var displayed_phase := gait_phase
@@ -310,6 +361,14 @@ func _sync_animation() -> void:
 		# Briefly show the upcoming stride, then return to the preserved neutral.
 		displayed_phase = 1 if gait_phase == 0 else 3
 	body.set_frame_and_progress(displayed_phase, 0.0)
+
+func _apply_appearance() -> void:
+	if not is_instance_valid(body) or appearance == null:
+		return
+	if appearance.sprite_frames != null:
+		body.sprite_frames = appearance.sprite_frames
+	body.position = appearance.visual_offset
+	_sync_animation()
 
 func _direction_name(direction: Vector2i) -> String:
 	match direction:

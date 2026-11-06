@@ -1,0 +1,13 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/overworld/npcs/overworld_npc.tscn" id="1_base"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/tavernkeeper/tavernkeeper_down_0001.png" id="2_down"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/tavernkeeper/tavernkeeper_up_0001.png" id="3_up"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/tavernkeeper/tavernkeeper_right_0001.png" id="4_right"]
+[ext_resource type="Texture2D" path="res://assets/overworld/characters/tavernkeeper/tavernkeeper_left_0001.png" id="5_left"]
+
+[node name="Tavernkeeper" instance=ExtResource("1_base")]
+down_texture = ExtResource("2_down")
+up_texture = ExtResource("3_up")
+right_texture = ExtResource("4_right")
+left_texture = ExtResource("5_left")

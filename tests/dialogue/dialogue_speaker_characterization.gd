@@ -38,6 +38,12 @@ func _test_catalog_resolution() -> void:
 	_check(CATALOG.portrait("hood", "missing") == null and CATALOG.profile("missing") == null, "unknown IDs fail safely into empty presentation")
 	var ernest = CATALOG.profile("ernest_the_unreasonably_named")
 	_check(ernest != null and not ernest.voice_enabled, "catalog supports explicitly silent speakers")
+	var grunch = CATALOG.profile("grunch")
+	_check(grunch != null and not grunch.voice_enabled and CATALOG.portrait("grunch", "light_cig") != null, "Grunch's silent profile and supplied expressions resolve")
+	var tavernkeeper = CATALOG.profile("tavernkeeper")
+	_check(tavernkeeper != null and not tavernkeeper.voice_enabled and CATALOG.portrait("tavernkeeper", "firm") != null, "Tavernkeeper's silent profile and supplied expressions resolve")
+	var skeleton = CATALOG.profile("skeleton")
+	_check(skeleton != null and not skeleton.voice_enabled and CATALOG.portrait("skeleton", "neutral") != null, "Skeleton's silent profile resolves its supplied neutral portrait")
 
 
 func _test_voice_policy_and_determinism() -> void:

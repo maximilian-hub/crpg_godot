@@ -19,6 +19,18 @@ func _ready() -> void:
 	toggle.pressed = true
 	console._input(toggle)
 	_check(console.panel.visible and get_viewport().gui_get_focus_owner() == console.command_input, "grave opens the console and focuses its command line")
+	_check(console.filtered_commands.size() == Console.COMMANDS.size() and console.results_panel.visible, "opening the console instantly lists every command")
+	console._on_command_text_changed("tav")
+	_check(console.filtered_commands.size() == 1 and console.filtered_commands[0].command == "/test_tavern", "typing instantly filters commands by partial name")
+	console._on_command_text_changed("board")
+	_check(console.filtered_commands.size() == 1 and console.filtered_commands[0].command == "/sandbox", "instant search also matches command descriptions")
+	console._refresh_results("")
+	console._move_result_selection(1)
+	var selected_command: String = console.filtered_commands[console.selected_result_index].command
+	console._complete_selected_result()
+	_check(console.command_input.text == selected_command and console.command_input.caret_column == selected_command.length(), "arrow selection and Tab completion choose the highlighted result")
+	console._refresh_results("definitely_missing")
+	_check(console.filtered_commands.is_empty() and not console.results_panel.visible, "no-match searches hide the empty result panel")
 	console._input(toggle)
 	_check(not console.panel.visible and get_viewport().gui_get_focus_owner() == null, "grave closes the console and releases focus")
 
@@ -38,6 +50,9 @@ func _ready() -> void:
 	var sandbox_result := Console.resolve_command("  /SANDBox  ", Console.GAME_SCENE_PATH)
 	var game_result := Console.resolve_command("/game", Console.SANDBOX_SCENE_PATH)
 	_check(sandbox_result.path == Console.SANDBOX_SCENE_PATH and game_result.path == Console.GAME_SCENE_PATH, "commands normalize whitespace and case and resolve both scene destinations")
+	var tavern_result := Console.resolve_command("/TEST_TAVERN", Console.GAME_SCENE_PATH)
+	_check(tavern_result.path == Console.TEST_TAVERN_SCENE_PATH, "test tavern command resolves case-insensitively")
+	_check(Console.resolve_command("/test_tavern", Console.TEST_TAVERN_SCENE_PATH).path.is_empty(), "test tavern same-scene command does not restart its root")
 	_check(Console.resolve_command("/game", Console.GAME_SCENE_PATH).path.is_empty(), "same-scene commands do not restart the active root")
 	_check(Console.resolve_command("/wat", "").message.begins_with("Unknown command"), "unknown commands return concise feedback")
 
@@ -56,11 +71,14 @@ func _ready() -> void:
 
 	var main_scene := load(Console.GAME_SCENE_PATH) as PackedScene
 	var sandbox_scene := load(Console.SANDBOX_SCENE_PATH) as PackedScene
+	var tavern_scene := load(Console.TEST_TAVERN_SCENE_PATH) as PackedScene
 	var main := main_scene.instantiate()
 	var sandbox := sandbox_scene.instantiate()
-	_check(main.has_node("DevCommandConsole") and sandbox.has_node("DevCommandConsole"), "Main and BoardSandbox both compose the shared console")
+	var tavern := tavern_scene.instantiate()
+	_check(main.has_node("DevCommandConsole") and sandbox.has_node("DevCommandConsole") and tavern.has_node("DevCommandConsole"), "Main, BoardSandbox, and TestTavern compose the shared console")
 	main.free()
 	sandbox.free()
+	tavern.free()
 	disabled_console.queue_free()
 
 	if failures.is_empty():

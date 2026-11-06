@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/overworld/npc.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="NpcShape"]
+size = Vector2(12, 12)
+
+[node name="Npc" type="StaticBody2D"]
+collision_mask = 2
+script = ExtResource("1_script")
+
+[node name="Body" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(0, -4)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("NpcShape")

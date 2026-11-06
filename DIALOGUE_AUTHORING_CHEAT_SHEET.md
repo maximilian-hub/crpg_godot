@@ -190,3 +190,35 @@ Will you challenge me?
 ## Not supported yet
 
 Branch labels/jumps, automatic target interpretation, automatic pagination, explicit pause tags, inline sound commands, mid-page speaker changes, inline `portrait=none`, bold/italic tags, and a visual authoring editor.
+
+## Adding an overworld NPC
+
+The reusable NPC scenes live in `scenes/overworld/npcs/`. To populate an
+overworld, instantiate `grunch.tscn` or `tavernkeeper.tscn` as a child of that
+scene's `YSortedWorld`, then place it on a 16-pixel cell center (for example,
+cell `(4, 3)` is position `(72, 56)`). The tavern test world intentionally ships
+empty so its cast can be authored in the editor.
+
+Set the instance's `facing` property to its initial direction. Grunch follows
+the usual convention and mirrors his right sprite when facing left. The
+Tavernkeeper has an authored `left_texture`, so she never mirrors her side art.
+Only the `0001` idle sprites are used for now.
+
+For ordinary conversation, create a `.dialog` or `.dialogue` file and assign it
+to the NPC instance's `dialogue_path`. For example:
+
+```text
+@conversation tavern_greeting
+@page speaker=tavernkeeper name="Tavernkeeper" known=true portrait=smiling
+Welcome in. Find yourself a seat.
+```
+
+The available Grunch portraits are `neutral`, `alert`, `drag_cig`, `exhale_1`,
+`exhale_2`, `flick_cig`, `hold_cig`, and `light_cig`. Tavernkeeper supports
+`neutral`, `smiling`, `laughing`, `flustered`, `sad`, `worried`, `surprised`,
+`tired`, `crazy`, and `firm`. Both are silent until voice clips are assigned to
+their speaker profiles. An NPC with an `encounter_profile` uses the battle
+challenge flow instead of `dialogue_path`.
+
+The Skeleton speaker ID is `skeleton` and currently supports the `neutral`
+portrait. Its overworld NPC scene is `scenes/overworld/npcs/skeleton.tscn`.
