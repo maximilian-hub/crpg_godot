@@ -969,7 +969,10 @@ func _has_hanging_major(tactical: DupreTacticalMap) -> bool:
 
 
 func _dupre_budget_exhausted() -> bool:
-	return _budget_exhausted() or int(last_profile.get("quiescence_node_count", 0)) + int(last_profile.get("evaluated_reply_count", 0)) >= max_reply_leaves
+	return _budget_exhausted() or (
+		max_reply_leaves > 0
+		and int(last_profile.get("quiescence_node_count", 0)) + int(last_profile.get("evaluated_reply_count", 0)) >= max_reply_leaves
+	)
 
 
 func choose_reaction_target(model: ChessBoardModel, calling_piece: ModelPiece, action_type: String, event_data, targets: Array):
@@ -1099,6 +1102,7 @@ func reset_session(_reason: StringName = &"reset") -> void:
 func capture_debug_state() -> Dictionary:
 	return {
 		"candidate_limit": candidate_limit, "max_book_moves": max_book_moves, "quiescence_enabled": quiescence_enabled,
+		"think_budget_msec": think_budget_msec, "max_reply_leaves": max_reply_leaves,
 		"previous_own_actions": previous_own_actions.duplicate(true),
 		"position_history": position_history.snapshot(),
 		"opening": {

@@ -126,7 +126,7 @@ When adding sandbox UI:
 
 - Prefer `_add_button_to(...)` for ordinary buttons so the control is registered with the mobile router.
 - For controls created outside `SandboxLayer` (for example chess choice panels under `ChessGame/LunacyLayer`), add an explicit scan in `_mobile_button_at(...)`.
-- Treat `OptionButton` as a special case: call `show_popup()` from the mobile path, then route touches on its separate `PopupMenu` rows; emitting `pressed` alone does not open the dropdown.
+- Treat `OptionButton` as a special case. Native `PopupMenu` is a separate modal window and has proven unreliable with the sandbox's custom Android router. Open the shared in-scene `MobileOptionPicker` instead; its ordinary buttons are routed like the rest of the working mobile UI and block board input while open.
 - Route `TextEdit`/`LineEdit` fields explicitly so a touch focuses the field and opens the Android keyboard.
 - Keep piece-palette/king-picker routing ahead of generic button scans so picker scrolling and selection continue to work.
 - Add a touch regression to `tests/sandbox/mobile_board_sandbox_characterization.gd` whenever a new mobile control surface is introduced.

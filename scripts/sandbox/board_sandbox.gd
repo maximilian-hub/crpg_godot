@@ -33,6 +33,9 @@ const COLOR_SLOW := Color("668dcc")
 const COLOR_INSTANT := Color("b34fb5")
 const COLOR_WHITE_SIDE := Color("e8e2d2")
 const COLOR_BLACK_SIDE := Color("5b5568")
+const DUPRE_MIN_THINK_SECONDS := 0.5
+const DUPRE_MAX_THINK_SECONDS := 20.0
+const DUPRE_DEFAULT_THINK_SECONDS := 5.0
 
 @onready var game: ChessGame = $ChessGame
 @onready var model: ChessBoardModel = $ChessGame/ChessModel
@@ -48,6 +51,10 @@ var baseline: ChessPosition
 var ai_mode := ChessCpuPlayer.ExecutionMode.DISABLED
 var ai_sides := {"white": false, "black": true}
 var ai_brains := {"white": ChessCpuPlayer.BrainKind.DUPRE, "black": ChessCpuPlayer.BrainKind.DUPRE}
+var dupre_settings := {
+	"white": {"think_seconds": DUPRE_DEFAULT_THINK_SECONDS, "unlimited_time": false, "unlimited_replies": false},
+	"black": {"think_seconds": DUPRE_DEFAULT_THINK_SECONDS, "unlimited_time": false, "unlimited_replies": false},
+}
 var seed_value := 1
 
 var mode_button: Button
@@ -59,6 +66,7 @@ var clear_button: Button
 var ai_mode_buttons := {}
 var ai_side_buttons := {}
 var ai_brain_options := {}
+var dupre_controls := {}
 var ai_brain_status_label: Label
 var authority_options: Array[OptionButton] = []
 var authority_status_labels: Array[Label] = []
@@ -136,6 +144,10 @@ var mobile_watch_next_button: Button
 var mobile_watch_mode := false
 var mobile_watch_play_icon: Texture2D
 var mobile_watch_pause_icon: Texture2D
+var mobile_option_overlay: Control
+var mobile_option_panel: PanelContainer
+var mobile_option_list: VBoxContainer
+var mobile_option_source: OptionButton
 var replay_compatibility_label: Label
 var report_panel: PanelContainer
 var report_category_option: OptionButton
@@ -183,6 +195,7 @@ func _ready() -> void:
 	_build_panel()
 	_build_record_panel()
 	_build_report_panel()
+	if mobile_layout: _build_mobile_option_picker()
 	if mobile_layout: _build_mobile_watch_controls()
 	if mobile_layout: _layout_mobile_controls()
 	_set_mode(Mode.EDIT)
@@ -246,6 +259,8 @@ func _build_desktop_panel() -> void:
 	_add_section_label("Army Brains")
 	_add_brain_selector(panel, "White", "white")
 	_add_brain_selector(panel, "Black", "black")
+	_add_dupre_controls(panel, "White", "white")
+	_add_dupre_controls(panel, "Black", "black")
 	ai_brain_status_label = Label.new()
 	ai_brain_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	panel.add_child(ai_brain_status_label)
@@ -554,6 +569,57 @@ func _build_mobile_watch_controls() -> void:
 	mobile_watch_play_button = _add_watch_icon_button(mobile_watch_pause_icon, "Pause replay", _toggle_replay_playback)
 	mobile_watch_next_button = _add_watch_icon_button(_make_watch_icon(WATCH_PATH_NEXT), "Next turn", _replay_next_turn)
 	mobile_watch_previous_button = _add_watch_icon_button(_make_watch_icon(WATCH_PATH_PREVIOUS), "Previous turn", _replay_previous_turn)
+
+func _build_mobile_option_picker() -> void:
+	mobile_option_overlay = Control.new()
+	mobile_option_overlay.name = "MobileOptionPicker"
+	mobile_option_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mobile_option_overlay.visible = false
+	mobile_option_overlay.z_index = 400
+	mobile_option_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$SandboxLayer.add_child(mobile_option_overlay)
+	var shade := ColorRect.new()
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.0, 0.0, 0.0, 0.55)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mobile_option_overlay.add_child(shade)
+	mobile_option_panel = PanelContainer.new()
+	mobile_option_panel.set_anchors_preset(Control.PRESET_CENTER)
+	mobile_option_overlay.add_child(mobile_option_panel)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	mobile_option_panel.add_child(scroll)
+	mobile_option_list = VBoxContainer.new()
+	mobile_option_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mobile_option_list.add_theme_constant_override("separation", 8)
+	scroll.add_child(mobile_option_list)
+
+func _open_mobile_option_picker(option: OptionButton) -> void:
+	mobile_option_source = option
+	for child in mobile_option_list.get_children():
+		mobile_option_list.remove_child(child)
+		child.queue_free()
+	for index in range(option.item_count):
+		var button := Button.new()
+		button.text = option.get_item_text(index)
+		button.disabled = option.is_item_disabled(index) or option.is_item_separator(index)
+		button.custom_minimum_size = Vector2(280.0, 58.0)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(_select_mobile_option.bind(index))
+		_style_button(button, index == option.selected, COLOR_EDIT)
+		mobile_option_list.add_child(button)
+	mobile_option_overlay.visible = true
+	_layout_mobile_controls()
+
+func _select_mobile_option(index: int) -> void:
+	if mobile_option_source != null and index >= 0 and index < mobile_option_source.item_count:
+		mobile_option_source.select(index)
+		mobile_option_source.item_selected.emit(index)
+	_close_mobile_option_picker()
+
+func _close_mobile_option_picker() -> void:
+	mobile_option_overlay.visible = false
+	mobile_option_source = null
 
 func _make_watch_icon(path_data: String) -> Texture2D:
 	var image := Image.new()
@@ -877,6 +943,8 @@ func _build_mobile_panel() -> void:
 	_add_ai_side_button(side_row, "Black", "black")
 	_add_brain_selector(ai_column, "White Brain", "white")
 	_add_brain_selector(ai_column, "Black Brain", "black")
+	_add_dupre_controls(ai_column, "White", "white")
+	_add_dupre_controls(ai_column, "Black", "black")
 	ai_brain_status_label = Label.new()
 	ai_brain_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ai_column.add_child(ai_brain_status_label)
@@ -960,6 +1028,12 @@ func _layout_mobile_controls() -> void:
 		mobile_watch_controls.offset_top = -controls_height * 0.5
 		mobile_watch_controls.offset_right = -right
 		mobile_watch_controls.offset_bottom = controls_height * 0.5
+	if mobile_option_panel != null:
+		var picker_height := minf(viewport_size.y - top - bottom - 24.0, 24.0 + float(maxi(1, mobile_option_list.get_child_count())) * 66.0)
+		mobile_option_panel.offset_left = -160.0
+		mobile_option_panel.offset_top = -picker_height * 0.5
+		mobile_option_panel.offset_right = 160.0
+		mobile_option_panel.offset_bottom = picker_height * 0.5
 
 func _make_confirmation(title: String, message: String, callback: Callable) -> ConfirmationDialog:
 	var dialog := ConfirmationDialog.new()
@@ -1016,8 +1090,10 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 		if touch.pressed:
 			if mobile_ui_pointer >= 0:
 				return false
-			mobile_ui_touch_target = _mobile_popup_at(touch.position)
-			if mobile_ui_touch_target != null:
+			if mobile_option_overlay != null and mobile_option_overlay.visible:
+				mobile_ui_touch_target = _mobile_option_button_at(touch.position)
+				if mobile_ui_touch_target == null:
+					mobile_ui_touch_target = mobile_option_overlay
 				mobile_ui_pointer = touch.index
 				get_viewport().set_input_as_handled()
 				return true
@@ -1044,8 +1120,8 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 			return true
 		if touch.index != mobile_ui_pointer:
 			return false
-		if mobile_ui_touch_target is PopupMenu:
-			_select_mobile_popup_item(mobile_ui_touch_target as PopupMenu, touch.position)
+		if mobile_ui_touch_target == mobile_option_overlay:
+			_close_mobile_option_picker()
 			mobile_ui_pointer = -1
 			mobile_ui_touch_target = null
 			get_viewport().set_input_as_handled()
@@ -1058,7 +1134,7 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 			var button := mobile_ui_touch_target as Button
 			if not button.disabled and button.get_global_rect().has_point(touch.position):
 				if button is OptionButton:
-					(button as OptionButton).show_popup()
+					_open_mobile_option_picker(button as OptionButton)
 				else:
 					var callback: Callable = mobile_button_callbacks.get(button, Callable())
 					if callback.is_valid():
@@ -1125,28 +1201,14 @@ func _mobile_text_edit_at(position: Vector2) -> TextEdit:
 			return edit
 	return null
 
-func _mobile_popup_at(position: Vector2) -> PopupMenu:
-	if not mobile_layout:
+func _mobile_option_button_at(position: Vector2) -> Button:
+	if mobile_option_list == null:
 		return null
-	var option_buttons: Array[Node] = []
-	option_buttons.append_array($SandboxLayer.find_children("*", "OptionButton", true, false))
-	option_buttons.append_array(game.find_children("*", "OptionButton", true, false))
-	for candidate in option_buttons:
-		var popup := (candidate as OptionButton).get_popup()
-		if popup.visible and Rect2(popup.position, popup.size).has_point(position):
-			return popup
+	for child in mobile_option_list.get_children():
+		var button := child as Button
+		if button != null and button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(position):
+			return button
 	return null
-
-func _select_mobile_popup_item(popup: PopupMenu, position: Vector2) -> void:
-	var item_count := popup.item_count
-	if item_count <= 0:
-		popup.hide()
-		return
-	var local_y := position.y - float(popup.position.y)
-	var index := clampi(int(floor(local_y / maxf(1.0, popup.size.y / float(item_count)))), 0, item_count - 1)
-	if not popup.is_item_disabled(index) and not popup.is_item_separator(index):
-		popup.id_pressed.emit(popup.get_item_id(index))
-	popup.hide()
 
 func _route_mobile_board_touch(event: InputEvent) -> bool:
 	var board := $ChessGame/CanvasLayer/ChessBoard as ChessBoardView
@@ -1493,6 +1555,8 @@ func _apply_ai_configuration() -> void:
 	game.black_cpu_player.configure_mode(ChessCpuPlayer.ExecutionMode.DISABLED, "black")
 	game.white_cpu_player.set_brain(ai_brains.white)
 	game.black_cpu_player.set_brain(ai_brains.black)
+	_apply_dupre_limits("white")
+	_apply_dupre_limits("black")
 	if mode != Mode.PLAY or ai_mode == ChessCpuPlayer.ExecutionMode.DISABLED:
 		return
 	for color in ["white", "black"]:
@@ -1525,6 +1589,80 @@ func _on_brain_selected(color: String, kind: ChessCpuPlayer.BrainKind) -> void:
 	_apply_ai_configuration()
 	_apply_play_control()
 	_refresh_control_states()
+
+
+func _add_dupre_controls(parent: Control, label_text: String, color: String) -> void:
+	var group := VBoxContainer.new()
+	group.add_theme_constant_override("separation", 2)
+	var title := Label.new()
+	title.text = "%s Dupre Time" % label_text
+	group.add_child(title)
+	var time_row := HBoxContainer.new()
+	var slider := HSlider.new()
+	slider.min_value = DUPRE_MIN_THINK_SECONDS
+	slider.max_value = DUPRE_MAX_THINK_SECONDS
+	slider.step = 0.1
+	slider.value = DUPRE_DEFAULT_THINK_SECONDS
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size.x = 64.0
+	var value := SpinBox.new()
+	value.min_value = DUPRE_MIN_THINK_SECONDS
+	value.max_value = DUPRE_MAX_THINK_SECONDS
+	value.step = 0.1
+	value.value = DUPRE_DEFAULT_THINK_SECONDS
+	value.suffix = " s"
+	value.custom_minimum_size.x = 68.0
+	slider.value_changed.connect(func(seconds: float): _on_dupre_time_changed(color, seconds, slider))
+	value.value_changed.connect(func(seconds: float): _on_dupre_time_changed(color, seconds, value))
+	time_row.add_child(slider)
+	time_row.add_child(value)
+	group.add_child(time_row)
+	var unlimited_time := CheckButton.new()
+	unlimited_time.text = "Unlimited time"
+	unlimited_time.toggled.connect(func(enabled: bool): _on_dupre_unlimited_time_toggled(color, enabled))
+	group.add_child(unlimited_time)
+	var unlimited_replies := CheckButton.new()
+	unlimited_replies.text = "Unlimited replies"
+	unlimited_replies.tooltip_text = "Disable Dupre's 4,096 reply/quiescence-work cap"
+	unlimited_replies.toggled.connect(func(enabled: bool): _on_dupre_unlimited_replies_toggled(color, enabled))
+	group.add_child(unlimited_replies)
+	parent.add_child(group)
+	dupre_controls[color] = {
+		"group": group, "slider": slider, "value": value,
+		"unlimited_time": unlimited_time, "unlimited_replies": unlimited_replies,
+	}
+
+
+func _on_dupre_time_changed(color: String, seconds: float, source: Control) -> void:
+	var clamped := clampf(seconds, DUPRE_MIN_THINK_SECONDS, DUPRE_MAX_THINK_SECONDS)
+	dupre_settings[color].think_seconds = clamped
+	var controls: Dictionary = dupre_controls.get(color, {})
+	if not controls.is_empty():
+		if source != controls.slider: controls.slider.set_value_no_signal(clamped)
+		if source != controls.value: controls.value.set_value_no_signal(clamped)
+	_apply_dupre_limits(color)
+
+
+func _on_dupre_unlimited_time_toggled(color: String, enabled: bool) -> void:
+	dupre_settings[color].unlimited_time = enabled
+	_apply_dupre_limits(color)
+	_refresh_control_states()
+
+
+func _on_dupre_unlimited_replies_toggled(color: String, enabled: bool) -> void:
+	dupre_settings[color].unlimited_replies = enabled
+	_apply_dupre_limits(color)
+	_refresh_control_states()
+
+
+func _apply_dupre_limits(color: String) -> void:
+	var cpu: ChessCpuPlayer = game.white_cpu_player if color == "white" else game.black_cpu_player
+	if not cpu.brain is DupreAiBrain:
+		return
+	var settings: Dictionary = dupre_settings[color]
+	var dupre := cpu.brain as DupreAiBrain
+	dupre.think_budget_msec = 0 if bool(settings.unlimited_time) else int(round(float(settings.think_seconds) * 1000.0))
+	dupre.max_reply_leaves = 0 if bool(settings.unlimited_replies) else LeMayAiBrain.DEFAULT_MAX_REPLY_LEAVES
 
 
 func _add_authority_selector(parent: Control) -> void:
@@ -1607,6 +1745,7 @@ func _on_seed_changed(value: float) -> void:
 func _capture_record_context() -> Dictionary:
 	return {
 		"ai_mode": ai_mode, "ai_sides": ai_sides.duplicate(true), "seed": seed_value,
+		"dupre_settings": dupre_settings.duplicate(true),
 		"white": _compact_cpu_context(game.white_cpu_player.capture_debug_context()),
 		"black": _compact_cpu_context(game.black_cpu_player.capture_debug_context()),
 	}
@@ -2274,6 +2413,19 @@ func _refresh_control_states() -> void:
 		option.set_item_disabled(1, unsupported_lemay)
 		option.set_item_disabled(2, unsupported_dupre)
 		option.select(option.get_item_index(int(ai_brains[color_name])))
+	for color_name in dupre_controls:
+		var controls: Dictionary = dupre_controls[color_name]
+		var settings: Dictionary = dupre_settings[color_name]
+		var available := ai_brains[color_name] == ChessCpuPlayer.BrainKind.DUPRE and not replay_mode and settled and not ai_thinking
+		controls.slider.set_value_no_signal(float(settings.think_seconds))
+		controls.value.set_value_no_signal(float(settings.think_seconds))
+		controls.unlimited_time.set_pressed_no_signal(bool(settings.unlimited_time))
+		controls.unlimited_replies.set_pressed_no_signal(bool(settings.unlimited_replies))
+		controls.slider.editable = available and not bool(settings.unlimited_time)
+		controls.value.editable = available and not bool(settings.unlimited_time)
+		controls.unlimited_time.disabled = not available
+		controls.unlimited_replies.disabled = not available
+		controls.group.modulate = Color.WHITE if available else Color(1.0, 1.0, 1.0, 0.48)
 	if ai_brain_status_label != null:
 		var brain_error := _brain_configuration_error()
 		ai_brain_status_label.text = brain_error

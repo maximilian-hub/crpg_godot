@@ -31,6 +31,7 @@ func _ready() -> void:
 	_check(sandbox.ai_brain_options.has("white") and sandbox.ai_brain_options.has("black"), "mobile AI panel exposes independent White and Black brain selectors", failures)
 	_check(sandbox.ai_brain_options.white.get_item_text(0) == "Ryck" and sandbox.ai_brain_options.white.get_item_text(1) == "LeMay" and sandbox.ai_brain_options.white.get_item_text(2) == "Dupre", "mobile brain selectors expose Ryck, LeMay, and Dupre", failures)
 	_check(sandbox.ai_brains.white == ChessCpuPlayer.BrainKind.DUPRE and sandbox.ai_brains.black == ChessCpuPlayer.BrainKind.DUPRE, "mobile sandbox defaults both armies to Dupre", failures)
+	_check(sandbox.dupre_controls.has("white") and sandbox.dupre_controls.has("black") and sandbox.dupre_controls.white.value.get_line_edit() != null, "mobile AI panel exposes touch sliders and typed Dupre time fields for both armies", failures)
 	_check(sandbox.speed_slider == null and sandbox.grip_check == null and sandbox.visibility_check == null and sandbox.visibility_threshold_spin == null and sandbox.view_side_button == null, "desktop-only tuning and view controls are omitted", failures)
 	_check(sandbox.piece_palette.mobile_layout and sandbox.piece_palette.piece_items.size() == 10, "mobile tray exposes the complete ordinary piece palette", failures)
 	_check(sandbox.piece_palette.king_select_button != null and sandbox.piece_palette.king_select_button.text.begins_with("Select King"), "king selection is a full tray button", failures)
@@ -123,11 +124,14 @@ func _ready() -> void:
 	sandbox.mobile_ai_panel.visible = true
 	await get_tree().process_frame
 	_route_touch_button(sandbox, sandbox.ai_brain_options.white, 17)
-	var brain_popup: PopupMenu = sandbox.ai_brain_options.white.get_popup()
-	_check(brain_popup.visible, "mobile touch opens AI brain selectors", failures)
-	var popup_first_item := Vector2(brain_popup.position.x + brain_popup.size.x * 0.5, brain_popup.position.y + brain_popup.size.y / float(maxi(1, brain_popup.item_count)) * 0.5)
-	_route_touch_position(sandbox, popup_first_item, 20)
-	_check(not brain_popup.visible, "mobile touch selects and closes dropdown options", failures)
+	_check(sandbox.mobile_option_overlay.visible and sandbox.mobile_option_list.get_child_count() == 3, "mobile touch opens the in-scene AI brain picker", failures)
+	var first_brain_choice := sandbox.mobile_option_list.get_child(0) as Button
+	_route_touch_button(sandbox, first_brain_choice, 20)
+	_check(not sandbox.mobile_option_overlay.visible and sandbox.ai_brain_options.white.selected == 0, "mobile touch selects and closes in-scene dropdown options", failures)
+	_route_touch_button(sandbox, sandbox.ai_brain_options.white, 21)
+	var board_count_before_picker_dismiss: int = model.capture_position().pieces.size()
+	_route_touch_position(sandbox, view.to_global(view.projection.get_cell_center(Vector2i(4, 4))), 22)
+	_check(not sandbox.mobile_option_overlay.visible and model.capture_position().pieces.size() == board_count_before_picker_dismiss, "mobile dropdown overlay consumes outside taps instead of editing the board", failures)
 	sandbox.mobile_ai_panel.visible = false
 	sandbox.report_panel.visible = true
 	sandbox.record_panel.visible = false
