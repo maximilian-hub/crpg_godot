@@ -119,14 +119,15 @@ func _ready() -> void:
 	sandbox.interaction._input(outside_release)
 	_check(model.board[4][4] == null and sandbox.interaction.drag_source == BoardEditorInteraction.DragSource.NONE, "off-board touch release cancels palette placement", failures)
 
-	var brain_selector_presses := [0]
 	sandbox._set_mode(sandbox.Mode.EDIT)
 	sandbox.mobile_ai_panel.visible = true
 	await get_tree().process_frame
-	sandbox.ai_brain_options.white.pressed.connect(func(): brain_selector_presses[0] += 1)
 	_route_touch_button(sandbox, sandbox.ai_brain_options.white, 17)
-	_check(brain_selector_presses[0] == 1, "mobile touch opens AI brain selectors", failures)
-	sandbox.ai_brain_options.white.get_popup().hide()
+	var brain_popup: PopupMenu = sandbox.ai_brain_options.white.get_popup()
+	_check(brain_popup.visible, "mobile touch opens AI brain selectors", failures)
+	var popup_first_item := Vector2(brain_popup.position.x + brain_popup.size.x * 0.5, brain_popup.position.y + brain_popup.size.y / float(maxi(1, brain_popup.item_count)) * 0.5)
+	_route_touch_position(sandbox, popup_first_item, 20)
+	_check(not brain_popup.visible, "mobile touch selects and closes dropdown options", failures)
 	sandbox.mobile_ai_panel.visible = false
 	sandbox.report_panel.visible = true
 	sandbox.record_panel.visible = false
@@ -158,7 +159,10 @@ func _button_labels(root: Node) -> Array[String]:
 
 
 func _route_touch_button(sandbox, button: Control, pointer_index: int) -> void:
-	var position := button.get_global_rect().get_center()
+	_route_touch_position(sandbox, button.get_global_rect().get_center(), pointer_index)
+
+
+func _route_touch_position(sandbox, position: Vector2, pointer_index: int) -> void:
 	var press := InputEventScreenTouch.new()
 	press.index = pointer_index
 	press.position = position

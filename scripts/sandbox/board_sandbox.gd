@@ -1016,6 +1016,11 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 		if touch.pressed:
 			if mobile_ui_pointer >= 0:
 				return false
+			mobile_ui_touch_target = _mobile_popup_at(touch.position)
+			if mobile_ui_touch_target != null:
+				mobile_ui_pointer = touch.index
+				get_viewport().set_input_as_handled()
+				return true
 			mobile_ui_touch_target = null
 			var touch_is_in_king_picker: bool = piece_palette != null and piece_palette.king_picker != null and piece_palette.king_picker.visible and piece_palette.king_picker.get_global_rect().has_point(touch.position)
 			if touch_is_in_king_picker and piece_palette.handle_mobile_touch_pressed(touch.position, touch.index):
@@ -1039,6 +1044,12 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 			return true
 		if touch.index != mobile_ui_pointer:
 			return false
+		if mobile_ui_touch_target is PopupMenu:
+			_select_mobile_popup_item(mobile_ui_touch_target as PopupMenu, touch.position)
+			mobile_ui_pointer = -1
+			mobile_ui_touch_target = null
+			get_viewport().set_input_as_handled()
+			return true
 		if mobile_ui_touch_target == piece_palette:
 			if interaction.drag_source != BoardEditorInteraction.DragSource.NONE:
 				interaction._input(touch)
@@ -1046,11 +1057,14 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 		elif mobile_ui_touch_target is Button:
 			var button := mobile_ui_touch_target as Button
 			if not button.disabled and button.get_global_rect().has_point(touch.position):
-				var callback: Callable = mobile_button_callbacks.get(button, Callable())
-				if callback.is_valid():
-					callback.call()
+				if button is OptionButton:
+					(button as OptionButton).show_popup()
 				else:
-					button.pressed.emit()
+					var callback: Callable = mobile_button_callbacks.get(button, Callable())
+					if callback.is_valid():
+						callback.call()
+					else:
+						button.pressed.emit()
 		mobile_ui_pointer = -1
 		mobile_ui_touch_target = null
 		get_viewport().set_input_as_handled()
@@ -1110,6 +1124,29 @@ func _mobile_text_edit_at(position: Vector2) -> TextEdit:
 		if edit.is_visible_in_tree() and edit.get_global_rect().has_point(position):
 			return edit
 	return null
+
+func _mobile_popup_at(position: Vector2) -> PopupMenu:
+	if not mobile_layout:
+		return null
+	var option_buttons: Array[Node] = []
+	option_buttons.append_array($SandboxLayer.find_children("*", "OptionButton", true, false))
+	option_buttons.append_array(game.find_children("*", "OptionButton", true, false))
+	for candidate in option_buttons:
+		var popup := (candidate as OptionButton).get_popup()
+		if popup.visible and Rect2(popup.position, popup.size).has_point(position):
+			return popup
+	return null
+
+func _select_mobile_popup_item(popup: PopupMenu, position: Vector2) -> void:
+	var item_count := popup.item_count
+	if item_count <= 0:
+		popup.hide()
+		return
+	var local_y := position.y - float(popup.position.y)
+	var index := clampi(int(floor(local_y / maxf(1.0, popup.size.y / float(item_count)))), 0, item_count - 1)
+	if not popup.is_item_disabled(index) and not popup.is_item_separator(index):
+		popup.id_pressed.emit(popup.get_item_id(index))
+	popup.hide()
 
 func _route_mobile_board_touch(event: InputEvent) -> bool:
 	var board := $ChessGame/CanvasLayer/ChessBoard as ChessBoardView
