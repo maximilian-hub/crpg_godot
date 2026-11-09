@@ -366,9 +366,9 @@ func _begin_profile(root_action_count: int) -> void:
 	_slice_started_usec = _search_started_usec
 	last_profile = {
 		"budget_usec": maxi(0, think_budget_msec) * 1000,
-		"time_budget_unlimited": think_budget_msec <= 0,
+		"time_budget_unlimited": think_budget_msec < 0,
 		"reply_leaf_limit": maxi(0, max_reply_leaves),
-		"reply_cap_unlimited": max_reply_leaves <= 0,
+		"reply_cap_unlimited": max_reply_leaves < 0,
 		"root_action_count": root_action_count,
 		"evaluated_reply_count": 0,
 		"total_available_replies": 0,
@@ -461,8 +461,8 @@ func _cooperate() -> int:
 
 func _budget_exhausted() -> bool:
 	return (
-		(max_reply_leaves > 0 and last_profile.evaluated_reply_count >= max_reply_leaves)
-		or (think_budget_msec > 0 and Time.get_ticks_usec() - _search_started_usec >= think_budget_msec * 1000)
+		(max_reply_leaves >= 0 and last_profile.evaluated_reply_count >= max_reply_leaves)
+		or (think_budget_msec >= 0 and Time.get_ticks_usec() - _search_started_usec >= think_budget_msec * 1000)
 	)
 
 

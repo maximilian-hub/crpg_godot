@@ -970,7 +970,7 @@ func _has_hanging_major(tactical: DupreTacticalMap) -> bool:
 
 func _dupre_budget_exhausted() -> bool:
 	return _budget_exhausted() or (
-		max_reply_leaves > 0
+		max_reply_leaves >= 0
 		and int(last_profile.get("quiescence_node_count", 0)) + int(last_profile.get("evaluated_reply_count", 0)) >= max_reply_leaves
 	)
 

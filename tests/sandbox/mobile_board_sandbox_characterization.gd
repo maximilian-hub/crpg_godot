@@ -31,7 +31,7 @@ func _ready() -> void:
 	_check(sandbox.ai_brain_options.has("white") and sandbox.ai_brain_options.has("black"), "mobile AI panel exposes independent White and Black brain selectors", failures)
 	_check(sandbox.ai_brain_options.white.get_item_text(0) == "Ryck" and sandbox.ai_brain_options.white.get_item_text(1) == "LeMay" and sandbox.ai_brain_options.white.get_item_text(2) == "Dupre", "mobile brain selectors expose Ryck, LeMay, and Dupre", failures)
 	_check(sandbox.ai_brains.white == ChessCpuPlayer.BrainKind.DUPRE and sandbox.ai_brains.black == ChessCpuPlayer.BrainKind.DUPRE, "mobile sandbox defaults both armies to Dupre", failures)
-	_check(sandbox.dupre_controls.has("white") and sandbox.dupre_controls.has("black") and sandbox.dupre_controls.white.value.get_line_edit() != null, "mobile AI panel exposes touch sliders and typed Dupre time fields for both armies", failures)
+	_check(sandbox.dupre_controls.has("white") and sandbox.dupre_controls.has("black") and sandbox.dupre_controls.white.value is LineEdit, "mobile AI panel exposes touch sliders and typed Dupre time fields for both armies", failures)
 	_check(sandbox.speed_slider == null and sandbox.grip_check == null and sandbox.visibility_check == null and sandbox.visibility_threshold_spin == null and sandbox.view_side_button == null, "desktop-only tuning and view controls are omitted", failures)
 	_check(sandbox.piece_palette.mobile_layout and sandbox.piece_palette.piece_items.size() == 10, "mobile tray exposes the complete ordinary piece palette", failures)
 	_check(sandbox.piece_palette.king_select_button != null and sandbox.piece_palette.king_select_button.text.begins_with("Select King"), "king selection is a full tray button", failures)
@@ -132,6 +132,27 @@ func _ready() -> void:
 	var board_count_before_picker_dismiss: int = model.capture_position().pieces.size()
 	_route_touch_position(sandbox, view.to_global(view.projection.get_cell_center(Vector2i(4, 4))), 22)
 	_check(not sandbox.mobile_option_overlay.visible and model.capture_position().pieces.size() == board_count_before_picker_dismiss, "mobile dropdown overlay consumes outside taps instead of editing the board", failures)
+	var black_slider := sandbox.dupre_controls.black.slider as HSlider
+	sandbox.mobile_ai_scroll.ensure_control_visible(black_slider)
+	await get_tree().process_frame
+	var slider_rect := black_slider.get_global_rect()
+	_route_touch_position(sandbox, slider_rect.position + Vector2(slider_rect.size.x * 0.8, slider_rect.size.y * 0.5), 25)
+	_check(float(sandbox.dupre_settings.black.think_seconds) > 10.0, "mobile touch changes Dupre's time slider", failures)
+	var black_time_edit := sandbox.dupre_controls.black.value as LineEdit
+	sandbox.mobile_ai_scroll.ensure_control_visible(black_time_edit)
+	await get_tree().process_frame
+	_route_touch_button(sandbox, black_time_edit, 26)
+	_check(sandbox.get_viewport().gui_get_focus_owner() == black_time_edit, "mobile touch focuses the Dupre time field", failures)
+	sandbox.get_viewport().gui_release_focus()
+	var unlimited_time := sandbox.dupre_controls.black.unlimited_time as CheckButton
+	sandbox.mobile_ai_scroll.ensure_control_visible(unlimited_time)
+	await get_tree().process_frame
+	_route_touch_button(sandbox, unlimited_time, 27)
+	_check(bool(sandbox.dupre_settings.black.unlimited_time) and unlimited_time.button_pressed, "mobile touch toggles Dupre limit checkboxes", failures)
+	sandbox.mobile_ai_scroll.scroll_vertical = 0
+	await get_tree().process_frame
+	_drag_mobile_ai_panel(sandbox, sandbox.ai_brain_options.black, 28)
+	_check(sandbox.mobile_ai_scroll.scroll_vertical > 0 and not sandbox.mobile_option_overlay.visible, "vertical touch drags scroll the AI panel without opening a selector", failures)
 	sandbox.mobile_ai_panel.visible = false
 	sandbox.report_panel.visible = true
 	sandbox.record_panel.visible = false
@@ -195,6 +216,24 @@ func _route_board_tap(sandbox, position: Vector2, pointer_index: int) -> void:
 func _drag_king_picker(sandbox, pointer_index: int) -> void:
 	var picker: Control = sandbox.piece_palette.king_picker
 	var start := picker.get_global_rect().get_center()
+	var press := InputEventScreenTouch.new()
+	press.index = pointer_index
+	press.position = start
+	press.pressed = true
+	sandbox._input(press)
+	var drag := InputEventScreenDrag.new()
+	drag.index = pointer_index
+	drag.position = start + Vector2.UP * 120.0
+	sandbox._input(drag)
+	var release := InputEventScreenTouch.new()
+	release.index = pointer_index
+	release.position = drag.position
+	release.pressed = false
+	sandbox._input(release)
+
+
+func _drag_mobile_ai_panel(sandbox, control: Control, pointer_index: int) -> void:
+	var start := control.get_global_rect().get_center()
 	var press := InputEventScreenTouch.new()
 	press.index = pointer_index
 	press.position = start

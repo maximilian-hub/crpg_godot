@@ -36,6 +36,7 @@ const COLOR_BLACK_SIDE := Color("5b5568")
 const DUPRE_MIN_THINK_SECONDS := 0.5
 const DUPRE_MAX_THINK_SECONDS := 20.0
 const DUPRE_DEFAULT_THINK_SECONDS := 5.0
+const MOBILE_SCROLL_DRAG_THRESHOLD := 12.0
 
 @onready var game: ChessGame = $ChessGame
 @onready var model: ChessBoardModel = $ChessGame/ChessModel
@@ -68,6 +69,7 @@ var ai_side_buttons := {}
 var ai_brain_options := {}
 var dupre_controls := {}
 var ai_brain_status_label: Label
+var dupre_settings_panel: PanelContainer
 var authority_options: Array[OptionButton] = []
 var authority_status_labels: Array[Label] = []
 var think_button: Button
@@ -98,12 +100,15 @@ var syncing_grip_controls := false
 var mobile_layout := false
 var mobile_root: Control
 var mobile_ai_panel: PanelContainer
+var mobile_ai_scroll: ScrollContainer
 var mobile_palette_button: Button
 var mobile_toolbar_panel: PanelContainer
 var reset_confirmation: ConfirmationDialog
 var clear_confirmation: ConfirmationDialog
 var mobile_ui_pointer := -1
 var mobile_ui_touch_target: Variant = null
+var mobile_ui_touch_start := Vector2.ZERO
+var mobile_ui_touch_last := Vector2.ZERO
 var mobile_button_callbacks: Dictionary = {}
 var mobile_board_pointer := -1
 var mobile_ai_visible_before_play := false
@@ -259,8 +264,6 @@ func _build_desktop_panel() -> void:
 	_add_section_label("Army Brains")
 	_add_brain_selector(panel, "White", "white")
 	_add_brain_selector(panel, "Black", "black")
-	_add_dupre_controls(panel, "White", "white")
-	_add_dupre_controls(panel, "Black", "black")
 	ai_brain_status_label = Label.new()
 	ai_brain_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	panel.add_child(ai_brain_status_label)
@@ -370,6 +373,7 @@ func _build_desktop_panel() -> void:
 	piece_palette.offset_top = 140.0
 	piece_palette.offset_right = -12.0
 	piece_palette.offset_bottom = 140.0
+	_build_desktop_dupre_settings()
 
 func _exit_tree() -> void:
 	PieceView.standard_skin = PieceView.StandardSkin.CLASSIC
@@ -819,6 +823,20 @@ func _layout_record_panel() -> void:
 	record_panel.offset_right = -12.0
 	record_panel.offset_bottom = top + minf(640.0, maxf(320.0, available_height))
 
+func _layout_desktop_dupre_settings() -> void:
+	if mobile_layout or dupre_settings_panel == null or piece_palette == null:
+		return
+	var palette_bottom: float = piece_palette.position.y + piece_palette.size.y
+	var top := palette_bottom + 12.0
+	var viewport_height := get_viewport().get_visible_rect().size.y
+	var available_height := maxf(80.0, viewport_height - top - 12.0)
+	var width := maxf(220.0, piece_palette.size.x)
+	dupre_settings_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	dupre_settings_panel.offset_left = -12.0 - width
+	dupre_settings_panel.offset_top = top
+	dupre_settings_panel.offset_right = -12.0
+	dupre_settings_panel.offset_bottom = top + minf(350.0, available_height)
+
 func _toggle_record_panel() -> void:
 	if record_panel == null: return
 	record_panel.visible = not record_panel.visible
@@ -921,12 +939,19 @@ func _build_mobile_panel() -> void:
 	mobile_ai_panel.offset_left = -286.0
 	mobile_ai_panel.offset_top = 74.0
 	mobile_ai_panel.offset_right = -16.0
-	mobile_ai_panel.offset_bottom = 238.0
+	mobile_ai_panel.anchor_bottom = 1.0
+	mobile_ai_panel.offset_bottom = -16.0
 	mobile_ai_panel.visible = false
 	mobile_root.add_child(mobile_ai_panel)
+	mobile_ai_scroll = ScrollContainer.new()
+	mobile_ai_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	mobile_ai_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mobile_ai_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mobile_ai_panel.add_child(mobile_ai_scroll)
 	var ai_column := VBoxContainer.new()
 	ai_column.add_theme_constant_override("separation", 6)
-	mobile_ai_panel.add_child(ai_column)
+	ai_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mobile_ai_scroll.add_child(ai_column)
 	var ai_title := Label.new()
 	ai_title.text = "AI Mode"
 	ai_column.add_child(ai_title)
@@ -1095,6 +1120,8 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 				if mobile_ui_touch_target == null:
 					mobile_ui_touch_target = mobile_option_overlay
 				mobile_ui_pointer = touch.index
+				mobile_ui_touch_start = touch.position
+				mobile_ui_touch_last = touch.position
 				get_viewport().set_input_as_handled()
 				return true
 			mobile_ui_touch_target = null
@@ -1110,12 +1137,18 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 						return false
 					mobile_ui_touch_target = piece_palette
 				else:
-					mobile_ui_touch_target = _mobile_text_edit_at(touch.position)
+					mobile_ui_touch_target = _mobile_text_input_at(touch.position)
 					if mobile_ui_touch_target != null:
-						(mobile_ui_touch_target as TextEdit).grab_focus()
+						(mobile_ui_touch_target as Control).grab_focus()
+					else:
+						mobile_ui_touch_target = _mobile_slider_at(touch.position)
+					if mobile_ui_touch_target == null and _mobile_ai_panel_contains(touch.position):
+						mobile_ui_touch_target = mobile_ai_scroll
 			if mobile_ui_touch_target == null:
 				return false
 			mobile_ui_pointer = touch.index
+			mobile_ui_touch_start = touch.position
+			mobile_ui_touch_last = touch.position
 			get_viewport().set_input_as_handled()
 			return true
 		if touch.index != mobile_ui_pointer:
@@ -1136,11 +1169,9 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 				if button is OptionButton:
 					_open_mobile_option_picker(button as OptionButton)
 				else:
-					var callback: Callable = mobile_button_callbacks.get(button, Callable())
-					if callback.is_valid():
-						callback.call()
-					else:
-						button.pressed.emit()
+					_activate_mobile_button(button)
+		elif mobile_ui_touch_target is HSlider:
+			_set_mobile_slider_value(mobile_ui_touch_target as HSlider, touch.position)
 		mobile_ui_pointer = -1
 		mobile_ui_touch_target = null
 		get_viewport().set_input_as_handled()
@@ -1149,13 +1180,48 @@ func _route_mobile_ui_touch(event: InputEvent) -> bool:
 		var drag := event as InputEventScreenDrag
 		if drag.index != mobile_ui_pointer:
 			return false
-		if mobile_ui_touch_target == piece_palette:
+		if _mobile_touch_should_scroll_ai(drag.position):
+			mobile_ui_touch_target = mobile_ai_scroll
+		if mobile_ui_touch_target == mobile_ai_scroll:
+			var scroll_delta := drag.position.y - mobile_ui_touch_last.y
+			mobile_ai_scroll.scroll_vertical = maxi(0, mobile_ai_scroll.scroll_vertical - int(round(scroll_delta)))
+		elif mobile_ui_touch_target == piece_palette:
 			piece_palette.handle_mobile_touch_drag(drag.position, drag.index)
 			if interaction.drag_source != BoardEditorInteraction.DragSource.NONE:
 				interaction._input(drag)
+		elif mobile_ui_touch_target is HSlider:
+			_set_mobile_slider_value(mobile_ui_touch_target as HSlider, drag.position)
+		mobile_ui_touch_last = drag.position
 		get_viewport().set_input_as_handled()
 		return true
 	return false
+
+func _activate_mobile_button(button: Button) -> void:
+	var callback: Callable = mobile_button_callbacks.get(button, Callable())
+	if callback.is_valid():
+		callback.call()
+		return
+	if button.toggle_mode:
+		button.button_pressed = not button.button_pressed
+	button.pressed.emit()
+
+func _mobile_touch_should_scroll_ai(position: Vector2) -> bool:
+	if mobile_ai_scroll == null or mobile_ui_touch_target == null or mobile_ui_touch_target == mobile_ai_scroll:
+		return false
+	if not mobile_ui_touch_target is Node or not mobile_ai_scroll.is_ancestor_of(mobile_ui_touch_target as Node):
+		return false
+	var offset := position - mobile_ui_touch_start
+	return absf(offset.y) >= MOBILE_SCROLL_DRAG_THRESHOLD and absf(offset.y) > absf(offset.x)
+
+func _mobile_ai_panel_contains(position: Vector2) -> bool:
+	return mobile_ai_panel != null and mobile_ai_panel.is_visible_in_tree() and mobile_ai_panel.get_global_rect().has_point(position)
+
+func _set_mobile_slider_value(slider: HSlider, position: Vector2) -> void:
+	var rect := slider.get_global_rect()
+	if rect.size.x <= 0.0:
+		return
+	var ratio := clampf((position.x - rect.position.x) / rect.size.x, 0.0, 1.0)
+	slider.value = lerpf(slider.min_value, slider.max_value, ratio)
 
 func _mobile_button_at(position: Vector2) -> Button:
 	for candidate: Button in mobile_button_callbacks:
@@ -1192,13 +1258,26 @@ func _mobile_button_at(position: Vector2) -> Button:
 				return candidate
 	return null
 
-func _mobile_text_edit_at(position: Vector2) -> TextEdit:
+func _mobile_text_input_at(position: Vector2) -> Control:
 	if not mobile_layout:
 		return null
 	for candidate in $SandboxLayer.find_children("*", "TextEdit", true, false):
 		var edit := candidate as TextEdit
 		if edit.is_visible_in_tree() and edit.get_global_rect().has_point(position):
 			return edit
+	for candidate in $SandboxLayer.find_children("*", "LineEdit", true, false):
+		var edit := candidate as LineEdit
+		if edit.is_visible_in_tree() and edit.editable and edit.get_global_rect().has_point(position):
+			return edit
+	return null
+
+func _mobile_slider_at(position: Vector2) -> HSlider:
+	if not mobile_layout:
+		return null
+	for candidate in $SandboxLayer.find_children("*", "HSlider", true, false):
+		var slider := candidate as HSlider
+		if slider.is_visible_in_tree() and slider.editable and slider.get_global_rect().has_point(position):
+			return slider
 	return null
 
 func _mobile_option_button_at(position: Vector2) -> Button:
@@ -1597,32 +1676,35 @@ func _add_dupre_controls(parent: Control, label_text: String, color: String) -> 
 	var title := Label.new()
 	title.text = "%s Dupre Time" % label_text
 	group.add_child(title)
-	var time_row := HBoxContainer.new()
 	var slider := HSlider.new()
 	slider.min_value = DUPRE_MIN_THINK_SECONDS
 	slider.max_value = DUPRE_MAX_THINK_SECONDS
 	slider.step = 0.1
 	slider.value = DUPRE_DEFAULT_THINK_SECONDS
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	slider.custom_minimum_size.x = 64.0
-	var value := SpinBox.new()
-	value.min_value = DUPRE_MIN_THINK_SECONDS
-	value.max_value = DUPRE_MAX_THINK_SECONDS
-	value.step = 0.1
-	value.value = DUPRE_DEFAULT_THINK_SECONDS
-	value.suffix = " s"
-	value.custom_minimum_size.x = 68.0
+	slider.custom_minimum_size.x = 40.0
+	var value := LineEdit.new()
+	value.text = "%.1f" % DUPRE_DEFAULT_THINK_SECONDS
+	value.tooltip_text = "Dupre thinking time in seconds (0.5–20)"
+	value.custom_minimum_size.x = 40.0
+	value.size_flags_horizontal = Control.SIZE_SHRINK_END
 	slider.value_changed.connect(func(seconds: float): _on_dupre_time_changed(color, seconds, slider))
-	value.value_changed.connect(func(seconds: float): _on_dupre_time_changed(color, seconds, value))
-	time_row.add_child(slider)
-	time_row.add_child(value)
-	group.add_child(time_row)
+	value.text_submitted.connect(func(text: String): _on_dupre_time_text_submitted(color, text))
+	value.focus_exited.connect(func(): _on_dupre_time_text_submitted(color, value.text))
+	group.add_child(slider)
+	var value_row := HBoxContainer.new()
+	var value_label := Label.new()
+	value_label.text = "Seconds"
+	value_row.add_child(value_label)
+	value_row.add_child(value)
+	group.add_child(value_row)
 	var unlimited_time := CheckButton.new()
-	unlimited_time.text = "Unlimited time"
+	unlimited_time.text = "No time limit"
+	unlimited_time.tooltip_text = "Let Dupre finish its bounded current-depth search without a clock limit"
 	unlimited_time.toggled.connect(func(enabled: bool): _on_dupre_unlimited_time_toggled(color, enabled))
 	group.add_child(unlimited_time)
 	var unlimited_replies := CheckButton.new()
-	unlimited_replies.text = "Unlimited replies"
+	unlimited_replies.text = "No reply cap"
 	unlimited_replies.tooltip_text = "Disable Dupre's 4,096 reply/quiescence-work cap"
 	unlimited_replies.toggled.connect(func(enabled: bool): _on_dupre_unlimited_replies_toggled(color, enabled))
 	group.add_child(unlimited_replies)
@@ -1633,14 +1715,54 @@ func _add_dupre_controls(parent: Control, label_text: String, color: String) -> 
 	}
 
 
+func _build_desktop_dupre_settings() -> void:
+	dupre_settings_panel = PanelContainer.new()
+	dupre_settings_panel.name = "DupreSettings"
+	dupre_settings_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	dupre_settings_panel.offset_left = -232.0
+	dupre_settings_panel.offset_top = 360.0
+	dupre_settings_panel.offset_right = -12.0
+	dupre_settings_panel.offset_bottom = 710.0
+	dupre_settings_panel.visible = true
+	$SandboxLayer.add_child(dupre_settings_panel)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dupre_settings_panel.add_child(scroll)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 5)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
+	var title := Label.new()
+	title.text = "Dupre Search Limits"
+	column.add_child(title)
+	_add_dupre_controls(column, "White", "white")
+	_add_dupre_controls(column, "Black", "black")
+	var note := Label.new()
+	note.text = "Book moves ignore these limits.\nUnlimited search still yields frames."
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(note)
+	get_viewport().size_changed.connect(_layout_desktop_dupre_settings)
+	piece_palette.resized.connect(_layout_desktop_dupre_settings)
+	call_deferred(&"_layout_desktop_dupre_settings")
+
+
 func _on_dupre_time_changed(color: String, seconds: float, source: Control) -> void:
 	var clamped := clampf(seconds, DUPRE_MIN_THINK_SECONDS, DUPRE_MAX_THINK_SECONDS)
 	dupre_settings[color].think_seconds = clamped
 	var controls: Dictionary = dupre_controls.get(color, {})
 	if not controls.is_empty():
 		if source != controls.slider: controls.slider.set_value_no_signal(clamped)
-		if source != controls.value: controls.value.set_value_no_signal(clamped)
+		if source != controls.value: controls.value.text = "%.1f" % clamped
 	_apply_dupre_limits(color)
+
+
+func _on_dupre_time_text_submitted(color: String, text: String) -> void:
+	var controls: Dictionary = dupre_controls.get(color, {})
+	if not text.is_valid_float():
+		if not controls.is_empty(): controls.value.text = "%.1f" % float(dupre_settings[color].think_seconds)
+		return
+	_on_dupre_time_changed(color, text.to_float(), controls.get("value"))
+	if not controls.is_empty(): controls.value.text = "%.1f" % float(dupre_settings[color].think_seconds)
 
 
 func _on_dupre_unlimited_time_toggled(color: String, enabled: bool) -> void:
@@ -1661,8 +1783,8 @@ func _apply_dupre_limits(color: String) -> void:
 		return
 	var settings: Dictionary = dupre_settings[color]
 	var dupre := cpu.brain as DupreAiBrain
-	dupre.think_budget_msec = 0 if bool(settings.unlimited_time) else int(round(float(settings.think_seconds) * 1000.0))
-	dupre.max_reply_leaves = 0 if bool(settings.unlimited_replies) else LeMayAiBrain.DEFAULT_MAX_REPLY_LEAVES
+	dupre.think_budget_msec = -1 if bool(settings.unlimited_time) else int(round(float(settings.think_seconds) * 1000.0))
+	dupre.max_reply_leaves = -1 if bool(settings.unlimited_replies) else LeMayAiBrain.DEFAULT_MAX_REPLY_LEAVES
 
 
 func _add_authority_selector(parent: Control) -> void:
@@ -2416,9 +2538,9 @@ func _refresh_control_states() -> void:
 	for color_name in dupre_controls:
 		var controls: Dictionary = dupre_controls[color_name]
 		var settings: Dictionary = dupre_settings[color_name]
-		var available := ai_brains[color_name] == ChessCpuPlayer.BrainKind.DUPRE and not replay_mode and settled and not ai_thinking
+		var available: bool = int(ai_brains[color_name]) == ChessCpuPlayer.BrainKind.DUPRE and not replay_mode and settled and not ai_thinking
 		controls.slider.set_value_no_signal(float(settings.think_seconds))
-		controls.value.set_value_no_signal(float(settings.think_seconds))
+		if not controls.value.has_focus(): controls.value.text = "%.1f" % float(settings.think_seconds)
 		controls.unlimited_time.set_pressed_no_signal(bool(settings.unlimited_time))
 		controls.unlimited_replies.set_pressed_no_signal(bool(settings.unlimited_replies))
 		controls.slider.editable = available and not bool(settings.unlimited_time)

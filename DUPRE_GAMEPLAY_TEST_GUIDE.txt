@@ -47,28 +47,49 @@ Use Report Issue to attach the notes below directly to the exported game. The
 report screen automatically includes the exact frame, round, matchup, AI brain,
 seed, and recorded action.
 
-For each reported game, record:
+Fill in the report fields as follows:
 
-* The filename.
-* The approximate round or turn.
-* Which color and king Dupre controlled.
-* What Dupre did.
-* What you expected Dupre to consider instead.
-* Why the move seemed bad, good, or interesting.
-* Whether the problem felt urgent and tactical or slower and strategic.
+* Type: Choose the closest category—Tactical mistake, Strategic mistake,
+  Ability use, Repetition / no plan, Endgame, Good play, or Other.
+* Urgency: Choose Immediate / tactical if the consequence was already present
+  or could happen on the next move. Choose Slower / strategic for plans,
+  development, positioning, repetition, and longer-term judgment.
+* What happened? Describe what Dupre did and the important pieces or threat.
+  This is the only required written field.
+* What did you expect? Describe one or more moves or ideas Dupre should have
+  considered instead. It is fine to be uncertain about the single best move.
+* Why was it interesting? Explain the consequence: lost material, missed king
+  damage, misunderstood ability, pointless repetition, especially good play,
+  and so forth.
+* Additional notes: Add any context not obvious from the recorded position,
+  such as a repeated pattern across games or something noticed during play.
+
+You do not need to type the filename, round, color, king matchup, brain, seed,
+or chosen action into these fields. The exported report supplies that context
+automatically.
 
 Example:
 
-    game12.crpggame
-    Round 18 — Dupre was the Black Necromancer.
-    Dupre summoned a Bone Pawn to defend his threatened queen.
-    I expected him to capture the attacking pawn or move the queen.
-    The pawn took the queen and the Bone Pawn recaptured it, so Dupre traded
-    his queen for a pawn. This looked like an urgent tactical mistake.
+    Type: Tactical mistake
+    Urgency: Immediate / tactical
 
-Short notes are completely fine. If the exact round is unknown, describe the
-position or say roughly when it happened. Do not alter the position to make it
-cleaner—the original game record is the most useful evidence.
+    What happened? *
+    Dupre summoned a Bone Pawn to defend his threatened queen instead of
+    removing the vulnerable pawn attacking it.
+
+    What did you expect?
+    Capture the attacking pawn with the queen, or move the queen somewhere safe.
+
+    Why was it interesting?
+    The pawn took the queen and the Bone Pawn recaptured it, so Dupre effectively
+    traded his queen for a pawn despite having simple alternatives.
+
+    Additional notes
+    I have seen Necromancer Dupre make this kind of defensive summon in more
+    than one game.
+
+Short notes are completely fine. Do not alter the position to make it cleaner—
+the original game record is the most useful evidence.
 
 Use Save Game or Share Game when you simply want to exchange an interesting
 match for fun. Both deliberately export a clean recording without a flagged

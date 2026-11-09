@@ -233,6 +233,12 @@ cannot preempt one unusually expensive authoritative operation midway through.
 Opening-book decisions bypass ordinary tactical search when safe and should be
 near-immediate. Presentation delays and animations are separate from AI compute.
 
+The sandbox exposes independent Dupre limits for White and Black. Timed search
+may be set from 0.5 to 20 seconds with a slider or typed value. Developers may
+also disable the time limit, the reply/work cap, or both. With both disabled,
+the current search still terminates because its candidate set, opponent replies,
+and one-step quiescence extension are finite; cooperative yielding remains on.
+
 
 King Support
 ------------
@@ -345,4 +351,3 @@ Pure authoritative simulation:
   scripts/core/pure/chess_core_state.gd
   scripts/core/pure/*_core_rules.gd
   scripts/ai/dupre_classic_core_backend.gd
-

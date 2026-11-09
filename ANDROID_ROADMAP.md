@@ -128,6 +128,9 @@ When adding sandbox UI:
 - For controls created outside `SandboxLayer` (for example chess choice panels under `ChessGame/LunacyLayer`), add an explicit scan in `_mobile_button_at(...)`.
 - Treat `OptionButton` as a special case. Native `PopupMenu` is a separate modal window and has proven unreliable with the sandbox's custom Android router. Open the shared in-scene `MobileOptionPicker` instead; its ordinary buttons are routed like the rest of the working mobile UI and block board input while open.
 - Route `TextEdit`/`LineEdit` fields explicitly so a touch focuses the field and opens the Android keyboard.
+- Route `HSlider`/other `Range` controls explicitly; the sandbox consumes screen touches before Godot's normal GUI path, so sliders otherwise look enabled but never receive taps or drags.
+- For toggle controls created outside `_add_button_to(...)`, change `button_pressed` as well as emitting `pressed`; manually emitting `pressed` alone does not update a `CheckButton` or emit its `toggled` signal.
+- Any mobile panel taller than its viewport needs explicit `ScrollContainer` drag routing. A vertical drag that starts on a child button or field must become a scroll gesture and must not activate that child on release.
 - Keep piece-palette/king-picker routing ahead of generic button scans so picker scrolling and selection continue to work.
 - Add a touch regression to `tests/sandbox/mobile_board_sandbox_characterization.gd` whenever a new mobile control surface is introduced.
 
