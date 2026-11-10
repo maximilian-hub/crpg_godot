@@ -103,6 +103,7 @@ var mobile_ai_panel: PanelContainer
 var mobile_ai_scroll: ScrollContainer
 var mobile_palette_button: Button
 var mobile_toolbar_panel: PanelContainer
+var mobile_ai_button: Button
 var reset_confirmation: ConfirmationDialog
 var clear_confirmation: ConfirmationDialog
 var mobile_ui_pointer := -1
@@ -930,7 +931,7 @@ func _build_mobile_panel() -> void:
 	reset_button = _add_button_to(toolbar, "Reset", reset)
 	clear_button = _add_button_to(toolbar, "Clear", func(): editor.clear_board())
 	mobile_palette_button = _add_button_to(toolbar, "Pieces", _toggle_mobile_palette)
-	_add_button_to(toolbar, "AI", _toggle_mobile_ai_panel)
+	mobile_ai_button = _add_button_to(toolbar, "AI", _toggle_mobile_ai_panel)
 	_add_button_to(toolbar, "Replay", _toggle_record_panel)
 
 	mobile_ai_panel = PanelContainer.new()
@@ -1019,7 +1020,7 @@ func _layout_mobile_controls() -> void:
 		mobile_toolbar_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		mobile_toolbar_panel.offset_left = left
 		mobile_toolbar_panel.offset_top = top
-		mobile_toolbar_panel.offset_right = left + 112.0
+		mobile_toolbar_panel.offset_right = left + 224.0
 		mobile_toolbar_panel.offset_bottom = top + 54.0
 	else:
 		mobile_toolbar_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
@@ -1508,7 +1509,7 @@ func _apply_mobile_mode_visibility() -> void:
 	var toolbar := mobile_toolbar_panel.get_child(0) as HBoxContainer
 	for child in toolbar.get_children():
 		if child is Control:
-			(child as Control).visible = child == mode_button or mode == Mode.EDIT
+			(child as Control).visible = child == mode_button or child == mobile_ai_button or mode == Mode.EDIT
 	if piece_palette != null:
 		piece_palette.visible = mode == Mode.EDIT
 		if piece_palette.king_picker != null and mode == Mode.PLAY:
@@ -2512,8 +2513,12 @@ func _refresh_control_states() -> void:
 		preset_option.disabled = replay_mode or not settled
 	if turn_option != null:
 		turn_option.disabled = not editing
+	var auto_match_running := mode == Mode.PLAY and ai_mode == ChessCpuPlayer.ExecutionMode.AUTO and not model.battle_over
 	for value in ai_mode_buttons:
-		ai_mode_buttons[value].disabled = replay_mode or not settled
+		# Automatic play can keep the model continuously unsettled. Off remains
+		# available as a safe stop while other mode changes stay locked.
+		var can_stop_auto: bool = auto_match_running and value == ChessCpuPlayer.ExecutionMode.DISABLED
+		ai_mode_buttons[value].disabled = replay_mode or (not can_stop_auto and (not settled or auto_match_running))
 		var active: bool = value == ai_mode
 		var color := Color("67626f")
 		if value == ChessCpuPlayer.ExecutionMode.AUTO:

@@ -301,6 +301,15 @@ func _ready() -> void:
 	_check(sandbox.game.white_cpu_player.execution_mode == ChessCpuPlayer.ExecutionMode.MANUAL and sandbox.game.black_cpu_player.execution_mode == ChessCpuPlayer.ExecutionMode.MANUAL, "both selected sides receive Manual AI mode", failures)
 	_check(not sandbox.think_button.disabled and not sandbox.step_button.disabled, "manual AI controls become clickable when the current side is available", failures)
 	_check(sandbox.think_button.focus_mode == Control.FOCUS_ALL and sandbox.step_button.focus_mode == Control.FOCUS_ALL, "re-enabled controls restore normal focus behavior", failures)
+	model.action_in_progress = true
+	sandbox.ai_mode = ChessCpuPlayer.ExecutionMode.AUTO
+	sandbox._refresh_control_states()
+	_check(not sandbox.ai_mode_buttons[ChessCpuPlayer.ExecutionMode.DISABLED].disabled, "AI Off remains clickable while an automatic AI-vs-AI action is resolving", failures)
+	_check(sandbox.ai_mode_buttons[ChessCpuPlayer.ExecutionMode.AUTO].disabled and sandbox.ai_mode_buttons[ChessCpuPlayer.ExecutionMode.MANUAL].disabled, "other AI mode changes remain locked until the automatic action settles", failures)
+	sandbox._configure_ai(ChessCpuPlayer.ExecutionMode.DISABLED)
+	_check(sandbox.game.white_cpu_player.execution_mode == ChessCpuPlayer.ExecutionMode.DISABLED and sandbox.game.black_cpu_player.execution_mode == ChessCpuPlayer.ExecutionMode.DISABLED, "AI Off immediately cancels both automatic players during an unresolved action", failures)
+	model.action_in_progress = false
+	sandbox._configure_ai(ChessCpuPlayer.ExecutionMode.MANUAL)
 	await sandbox.think_ai()
 	_check(sandbox.thought_label.text != "No prepared action" and not sandbox.execute_button.disabled, "Think displays a prepared action and enables Execute", failures)
 	sandbox._on_seed_changed(9)
